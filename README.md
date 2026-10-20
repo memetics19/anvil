@@ -129,6 +129,11 @@ make tf-plan     # writes terraform/homelab.tfplan and runs the plan guard
 make tf-apply    # applies only that saved plan, after re-running the guard
 ```
 
+Plans are transient: a saved plan contains site values, so it is written mode 600, removed
+at the start of the next `tf-plan`, when the guard rejects it, and after `tf-apply`
+(success or failure). The guard reads `terraform show -json` through a pipe; the JSON is
+never written to disk.
+
 `scripts/plan-guard.sh` refuses a plan that destroys or replaces anything, changes which
 storage backs `ragnarok`'s disk (the media library), errored, or was made with `-target`.
 Don't pass `-target` in `ARGS`. All three adopted VMs also carry `prevent_destroy`.
@@ -136,8 +141,9 @@ Don't pass `-target` in `ARGS`. All three adopted VMs also carry `prevent_destro
 
 `frigate`, `netbird` and `ragnarok` were adopted with `import` blocks
 ([`terraform/imports.tf`](terraform/imports.tf)); a plan against the current box reports
-no changes. SDN subnets are adopted once the site dict has `sdn.subnets.<vnet>` entries
-(`cidr`, `gateway`); until then they are left unmanaged.
+no changes. SDN subnets need `sdn.subnets.<vnet>` entries (`cidr`, `gateway`) in the site
+dict for `servers`, `cameras` and `personal`; the plan stops with a validation error until
+they exist. `site_json` is also checked for quoted MACs and numeric VM IDs.
 
 ## Layout
 

@@ -23,10 +23,13 @@ plan disk-gone.json    '.resource_changes[0].change.actions = ["update"] | .reso
 plan disk-unknown.json '.resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk = null'
 plan disk-tune.json    '.resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0].discard = "on"'
 plan cpu-only.json     '.resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.cores = 2'
-plan frigate-disk.json '.resource_changes[0].address = "proxmox_virtual_environment_vm.frigate" | .resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0].size = 2048'
+plan frigate-disk.json '.resource_changes[0].address = "proxmox_virtual_environment_vm.frigate" | .resource_changes[0].name = "frigate" | .resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0].size = 2048'
 plan errored.json      '.resource_changes[0].change.actions = ["no-op"] | .errored = true'
 plan targeted.json     '.resource_changes[0].change.actions = ["no-op"] | .complete = false'
 plan empty.json        'del(.resource_changes)'
+plan module-disk.json  '.resource_changes[0].address = "module.vms.proxmox_virtual_environment_vm.ragnarok" | .resource_changes[0].module_address = "module.vms" | .resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0].datastore_id = "other"'
+plan no-complete.json  '.resource_changes[0].change.actions = ["no-op"] | del(.complete)'
+plan no-errored.json   '.resource_changes[0].change.actions = ["no-op"] | del(.errored)'
 printf 'not json' > "$tmp/garbage.json"
 
 fail=0
@@ -55,6 +58,9 @@ expect "$tmp/frigate-disk.json" 0
 expect "$tmp/errored.json"      1
 expect "$tmp/targeted.json"     1
 expect "$tmp/empty.json"        0
+expect "$tmp/module-disk.json"  1
+expect "$tmp/no-complete.json"  1
+expect "$tmp/no-errored.json"   1
 expect "$tmp/garbage.json"      1
 expect "$tmp/missing.json"      1
 expect <(cat "$tmp/targeted.json") 1   # read from a pipe: checked once, not re-read empty

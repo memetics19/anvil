@@ -31,7 +31,7 @@ host:
 	@set -eu -o pipefail; $(ENV); \
 	cd ansible && ansible-playbook playbooks/host.yml --limit '!vault_servers' $(ARGS)
 
-# Host network change with timed rollback. Never combine with a netbird (VM 102) change.
+# Host network change with timed rollback. Never combine with a netbird VM change.
 host-network:
 	@set -eu -o pipefail; $(ENV); \
 	cd ansible && ansible-playbook playbooks/host-network.yml --limit '!vault_servers' $(ARGS)
@@ -48,17 +48,22 @@ tf-init:
 
 # Plans are checked by scripts/plan-guard.sh: no destroy/replace, no change to ragnarok's
 # disks, and no -target (a targeted plan hides the rest; don't pass -target in ARGS).
+# The saved plan holds site values, so it is transient: mode 600, removed at the start of
+# tf-plan, when the guard rejects it, and after tf-apply. Its JSON is never written to disk.
+TF_PLAN := terraform/homelab.tfplan
+
 tf-plan:
-	@set -eu -o pipefail; $(ENV); \
+	@set -eu -o pipefail; $(ENV); umask 077; \
+	rm -f $(TF_PLAN); trap 'rm -f $(TF_PLAN)' ERR; \
 	terraform -chdir=terraform plan -input=false -out=homelab.tfplan $(ARGS); \
-	terraform -chdir=terraform show -json homelab.tfplan > terraform/homelab.tfplan.json; \
-	scripts/plan-guard.sh terraform/homelab.tfplan.json
+	scripts/plan-guard.sh <(terraform -chdir=terraform show -json homelab.tfplan)
 
 # Applies only the saved plan, and only if it passes the guard (checked again here).
 tf-apply:
-	@set -eu -o pipefail; $(ENV); \
-	[ -f terraform/homelab.tfplan ] || { echo "tf-apply: no saved plan; run make tf-plan first" >&2; exit 1; }; \
-	terraform -chdir=terraform show -json homelab.tfplan > terraform/homelab.tfplan.json; \
-	scripts/plan-guard.sh terraform/homelab.tfplan.json; \
-	jq -e '.applyable' terraform/homelab.tfplan.json >/dev/null || { echo "tf-apply: the saved plan has nothing to apply"; exit 0; }; \
+	@set -eu -o pipefail; $(ENV); umask 077; \
+	[ -f $(TF_PLAN) ] || { echo "tf-apply: no saved plan; run make tf-plan first" >&2; exit 1; }; \
+	trap 'rm -f $(TF_PLAN)' EXIT; \
+	scripts/plan-guard.sh <(terraform -chdir=terraform show -json homelab.tfplan); \
+	applyable=$$(terraform -chdir=terraform show -json homelab.tfplan | jq -r '.applyable'); \
+	[ "$$applyable" = true ] || { echo "tf-apply: the saved plan has nothing to apply"; exit 0; }; \
 	terraform -chdir=terraform apply -input=false homelab.tfplan

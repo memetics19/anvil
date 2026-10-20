@@ -28,6 +28,7 @@ _hl_site_json() {
 }
 
 _hl_main() {
+  unset TF_VAR_site_json   # rebuilt below; never keep a stale copy
   PVE_IP="$(_hl_get pve-ip)" && [ -n "$PVE_IP" ] || {
     echo "env.sh: Keychain item pve-ip (service homelab) not found; add it with: security add-generic-password -s homelab -a pve-ip -w <ip>" >&2
     return 1
@@ -53,7 +54,11 @@ _hl_main() {
   # prints multi-line values hex-encoded, so decode when the value is all hex.
   if _hl_v="$(_hl_get site-bootstrap)" && [ -n "$_hl_v" ]; then
     case $_hl_v in *[!0-9a-f]*) ;; *) _hl_v="$(printf '%s' "$_hl_v" | xxd -r -p)" ;; esac
-    _hl_v="$(printf '%s' "$_hl_v" | _hl_site_json)" && [ -n "$_hl_v" ] && export TF_VAR_site_json="$_hl_v"
+    if _hl_v="$(printf '%s' "$_hl_v" | _hl_site_json)" && [ -n "$_hl_v" ]; then
+      export TF_VAR_site_json="$_hl_v"
+    else
+      echo "env.sh: Keychain item site-bootstrap is not YAML with a top-level site dict; TF_VAR_site_json not set" >&2
+    fi
   fi
   return 0
 }

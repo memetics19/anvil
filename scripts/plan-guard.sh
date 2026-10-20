@@ -2,18 +2,20 @@
 # Refuse a Terraform plan (JSON from `terraform show -json <plan>`) that would lose data.
 # Usage: scripts/plan-guard.sh <plan.json>
 # Exits 1 when the plan:
-#   - errored, or is incomplete (`complete == false`: made with -target, or with
-#     deferred actions), so it can't be trusted to show everything;
+#   - errored, or is not marked complete (`complete` is false for -target plans and
+#     deferred actions; a missing key also fails), so it may not show everything;
 #   - has a `delete` action on any resource (covers destroy and replace);
 #   - changes which storage backs a protected VM's disks (interface, datastore, size,
-#     path, format or source image), or makes them unknown. Protected: ragnarok,
-#     whose disk holds the media library. Tuning options (discard, iothread, cache, ...)
+#     path, format or source image), or makes them unknown. Protected: any
+#     proxmox_virtual_environment_vm named ragnarok, at any module path; its disk holds
+#     the media library. Tuning options (discard, iothread, cache, ...)
 #     may change.
 # Prints the offending resource addresses only (no attribute values).
 set -euo pipefail
 
 plan=${1:?usage: plan-guard.sh <plan.json>}
-protected='["proxmox_virtual_environment_vm.ragnarok"]'
+protected_type=proxmox_virtual_environment_vm
+protected_names='["ragnarok"]'
 
 # Read once: the argument may be a pipe, e.g. <(terraform show -json plan).
 json=$(cat "$plan" 2>/dev/null) || { echo "plan-guard: cannot read $plan" >&2; exit 1; }
@@ -22,10 +24,10 @@ q -e 'type == "object"' >/dev/null 2>&1 || { echo "plan-guard: $plan is not plan
 
 fail=0
 
-if q -e '.errored == true' >/dev/null; then
+if ! q -e '.errored == false' >/dev/null; then
   echo "plan-guard: the plan errored" >&2; fail=1
 fi
-if q -e '.complete == false' >/dev/null; then
+if ! q -e '.complete == true' >/dev/null; then
   echo "plan-guard: the plan is incomplete (-target or deferred actions); plan without -target" >&2; fail=1
 fi
 
@@ -35,12 +37,12 @@ if [ -n "$deletes" ]; then
   printf 'plan-guard: refusing delete/replace:\n%s\n' "$deletes" >&2; fail=1
 fi
 
-# shellcheck disable=SC2016  # $a and $p are jq variables
-disks=$(q -r --argjson p "$protected" '
+# shellcheck disable=SC2016  # $t and $n are jq variables
+disks=$(q -r --arg t "$protected_type" --argjson n "$protected_names" '
   def ident: [ (. // [])[] | {interface, datastore_id, size, path_in_datastore,
                               file_format, file_id, import_from} ] | sort_by(.interface);
   .resource_changes // [] | .[]
-  | select(.address as $a | $p | index($a))
+  | select(.type == $t and (.name as $x | $n | index($x)))
   | select(.change.actions | index("update") or index("create"))
   | select(((.change.before.disk // null) | ident) != ((.change.after.disk // null) | ident)
            or (.change.after == null) or (.change.after.disk == null))

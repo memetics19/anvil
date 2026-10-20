@@ -14,7 +14,10 @@ resource "proxmox_virtual_environment_vm" "frigate" {
   name          = "frigate"
   on_boot       = false
   scsi_hardware = "virtio-scsi-single"
-  boot_order    = ["scsi0", "ide2", "net0"]
+  # Never let the provider reboot or power off a VM to apply a change; restarts are
+  # done by hand, one VM at a time.
+  reboot_after_update = false
+  boot_order          = ["scsi0", "ide2", "net0"]
 
   cpu {
     sockets = 2
@@ -69,7 +72,10 @@ resource "proxmox_virtual_environment_vm" "netbird" {
   name          = "netbird"
   on_boot       = false
   scsi_hardware = "virtio-scsi-single"
-  boot_order    = ["scsi0", "ide2", "net0"]
+  # Never let the provider reboot or power off a VM to apply a change; restarts are
+  # done by hand, one VM at a time.
+  reboot_after_update = false
+  boot_order          = ["scsi0", "ide2", "net0"]
 
   cpu {
     sockets = 1
@@ -125,7 +131,10 @@ resource "proxmox_virtual_environment_vm" "ragnarok" {
   name          = "ragnarok"
   on_boot       = false
   scsi_hardware = "virtio-scsi-single"
-  boot_order    = ["scsi0", "ide2", "net0"]
+  # Never let the provider reboot or power off a VM to apply a change; restarts are
+  # done by hand, one VM at a time.
+  reboot_after_update = false
+  boot_order          = ["scsi0", "ide2", "net0"]
 
   cpu {
     sockets = 1

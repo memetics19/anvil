@@ -4,6 +4,10 @@
 resource "proxmox_sdn_zone_vlan" "vlanzone" {
   id     = "vlanzone"
   bridge = "vmbr0"
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "proxmox_sdn_vnet" "servers" {
@@ -11,6 +15,10 @@ resource "proxmox_sdn_vnet" "servers" {
   zone  = proxmox_sdn_zone_vlan.vlanzone.id
   alias = "Servers VLAN 10"
   tag   = 10
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "proxmox_sdn_vnet" "cameras" {
@@ -18,6 +26,10 @@ resource "proxmox_sdn_vnet" "cameras" {
   zone  = proxmox_sdn_zone_vlan.vlanzone.id
   alias = "Cameras IoT VLAN 20"
   tag   = 20
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "proxmox_sdn_vnet" "personal" {
@@ -25,12 +37,16 @@ resource "proxmox_sdn_vnet" "personal" {
   zone  = proxmox_sdn_zone_vlan.vlanzone.id
   alias = "Personal VLAN 30"
   tag   = 30
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
-# Subnets are site values: site.sdn.subnets.<vnet> = {cidr, gateway}. Until those keys
-# exist in the site dict no subnet is managed (the ones on the box are left alone).
+# Subnets are site values: site.sdn.subnets.<vnet> = {cidr, gateway}, required (checked
+# by the site_json validation). The map's keys are vnet names, not secrets.
 locals {
-  sdn_subnets = nonsensitive(try(local.site.sdn.subnets, {}))
+  sdn_subnets = nonsensitive(local.site.sdn.subnets)
   sdn_vnets = {
     servers  = proxmox_sdn_vnet.servers.id
     cameras  = proxmox_sdn_vnet.cameras.id
@@ -44,4 +60,8 @@ resource "proxmox_sdn_subnet" "this" {
   vnet    = local.sdn_vnets[each.key]
   cidr    = each.value.cidr
   gateway = each.value.gateway
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
