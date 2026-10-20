@@ -13,13 +13,10 @@ lint:
 	if [ -d ansible ]; then (cd ansible && ansible-lint -c ../.ansible-lint .); \
 	else echo "skip ansible-lint: no ansible/"; fi
 
-# History scan starts after SCAN_FROM: earlier commits predate the site/ split and
-# contain IP literals. Remove SCAN_FROM once history is squashed.
-SCAN_FROM ?= 5e4544f
 
 secrets-scan:
 	@set -eu -o pipefail; $(ENV); \
-	gitleaks git --no-banner --config .gitleaks.toml --log-opts "$(SCAN_FROM)..HEAD" . ; \
+	gitleaks git --no-banner --config .gitleaks.toml . ; \
 	tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
 	git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf - 2>/dev/null | tar -xf - -C "$$tmp"; \
 	gitleaks dir --no-banner --config .gitleaks.toml "$$tmp"
