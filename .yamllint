@@ -4,6 +4,9 @@ ignore: |
   .git/
   .superpowers/
   docs/
+  .collections/
+  .ansible/
+  ansible/.ansible/
 rules:
   line-length: disable
   truthy:
