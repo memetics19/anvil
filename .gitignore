@@ -21,3 +21,4 @@ site/site.env
 site/bootstrap.yml
 !site/*.example*
 .ansible/
+.collections/
