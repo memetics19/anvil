@@ -59,7 +59,7 @@
   ansible.builtin.set_fact:
     ceph_single_conf_wanted: >-
       {{ (ceph_single_global_settings | dict2items(key_name='key', value_name='value')
-          | map('combine', {'name': 'mon.' ~ ceph_single_node}) | list)
+          | map('combine', {'name': 'client.admin'}) | list)
          + [{'name': 'client.rgw.' ~ ceph_single_rgw_id, 'key': 'keyring', 'value': ceph_single_rgw_keyring},
             {'name': 'client.rgw.' ~ ceph_single_rgw_id, 'key': 'rgw_frontends',
              'value': 'beast endpoint=' ~ ceph_single_rgw_address ~ ':' ~ ceph_single_rgw_port}] }}
@@ -128,9 +128,72 @@
     cmd: pveceph mgr create
     creates: /var/lib/ceph/mgr/ceph-{{ ceph_single_node }}
 
+# Presence means "in quorum" / "available", not just a data directory: a half-made
+# daemon leaves the directory behind and would otherwise be skipped silently.
+- name: Ceph | wait for the monitor to be in quorum
+  ansible.builtin.command: ceph --connect-timeout 10 quorum_status --format json
+  register: ceph_single_quorum
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  until: ceph_single_node in ((ceph_single_quorum.stdout or '{}') | from_json).quorum_names | default([])
+  retries: 10
+  delay: 6
+  when: ceph_single_live | bool
+
+- name: Ceph | monitor is in quorum
+  ansible.builtin.assert:
+    that: ceph_single_node in ((ceph_single_quorum.stdout or '{}') | from_json).quorum_names | default([])
+    fail_msg: >-
+      Monitor {{ ceph_single_node }} is not in quorum. Likely a half-finished 'pveceph mon create'
+      or a stopped daemon. Check: systemctl status ceph-mon@{{ ceph_single_node }};
+      journalctl -u ceph-mon@{{ ceph_single_node }}. Clean up a half-made monitor with
+      'pveceph mon destroy {{ ceph_single_node }}' (or start over on this empty cluster with
+      'pveceph purge'), then rerun make ceph.
+    quiet: true
+  when: ceph_single_live | bool
+
+- name: Ceph | wait for the manager to be available
+  ansible.builtin.command: ceph --connect-timeout 10 mgr stat --format json
+  register: ceph_single_mgr_stat
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  until: ((ceph_single_mgr_stat.stdout or '{}') | from_json).available | default(false) | bool
+  retries: 10
+  delay: 6
+  when: ceph_single_live | bool
+
+- name: Ceph | manager is available
+  ansible.builtin.assert:
+    that: ((ceph_single_mgr_stat.stdout or '{}') | from_json).available | default(false) | bool
+    fail_msg: >-
+      No Ceph manager is available. Likely a half-finished 'pveceph mgr create' or a stopped
+      daemon. Check: systemctl status ceph-mgr@{{ ceph_single_node }}; journalctl -u
+      ceph-mgr@{{ ceph_single_node }}. Clean up with 'pveceph mgr destroy {{ ceph_single_node }}',
+      then rerun make ceph (it recreates the manager).
+    quiet: true
+  when: ceph_single_live | bool
+
 - name: Disk | wipe the disk and create the OSD
   when: not ceph_single_is_osd | bool
   block:
+    - name: Disk | re-resolve the device right before wiping
+      ansible.builtin.command:
+        argv: [readlink, -e, --, "{{ ceph_single_osd_device }}"]
+      register: ceph_single_resolve_again
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Disk | device still points at the disk the safety checks passed
+      ansible.builtin.assert:
+        that: ceph_single_resolve_again.rc == 0 and ceph_single_resolve_again.stdout == ceph_single_dev
+        fail_msg: >-
+          The OSD device no longer resolves to {{ ceph_single_dev }} (now:
+          {{ ceph_single_resolve_again.stdout | default('nothing', true) }}); not wiping.
+        quiet: true
+
     - name: Disk | clear ZFS labels left on old pool partitions
       ansible.builtin.command:
         argv: [zpool, labelclear, -f, "{{ item }}"]
@@ -179,6 +242,17 @@
   until: ((ceph_single_osd_stat.stdout or '{}') | from_json).num_up_osds | default(0) | int >= 1
   retries: 20
   delay: 6
+  when: ceph_single_live | bool
+
+- name: Ceph | OSD is up
+  ansible.builtin.assert:
+    that: ((ceph_single_osd_stat.stdout or '{}') | from_json).num_up_osds | default(0) | int >= 1
+    fail_msg: >-
+      No OSD came up within 2 minutes. Likely 'pveceph osd create' stopped half way (LVM made,
+      OSD not registered) or ceph-osd will not start. Check: ceph osd tree; journalctl -u 'ceph-osd@*';
+      ceph-volume lvm list {{ ceph_single_dev }}. To redo the OSD: 'pveceph osd destroy <id> --cleanup'
+      if it has an id, otherwise 'ceph-volume lvm zap --destroy {{ ceph_single_dev }}', then rerun make ceph.
+    quiet: true
   when: ceph_single_live | bool
 
 - name: Ceph | read health mutes

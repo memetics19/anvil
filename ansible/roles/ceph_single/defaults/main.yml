@@ -5,8 +5,9 @@ ceph_single_osd_device: "{{ ceph_osd_device }}"
 ceph_single_node: "{{ ansible_facts['hostname'] }}"
 ceph_single_network: "{{ site.lan_cidr }}"
 ceph_single_conf: /etc/pve/ceph.conf
-# Ceph release for pveceph install; empty = the default this PVE version offers.
-ceph_single_release: ""
+# Ceph release for pveceph install (empty = the default this PVE version offers). Only the
+# first run installs, so this must be right before then.
+ceph_single_release: squid
 
 # Settings for a one-disk cluster, written to [global] before the first monitor exists.
 ceph_single_global_settings:
@@ -14,6 +15,11 @@ ceph_single_global_settings:
   osd_pool_default_min_size: "1"
   mon_allow_pool_size_one: "true"
   osd_crush_chooseleaf_type: "0"
+  osd_pool_default_pg_num: "8"
+  # 2 GiB per OSD: the host's RAM is mostly for VMs.
+  osd_memory_target: "2147483648"
+  # Daemons advertise the host address, never the gateway alias on the same bridge.
+  public_addr: "{{ site.pve.ip }}"
 
 ceph_single_rgw_id: "{{ ceph_single_node }}"
 ceph_single_rgw_port: 7480

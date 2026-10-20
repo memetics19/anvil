@@ -85,9 +85,12 @@ bucket `tfstate`. The OSD disk is the `/dev/disk/by-id/` name in Keychain accoun
 `-e ceph_osd_device=/dev/disk/by-id/...`.
 
 **The first real run wipes that disk.** Before touching anything, the play refuses a disk
-that holds `/` or `/boot/efi`, has a mounted partition, is a PV in VG `pve`, or carries a
-ZFS pool that is imported or importable in any state other than `UNAVAIL`. A disk that is
-already an OSD is left alone.
+that holds `/` or `/boot/efi`, that the host boots from (EFI BootCurrent,
+`proxmox-boot-uuids`, grub-pc install devices), has a mounted partition, kernel holders or
+open handles, is named in a guest config or `storage.cfg`, is a PV in any non-Ceph VG, or
+carries a ZFS pool that is imported or importable in any state other than `UNAVAIL`. A disk
+that is already an OSD (Ceph VG, LVM on the disk and `ceph-volume` agree) is left alone; if
+those signals disagree the play stops.
 
 ```sh
 make ceph ARGS="--check --diff"   # safety checks plus a list of what would run

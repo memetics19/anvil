@@ -103,24 +103,213 @@
   changed_when: false
   check_mode: false
 
+- name: Safety | find PVE guest or storage config naming the disk or its partitions
+  ansible.builtin.shell:
+    cmd: |
+      set -uo pipefail
+      nodes=$(lsblk -nrpo NAME,TYPE "$DISK" | awk '$2 == "disk" || $2 == "part" {print $1}')
+      names=()
+      for n in $nodes; do names+=(-e "${n#/dev/}"); done
+      for l in /dev/disk/by-id/*; do
+        t=$(readlink -f "$l")
+        for n in $nodes; do if [ "$t" = "$n" ]; then names+=(-e "${l##*/}"); fi; done
+      done
+      files=()
+      for f in /etc/pve/qemu-server/*.conf /etc/pve/lxc/*.conf /etc/pve/storage.cfg; do
+        if [ -f "$f" ]; then files+=("$f"); fi
+      done
+      [ -n "${files[*]:-}" ] || exit 0
+      grep -l -w -F "${names[@]}" "${files[@]}"
+      rc=$?
+      if [ "$rc" -gt 1 ]; then echo "grep-failed"; fi
+      exit 0
+    executable: /bin/bash
+  environment:
+    DISK: "{{ ceph_single_resolve.stdout }}"
+  register: ceph_single_pve_refs
+  changed_when: false
+  check_mode: false
+
+- name: Safety | find kernel holders of the disk and its partitions
+  ansible.builtin.shell:
+    cmd: |
+      set -u
+      k=${DISK#/dev/}
+      for s in "/sys/block/$k" "/sys/block/$k/$k"*; do
+        if [ -d "$s/holders" ]; then
+          h=$(ls -A "$s/holders")
+          if [ -n "$h" ]; then echo "${s##*/}: held by" $h; fi
+        fi
+      done
+    executable: /bin/bash
+  environment:
+    DISK: "{{ ceph_single_resolve.stdout }}"
+  register: ceph_single_holders
+  changed_when: false
+  check_mode: false
+
+- name: Safety | find processes with the disk or a partition open
+  ansible.builtin.shell:
+    cmd: |
+      set -uo pipefail
+      command -v fuser >/dev/null || { echo "fuser missing"; exit 0; }
+      for n in $(lsblk -nrpo NAME,TYPE "$DISK" | awk '$2 == "disk" || $2 == "part" {print $1}'); do
+        if fuser "$n" >/dev/null 2>&1; then echo "$n is open"; fi
+      done
+    executable: /bin/bash
+  environment:
+    DISK: "{{ ceph_single_resolve.stdout }}"
+  register: ceph_single_open
+  changed_when: false
+  check_mode: false
+
+- name: Safety | check the host does not boot from the disk
+  ansible.builtin.shell:
+    cmd: |
+      set -uo pipefail
+      parent() { lsblk -nrpso NAME,TYPE "$1" 2>/dev/null | awk '$2 == "disk" {print $1}'; }
+      mine() { for d in $(parent "$1"); do if [ "$d" = "$DISK" ]; then return 0; fi; done; return 1; }
+
+      if [ ! -d /sys/firmware/efi ]; then
+        echo "efi-bootcurrent|ok|legacy BIOS boot"
+      elif ! out=$(efibootmgr -v 2>&1); then
+        echo "efi-bootcurrent|FAIL|efibootmgr failed or missing"
+      else
+        cur=$(awk '/^BootCurrent:/ {print $2}' <<<"$out")
+        pu=$(grep "^Boot${cur}" <<<"$out" | grep -oiE 'GPT,[0-9a-f-]{36}' | head -n1 | cut -d, -f2)
+        if [ -z "$cur" ]; then
+          echo "efi-bootcurrent|FAIL|no BootCurrent entry"
+        elif [ -z "$pu" ]; then
+          echo "efi-bootcurrent|ok|Boot$cur is not a disk partition"
+        else
+          part=$(lsblk -nrpo NAME,PARTUUID | awk -v u="${pu,,}" 'tolower($2) == u {print $1}' | head -n1)
+          if [ -z "$part" ]; then
+            echo "efi-bootcurrent|ok|Boot$cur partition is not on any present disk"
+          elif mine "$part"; then
+            echo "efi-bootcurrent|FAIL|Boot$cur is on $part"
+          else
+            echo "efi-bootcurrent|ok|Boot$cur is on $part"
+          fi
+        fi
+      fi
+
+      f=/etc/kernel/proxmox-boot-uuids
+      if [ ! -f "$f" ]; then
+        echo "proxmox-boot-uuids|ok|not in use"
+      else
+        own=$(lsblk -nrpo UUID "$DISK" | awk 'NF')
+        hit=
+        while read -r u; do
+          if [ -n "$u" ] && grep -qixF -- "$u" <<<"$own"; then hit=1; fi
+        done <"$f"
+        if [ -n "$hit" ]; then echo "proxmox-boot-uuids|FAIL|lists an ESP on this disk"
+        else echo "proxmox-boot-uuids|ok|no ESP on this disk listed"; fi
+      fi
+
+      if ! command -v debconf-show >/dev/null; then
+        echo "grub-pc-install-devices|ok|debconf not present"
+      else
+        devs=$(debconf-show grub-pc 2>/dev/null | sed -n 's/.*grub-pc\/install_devices: *//p' | tr ',' ' ')
+        if [ -z "${devs// /}" ]; then
+          echo "grub-pc-install-devices|ok|none set"
+        else
+          hit=
+          where=
+          for d in $devs; do
+            r=$(readlink -f "$d")
+            where="$where $r"
+            if mine "$r"; then hit=1; fi
+          done
+          if [ -n "$hit" ]; then echo "grub-pc-install-devices|FAIL|an install device is this disk"
+          else echo "grub-pc-install-devices|ok|on$where"; fi
+        fi
+      fi
+    executable: /bin/bash
+  environment:
+    DISK: "{{ ceph_single_resolve.stdout }}"
+  register: ceph_single_boot
+  changed_when: false
+  check_mode: false
+
+- name: Safety | ask ceph-volume whether the disk is an OSD
+  ansible.builtin.shell:
+    cmd: |
+      set -u
+      command -v ceph-volume >/dev/null || { echo absent; exit 0; }
+      if ceph-volume lvm list "$DISK" >/dev/null 2>&1; then echo osd; else echo none; fi
+    executable: /bin/bash
+  environment:
+    DISK: "{{ ceph_single_resolve.stdout }}"
+  register: ceph_single_cv
+  changed_when: false
+  check_mode: false
+
 - name: Safety | work out what the disk holds
   ansible.builtin.set_fact:
     ceph_single_dev: "{{ ceph_single_resolve.stdout }}"
     ceph_single_blockdevs: "{{ (ceph_single_lsblk.stdout | from_json).blockdevices }}"
-    ceph_single_is_osd: "{{ ceph_single_disk_vgs.stdout_lines | select('match', '^ceph-') | list | length > 0 }}"
+    ceph_single_osd_signals:
+      ceph_vg: "{{ ceph_single_disk_vgs.stdout_lines | select('match', '^ceph-') | list | length > 0 }}"
+      lvm_on_disk: >-
+        {{ ((ceph_single_lsblk.stdout | from_json).blockdevices | selectattr('fstype', 'equalto', 'LVM2_member') | list | length > 0)
+           or ((ceph_single_lsblk.stdout | from_json).blockdevices | selectattr('type', 'equalto', 'lvm') | list | length > 0) }}
+      ceph_volume: "{{ ceph_single_cv.stdout | trim }}"
+
+- name: Safety | decide whether the disk is already an OSD (all signals must agree)
+  ansible.builtin.set_fact:
+    ceph_single_is_osd: >-
+      {{ ceph_single_osd_signals.ceph_vg | bool and ceph_single_osd_signals.lvm_on_disk | bool
+         and ceph_single_osd_signals.ceph_volume in ['osd', 'absent'] }}
+    ceph_single_osd_signals_agree: >-
+      {{ (ceph_single_osd_signals.ceph_vg | bool and ceph_single_osd_signals.lvm_on_disk | bool
+          and ceph_single_osd_signals.ceph_volume in ['osd', 'absent'])
+         or (not ceph_single_osd_signals.ceph_vg | bool and not ceph_single_osd_signals.lvm_on_disk | bool
+             and ceph_single_osd_signals.ceph_volume in ['none', 'absent']) }}
+
+- name: Safety | list problems
+  ansible.builtin.set_fact:
     ceph_single_problems: >-
       {{ (['it is not a whole disk']
-            if ((ceph_single_lsblk.stdout | from_json).blockdevices | first).type != 'disk' else [])
+            if (ceph_single_blockdevs | first).type != 'disk' else [])
          + (['it holds / or /boot/efi']
-            if ceph_single_resolve.stdout in ceph_single_system_disks.stdout_lines else [])
+            if ceph_single_dev in ceph_single_system_disks.stdout_lines else [])
          + (['could not tell which disk holds /']
             if ceph_single_system_disks.stdout_lines | length == 0 else [])
-         + ((ceph_single_lsblk.stdout | from_json).blockdevices | selectattr('mountpoint')
+         + (ceph_single_blockdevs | selectattr('mountpoint')
             | map(attribute='name') | map('regex_replace', '^', 'mounted: ') | list)
-         + (['it is a PV in volume group pve'] if 'pve' in ceph_single_disk_vgs.stdout_lines else [])
+         + (ceph_single_disk_vgs.stdout_lines | reject('match', '^ceph-')
+            | map('regex_replace', '^', 'PV in volume group: ') | list)
          + (ceph_single_zpool_scan.stdout_lines
             | reject('match', '^[^ ]+ UNAVAIL$') | map('regex_replace', '^', 'ZFS pool (name state): ') | list)
-         + (ceph_single_zpool_live.stdout_lines | map('regex_replace', '^', 'in an imported ZFS pool: ') | list) }}
+         + (ceph_single_zpool_live.stdout_lines | map('regex_replace', '^', 'in an imported ZFS pool: ') | list)
+         + (ceph_single_pve_refs.stdout_lines | map('regex_replace', '^', 'named in PVE config: ') | list)
+         + ([] if ceph_single_is_osd | bool
+            else ceph_single_holders.stdout_lines | map('regex_replace', '^', 'kernel holder: ') | list)
+         + ceph_single_open.stdout_lines
+         + (ceph_single_boot.stdout_lines | select('search', '[|]FAIL[|]')
+            | map('replace', '|FAIL|', ': ') | map('regex_replace', '^', 'boot check ') | list)
+         + ([] if ceph_single_osd_signals_agree | bool
+            else ['OSD signals disagree (ceph VG ' ~ ceph_single_osd_signals.ceph_vg
+                  ~ ', LVM on disk ' ~ ceph_single_osd_signals.lvm_on_disk
+                  ~ ', ceph-volume ' ~ ceph_single_osd_signals.ceph_volume ~ '); not wiping']) }}
+
+- name: Safety | results
+  ansible.builtin.debug:
+    msg:
+      - "device: {{ ceph_single_dev }} (type {{ (ceph_single_blockdevs | first).type }})"
+      - "system disks (/ and /boot/efi): {{ ceph_single_system_disks.stdout_lines | join(', ') }}"
+      - "mounted children: {{ ceph_single_blockdevs | selectattr('mountpoint') | map(attribute='name') | list | length }}"
+      - "volume groups with a PV on it: {{ ceph_single_disk_vgs.stdout_lines | join(', ') or 'none' }}"
+      - "ZFS pools found (name state): {{ ceph_single_zpool_scan.stdout_lines | join(', ') or 'none' }}"
+      - "imported ZFS pools using it: {{ ceph_single_zpool_live.stdout_lines | length }}"
+      - "PVE guest/storage configs naming it: {{ ceph_single_pve_refs.stdout_lines | length }}"
+      - "kernel holders: {{ ceph_single_holders.stdout_lines | join('; ') or 'none' }}"
+      - "open by processes: {{ ceph_single_open.stdout_lines | join('; ') or 'none' }}"
+      - "boot checks: {{ ceph_single_boot.stdout_lines | join('; ') }}"
+      - >-
+        OSD signals: ceph VG {{ ceph_single_osd_signals.ceph_vg }},
+        LVM on disk {{ ceph_single_osd_signals.lvm_on_disk }},
+        ceph-volume {{ ceph_single_osd_signals.ceph_volume }}
 
 - name: Safety | refuse to use a disk that holds anything live
   ansible.builtin.assert:
