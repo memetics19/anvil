@@ -1,0 +1,4 @@
+[client.rgw.{{ ceph_single_rgw_id }}]
+	host = {{ ceph_single_node }}
+	keyring = {{ ceph_single_rgw_keyring }}
+	rgw_frontends = beast endpoint={{ ceph_single_rgw_address }}:{{ ceph_single_rgw_port }}

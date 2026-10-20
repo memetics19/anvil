@@ -2,7 +2,7 @@ SHELL := /bin/bash
 # lint and secrets-scan need no secrets (CI has no Keychain); only infra targets source env.sh.
 ENV := source scripts/env.sh
 
-.PHONY: lint secrets-scan bootstrap-ssh host host-network
+.PHONY: lint secrets-scan bootstrap-ssh host host-network ceph
 
 lint:
 	@set -eu -o pipefail; \
@@ -35,3 +35,8 @@ host:
 host-network:
 	@set -eu -o pipefail; $(ENV); \
 	cd ansible && ansible-playbook playbooks/host-network.yml --limit '!vault_servers' $(ARGS)
+
+# Single-node Ceph + S3 gateway. The first real run wipes the OSD disk: dry-run first.
+ceph:
+	@set -eu -o pipefail; $(ENV); \
+	cd ansible && ansible-playbook playbooks/ceph.yml --limit '!vault_servers' $(ARGS)

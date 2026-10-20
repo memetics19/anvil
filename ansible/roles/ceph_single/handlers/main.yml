@@ -1,0 +1,5 @@
+- name: Restart radosgw
+  ansible.builtin.systemd_service:
+    name: ceph-radosgw@rgw.{{ ceph_single_rgw_id }}
+    state: restarted
+  when: not ansible_check_mode

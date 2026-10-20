@@ -1,0 +1,151 @@
+- name: RGW | install radosgw
+  ansible.builtin.apt:
+    name: radosgw
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  # Until pveceph install adds the Ceph repo, apt can only offer Debian's mismatched build.
+  when: not ansible_check_mode or ceph_single_has.packages
+
+- name: RGW | data directory
+  ansible.builtin.file:
+    path: /var/lib/ceph/radosgw/ceph-rgw.{{ ceph_single_rgw_id }}
+    state: directory
+    owner: ceph
+    group: ceph
+    mode: "0750"
+
+# The PVE [client] keyring lives in /etc/pve/priv, which the ceph user cannot read.
+- name: RGW | gateway keyring readable by the ceph user
+  ansible.builtin.shell:
+    cmd: >-
+      umask 077 &&
+      ceph auth get-or-create client.rgw.{{ ceph_single_rgw_id }}
+      mon 'allow rw' osd 'allow rwx' mgr 'allow rw'
+      -o {{ ceph_single_rgw_keyring | quote }} &&
+      chown ceph:ceph {{ ceph_single_rgw_keyring | quote }}
+    creates: "{{ ceph_single_rgw_keyring }}"
+
+- name: RGW | gateway service enabled and running
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - ceph-radosgw@rgw.{{ ceph_single_rgw_id }}
+    - ceph-radosgw.target
+  when: not ansible_check_mode or ceph_single_has.radosgw
+
+- name: RGW | apply a pending restart before using the gateway
+  ansible.builtin.meta: flush_handlers
+
+- name: RGW | wait for the S3 endpoint
+  ansible.builtin.wait_for:
+    host: "{{ ceph_single_rgw_address }}"
+    port: "{{ ceph_single_rgw_port }}"
+    timeout: 120
+  when: not ansible_check_mode
+
+- name: RGW | look up the S3 user
+  ansible.builtin.command:
+    argv: [radosgw-admin, user, info, --uid, "{{ ceph_single_s3_user }}"]
+  register: ceph_single_s3_user_info
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+  when: ceph_single_live | bool
+
+- name: RGW | create the S3 user
+  ansible.builtin.command:
+    argv: [radosgw-admin, user, create, --uid, "{{ ceph_single_s3_user }}", --display-name, Terraform state]
+  register: ceph_single_s3_user_new
+  changed_when: true
+  no_log: true
+  when: ceph_single_s3_user_info is skipped or ceph_single_s3_user_info.rc != 0
+
+- name: RGW | pick the user's S3 keys
+  ansible.builtin.set_fact:
+    ceph_single_s3_keys: >-
+      {{ ((ceph_single_s3_user_info.stdout if ceph_single_s3_user_info.rc == 0
+           else ceph_single_s3_user_new.stdout) | from_json)['keys']
+         | selectattr('user', 'equalto', ceph_single_s3_user) | first }}
+  no_log: true
+  when: >-
+    (ceph_single_s3_user_info.rc | default(1)) == 0
+    or (ceph_single_s3_user_new.stdout | default('')) | length > 0
+
+- name: RGW | keep the keys in a root-only file on the host (operator copies them to the Keychain)
+  ansible.builtin.copy:
+    content: "{{ {'access_key': ceph_single_s3_keys.access_key, 'secret_key': ceph_single_s3_keys.secret_key} | to_nice_json }}\n"
+    dest: "{{ ceph_single_s3_keys_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  when: ceph_single_s3_keys is defined
+
+- name: RGW | look up the state bucket
+  ansible.builtin.command:
+    argv: [radosgw-admin, bucket, stats, --bucket, "{{ ceph_single_s3_bucket }}"]
+  register: ceph_single_bucket_info
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: ceph_single_live | bool
+
+# Buckets can only be made through the S3 API. Use the operator's aws CLI with a
+# throwaway credentials file, so keys stay out of argv and environment.
+- name: RGW | create the state bucket
+  when: ceph_single_bucket_info is skipped or ceph_single_bucket_info.rc != 0
+  delegate_to: localhost
+  become: false
+  block:
+    - name: RGW | temporary AWS credentials file
+      ansible.builtin.tempfile:
+        state: file
+        suffix: .aws
+      register: ceph_single_aws_creds
+
+    - name: RGW | write the credentials
+      ansible.builtin.copy:
+        content: |
+          [default]
+          aws_access_key_id = {{ ceph_single_s3_keys.access_key }}
+          aws_secret_access_key = {{ ceph_single_s3_keys.secret_key }}
+        dest: "{{ ceph_single_aws_creds.path }}"
+        mode: "0600"
+      no_log: true
+      when: ceph_single_s3_keys is defined
+
+    - name: RGW | create the bucket
+      ansible.builtin.command:
+        argv:
+          - aws
+          - --endpoint-url
+          - "{{ ceph_single_rgw_endpoint }}"
+          - s3api
+          - create-bucket
+          - --bucket
+          - "{{ ceph_single_s3_bucket }}"
+      environment:
+        AWS_SHARED_CREDENTIALS_FILE: "{{ ceph_single_aws_creds.path | default('') }}"
+        AWS_CONFIG_FILE: /dev/null
+        AWS_PROFILE: default
+        AWS_REGION: us-east-1
+        AWS_ACCESS_KEY_ID: ""
+        AWS_SECRET_ACCESS_KEY: ""
+        AWS_EC2_METADATA_DISABLED: "true"
+      changed_when: true
+  always:
+    - name: RGW | remove the temporary credentials file
+      ansible.builtin.file:
+        path: "{{ ceph_single_aws_creds.path }}"
+        state: absent
+      when: ceph_single_aws_creds.path is defined
+
+- name: RGW | confirm the bucket exists
+  ansible.builtin.command:
+    argv: [radosgw-admin, bucket, stats, --bucket, "{{ ceph_single_s3_bucket }}"]
+  changed_when: false
+  when: not ansible_check_mode

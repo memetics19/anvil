@@ -1,0 +1,11 @@
+- name: Safety checks on the OSD disk (before any change)
+  ansible.builtin.import_tasks: safety.yml
+  tags: [always]
+
+- name: Ceph cluster, monitor, manager and OSD
+  ansible.builtin.import_tasks: cluster.yml
+  tags: [ceph]
+
+- name: RADOS Gateway, S3 user and bucket
+  ansible.builtin.import_tasks: rgw.yml
+  tags: [rgw]

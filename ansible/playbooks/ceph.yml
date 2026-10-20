@@ -1,0 +1,27 @@
+# Single-node Ceph with a RADOS Gateway holding Terraform state.
+# The first real run WIPES the OSD disk. Dry-run first: make ceph ARGS="--check --diff"
+- name: Single-node Ceph and S3 gateway
+  hosts: proxmox
+  vars:
+    # by-id name of the OSD disk: Vault site.pve.ceph_osd_disk_id when set, else Keychain
+    # account ceph-osd-disk-id (service homelab). Override: -e ceph_osd_device=/dev/disk/by-id/...
+    ceph_osd_device: >-
+      /dev/disk/by-id/{{ site.pve.ceph_osd_disk_id
+        if (site.pve.ceph_osd_disk_id | default('') | length > 0)
+        else lookup('ansible.builtin.pipe',
+                    'security find-generic-password -s homelab -a ceph-osd-disk-id -w 2>/dev/null || true') }}
+  pre_tasks:
+    - name: Resolve the site dict once for this run
+      ansible.builtin.set_fact:
+        site: "{{ site_src }}"
+      run_once: true
+      no_log: true
+      tags: [always]
+
+    - name: Resolve the OSD device once for this run
+      ansible.builtin.set_fact:
+        ceph_osd_device: "{{ ceph_osd_device }}"
+      no_log: true
+      tags: [always]
+  roles:
+    - ceph_single

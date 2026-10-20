@@ -1,0 +1,129 @@
+# Read-only probes (check_mode: false) that refuse to touch a disk holding anything live.
+# They run before any change, in check mode too, and on every run (tag always).
+- name: Safety | OSD device is configured
+  ansible.builtin.assert:
+    that:
+      - ceph_single_osd_device is string
+      - ceph_single_osd_device is match('^/dev/.*[^/]$')
+    fail_msg: >-
+      No OSD device: store its /dev/disk/by-id/ name in Keychain account ceph-osd-disk-id
+      (service homelab) or pass -e ceph_osd_device=/dev/disk/by-id/...
+    quiet: true
+
+- name: Safety | resolve the OSD device path
+  ansible.builtin.command:
+    argv: [readlink, -e, --, "{{ ceph_single_osd_device }}"]
+  register: ceph_single_resolve
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Safety | OSD device exists
+  ansible.builtin.assert:
+    that: ceph_single_resolve.rc == 0 and ceph_single_resolve.stdout is match('^/dev/')
+    fail_msg: The configured OSD device does not exist on the host.
+    quiet: true
+
+- name: Safety | list the disk, its partitions and holders
+  ansible.builtin.command:
+    argv: [lsblk, --json, --list, --paths, --output, "NAME,TYPE,FSTYPE,MOUNTPOINT", "{{ ceph_single_resolve.stdout }}"]
+  register: ceph_single_lsblk
+  changed_when: false
+  check_mode: false
+
+- name: Safety | find the disks holding / and /boot/efi
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      for m in / /boot/efi; do
+        src=$(findmnt -nvo SOURCE "$m") || continue
+        case $src in
+          /dev/*) devs=$src ;;
+          *) devs=$(zpool list -HPv "${src%%/*}" | awk '$1 ~ "^/dev/" {print $1}') ;;
+        esac
+        for d in $devs; do
+          lsblk -nrpso NAME,TYPE "$d" | awk '$2 == "disk" {print $1}'
+        done
+      done | sort -u
+    executable: /bin/bash
+  register: ceph_single_system_disks
+  changed_when: false
+  check_mode: false
+
+- name: Safety | find LVM volume groups with a PV on the disk
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      pvs --noheadings -o pv_name,vg_name | while read -r pv vg; do
+        for d in $(lsblk -nrpso NAME,TYPE "$pv" | awk '$2 == "disk" {print $1}'); do
+          if [ "$d" = "$DISK" ]; then printf '%s\n' "${vg:-<no-vg>}"; fi
+        done
+      done
+    executable: /bin/bash
+  environment:
+    DISK: "{{ ceph_single_resolve.stdout }}"
+  register: ceph_single_disk_vgs
+  changed_when: false
+  check_mode: false
+
+- name: Safety | scan the disk for importable ZFS pools (lists only, imports nothing)
+  ansible.builtin.shell:
+    cmd: |
+      set -u
+      command -v zpool >/dev/null || exit 0
+      args=()
+      for n in $(lsblk -nrpo NAME "$DISK"); do args+=(-d "$n"); done
+      out=$(zpool import "${args[@]}" 2>&1)
+      if grep -q '^ *pool:' <<<"$out"; then
+        awk '$1 == "pool:" {p = $2} $1 == "state:" {print p, $2}' <<<"$out"
+      elif ! grep -q 'no pools available' <<<"$out"; then
+        echo "zpool-scan-failed UNKNOWN"
+      fi
+    executable: /bin/bash
+  environment:
+    DISK: "{{ ceph_single_resolve.stdout }}"
+  register: ceph_single_zpool_scan
+  changed_when: false
+  check_mode: false
+
+- name: Safety | find imported ZFS pools using the disk
+  ansible.builtin.shell:
+    cmd: |
+      set -uo pipefail
+      command -v zpool >/dev/null || exit 0
+      zpool list -HPv 2>/dev/null | awk '$1 ~ "^/dev/" {print $1}' | while read -r v; do
+        for d in $(lsblk -nrpso NAME,TYPE "$v" | awk '$2 == "disk" {print $1}'); do
+          if [ "$d" = "$DISK" ]; then printf '%s\n' "$v"; fi
+        done
+      done
+    executable: /bin/bash
+  environment:
+    DISK: "{{ ceph_single_resolve.stdout }}"
+  register: ceph_single_zpool_live
+  changed_when: false
+  check_mode: false
+
+- name: Safety | work out what the disk holds
+  ansible.builtin.set_fact:
+    ceph_single_dev: "{{ ceph_single_resolve.stdout }}"
+    ceph_single_blockdevs: "{{ (ceph_single_lsblk.stdout | from_json).blockdevices }}"
+    ceph_single_is_osd: "{{ ceph_single_disk_vgs.stdout_lines | select('match', '^ceph-') | list | length > 0 }}"
+    ceph_single_problems: >-
+      {{ (['it is not a whole disk']
+            if ((ceph_single_lsblk.stdout | from_json).blockdevices | first).type != 'disk' else [])
+         + (['it holds / or /boot/efi']
+            if ceph_single_resolve.stdout in ceph_single_system_disks.stdout_lines else [])
+         + (['could not tell which disk holds /']
+            if ceph_single_system_disks.stdout_lines | length == 0 else [])
+         + ((ceph_single_lsblk.stdout | from_json).blockdevices | selectattr('mountpoint')
+            | map(attribute='name') | map('regex_replace', '^', 'mounted: ') | list)
+         + (['it is a PV in volume group pve'] if 'pve' in ceph_single_disk_vgs.stdout_lines else [])
+         + (ceph_single_zpool_scan.stdout_lines
+            | reject('match', '^[^ ]+ UNAVAIL$') | map('regex_replace', '^', 'ZFS pool (name state): ') | list)
+         + (ceph_single_zpool_live.stdout_lines | map('regex_replace', '^', 'in an imported ZFS pool: ') | list) }}
+
+- name: Safety | refuse to use a disk that holds anything live
+  ansible.builtin.assert:
+    that: ceph_single_problems | length == 0
+    fail_msg: "Refusing to use {{ ceph_single_dev }} for Ceph: {{ ceph_single_problems | join('; ') }}"
+    success_msg: "{{ ceph_single_dev }} is free for Ceph (existing OSD: {{ ceph_single_is_osd }})"

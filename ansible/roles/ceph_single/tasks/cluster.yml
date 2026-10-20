@@ -1,0 +1,196 @@
+- name: Ceph | look at what is already in place
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - /usr/bin/ceph-mon
+    - "{{ ceph_single_conf }}"
+    - /var/lib/ceph/mon/ceph-{{ ceph_single_node }}
+    - /var/lib/ceph/mgr/ceph-{{ ceph_single_node }}
+    - /usr/bin/radosgw
+    - "{{ ceph_single_rgw_keyring }}"
+  register: ceph_single_stat
+
+- name: Ceph | record what exists
+  ansible.builtin.set_fact:
+    ceph_single_has: >-
+      {{ dict(['packages', 'conf', 'mon', 'mgr', 'radosgw', 'rgw_keyring']
+              | zip(ceph_single_stat.results | map(attribute='stat.exists'))) }}
+
+- name: Ceph | ask a running cluster for its status
+  ansible.builtin.command: ceph --connect-timeout 10 status --format json
+  register: ceph_single_status_before
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: ceph_single_has.conf
+
+# Probes that need a cluster run on every real run; in check mode only when the
+# cluster already existed (otherwise the steps they feed are reported as pending).
+- name: Ceph | decide whether cluster probes can run
+  ansible.builtin.set_fact:
+    ceph_single_live: "{{ not ansible_check_mode or (ceph_single_status_before.rc | default(1)) == 0 }}"
+
+- name: Ceph | planned actions (true = will run)
+  ansible.builtin.debug:
+    msg:
+      - "install Ceph {{ ceph_single_release or 'default release' }} (pveceph, no-subscription): {{ not ceph_single_has.packages }}"
+      - "pveceph init (network from site.lan_cidr, size 1, min_size 1): {{ not ceph_single_has.conf }}"
+      - "ceph.conf single-node settings and [client.rgw.{{ ceph_single_rgw_id }}]: checked below"
+      - "create monitor (also creates the first manager): {{ not ceph_single_has.mon }}"
+      - "create manager if still missing: {{ not ceph_single_has.mgr }}"
+      - "wipe {{ ceph_single_dev }} and create the OSD: {{ not ceph_single_is_osd }}"
+      - "install radosgw: {{ not ceph_single_has.radosgw }}"
+      - "create gateway keyring: {{ not ceph_single_has.rgw_keyring }}"
+      - "S3 user {{ ceph_single_s3_user }} and bucket {{ ceph_single_s3_bucket }}: checked below"
+
+- name: Ceph | install packages
+  ansible.builtin.command:
+    argv: >-
+      {{ ['pveceph', 'install', '--repository', 'no-subscription']
+         + (['--version', ceph_single_release] if ceph_single_release | length > 0 else []) }}
+    creates: /usr/bin/ceph-mon
+
+- name: Ceph | initialise the cluster config
+  ansible.builtin.command:
+    argv: [pveceph, init, --network, "{{ ceph_single_network }}", --size, "1", --min_size, "1"]
+    creates: "{{ ceph_single_conf }}"
+
+- name: Ceph | settings this role manages in ceph.conf
+  ansible.builtin.set_fact:
+    ceph_single_conf_wanted: >-
+      {{ (ceph_single_global_settings | dict2items(key_name='key', value_name='value')
+          | map('combine', {'name': 'mon.' ~ ceph_single_node}) | list)
+         + [{'name': 'client.rgw.' ~ ceph_single_rgw_id, 'key': 'keyring', 'value': ceph_single_rgw_keyring},
+            {'name': 'client.rgw.' ~ ceph_single_rgw_id, 'key': 'rgw_frontends',
+             'value': 'beast endpoint=' ~ ceph_single_rgw_address ~ ':' ~ ceph_single_rgw_port}] }}
+
+- name: Ceph | read those settings from ceph.conf
+  ansible.builtin.shell:
+    cmd: |
+      {% for s in ceph_single_conf_wanted %}
+      printf 'v:%s\n' "$(ceph-conf -c {{ ceph_single_conf }} --name {{ s.name }} --lookup {{ s.key }} 2>/dev/null)"
+      {% endfor %}
+    executable: /bin/bash
+  register: ceph_single_conf_now
+  changed_when: false
+  check_mode: false
+  when: ceph_single_has.conf or not ansible_check_mode
+
+- name: Ceph | compare
+  ansible.builtin.set_fact:
+    ceph_single_conf_drift: >-
+      {{ (ceph_single_conf_now.stdout_lines | default([]))
+         != (ceph_single_conf_wanted | map(attribute='value') | map('regex_replace', '^', 'v:') | list) }}
+
+- name: Ceph | ceph.conf needs the single-node settings or gateway section
+  ansible.builtin.debug:
+    msg: "ceph.conf update pending: {{ ceph_single_conf_drift }}"
+
+- name: Ceph | update ceph.conf
+  when: ceph_single_conf_drift | bool
+  block:
+    - name: Ceph | read ceph.conf
+      ansible.builtin.slurp:
+        src: "{{ ceph_single_conf }}"
+      register: ceph_single_conf_old
+      when: ceph_single_has.conf or not ansible_check_mode
+
+    - name: Ceph | build the new ceph.conf
+      ansible.builtin.set_fact:
+        ceph_single_conf_new: "{{ lookup('ansible.builtin.template', 'ceph.conf.merge.j2') }}"
+      when: ceph_single_conf_old is not skipped
+
+    - name: Ceph | ceph.conf has a [global] section
+      ansible.builtin.assert:
+        that: ceph_single_conf_new is search('(?m)^[[]global[]]')
+        fail_msg: "{{ ceph_single_conf }} has no [global] section; not editing it."
+        quiet: true
+      when: ceph_single_conf_old is not skipped
+
+    # /etc/pve is pmxcfs: write in place (no rename/chmod), after a backup in /root.
+    - name: Ceph | write ceph.conf
+      ansible.builtin.shell:
+        cmd: >-
+          cp -- {{ ceph_single_conf | quote }} /root/ceph.conf.bak-$(date +%Y%m%d%H%M%S)
+          && cat > {{ ceph_single_conf | quote }}
+        stdin: "{{ ceph_single_conf_new | default('') }}"
+        stdin_add_newline: false
+      changed_when: true
+      notify: Restart radosgw
+
+- name: Ceph | create the monitor (and the first manager)
+  ansible.builtin.command:
+    argv: [pveceph, mon, create, --mon-address, "{{ site.pve.ip }}"]
+    creates: /var/lib/ceph/mon/ceph-{{ ceph_single_node }}
+
+- name: Ceph | create the manager
+  ansible.builtin.command:
+    cmd: pveceph mgr create
+    creates: /var/lib/ceph/mgr/ceph-{{ ceph_single_node }}
+
+- name: Disk | wipe the disk and create the OSD
+  when: not ceph_single_is_osd | bool
+  block:
+    - name: Disk | clear ZFS labels left on old pool partitions
+      ansible.builtin.command:
+        argv: [zpool, labelclear, -f, "{{ item }}"]
+      loop: "{{ ceph_single_blockdevs | selectattr('type', 'equalto', 'part') | selectattr('fstype', 'equalto', 'zfs_member') | map(attribute='name') | list }}"
+      changed_when: true
+
+    - name: Disk | wipe signatures from the partitions
+      ansible.builtin.command:
+        argv: [wipefs, -a, "{{ item }}"]
+      loop: "{{ ceph_single_blockdevs | selectattr('type', 'equalto', 'part') | map(attribute='name') | reverse | list }}"
+      changed_when: true
+
+    - name: Disk | zap the partition tables
+      ansible.builtin.command:
+        argv: [sgdisk, --zap-all, "{{ ceph_single_dev }}"]
+      changed_when: true
+
+    - name: Disk | wipe signatures from the whole disk
+      ansible.builtin.command:
+        argv: [wipefs, -a, "{{ ceph_single_dev }}"]
+      changed_when: true
+
+    - name: Disk | let udev catch up
+      ansible.builtin.command: udevadm settle
+      changed_when: false
+
+    - name: Disk | confirm the disk is blank
+      ansible.builtin.command:
+        argv: [wipefs, --noheadings, "{{ ceph_single_dev }}"]
+      register: ceph_single_wipe_check
+      changed_when: false
+      failed_when: ceph_single_wipe_check.rc != 0 or ceph_single_wipe_check.stdout | length > 0
+      when: not ansible_check_mode
+
+    - name: Disk | create the OSD
+      ansible.builtin.command:
+        argv: [pveceph, osd, create, "{{ ceph_single_dev }}"]
+      changed_when: true
+
+- name: Ceph | wait for the OSD to come up
+  ansible.builtin.command: ceph osd stat --format json
+  register: ceph_single_osd_stat
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  until: ((ceph_single_osd_stat.stdout or '{}') | from_json).num_up_osds | default(0) | int >= 1
+  retries: 20
+  delay: 6
+  when: ceph_single_live | bool
+
+- name: Ceph | read health mutes
+  ansible.builtin.command: ceph health detail --format json
+  register: ceph_single_health
+  changed_when: false
+  check_mode: false
+  when: ceph_single_live | bool
+
+- name: Ceph | mute the size-1 pool warning (one disk, no redundancy by design)
+  ansible.builtin.command: ceph health mute POOL_NO_REDUNDANCY --sticky
+  changed_when: true
+  when: >-
+    ceph_single_health is skipped
+    or 'POOL_NO_REDUNDANCY' not in ((ceph_single_health.stdout | from_json).mutes | default([]) | map(attribute='code') | list)

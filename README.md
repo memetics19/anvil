@@ -58,7 +58,8 @@ Keychain accounts (service `homelab`):
 | `site-bootstrap`                           | `site` dict before Vault exists |
 | `pve-root-password`, `vm-sudo-password`    | SSH bootstrap, become password  |
 | `pve-api-token`                            | Terraform provider              |
-| `ceph-s3-access-key`, `ceph-s3-secret-key` | Terraform state (planned)       |
+| `ceph-osd-disk-id`                         | Ceph OSD disk (by-id name)      |
+| `ceph-s3-access-key`, `ceph-s3-secret-key` | Terraform state (S3 keys)       |
 | `vault-init-json`                          | unseal keys (planned)           |
 
 ## Usage
@@ -67,12 +68,38 @@ Keychain accounts (service `homelab`):
 make bootstrap-ssh                # once: install your SSH key on all hosts
 make host ARGS="--check --diff"   # dry run against the Proxmox host
 make host
+make ceph ARGS="--check --diff"   # see below before the first real run
 make lint
 make secrets-scan
 ```
 
 Infrastructure targets source `scripts/env.sh`, which loads endpoints and tokens from
 the Keychain. Dry-run first. A box that matches the code reports `changed=0`.
+
+## Ceph and the Terraform state bucket
+
+`make ceph` builds a one-disk Ceph cluster on `pve` (monitor, manager, one OSD, pool
+size 1), a RADOS Gateway on port 7480 of the host address, an S3 user `terraform` and a
+bucket `tfstate`. The OSD disk is the `/dev/disk/by-id/` name in Keychain account
+`ceph-osd-disk-id` (later `site.pve.ceph_osd_disk_id` in Vault), or
+`-e ceph_osd_device=/dev/disk/by-id/...`.
+
+**The first real run wipes that disk.** Before touching anything, the play refuses a disk
+that holds `/` or `/boot/efi`, has a mounted partition, is a PV in VG `pve`, or carries a
+ZFS pool that is imported or importable in any state other than `UNAVAIL`. A disk that is
+already an OSD is left alone.
+
+```sh
+make ceph ARGS="--check --diff"   # safety checks plus a list of what would run
+make ceph
+```
+
+The S3 keys are written to `/root/.ceph-rgw-terraform.json` (mode 600) on the host. Copy
+them into the Keychain once:
+
+```sh
+source scripts/env.sh && keys=$(ssh root@"$PVE_IP" cat /root/.ceph-rgw-terraform.json) && security add-generic-password -U -s homelab -a ceph-s3-access-key -w "$(jq -r .access_key <<<"$keys")" && security add-generic-password -U -s homelab -a ceph-s3-secret-key -w "$(jq -r .secret_key <<<"$keys")"; unset keys
+```
 
 ## Layout
 

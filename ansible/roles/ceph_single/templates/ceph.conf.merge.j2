@@ -1,0 +1,11 @@
+{#- Current ceph.conf with this role's [global] keys set and the gateway section replaced.
+    Regexes avoid backslash escapes: [[] and []] match the brackets, $(?!.) is end of text. -#}
+{%- set c = namespace(t=(ceph_single_conf_old.content | b64decode)) -%}
+{%- set c.t = c.t | regex_replace('(?ms)^[[]client[.]rgw[.]' ~ (ceph_single_rgw_id | regex_escape) ~ '[]][^\n]*\n.*?(?=^[[]|$(?!.))', '') -%}
+{%- set g = namespace(s='') -%}
+{%- for k, v in ceph_single_global_settings.items() -%}
+{%- set c.t = c.t | regex_replace('(?m)^[ \t]*' ~ (k | replace('_', '[ _]')) ~ '[ \t]*=[^\n]*\n?', '') -%}
+{%- set g.s = g.s ~ '\t ' ~ k ~ ' = ' ~ v ~ '\n' -%}
+{%- endfor -%}
+{%- set c.t = c.t | regex_replace('(?m)^([[]global[]][^\n]*\n)', '\\g<1>' ~ g.s, count=1) -%}
+{{ (c.t | trim) ~ '\n\n' ~ (lookup('ansible.builtin.template', 'rgw.conf.j2') | trim) ~ '\n' }}

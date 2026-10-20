@@ -1,0 +1,28 @@
+# Whole disk that becomes the only OSD, as a /dev/disk/by-id/ path. The playbook sets
+# ceph_osd_device (Vault site.pve.ceph_osd_disk_id, else Keychain ceph-osd-disk-id).
+ceph_single_osd_device: "{{ ceph_osd_device }}"
+# Ceph node / mon / mgr id: the Proxmox node name.
+ceph_single_node: "{{ ansible_facts['hostname'] }}"
+ceph_single_network: "{{ site.lan_cidr }}"
+ceph_single_conf: /etc/pve/ceph.conf
+# Ceph release for pveceph install; empty = the default this PVE version offers.
+ceph_single_release: ""
+
+# Settings for a one-disk cluster, written to [global] before the first monitor exists.
+ceph_single_global_settings:
+  osd_pool_default_size: "1"
+  osd_pool_default_min_size: "1"
+  mon_allow_pool_size_one: "true"
+  osd_crush_chooseleaf_type: "0"
+
+ceph_single_rgw_id: "{{ ceph_single_node }}"
+ceph_single_rgw_port: 7480
+ceph_single_rgw_address: "{{ site.pve.ip }}"
+ceph_single_rgw_keyring: /var/lib/ceph/radosgw/ceph-rgw.{{ ceph_single_rgw_id }}/keyring
+ceph_single_rgw_endpoint: http://{{ ceph_single_rgw_address }}:{{ ceph_single_rgw_port }}
+
+ceph_single_s3_user: terraform
+ceph_single_s3_bucket: tfstate
+# Root-only file on the host holding the S3 user's keys; the operator copies them into
+# the Keychain (README: "Ceph S3 keys").
+ceph_single_s3_keys_file: /root/.ceph-rgw-terraform.json
