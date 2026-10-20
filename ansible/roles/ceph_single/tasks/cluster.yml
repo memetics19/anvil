@@ -43,11 +43,25 @@
       - "create gateway keyring: {{ not ceph_single_has.rgw_keyring }}"
       - "S3 user {{ ceph_single_s3_user }} and bucket {{ ceph_single_s3_bucket }}: checked below"
 
+# Same line pveceph install writes. Declaring it makes a list left by an aborted install
+# (or one for another release) converge before the install runs, and rerun shows ok.
+- name: Ceph | package repository
+  ansible.builtin.copy:
+    content: "deb http://download.proxmox.com/debian/ceph-{{ ceph_single_release }} {{ ansible_facts['distribution_release'] }} no-subscription\n"
+    dest: /etc/apt/sources.list.d/ceph.list
+    owner: root
+    group: root
+    mode: "0644"
+  when: ceph_single_release | length > 0
+
+# pveceph runs 'apt-get install' without -y and with our stdin; with no TTY apt asks
+# "Do you want to continue? [Y/n]" and aborts on empty input. Answer that one prompt.
 - name: Ceph | install packages
   ansible.builtin.command:
     argv: >-
       {{ ['pveceph', 'install', '--repository', 'no-subscription']
          + (['--version', ceph_single_release] if ceph_single_release | length > 0 else []) }}
+    stdin: "y"
     creates: /usr/bin/ceph-mon
 
 - name: Ceph | initialise the cluster config
