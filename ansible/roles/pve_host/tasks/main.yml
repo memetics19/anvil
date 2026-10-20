@@ -129,6 +129,14 @@
       check_mode: false
       no_log: true
 
+    - name: Refuse to continue if the Keychain could not be queried (rc 44 means item not found)
+      ansible.builtin.assert:
+        that: pve_host_keychain.rc in [0, 44]
+        fail_msg: >-
+          Keychain lookup for {{ pve_host_api_keychain_account }} failed with an unexpected status
+          (locked keychain or missing security binary?). Not touching the API token.
+        quiet: true
+
     - name: Remove a token whose secret is not in the Keychain (secret is unrecoverable)
       ansible.builtin.command: pveum user token remove {{ pve_host_api_user }} {{ pve_host_api_token_id }}
       when:
@@ -159,6 +167,7 @@
               - "{{ pve_host_api_user }}!{{ pve_host_api_token_id }}={{ (pve_host_token_new.stdout | from_json).value }}"
           delegate_to: localhost
           become: false
+          when: pve_host_token_new is not skipped
           changed_when: true
           no_log: true
       rescue:
