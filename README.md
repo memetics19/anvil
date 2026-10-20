@@ -60,6 +60,7 @@ Keychain accounts (service `homelab`):
 | `pve-api-token`                            | Terraform provider              |
 | `ceph-osd-disk-id`                         | Ceph OSD disk (by-id name)      |
 | `ceph-s3-access-key`, `ceph-s3-secret-key` | Terraform state (S3 keys)       |
+| `ceph-dashboard-password`                  | Ceph dashboard `admin` login    |
 | `vault-init-json`                          | unseal keys (planned)           |
 
 ## Usage
@@ -102,6 +103,17 @@ them into the Keychain once:
 
 ```sh
 source scripts/env.sh && keys=$(ssh root@"$PVE_IP" cat /root/.ceph-rgw-terraform.json) && security add-generic-password -U -s homelab -a ceph-s3-access-key -w "$(jq -r .access_key <<<"$keys")" && security add-generic-password -U -s homelab -a ceph-s3-secret-key -w "$(jq -r .secret_key <<<"$keys")"; unset keys
+```
+
+### Ceph dashboard
+
+The dashboard is at `https://<pve-ip>:8443/` (self-signed certificate), user `admin`. The
+generated password is in `/root/.ceph-dashboard-admin` (mode 600) on the host. Copy it into
+the Keychain account `ceph-dashboard-password` once (`security` takes the secret on argv, so
+it is briefly visible in the process list on your Mac):
+
+```sh
+source scripts/env.sh && security add-generic-password -U -s homelab -a ceph-dashboard-password -w "$(ssh root@"$PVE_IP" cat /root/.ceph-dashboard-admin)"
 ```
 
 ## Layout

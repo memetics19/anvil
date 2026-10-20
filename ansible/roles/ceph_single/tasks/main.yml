@@ -9,3 +9,7 @@
 - name: RADOS Gateway, S3 user and bucket
   ansible.builtin.import_tasks: rgw.yml
   tags: [rgw]
+
+- name: Ceph dashboard
+  ansible.builtin.import_tasks: dashboard.yml
+  tags: [dashboard]

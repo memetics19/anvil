@@ -3,3 +3,9 @@
     name: ceph-radosgw@rgw.{{ ceph_single_rgw_id }}
     state: restarted
   when: not ansible_check_mode
+
+- name: Restart dashboard module
+  ansible.builtin.shell:
+    cmd: ceph mgr module disable dashboard && ceph mgr module enable dashboard
+  changed_when: true
+  when: not ansible_check_mode

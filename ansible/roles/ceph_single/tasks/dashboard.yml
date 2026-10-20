@@ -1,0 +1,173 @@
+- name: Dashboard | install ceph-mgr-dashboard
+  ansible.builtin.apt:
+    name: ceph-mgr-dashboard
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  register: ceph_single_dash_pkg
+  when: not ansible_check_mode or ceph_single_has.packages
+
+- name: Dashboard | restart the manager so it sees a freshly installed module
+  ansible.builtin.systemd_service:
+    name: ceph-mgr@{{ ceph_single_node }}
+    state: restarted
+  when: not ansible_check_mode and ceph_single_dash_pkg is changed
+
+- name: Dashboard | look up enabled mgr modules
+  ansible.builtin.command:
+    argv: [ceph, mgr, module, ls, --format, json]
+  register: ceph_single_dash_modules
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: ceph_single_live | bool
+
+- name: Dashboard | enable the mgr module
+  ansible.builtin.command:
+    argv: [ceph, mgr, module, enable, dashboard]
+  register: ceph_single_dash_enable
+  retries: 10
+  delay: 3
+  until: ceph_single_dash_enable.rc == 0
+  changed_when: true
+  when: >-
+    ceph_single_dash_modules is skipped
+    or ceph_single_dash_modules.rc != 0
+    or 'dashboard' not in (ceph_single_dash_modules.stdout | from_json)['enabled_modules']
+
+- name: Dashboard | look up the bind settings
+  ansible.builtin.command:
+    argv: [ceph, config, get, mgr, "mgr/dashboard/{{ item.key }}"]
+  loop:
+    - {key: server_addr, value: "{{ ceph_single_dash_address }}"}
+    - {key: ssl_server_port, value: "{{ ceph_single_dash_port }}"}
+  loop_control:
+    label: "{{ item.key }}"
+  register: ceph_single_dash_cfg
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: ceph_single_live | bool
+
+- name: Dashboard | bind address and port
+  ansible.builtin.command:
+    argv: [ceph, config, set, mgr, "mgr/dashboard/{{ item.item.key }}", "{{ item.item.value }}"]
+  loop: "{{ ceph_single_dash_cfg.results | default([]) | rejectattr('skipped', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.item.key }}"
+  when: item.rc != 0 or (item.stdout | trim) != (item.item.value | string)
+  changed_when: true
+  notify: Restart dashboard module
+
+- name: Dashboard | set the bind settings when the cluster is not live yet
+  ansible.builtin.debug:
+    msg: dashboard bind address and port will be set
+  when: ceph_single_dash_cfg is skipped
+
+- name: Dashboard | look up the certificate
+  ansible.builtin.command:
+    argv: [ceph, config-key, exists, mgr/dashboard/crt]
+  register: ceph_single_dash_crt
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: ceph_single_live | bool
+
+- name: Dashboard | self-signed certificate
+  ansible.builtin.command:
+    argv: [ceph, dashboard, create-self-signed-cert]
+  changed_when: true
+  notify: Restart dashboard module
+  when: ceph_single_dash_crt is skipped or ceph_single_dash_crt.rc != 0
+
+- name: Dashboard | admin password file (generated once, never printed)
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: set -o pipefail && umask 077 && openssl rand -base64 24 | tr -d '/+=\n' > {{ ceph_single_dash_password_file | quote }}
+    creates: "{{ ceph_single_dash_password_file }}"
+  no_log: true
+
+- name: Dashboard | look up the admin user
+  ansible.builtin.command:
+    argv: [ceph, dashboard, ac-user-show, "{{ ceph_single_dash_user }}"]
+  register: ceph_single_dash_user_info
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+  when: ceph_single_live | bool
+
+- name: Dashboard | create the admin user
+  ansible.builtin.command:
+    argv:
+      - ceph
+      - dashboard
+      - ac-user-create
+      - "{{ ceph_single_dash_user }}"
+      - -i
+      - "{{ ceph_single_dash_password_file }}"
+      - administrator
+  changed_when: true
+  no_log: true
+  when: ceph_single_dash_user_info is skipped or ceph_single_dash_user_info.rc != 0
+
+- name: Dashboard | look up the Object Gateway credentials
+  ansible.builtin.command:
+    argv: [ceph, dashboard, get-rgw-api-access-key]
+  register: ceph_single_dash_rgw
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+  when: ceph_single_live | bool
+
+# set-rgw-credentials only finds a system user that radosgw-admin already knows, so make one.
+- name: Dashboard | look up the Object Gateway system user
+  ansible.builtin.command:
+    argv: [radosgw-admin, user, info, --uid, "{{ ceph_single_dash_rgw_user }}"]
+  register: ceph_single_dash_rgw_user_info
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+  when: ceph_single_live | bool
+
+- name: Dashboard | create the Object Gateway system user
+  ansible.builtin.command:
+    argv: [radosgw-admin, user, create, --uid, "{{ ceph_single_dash_rgw_user }}", --display-name, Ceph dashboard, --system]
+  changed_when: true
+  no_log: true
+  when: ceph_single_dash_rgw_user_info is skipped or ceph_single_dash_rgw_user_info.rc != 0
+
+# `ceph dashboard set-rgw-credentials` would run radosgw-admin as the ceph user, which cannot
+# read /etc/pve/ceph.conf, so hand the system user's keys to the dashboard from here.
+- name: Dashboard | wire the Object Gateway pages
+  when: not ansible_check_mode and (ceph_single_dash_rgw.stdout | default('') | trim | length) == 0
+  no_log: true
+  block:
+    - name: Dashboard | read the system user's keys
+      ansible.builtin.command:
+        argv: [radosgw-admin, user, info, --uid, "{{ ceph_single_dash_rgw_user }}"]
+      register: ceph_single_dash_rgw_user_now
+      changed_when: false
+
+    - name: Dashboard | key files for the dashboard (removed again below)
+      ansible.builtin.copy:
+        content: "{{ (ceph_single_dash_rgw_user_now.stdout | from_json)['keys'][0][item] }}"
+        dest: "/root/.ceph-dashboard-rgw-{{ item }}"
+        owner: root
+        group: root
+        mode: "0600"
+      loop: [access_key, secret_key]
+
+    - name: Dashboard | hand the keys to the dashboard
+      ansible.builtin.command:
+        argv: [ceph, dashboard, "set-rgw-api-{{ item | replace('_', '-') }}", -i, "/root/.ceph-dashboard-rgw-{{ item }}"]
+      loop: [access_key, secret_key]
+      changed_when: true
+  always:
+    - name: Dashboard | remove the key files
+      ansible.builtin.file:
+        path: "/root/.ceph-dashboard-rgw-{{ item }}"
+        state: absent
+      loop: [access_key, secret_key]

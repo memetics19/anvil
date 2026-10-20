@@ -32,3 +32,11 @@ ceph_single_s3_bucket: tfstate
 # Root-only file on the host holding the S3 user's keys; the operator copies them into
 # the Keychain (README: "Ceph S3 keys").
 ceph_single_s3_keys_file: /root/.ceph-rgw-terraform.json
+
+ceph_single_dash_address: "{{ site.pve.ip }}"
+ceph_single_dash_port: 8443
+ceph_single_dash_user: admin
+# Root-only file on the host holding the dashboard password; the operator copies it into
+# the Keychain (README: "Ceph dashboard").
+ceph_single_dash_password_file: /root/.ceph-dashboard-admin
+ceph_single_dash_rgw_user: dashboard
