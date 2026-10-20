@@ -1,0 +1,49 @@
+- name: PGs | look up the cluster-wide settings
+  ansible.builtin.command:
+    argv: [ceph, config, dump, --format, json]
+  register: ceph_single_pg_cfg
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: ceph_single_live | bool
+
+- name: PGs | set the cluster-wide settings
+  ansible.builtin.command:
+    argv: [ceph, config, set, global, "{{ item.key }}", "{{ item.value }}"]
+  loop: "{{ ceph_single_pg_settings | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  changed_when: true
+  when: >-
+    ceph_single_pg_cfg is skipped or ceph_single_pg_cfg.rc != 0
+    or (ceph_single_pg_cfg.stdout | from_json
+        | selectattr('section', 'equalto', 'global') | selectattr('name', 'equalto', item.key)
+        | map(attribute='value') | list) != [item.value]
+
+- name: PGs | look up the pools
+  ansible.builtin.command:
+    argv: [ceph, osd, pool, ls, detail, --format, json]
+  register: ceph_single_pools
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: ceph_single_live | bool
+
+- name: PGs | autoscaler on for every pool
+  ansible.builtin.command:
+    argv: [ceph, osd, pool, set, "{{ item.pool_name }}", pg_autoscale_mode, "on"]
+  loop: "{{ (ceph_single_pools.stdout | default('[]', true) | from_json) if ceph_single_pools.rc | default(1) == 0 else [] }}"
+  loop_control:
+    label: "{{ item.pool_name }}"
+  changed_when: true
+  when: item.pg_autoscale_mode != 'on'
+
+# RGW creates its data pool with the bulk flag, which makes the autoscaler start it at 128 PGs.
+- name: PGs | bulk flag off for every pool
+  ansible.builtin.command:
+    argv: [ceph, osd, pool, set, "{{ item.pool_name }}", bulk, "false"]
+  loop: "{{ (ceph_single_pools.stdout | default('[]', true) | from_json) if ceph_single_pools.rc | default(1) == 0 else [] }}"
+  loop_control:
+    label: "{{ item.pool_name }}"
+  changed_when: true
+  when: "'bulk' in (item.flags_names | default(''))"

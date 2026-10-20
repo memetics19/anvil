@@ -13,3 +13,7 @@
 - name: Ceph dashboard
   ansible.builtin.import_tasks: dashboard.yml
   tags: [dashboard]
+
+- name: Placement-group autoscaling for a one-OSD cluster
+  ansible.builtin.import_tasks: pgs.yml
+  tags: [ceph, pgs]

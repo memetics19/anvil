@@ -40,3 +40,8 @@ ceph_single_dash_user: admin
 # the Keychain (README: "Ceph dashboard").
 ceph_single_dash_password_file: /root/.ceph-dashboard-admin
 ceph_single_dash_rgw_user: dashboard
+
+# One OSD: let the autoscaler size every pool to fit it (the RGW pools start at 32/128 PGs).
+ceph_single_pg_settings:
+  mon_target_pg_per_osd: "100"
+  osd_pool_default_pg_autoscale_mode: "on"
