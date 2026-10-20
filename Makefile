@@ -1,10 +1,11 @@
 SHELL := /bin/bash
+# lint and secrets-scan need no secrets (CI has no Keychain); only infra targets source env.sh.
 ENV := source scripts/env.sh
 
 .PHONY: lint secrets-scan bootstrap-ssh host
 
 lint:
-	@set -eu -o pipefail; $(ENV); \
+	@set -eu -o pipefail; \
 	if [ -d terraform ]; then \
 	  terraform fmt -check -recursive terraform; \
 	  (cd terraform && tflint --recursive); \
@@ -15,7 +16,7 @@ lint:
 
 
 secrets-scan:
-	@set -eu -o pipefail; $(ENV); \
+	@set -eu -o pipefail; \
 	gitleaks git --no-banner --config .gitleaks.toml . ; \
 	tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
 	git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf - 2>/dev/null | tar -xf - -C "$$tmp"; \
