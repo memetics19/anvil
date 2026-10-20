@@ -1,0 +1,40 @@
+title = "homelab gitleaks config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "cloudflare-tunnel-token"
+description = "Cloudflare tunnel token"
+regex = '''eyJhIjoi[A-Za-z0-9+/=]{60,}'''
+keywords = ["eyjhijoi"]
+
+[[rules]]
+id = "netbird-setup-key"
+description = "NetBird setup key (UUID after setup-key / setup_key)"
+regex = '''(?i)setup[-_]key["']?(?:\s*[:=]\s*|\s+)["']?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'''
+keywords = ["setup-key", "setup_key"]
+
+[[rules]]
+id = "password-hash"
+description = "crypt(3) SHA-256/SHA-512 password hash"
+regex = '''\$[56]\$[./A-Za-z0-9]{1,16}\$[./A-Za-z0-9]{40,}'''
+keywords = ["$5$", "$6$"]
+
+[[rules]]
+id = "generic-password-literal"
+description = "password/passwd key with a literal value"
+regex = '''(?i)\bpass(?:wor)?d["']?\s*[:=]\s*["']?[^\s"'$#{}<>]{8,}'''
+keywords = ["password", "passwd"]
+
+[[rules]]
+id = "private-ipv4"
+description = "Private IPv4 literal (site-identifying; use Keychain / Vault)"
+regex = '''\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})\b'''
+
+[allowlist]
+description = "Gitignored scratch dirs (never published)"
+paths = [
+  '''^\.superpowers/''',
+  '''^docs/superpowers/''',
+]

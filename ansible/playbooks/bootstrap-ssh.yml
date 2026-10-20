@@ -1,0 +1,30 @@
+# One-time: install the operator's public key on the Proxmox host and the guests.
+# Passwords come from the macOS Keychain (service "homelab") on the controller and are
+# never printed. Run: make bootstrap-ssh
+- name: Install SSH key on the Proxmox host
+  hosts: proxmox
+  gather_facts: false
+  vars:
+    ansible_password: "{{ lookup('ansible.builtin.pipe', 'security find-generic-password -s homelab -a pve-root-password -w') }}"
+    ansible_ssh_common_args: -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password,keyboard-interactive,publickey
+  tasks:
+    - name: Authorize the operator key
+      ansible.posix.authorized_key:
+        user: "{{ ansible_user }}"
+        key: "{{ lookup('ansible.builtin.file', lookup('ansible.builtin.env', 'HOME') ~ '/.ssh/id_ed25519.pub') }}"
+        exclusive: false
+      no_log: true
+
+- name: Install SSH key on the guests
+  hosts: guests
+  gather_facts: false
+  vars:
+    ansible_password: "{{ lookup('ansible.builtin.pipe', 'security find-generic-password -s homelab -a vm-sudo-password -w') }}"
+    ansible_ssh_common_args: -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password,keyboard-interactive,publickey
+  tasks:
+    - name: Authorize the operator key
+      ansible.posix.authorized_key:
+        user: "{{ ansible_user }}"
+        key: "{{ lookup('ansible.builtin.file', lookup('ansible.builtin.env', 'HOME') ~ '/.ssh/id_ed25519.pub') }}"
+        exclusive: false
+      no_log: true
