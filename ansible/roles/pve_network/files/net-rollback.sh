@@ -30,5 +30,6 @@ if ping -c 1 -W 3 "$target" >/dev/null 2>&1; then
 fi
 
 echo "net-rollback: $target unreachable, restoring $backup"
-cp -p "$backup" "$iface_file"
+cp "$backup" "$iface_file" || { echo "net-rollback: restore failed" >&2; exit 1; }
+chmod 0644 "$iface_file"
 ifreload -a

@@ -18,11 +18,14 @@ STUB
 chmod +x "$tmp/bin/ifreload"
 
 # Case 1: target unreachable -> restore backup and reload
-printf '#!/bin/sh\nexit 1\n' >"$tmp/bin/ping"; chmod +x "$tmp/bin/ping"
-printf NEW >"$tmp/interfaces"; printf OLD >"$tmp/backup"; : >"$tmp/calls"
+printf '#!/bin/sh\necho "$*" >>"%s/pingargs"\nexit 1\n' "$tmp" >"$tmp/bin/ping"; chmod +x "$tmp/bin/ping"
+printf NEW >"$tmp/interfaces"; printf OLD >"$tmp/backup"; chmod 600 "$tmp/backup"; chmod 644 "$tmp/interfaces"; : >"$tmp/calls"
 PATH="$tmp/bin:$PATH" bash "$script" "$tmp/backup" --wait 1 --target 192.0.2.10 --interfaces-file "$tmp/interfaces"
 check "unreachable: rc" "$?" "0"
 check "unreachable: file restored" "$(cat "$tmp/interfaces")" "OLD"
+check "unreachable: target reached ping" "$(grep -c -- '192.0.2.10' "$tmp/pingargs")" "1"
+mode=$(stat -f %Lp "$tmp/interfaces" 2>/dev/null || stat -c %a "$tmp/interfaces")
+check "unreachable: restored mode 644" "$mode" "644"
 check "unreachable: ifreload -a called" "$(cat "$tmp/calls")" "ifreload -a"
 
 # Case 2: target reachable -> leave the new file alone
@@ -38,5 +41,12 @@ rc=yes
 PATH="$tmp/bin:$PATH" bash "$script" "$tmp/nope" --wait 0 --target 192.0.2.10 --interfaces-file "$tmp/interfaces" 2>/dev/null && rc=no
 check "missing backup: rc non-zero" "$rc" "yes"
 check "missing backup: file untouched" "$(cat "$tmp/interfaces")" "NEW"
+
+# Case 4: restore fails (interfaces path is a missing directory) -> abort, no ifreload
+: >"$tmp/calls"; printf OLD >"$tmp/backup"
+rc=0
+PATH="$tmp/bin:$PATH" bash "$script" "$tmp/backup" --wait 0 --target 192.0.2.10 --interfaces-file "$tmp/nodir/interfaces" 2>/dev/null || rc=$?
+check "cp failure: rc non-zero" "$([ "$rc" -ne 0 ] && echo yes)" "yes"
+check "cp failure: no ifreload" "$(cat "$tmp/calls")" ""
 
 exit $fail
