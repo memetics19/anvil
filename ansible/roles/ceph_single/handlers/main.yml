@@ -4,8 +4,25 @@
     state: restarted
   when: not ansible_check_mode
 
+# Two steps, each retried: right after a manager restart `ceph mgr module` can fail until the
+# manager has registered its modules again.
 - name: Restart dashboard module
-  ansible.builtin.shell:
-    cmd: ceph mgr module disable dashboard && ceph mgr module enable dashboard
+  ansible.builtin.command:
+    argv: [ceph, mgr, module, disable, dashboard]
+  register: ceph_single_dash_disable
+  retries: 10
+  delay: 3
+  until: ceph_single_dash_disable.rc == 0
   changed_when: true
+  when: not ansible_check_mode
+
+- name: Re-enable dashboard module
+  ansible.builtin.command:
+    argv: [ceph, mgr, module, enable, dashboard]
+  register: ceph_single_dash_reenable
+  retries: 10
+  delay: 3
+  until: ceph_single_dash_reenable.rc == 0
+  changed_when: true
+  listen: Restart dashboard module
   when: not ansible_check_mode
