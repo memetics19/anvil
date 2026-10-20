@@ -1,0 +1,76 @@
+- name: Install the rollback script
+  ansible.builtin.copy:
+    src: net-rollback.sh
+    dest: "{{ pve_network_rollback_script }}"
+    mode: "0755"
+    owner: root
+    group: root
+
+- name: Read the live interfaces file
+  ansible.builtin.slurp:
+    src: "{{ pve_network_interfaces_path }}"
+  register: pve_network_live
+  check_mode: false
+
+- name: Compare with the rendered template
+  ansible.builtin.set_fact:
+    pve_network_changed: "{{ (pve_network_live.content | b64decode) != lookup('ansible.builtin.template', 'interfaces.j2') }}"
+
+- name: Apply interfaces change with timed rollback
+  when: pve_network_changed | bool
+  block:
+    - name: Create backup directory
+      ansible.builtin.file:
+        path: "{{ pve_network_backup_dir }}"
+        state: directory
+        mode: "0700"
+        owner: root
+        group: root
+
+    - name: Back up the live interfaces file
+      ansible.builtin.copy:
+        src: "{{ pve_network_interfaces_path }}"
+        dest: "{{ pve_network_backup_dir }}/interfaces.{{ ansible_date_time.epoch }}"
+        remote_src: true
+        mode: "0600"
+        owner: root
+        group: root
+      register: pve_network_backup
+
+    - name: Arm the timed rollback
+      ansible.builtin.command:
+        argv:
+          - systemd-run
+          - --unit=net-rollback
+          - --on-active={{ pve_network_rollback_after }}
+          - "{{ pve_network_rollback_script }}"
+          - "{{ pve_network_backup.dest }}"
+          - --wait
+          - "0"
+          - --target
+          - "{{ pve_network_rollback_target }}"
+      changed_when: true
+
+    - name: Write the new interfaces file
+      ansible.builtin.template:
+        src: interfaces.j2
+        dest: "{{ pve_network_interfaces_path }}"
+        mode: "0644"
+        owner: root
+        group: root
+
+    - name: Reload network
+      ansible.builtin.command: ifreload -a
+      changed_when: true
+      async: 60
+      poll: 0
+
+    - name: Wait for the host to answer again
+      ansible.builtin.wait_for_connection:
+        delay: 5
+        timeout: 60
+
+    - name: Disarm the rollback
+      ansible.builtin.systemd:
+        name: net-rollback.timer
+        state: stopped

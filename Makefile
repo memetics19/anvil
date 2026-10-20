@@ -2,7 +2,7 @@ SHELL := /bin/bash
 # lint and secrets-scan need no secrets (CI has no Keychain); only infra targets source env.sh.
 ENV := source scripts/env.sh
 
-.PHONY: lint secrets-scan bootstrap-ssh host
+.PHONY: lint secrets-scan bootstrap-ssh host host-network
 
 lint:
 	@set -eu -o pipefail; \
@@ -30,3 +30,8 @@ bootstrap-ssh:
 host:
 	@set -eu -o pipefail; $(ENV); \
 	cd ansible && ansible-playbook playbooks/host.yml --limit '!vault_servers' $(ARGS)
+
+# Host network change with timed rollback. Never combine with a netbird (VM 102) change.
+host-network:
+	@set -eu -o pipefail; $(ENV); \
+	cd ansible && ansible-playbook playbooks/host-network.yml --limit '!vault_servers' $(ARGS)

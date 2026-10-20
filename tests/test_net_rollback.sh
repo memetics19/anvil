@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Rollback script test: runs locally with stubbed ifreload/ping and temp files.
+# Uses documentation-range addresses only.
+set -uo pipefail
+cd "$(dirname "$0")/.." || exit 1
+
+script=ansible/roles/pve_network/files/net-rollback.sh
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+mkdir "$tmp/bin"
+fail=0
+check() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (got '$2', want '$3')"; fail=1; fi; }
+
+cat >"$tmp/bin/ifreload" <<STUB
+#!/bin/sh
+echo "ifreload \$*" >>"$tmp/calls"
+STUB
+chmod +x "$tmp/bin/ifreload"
+
+# Case 1: target unreachable -> restore backup and reload
+printf '#!/bin/sh\nexit 1\n' >"$tmp/bin/ping"; chmod +x "$tmp/bin/ping"
+printf NEW >"$tmp/interfaces"; printf OLD >"$tmp/backup"; : >"$tmp/calls"
+PATH="$tmp/bin:$PATH" bash "$script" "$tmp/backup" --wait 1 --target 192.0.2.10 --interfaces-file "$tmp/interfaces"
+check "unreachable: rc" "$?" "0"
+check "unreachable: file restored" "$(cat "$tmp/interfaces")" "OLD"
+check "unreachable: ifreload -a called" "$(cat "$tmp/calls")" "ifreload -a"
+
+# Case 2: target reachable -> leave the new file alone
+printf '#!/bin/sh\nexit 0\n' >"$tmp/bin/ping"
+printf NEW >"$tmp/interfaces"; : >"$tmp/calls"
+PATH="$tmp/bin:$PATH" bash "$script" "$tmp/backup" --wait 0 --target 192.0.2.10 --interfaces-file "$tmp/interfaces"
+check "reachable: file untouched" "$(cat "$tmp/interfaces")" "NEW"
+check "reachable: no ifreload" "$(cat "$tmp/calls")" ""
+
+# Case 3: missing backup -> non-zero, file untouched
+printf '#!/bin/sh\nexit 1\n' >"$tmp/bin/ping"
+rc=yes
+PATH="$tmp/bin:$PATH" bash "$script" "$tmp/nope" --wait 0 --target 192.0.2.10 --interfaces-file "$tmp/interfaces" 2>/dev/null && rc=no
+check "missing backup: rc non-zero" "$rc" "yes"
+check "missing backup: file untouched" "$(cat "$tmp/interfaces")" "NEW"
+
+exit $fail
