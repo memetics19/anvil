@@ -1,8 +1,12 @@
 # anvil
 
-[![ci](https://github.com/memetics19/anvil/actions/workflows/ci.yml/badge.svg)](https://github.com/memetics19/anvil/actions/workflows/ci.yml)
+[![ci](https://github.com/memetics19/anvil/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/memetics19/anvil/actions/workflows/ci.yml?query=branch%3Amain)
 
 Terraform and Ansible for a single-node Proxmox homelab.
+
+An anvil is the fixed block a smith shapes everything else on. This repo plays the same
+part for the lab: every host is forged from it, and if one breaks, it gets re-forged here
+rather than repaired by hand.
 
 - Terraform ([bpg/proxmox](https://github.com/bpg/terraform-provider-proxmox)) defines the VMs.
 - Ansible configures the Proxmox host and the guests.
