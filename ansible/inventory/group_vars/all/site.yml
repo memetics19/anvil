@@ -1,0 +1,26 @@
+# The `site` dict holds every site-identifying value (domain, IPs, MACs, email, VMIDs).
+# Source of truth is Vault: KV v2, mount "kv", path "homelab/site", with the dict stored
+# as a nested JSON object under the key "site". It is used when VAULT_TOKEN is set
+# (VAULT_ADDR / VAULT_CACERT are read from the environment, see scripts/env.sh).
+# Before Vault exists, the same YAML is read from macOS Keychain (service homelab,
+# account site-bootstrap; structure in site/site.example.yml). `security -w` prints
+# multi-line values hex-encoded, so the lookup decodes hex when it sees it.
+_site_from_vault: >-
+  {{ lookup('community.hashi_vault.vault_kv2_get', 'homelab/site',
+            engine_mount_point='kv',
+            url=lookup('env', 'VAULT_ADDR'),
+            token=lookup('env', 'VAULT_TOKEN'),
+            ca_cert=lookup('env', 'VAULT_CACERT')).secret.site }}
+_keychain_cmd: >-
+  v=$(security find-generic-password -s homelab -a site-bootstrap -w);
+  if printf %s "$v" | grep -qE "^[0-9a-f]+$"; then printf %s "$v" | xxd -r -p;
+  else printf %s "$v"; fi
+_site_from_keychain: >-
+  {{ (lookup('ansible.builtin.pipe', _keychain_cmd,
+             errors='ignore') | from_yaml | default({}, true)).site }}
+_site_missing_msg: >-
+  No site data: set VAULT_TOKEN (Vault kv/homelab/site) or store YAML shaped like
+  site/site.example.yml in Keychain account site-bootstrap
+site: >-
+  {{ _site_from_vault if (lookup('env', 'VAULT_TOKEN') | length > 0)
+     else (_site_from_keychain | mandatory(_site_missing_msg)) }}

@@ -1,0 +1,20 @@
+# Structure of the `site` dict (documentation; example values use RFC 5737 ranges and example.com).
+# The real copy lives in macOS Keychain (service homelab, account site-bootstrap) as this YAML,
+# until Task 9 loads it into Vault at kv/homelab/site (KV v2, mount kv, key "site").
+site:
+  domain: example.com
+  email: admin@example.com
+  lan_cidr: 192.0.2.0/24
+  guest_dns: [198.51.100.53, 198.51.100.54]
+  pve:
+    hostname: pve
+    ip: 192.0.2.10
+    gateway_alias_ip: 192.0.2.1
+    uplink_ip: 198.51.100.250
+    uplink_prefix: 24
+    uplink_gw: 198.51.100.1
+  hosts:
+    frigate: {ip: 192.0.2.114, vmid: 101, mac: "02:00:00:00:00:01"}
+    netbird: {ip: 192.0.2.115, vmid: 102, mac: "02:00:00:00:00:02"}
+    ragnarok: {ip: 192.0.2.119, vmid: 104, mac: "02:00:00:00:00:03"}
+    vault: {ip: 192.0.2.120, vmid: 120}

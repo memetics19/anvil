@@ -1,1 +1,21 @@
 docs/superpowers/
+.superpowers/
+
+# Terraform
+.terraform/
+*.tfstate*
+*.tfplan
+*.auto.tfvars
+terraform.tfvars
+!*.tfvars.example
+
+# Secrets and test fixtures
+tests/fixtures/leak/
+*.pem
+*.key
+.env*
+
+# Site-specific values (public repo: only the examples are committed)
+site/site.yml
+!site/*.example*
+.ansible/

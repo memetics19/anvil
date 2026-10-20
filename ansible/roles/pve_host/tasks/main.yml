@@ -1,0 +1,144 @@
+- name: Apt sources
+  tags: [repos]
+  block:
+    - name: Debian sources.list
+      ansible.builtin.template:
+        src: sources.list.j2
+        dest: /etc/apt/sources.list
+        mode: "0644"
+        owner: root
+        group: root
+      notify: Update apt cache
+
+    - name: Proxmox no-subscription repository
+      ansible.builtin.template:
+        src: pve-no-sub.list.j2
+        dest: /etc/apt/sources.list.d/pve-no-sub.list
+        mode: "0644"
+        owner: root
+        group: root
+      notify: Update apt cache
+
+    - name: NetBird signing key
+      ansible.builtin.shell:
+        cmd: set -o pipefail; curl -fsSL {{ pve_host_netbird_key_url }} | gpg --dearmor -o {{ pve_host_netbird_keyring }}
+        creates: "{{ pve_host_netbird_keyring }}"
+        executable: /bin/bash
+      notify: Update apt cache
+
+    - name: NetBird repository
+      ansible.builtin.template:
+        src: netbird.list.j2
+        dest: /etc/apt/sources.list.d/netbird.list
+        mode: "0644"
+        owner: root
+        group: root
+      notify: Update apt cache
+
+    - name: Refresh apt cache before installing packages
+      ansible.builtin.meta: flush_handlers
+
+- name: Packages
+  tags: [packages]
+  ansible.builtin.apt:
+    name: "{{ pve_host_packages }}"
+    state: present
+
+- name: Time sync
+  tags: [time]
+  ansible.builtin.service:
+    name: chrony
+    state: started
+    enabled: true
+
+- name: Hostname and /etc/hosts
+  tags: [hosts]
+  block:
+    - name: Static hostname
+      ansible.builtin.hostname:
+        name: "{{ site.pve.hostname }}"
+
+    - name: Host entry in /etc/hosts
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '^{{ site.pve.ip | regex_escape }}\s'
+        line: "{{ site.pve.ip }} {{ site.pve.hostname }}.{{ site.domain }} {{ site.pve.hostname }}"
+        insertafter: '^127\.0\.0\.1'
+
+- name: Terraform API token
+  tags: [api_token]
+  block:
+    - name: List existing roles
+      ansible.builtin.command: pveum role list --output-format json
+      register: pve_host_roles
+      changed_when: false
+      check_mode: false
+
+    - name: List existing users
+      ansible.builtin.command: pveum user list --output-format json
+      register: pve_host_users
+      changed_when: false
+      check_mode: false
+
+    - name: List existing tokens
+      ansible.builtin.command: pveum user token list {{ pve_host_api_user }} --output-format json
+      register: pve_host_tokens
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Work out what is missing
+      ansible.builtin.set_fact:
+        pve_host_role_cur: "{{ pve_host_roles.stdout | from_json | selectattr('roleid', 'equalto', pve_host_api_role) | list }}"
+        pve_host_user_exists: "{{ (pve_host_users.stdout | from_json | selectattr('userid', 'equalto', pve_host_api_user) | list) | length > 0 }}"
+        pve_host_token_exists: >-
+          {{ pve_host_tokens.rc == 0 and
+             (pve_host_tokens.stdout | from_json
+              | selectattr('tokenid', 'equalto', pve_host_api_token_id) | list | length > 0) }}
+
+    - name: Create the API role
+      ansible.builtin.command: pveum role add {{ pve_host_api_role }} --privs "{{ pve_host_api_privs | join(',') }}"
+      when: pve_host_role_cur | length == 0
+      changed_when: true
+
+    - name: Align API role privileges
+      ansible.builtin.command: pveum role modify {{ pve_host_api_role }} --privs "{{ pve_host_api_privs | join(',') }}"
+      when:
+        - pve_host_role_cur | length > 0
+        - (pve_host_role_cur[0].privs.split(',') | sort) != (pve_host_api_privs | sort)
+      changed_when: true
+
+    - name: Create the API user
+      ansible.builtin.command: pveum user add {{ pve_host_api_user }} --comment "Terraform provisioning"
+      when: not pve_host_user_exists | bool
+      changed_when: true
+
+    - name: Grant the role on /
+      ansible.builtin.command: pveum acl modify / --users {{ pve_host_api_user }} --roles {{ pve_host_api_role }}
+      when: not pve_host_user_exists | bool
+      changed_when: true
+
+    - name: Create the API token (secret stays in memory, never logged)
+      ansible.builtin.command: pveum user token add {{ pve_host_api_user }} {{ pve_host_api_token_id }} --privsep 0 --output-format json
+      register: pve_host_token_new
+      when: not pve_host_token_exists | bool
+      changed_when: true
+      no_log: true
+
+    - name: Store the token in the macOS Keychain
+      ansible.builtin.command:
+        argv:
+          - security
+          - add-generic-password
+          - -U
+          - -s
+          - homelab
+          - -a
+          - "{{ pve_host_api_keychain_account }}"
+          - -w
+          - "{{ pve_host_api_user }}!{{ pve_host_api_token_id }}={{ (pve_host_token_new.stdout | from_json).value }}"
+      delegate_to: localhost
+      become: false
+      when: pve_host_token_new is not skipped
+      changed_when: true
+      no_log: true
