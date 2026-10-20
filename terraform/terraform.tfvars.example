@@ -1,0 +1,2 @@
+# Copy to terraform.tfvars (gitignored). Real site values come from Vault (kv/homelab/site).
+node_name = "pve"
