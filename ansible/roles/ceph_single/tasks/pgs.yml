@@ -39,6 +39,7 @@
   when: item.pg_autoscale_mode != 'on'
 
 # RGW creates its data pool with the bulk flag, which makes the autoscaler start it at 128 PGs.
+# Intentional: single-OSD design, so bulk pools are overridden to keep total PGs low.
 - name: PGs | bulk flag off for every pool
   ansible.builtin.command:
     argv: [ceph, osd, pool, set, "{{ item.pool_name }}", bulk, "false"]

@@ -2,6 +2,7 @@
 # The first real run WIPES the OSD disk. Dry-run first: make ceph ARGS="--check --diff"
 - name: Single-node Ceph and S3 gateway
   hosts: proxmox
+  force_handlers: true
   vars:
     # by-id name of the OSD disk: Vault site.pve.ceph_osd_disk_id when set, else Keychain
     # account ceph-osd-disk-id (service homelab). Override: -e ceph_osd_device=/dev/disk/by-id/...
