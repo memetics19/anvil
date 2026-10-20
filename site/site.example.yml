@@ -14,7 +14,7 @@ site:
     uplink_prefix: 24
     uplink_gw: 198.51.100.1
   hosts:
-    frigate: {ip: 192.0.2.114, vmid: 101, mac: "02:00:00:00:00:01"}
-    netbird: {ip: 192.0.2.115, vmid: 102, mac: "02:00:00:00:00:02"}
-    ragnarok: {ip: 192.0.2.119, vmid: 104, mac: "02:00:00:00:00:03"}
-    vault: {ip: 192.0.2.120, vmid: 120}
+    frigate: {ip: 192.0.2.114, vmid: 9001, mac: "02:00:00:00:00:01"}
+    netbird: {ip: 192.0.2.115, vmid: 9002, mac: "02:00:00:00:00:02"}
+    ragnarok: {ip: 192.0.2.119, vmid: 9003, mac: "02:00:00:00:00:03"}
+    vault: {ip: 192.0.2.120, vmid: 9004}

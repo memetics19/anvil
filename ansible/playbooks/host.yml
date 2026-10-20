@@ -1,4 +1,11 @@
 - name: Proxmox host base configuration
   hosts: proxmox
+  pre_tasks:
+    - name: Resolve the site dict once for this run
+      ansible.builtin.set_fact:
+        site: "{{ site_src }}"
+      run_once: true
+      no_log: true
+      tags: [always]
   roles:
     - pve_host

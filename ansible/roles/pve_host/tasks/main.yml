@@ -118,27 +118,55 @@
       when: not pve_host_user_exists | bool
       changed_when: true
 
-    - name: Create the API token (secret stays in memory, never logged)
-      ansible.builtin.command: pveum user token add {{ pve_host_api_user }} {{ pve_host_api_token_id }} --privsep 0 --output-format json
-      register: pve_host_token_new
-      when: not pve_host_token_exists | bool
-      changed_when: true
-      no_log: true
-
-    - name: Store the token in the macOS Keychain
+    - name: Check whether the token secret is in the macOS Keychain
       ansible.builtin.command:
-        argv:
-          - security
-          - add-generic-password
-          - -U
-          - -s
-          - homelab
-          - -a
-          - "{{ pve_host_api_keychain_account }}"
-          - -w
-          - "{{ pve_host_api_user }}!{{ pve_host_api_token_id }}={{ (pve_host_token_new.stdout | from_json).value }}"
+        argv: [security, find-generic-password, -s, homelab, -a, "{{ pve_host_api_keychain_account }}"]
       delegate_to: localhost
       become: false
-      when: pve_host_token_new is not skipped
-      changed_when: true
+      register: pve_host_keychain
+      changed_when: false
+      failed_when: false
+      check_mode: false
       no_log: true
+
+    - name: Remove a token whose secret is not in the Keychain (secret is unrecoverable)
+      ansible.builtin.command: pveum user token remove {{ pve_host_api_user }} {{ pve_host_api_token_id }}
+      when:
+        - pve_host_token_exists | bool
+        - pve_host_keychain.rc != 0
+      changed_when: true
+
+    - name: Create the token and store its secret
+      when: (not pve_host_token_exists | bool) or pve_host_keychain.rc != 0
+      block:
+        - name: Create the API token (secret stays in memory, never logged)
+          ansible.builtin.command: pveum user token add {{ pve_host_api_user }} {{ pve_host_api_token_id }} --privsep 0 --output-format json
+          register: pve_host_token_new
+          changed_when: true
+          no_log: true
+
+        - name: Store the token in the macOS Keychain
+          ansible.builtin.command:
+            argv:
+              - security
+              - add-generic-password
+              - -U
+              - -s
+              - homelab
+              - -a
+              - "{{ pve_host_api_keychain_account }}"
+              - -w
+              - "{{ pve_host_api_user }}!{{ pve_host_api_token_id }}={{ (pve_host_token_new.stdout | from_json).value }}"
+          delegate_to: localhost
+          become: false
+          changed_when: true
+          no_log: true
+      rescue:
+        - name: Remove the token so the next run recreates it (its secret was lost)
+          ansible.builtin.command: pveum user token remove {{ pve_host_api_user }} {{ pve_host_api_token_id }}
+          failed_when: false
+          changed_when: true
+
+        - name: Stop after a failed token setup
+          ansible.builtin.fail:
+            msg: API token setup failed and the token was removed; rerun to retry.

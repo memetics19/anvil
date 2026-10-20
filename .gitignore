@@ -17,5 +17,7 @@ tests/fixtures/leak/
 
 # Site-specific values (public repo: only the examples are committed)
 site/site.yml
+site/site.env
+site/bootstrap.yml
 !site/*.example*
 .ansible/

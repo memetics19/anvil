@@ -21,6 +21,10 @@ _site_from_keychain: >-
 _site_missing_msg: >-
   No site data: set VAULT_TOKEN (Vault kv/homelab/site) or store YAML shaped like
   site/site.example.yml in Keychain account site-bootstrap
-site: >-
+site_src: >-
   {{ _site_from_vault if (lookup('env', 'VAULT_TOKEN') | length > 0)
      else (_site_from_keychain | mandatory(_site_missing_msg)) }}
+# `site` itself stays a lazy alias so inventory can build ansible_host, but every
+# reference re-runs the lookup. Playbooks therefore start with a pre_task that freezes
+# it once per run (set_fact site: "{{ site_src }}", see playbooks/host.yml).
+site: "{{ site_src }}"
