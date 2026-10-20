@@ -5,6 +5,7 @@ docs/superpowers/
 .terraform/
 *.tfstate*
 *.tfplan
+*.tfplan.json
 *.auto.tfvars
 terraform.tfvars
 !*.tfvars.example

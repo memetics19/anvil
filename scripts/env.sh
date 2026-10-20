@@ -18,6 +18,14 @@ fi
 _hl_root="$(cd "$(dirname "$_hl_src")/.." && pwd)"
 
 _hl_get() { security find-generic-password -s homelab -a "$1" -w 2>/dev/null; }
+# YAML on stdin -> the `site` dict as JSON. python3 with PyYAML, else the system Ruby
+# (Psych is in its stdlib).
+_hl_site_json() {
+  local y; y="$(cat)"
+  # shellcheck disable=SC2016  # the $stdin below is Ruby, not shell
+  printf '%s' "$y" | python3 -c 'import json,sys,yaml; print(json.dumps(yaml.safe_load(sys.stdin)["site"]))' 2>/dev/null ||
+    printf '%s' "$y" | ruby -ryaml -rjson -e 'puts JSON.generate(YAML.safe_load($stdin.read)["site"])' 2>/dev/null
+}
 
 _hl_main() {
   PVE_IP="$(_hl_get pve-ip)" && [ -n "$PVE_IP" ] || {
@@ -40,13 +48,20 @@ _hl_main() {
   _hl_v="$(_hl_get vault-init-json)" && [ -n "$_hl_v" ] && \
     _hl_v="$(printf '%s' "$_hl_v" | jq -r '.root_token // empty' 2>/dev/null)" && \
     [ -n "$_hl_v" ] && export VAULT_TOKEN="$_hl_v"
+
+  # Site values for Terraform (var.site_json) from the site-bootstrap YAML. `security -w`
+  # prints multi-line values hex-encoded, so decode when the value is all hex.
+  if _hl_v="$(_hl_get site-bootstrap)" && [ -n "$_hl_v" ]; then
+    case $_hl_v in *[!0-9a-f]*) ;; *) _hl_v="$(printf '%s' "$_hl_v" | xxd -r -p)" ;; esac
+    _hl_v="$(printf '%s' "$_hl_v" | _hl_site_json)" && [ -n "$_hl_v" ] && export TF_VAR_site_json="$_hl_v"
+  fi
   return 0
 }
 
 _hl_main
 _hl_rc=$?
 unset _hl_v _hl_src _hl_root
-unset -f _hl_get _hl_main
+unset -f _hl_get _hl_site_json _hl_main
 if [ -n "$_hl_x" ]; then unset _hl_x; set -x; else unset _hl_x; fi
 # shellcheck disable=SC2317
 return "$_hl_rc" 2>/dev/null || true

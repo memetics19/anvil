@@ -116,6 +116,29 @@ it is briefly visible in the process list on your Mac):
 source scripts/env.sh && security add-generic-password -U -s homelab -a ceph-dashboard-password -w "$(ssh root@"$PVE_IP" cat /root/.ceph-dashboard-admin)"
 ```
 
+## Terraform
+
+Terraform manages the VMs and the Proxmox SDN zone and VNets. State is in the Ceph S3
+bucket above. Site values (VM IDs, MACs) reach Terraform as `TF_VAR_site_json`, which
+`scripts/env.sh` builds from the `site-bootstrap` Keychain item (python3 with PyYAML, else
+the system Ruby, converts the YAML).
+
+```sh
+make tf-init
+make tf-plan     # writes terraform/homelab.tfplan and runs the plan guard
+make tf-apply    # applies only that saved plan, after re-running the guard
+```
+
+`scripts/plan-guard.sh` refuses a plan that destroys or replaces anything, changes which
+storage backs `ragnarok`'s disk (the media library), errored, or was made with `-target`.
+Don't pass `-target` in `ARGS`. All three adopted VMs also carry `prevent_destroy`.
+`tests/test_plan_guard.sh` tests the guard.
+
+`frigate`, `netbird` and `ragnarok` were adopted with `import` blocks
+([`terraform/imports.tf`](terraform/imports.tf)); a plan against the current box reports
+no changes. SDN subnets are adopted once the site dict has `sdn.subnets.<vnet>` entries
+(`cidr`, `gateway`); until then they are left unmanaged.
+
 ## Layout
 
 ```
@@ -125,6 +148,7 @@ ansible/
   roles/
 scripts/          env.sh, plan-guard.sh
 site/             site.example.yml
+terraform/        VMs, SDN, import blocks
 tests/
 ```
 

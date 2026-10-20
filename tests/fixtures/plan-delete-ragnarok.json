@@ -1,0 +1,19 @@
+{
+  "format_version": "1.2",
+  "applyable": true,
+  "complete": true,
+  "errored": false,
+  "resource_changes": [
+    {
+      "address": "proxmox_virtual_environment_vm.ragnarok",
+      "mode": "managed",
+      "type": "proxmox_virtual_environment_vm",
+      "name": "ragnarok",
+      "change": {
+        "actions": ["delete", "create"],
+        "before": {"name": "ragnarok", "disk": [{"interface": "scsi0", "datastore_id": "local-lvm", "size": 1024}]},
+        "after": {"name": "ragnarok", "disk": [{"interface": "scsi0", "datastore_id": "local-lvm", "size": 1024}]}
+      }
+    }
+  ]
+}

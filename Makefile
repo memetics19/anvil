@@ -46,12 +46,19 @@ tf-init:
 	@set -eu -o pipefail; $(ENV); \
 	terraform -chdir=terraform init -input=false -backend-config="endpoints={s3=\"http://$${PVE_IP}:7480\"}" $(ARGS)
 
+# Plans are checked by scripts/plan-guard.sh: no destroy/replace, no change to ragnarok's
+# disks, and no -target (a targeted plan hides the rest; don't pass -target in ARGS).
 tf-plan:
 	@set -eu -o pipefail; $(ENV); \
-	terraform -chdir=terraform plan -input=false -out=homelab.tfplan $(ARGS)
+	terraform -chdir=terraform plan -input=false -out=homelab.tfplan $(ARGS); \
+	terraform -chdir=terraform show -json homelab.tfplan > terraform/homelab.tfplan.json; \
+	scripts/plan-guard.sh terraform/homelab.tfplan.json
 
-# Applies only a saved plan (Task 6 adds the plan guard).
+# Applies only the saved plan, and only if it passes the guard (checked again here).
 tf-apply:
 	@set -eu -o pipefail; $(ENV); \
 	[ -f terraform/homelab.tfplan ] || { echo "tf-apply: no saved plan; run make tf-plan first" >&2; exit 1; }; \
+	terraform -chdir=terraform show -json homelab.tfplan > terraform/homelab.tfplan.json; \
+	scripts/plan-guard.sh terraform/homelab.tfplan.json; \
+	jq -e '.applyable' terraform/homelab.tfplan.json >/dev/null || { echo "tf-apply: the saved plan has nothing to apply"; exit 0; }; \
 	terraform -chdir=terraform apply -input=false homelab.tfplan
