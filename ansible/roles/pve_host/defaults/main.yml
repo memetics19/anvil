@@ -1,4 +1,4 @@
-pve_host_packages: [netbird, nmap, tcpdump, chrony]
+pve_host_packages: [netbird, nmap, tcpdump, chrony, ipmitool]
 pve_host_netbird_key_url: https://pkgs.netbird.io/debian/public.key
 pve_host_netbird_keyring: /usr/share/keyrings/netbird-archive-keyring.gpg
 pve_host_api_role: TerraformProv

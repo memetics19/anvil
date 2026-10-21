@@ -1,0 +1,108 @@
+# Only reached with -e guest_base_netplan_apply=true. Same pattern as pve_network:
+# back up, arm a rollback timer, write, apply, confirm the guest answers, disarm.
+- name: Install the rollback script
+  ansible.builtin.copy:
+    src: netplan-rollback.sh
+    dest: "{{ guest_base_netplan_rollback_script }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Backup directory for this run
+  ansible.builtin.file:
+    path: "{{ guest_base_netplan_backup_dir }}/{{ ansible_date_time.epoch }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  register: guest_base_netplan_backup
+
+- name: Back up the live netplan files
+  ansible.builtin.command:
+    argv: [cp, -a, /etc/netplan/., "{{ guest_base_netplan_backup.path }}/"]
+  changed_when: true
+
+- name: Arm the timed rollback
+  ansible.builtin.command:
+    argv:
+      - systemd-run
+      - --unit=netplan-rollback
+      - --on-active={{ guest_base_netplan_rollback_after }}
+      - "{{ guest_base_netplan_rollback_script }}"
+      - "{{ guest_base_netplan_backup.path }}"
+      - --wait
+      - "0"
+      - --target
+      - "{{ guest_base_netplan_rollback_target }}"
+  changed_when: true
+
+- name: Write, apply and confirm
+  block:
+    - name: Write the netplan file
+      ansible.builtin.copy:
+        src: "{{ guest_base_netplan_stage.path }}/etc/netplan/{{ guest_base_netplan_file }}"
+        dest: "/etc/netplan/{{ guest_base_netplan_file }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Remove the other netplan files
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ guest_base_netplan_others.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+
+    - name: Apply netplan
+      ansible.builtin.command: netplan apply
+      changed_when: true
+      async: 60
+      poll: 0
+      register: guest_base_netplan_applying
+
+    - name: Wait for the guest to answer again
+      ansible.builtin.wait_for_connection:
+        delay: 5
+        timeout: 60
+      when: not ansible_check_mode
+
+    - name: Wait for netplan apply to finish successfully
+      ansible.builtin.async_status:
+        jid: "{{ guest_base_netplan_applying.ansible_job_id }}"
+      register: guest_base_netplan_job
+      until: guest_base_netplan_job.finished
+      retries: 10
+      delay: 3
+      when: not ansible_check_mode
+
+    - name: Confirm the guest still answers
+      ansible.builtin.wait_for_connection:
+        delay: 0
+        timeout: 20
+      when: not ansible_check_mode
+
+    - name: Disarm the rollback
+      ansible.builtin.systemd_service:
+        name: netplan-rollback.timer
+        state: stopped
+      when: not ansible_check_mode
+  rescue:
+    - name: Restore the backed up netplan files
+      ansible.builtin.command:
+        argv:
+          - "{{ guest_base_netplan_rollback_script }}"
+          - "{{ guest_base_netplan_backup.path }}"
+          - --force
+      changed_when: true
+
+    - name: Stop the rollback timer
+      ansible.builtin.systemd_service:
+        name: netplan-rollback.timer
+        state: stopped
+      failed_when: false
+
+    - name: Fail after rolling back
+      ansible.builtin.fail:
+        msg: The netplan change failed and the previous netplan files were restored

@@ -1,0 +1,49 @@
+# Render the netplan file into a throwaway root and run `netplan generate` against it.
+# Nothing under /etc/netplan is touched. Leaves guest_base_netplan_stage (the temp root);
+# the caller removes it. Also used by tests/netplan-validate.yml.
+- name: Netplan inputs are complete
+  ansible.builtin.assert:
+    that:
+      - guest_base_ip | default('', true) | string | length > 0
+      - guest_base_gateway | default('', true) | string | length > 0
+      - guest_base_prefix | default('', true) | string is match('^[0-9]{1,2}$')
+      - guest_base_dns | default([], true) | select | list | length > 0
+      - guest_base_netplan_file is match('^[A-Za-z0-9._-]+\.yaml$')
+      - ansible_facts.default_ipv4.interface | default('') == guest_base_netplan_interface
+    fail_msg: >-
+      netplan inputs: need IP, gateway, prefix and DNS from the site dict, a plain *.yaml
+      file name, and the templated interface ({{ guest_base_netplan_interface }}) must be the
+      default-route interface ({{ ansible_facts.default_ipv4.interface | default('none') }})
+    quiet: true
+
+- name: Temporary root for netplan validation
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: .netplan
+  register: guest_base_netplan_stage
+  changed_when: false
+  check_mode: false
+
+- name: Staging netplan directory
+  ansible.builtin.file:
+    path: "{{ guest_base_netplan_stage.path }}/etc/netplan"
+    state: directory
+    mode: "0700"
+  changed_when: false
+  check_mode: false
+
+- name: Render netplan into the temporary root
+  ansible.builtin.template:
+    src: netplan.yaml.j2
+    dest: "{{ guest_base_netplan_stage.path }}/etc/netplan/{{ guest_base_netplan_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  changed_when: false
+  check_mode: false
+
+- name: Validate with netplan generate
+  ansible.builtin.command:
+    argv: [netplan, generate, --root-dir, "{{ guest_base_netplan_stage.path }}"]
+  changed_when: false
+  check_mode: false

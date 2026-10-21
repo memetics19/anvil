@@ -1,0 +1,56 @@
+- name: Validate and compare the netplan
+  block:
+    - name: Validate the rendered netplan
+      ansible.builtin.include_tasks: netplan_validate.yml
+
+    - name: Checksum of the rendered file
+      ansible.builtin.stat:
+        path: "{{ guest_base_netplan_stage.path }}/etc/netplan/{{ guest_base_netplan_file }}"
+      register: guest_base_netplan_new
+
+    - name: Checksum of the live file
+      ansible.builtin.stat:
+        path: "/etc/netplan/{{ guest_base_netplan_file }}"
+      register: guest_base_netplan_live
+
+    # The managed file owns the guest's network: any other file (an old name after a
+    # rename, a cloud-init leftover) is removed in the same guarded apply.
+    - name: Other netplan files
+      ansible.builtin.find:
+        paths: /etc/netplan
+        patterns: ["*.yaml", "*.yml"]
+        excludes: ["{{ guest_base_netplan_file }}"]
+      register: guest_base_netplan_others
+
+    - name: Note whether netplan would change
+      ansible.builtin.set_fact:
+        guest_base_netplan_pending: >-
+          {{ not guest_base_netplan_live.stat.exists
+             or guest_base_netplan_live.stat.checksum != guest_base_netplan_new.stat.checksum
+             or guest_base_netplan_live.stat.mode != '0600'
+             or guest_base_netplan_others.files | length > 0 }}
+
+    - name: Refuse an unguarded netplan change
+      ansible.builtin.fail:
+        msg: >-
+          The netplan on {{ inventory_hostname }} would change (/etc/netplan/{{ guest_base_netplan_file }}{{
+          ', remove ' ~ (guest_base_netplan_others.files | map(attribute='path') | join(', '))
+          if guest_base_netplan_others.files else '' }}). Look at the rendered file first, then apply
+          this one VM with: make vm HOST={{ inventory_hostname }} ARGS="-e guest_base_netplan_apply=true".
+          That arms a {{ guest_base_netplan_rollback_after }}s rollback before applying. For the netbird VM,
+          never in the same run as a Proxmox host network change.
+      when:
+        - guest_base_netplan_pending | bool
+        - not guest_base_netplan_apply | bool
+
+    - name: Apply netplan with timed rollback
+      ansible.builtin.include_tasks: netplan_apply.yml
+      when: guest_base_netplan_pending | bool
+  always:
+    - name: Remove the temporary root
+      ansible.builtin.file:
+        path: "{{ guest_base_netplan_stage.path }}"
+        state: absent
+      changed_when: false
+      check_mode: false
+      when: guest_base_netplan_stage.path is defined

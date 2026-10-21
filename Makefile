@@ -6,7 +6,7 @@ HVAC_CHECK := py=$$(ansible-playbook --version | sed -n 's/^  python version = .
 	"$${py:-python3}" -c 'import hvac' 2>/dev/null || { \
 	  echo "hvac is missing in the Python that runs Ansible; fix: \"$$py\" -m pip install hvac" >&2; exit 1; }
 
-.PHONY: lint secrets-scan bootstrap-ssh host host-network ceph vms vm vault vault-unseal vault-policies site-to-vault backup tf-init tf-plan tf-apply
+.PHONY: lint secrets-scan bootstrap-ssh host host-network ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup tf-init tf-plan tf-apply
 
 lint:
 	@set -eu -o pipefail; \
@@ -55,6 +55,12 @@ vm:
 	@set -eu -o pipefail; [ -n "$(HOST)" ] || { echo "usage: make vm HOST=<name>" >&2; exit 1; }; \
 	$(ENV); $(HVAC_CHECK); \
 	cd ansible && ansible-playbook playbooks/vms.yml --limit "$(HOST)" $(ARGS)
+
+# Proves guest_base's netplan checks reject broken input (temp root only, /etc/netplan untouched).
+test-netplan:
+	@set -eu -o pipefail; [ -n "$(HOST)" ] || { echo "usage: make test-netplan HOST=<name>" >&2; exit 1; }; \
+	$(ENV); $(HVAC_CHECK); \
+	cd ansible && ansible-playbook tests/netplan-validate.yml --limit "$(HOST)" $(ARGS)
 
 # Vault server role. Leaves Vault sealed; a config change restarts (and so seals) it.
 # First time only, the operator runs scripts/vault-init.sh (it writes the Keychain).

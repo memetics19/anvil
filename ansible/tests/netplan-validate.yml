@@ -1,0 +1,97 @@
+# Proves the guest_base netplan checks reject broken input. Only renders into a temporary
+# root (netplan generate --root-dir); /etc/netplan is read, never written.
+# Run: make test-netplan HOST=frigate
+- name: Netplan validation rejects broken input
+  hosts: guests
+  pre_tasks:
+    - name: Resolve the site dict once for this run
+      ansible.builtin.import_tasks: ../playbooks/tasks/site.yml
+  tasks:
+    - name: Live netplan before
+      ansible.builtin.find:
+        paths: /etc/netplan
+        get_checksum: true
+      register: test_netplan_before
+
+    - name: Good input validates
+      ansible.builtin.include_role:
+        name: guest_base
+        tasks_from: netplan_validate.yml
+
+    - name: Clean up the good case
+      ansible.builtin.file:
+        path: "{{ guest_base_netplan_stage.path }}"
+        state: absent
+
+    - name: Empty gateway
+      block:
+        - name: Validate with an empty gateway
+          ansible.builtin.include_role:
+            name: guest_base
+            tasks_from: netplan_validate.yml
+          vars:
+            guest_base_gateway: ""
+        - name: Empty gateway was accepted
+          ansible.builtin.set_fact:
+            test_netplan_gateway: accepted
+      rescue:
+        - name: Empty gateway was refused
+          ansible.builtin.set_fact:
+            test_netplan_gateway: "{{ ansible_failed_task.name }}"
+
+    - name: Interface that is not the default route
+      block:
+        - name: Validate with another interface
+          ansible.builtin.include_role:
+            name: guest_base
+            tasks_from: netplan_validate.yml
+          vars:
+            guest_base_netplan_interface: ens99
+        - name: Wrong interface was accepted
+          ansible.builtin.set_fact:
+            test_netplan_iface: accepted
+      rescue:
+        - name: Wrong interface was refused
+          ansible.builtin.set_fact:
+            test_netplan_iface: "{{ ansible_failed_task.name }}"
+
+    - name: Malformed YAML
+      block:
+        - name: Validate a render that is not valid YAML
+          ansible.builtin.include_role:
+            name: guest_base
+            tasks_from: netplan_validate.yml
+          vars:
+            guest_base_dns: [198.51.100.53, "{unclosed"]
+        - name: Malformed YAML was accepted
+          ansible.builtin.set_fact:
+            test_netplan_yaml: accepted
+      rescue:
+        - name: Malformed YAML was refused
+          ansible.builtin.set_fact:
+            test_netplan_yaml: "{{ ansible_failed_task.name }}"
+      always:
+        - name: Clean up the malformed case
+          ansible.builtin.file:
+            path: "{{ guest_base_netplan_stage.path }}"
+            state: absent
+
+    - name: Live netplan after
+      ansible.builtin.find:
+        paths: /etc/netplan
+        get_checksum: true
+      register: test_netplan_after
+
+    - name: Each broken input failed at the expected check, and /etc/netplan is unchanged
+      ansible.builtin.assert:
+        that:
+          - test_netplan_gateway == 'Netplan inputs are complete'
+          - test_netplan_iface == 'Netplan inputs are complete'
+          - test_netplan_yaml == 'Validate with netplan generate'
+          - (test_netplan_before.files | map(attribute='checksum') | list)
+            == (test_netplan_after.files | map(attribute='checksum') | list)
+          - (test_netplan_before.files | map(attribute='path') | list)
+            == (test_netplan_after.files | map(attribute='path') | list)
+        success_msg: >-
+          ok: empty gateway -> {{ test_netplan_gateway }}; wrong interface -> {{ test_netplan_iface }};
+          malformed YAML -> {{ test_netplan_yaml }}; /etc/netplan unchanged

@@ -23,11 +23,5 @@
     state: started
 
 - name: Static netplan
-  ansible.builtin.template:
-    src: netplan.yaml.j2
-    dest: "/etc/netplan/{{ guest_base_netplan_file }}"
-    owner: root
-    group: root
-    mode: "0600"
+  ansible.builtin.include_tasks: netplan.yml
   when: guest_base_manage_netplan | bool
-  notify: Apply netplan
