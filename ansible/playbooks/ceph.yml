@@ -13,10 +13,7 @@
                     'security find-generic-password -s homelab -a ceph-osd-disk-id -w 2>/dev/null || true') }}
   pre_tasks:
     - name: Resolve the site dict once for this run
-      ansible.builtin.set_fact:
-        site: "{{ site_src }}"
-      run_once: true
-      no_log: true
+      ansible.builtin.import_tasks: tasks/site.yml
       tags: [always]
 
     - name: Resolve the OSD device once for this run

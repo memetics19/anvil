@@ -2,7 +2,7 @@ SHELL := /bin/bash
 # lint and secrets-scan need no secrets (CI has no Keychain); only infra targets source env.sh.
 ENV := source scripts/env.sh
 
-.PHONY: lint secrets-scan bootstrap-ssh host host-network ceph vault vault-unseal backup tf-init tf-plan tf-apply
+.PHONY: lint secrets-scan bootstrap-ssh host host-network ceph vault vault-unseal vault-policies site-to-vault backup tf-init tf-plan tf-apply
 
 lint:
 	@set -eu -o pipefail; \
@@ -52,6 +52,21 @@ vault-unseal:
 	@set -eu -o pipefail; $(ENV); \
 	scripts/vault-unseal.sh
 
+# Vault policies from vault/policies/<name>.hcl; each is written only when it differs.
+vault-policies:
+	@set -eu -o pipefail; $(ENV); \
+	for f in vault/policies/*.hcl; do \
+	  n=$$(basename "$$f" .hcl); \
+	  if [ "$$(vault policy read "$$n" 2>/dev/null || true)" = "$$(cat "$$f")" ]; then echo "$$n: unchanged"; \
+	  else vault policy write "$$n" "$$f" >/dev/null; echo "$$n: written"; fi; \
+	done
+
+# Keychain site-bootstrap -> Vault kv/homelab/site (refuses to replace a different value
+# unless ARGS=--force).
+site-to-vault:
+	@set -eu -o pipefail; $(ENV); \
+	scripts/site-to-vault.sh $(ARGS)
+
 # Terraform state + Vault Raft snapshot into ~/homelab-backups (keeps the newest 30 of each).
 backup:
 	@set -eu -o pipefail; $(ENV); \
@@ -71,6 +86,7 @@ TF_PLAN := terraform/homelab.tfplan
 tf-plan:
 	@set -eu -o pipefail; $(ENV); umask 077; \
 	rm -f $(TF_PLAN); trap 'rm -f $(TF_PLAN)' ERR; \
+	echo "site source: $${HOMELAB_SITE_SOURCE:-none}"; \
 	terraform -chdir=terraform plan -input=false -out=homelab.tfplan $(ARGS); \
 	scripts/plan-guard.sh <(terraform -chdir=terraform show -json homelab.tfplan)
 

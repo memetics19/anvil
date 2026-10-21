@@ -1,16 +1,20 @@
 # The `site` dict holds every site-identifying value (domain, IPs, MACs, email, VMIDs).
 # Source of truth is Vault: KV v2, mount "kv", path "homelab/site", with the dict stored
-# as a nested JSON object under the key "site". It is used when VAULT_TOKEN is set
-# (VAULT_ADDR / VAULT_CACERT are read from the environment, see scripts/env.sh).
-# Before Vault exists, the same YAML is read from macOS Keychain (service homelab,
-# account site-bootstrap; structure in site/site.example.yml). `security -w` prints
-# multi-line values hex-encoded, so the lookup decodes hex when it sees it.
+# as a nested JSON object under the key "site" (scripts/site-to-vault.sh writes it).
+# Selection: Vault when VAULT_TOKEN is set AND kv/homelab/site can be read; otherwise the
+# macOS Keychain (service homelab, account site-bootstrap; structure in
+# site/site.example.yml). A failed Vault read (sealed, missing path) is a warning, not an
+# error, and falls back to the Keychain. VAULT_ADDR / VAULT_CACERT come from the
+# environment (scripts/env.sh). `security -w` prints multi-line values hex-encoded, so
+# the Keychain lookup decodes hex when it sees it.
 _site_from_vault: >-
-  {{ lookup('community.hashi_vault.vault_kv2_get', 'homelab/site',
-            engine_mount_point='kv',
-            url=lookup('env', 'VAULT_ADDR'),
-            token=lookup('env', 'VAULT_TOKEN'),
-            ca_cert=lookup('env', 'VAULT_CACERT')).secret.site }}
+  {{ (((lookup('community.hashi_vault.vault_kv2_get', 'homelab/site',
+                engine_mount_point='kv',
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT'),
+                errors='warn') | default({}, true)).secret | default({}, true)).site | default({}, true))
+     if (lookup('env', 'VAULT_TOKEN') | length > 0) else {} }}
 _keychain_cmd: >-
   v=$(security find-generic-password -s homelab -a site-bootstrap -w);
   if printf %s "$v" | grep -qE "^[0-9a-f]+$"; then printf %s "$v" | xxd -r -p;
@@ -19,12 +23,10 @@ _site_from_keychain: >-
   {{ (lookup('ansible.builtin.pipe', _keychain_cmd,
              errors='ignore') | from_yaml | default({}, true)).site }}
 _site_missing_msg: >-
-  No site data: set VAULT_TOKEN (Vault kv/homelab/site) or store YAML shaped like
+  No site data: set VAULT_TOKEN with kv/homelab/site in Vault, or store YAML shaped like
   site/site.example.yml in Keychain account site-bootstrap
-site_src: >-
-  {{ _site_from_vault if (lookup('env', 'VAULT_TOKEN') | length > 0)
-     else (_site_from_keychain | mandatory(_site_missing_msg)) }}
+site_src: "{{ _site_from_vault or (_site_from_keychain | mandatory(_site_missing_msg)) }}"
 # `site` itself stays a lazy alias so inventory can build ansible_host, but every
-# reference re-runs the lookup. Playbooks therefore start with a pre_task that freezes
-# it once per run (set_fact site: "{{ site_src }}", see playbooks/host.yml).
+# reference re-runs the lookup. Playbooks therefore start by importing
+# playbooks/tasks/site.yml, which freezes it once per run and says which source was used.
 site: "{{ site_src }}"

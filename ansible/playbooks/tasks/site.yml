@@ -1,0 +1,19 @@
+# Freeze the site dict once per run (see inventory/group_vars/all/site.yml) and report
+# which source it came from. Values are never logged.
+- name: Read the site dict from Vault (empty when unavailable)
+  ansible.builtin.set_fact:
+    _site_vault_once: "{{ _site_from_vault }}"
+  run_once: true
+  no_log: true
+
+- name: Resolve the site dict once for this run
+  ansible.builtin.set_fact:
+    site: "{{ _site_vault_once or (_site_from_keychain | mandatory(_site_missing_msg)) }}"
+    site_source: "{{ 'vault' if _site_vault_once else 'keychain' }}"
+  run_once: true
+  no_log: true
+
+- name: Report the site source
+  ansible.builtin.debug:
+    msg: "site source: {{ site_source }}"
+  run_once: true

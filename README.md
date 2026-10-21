@@ -36,6 +36,8 @@ brew tap hashicorp/tap
 brew install hashicorp/tap/terraform hashicorp/tap/vault ansible ansible-lint \
   gitleaks tflint yamllint jq pre-commit sshpass awscli
 ansible-galaxy collection install -r ansible/requirements.yml -p ~/.ansible/collections
+# hvac for the community.hashi_vault lookup, in the Python that runs Ansible
+"$(brew --prefix ansible)/libexec/bin/python" -m pip install hvac
 pre-commit install
 ```
 
