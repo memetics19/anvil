@@ -36,6 +36,7 @@ a file). Each write is checked by reading the SHA-256 digests back (`scripts/vau
 |---|---|---|---|
 | `kv/homelab/ragnarok/filestash` | `s3_access_key`, `s3_secret_key` | `make ceph` (ceph_single: RGW user `filestash`) | Read-only S3 user Filestash browses the gateway with |
 | `kv/homelab/ragnarok/filestash` | `admin_password` | `make vm HOST=ragnarok` (filestash role, `openssl rand`) | Filestash login (user `admin`) and admin console; stored as a bcrypt hash in Filestash's config |
+| `kv/homelab/ragnarok/threadfin` | `admin_password` | `make vm HOST=ragnarok` (iptv role, `openssl rand`) | Threadfin web UI login (user `admin`); stored as Threadfin's HMAC hash in its `authentication.json` |
 
 ## Pending (user)
 

@@ -1,0 +1,390 @@
+# Kannada IPTV on ragnarok (see defaults/main.yml). Order matters on a new host: the
+# guide must exist before Threadfin's first start, because Threadfin maps a channel to
+# its guide entry (same tvg-id) only when it first sees the channel.
+
+# --- lineup ----------------------------------------------------------------------------------
+- name: Read the lineup (iptv/channels.yml)
+  ansible.builtin.set_fact:
+    iptv_lineup: "{{ (lookup('ansible.builtin.file', iptv_lineup_file) | from_yaml).channels }}"
+
+# Official sources only: every channel must be a YouTube channel's /live URL. Ids and
+# names are restricted so they can go into the playlist, shell and JSON unquoted.
+- name: The lineup has only official YouTube channel streams
+  ansible.builtin.assert:
+    that:
+      - iptv_lineup | length > 0
+      - iptv_lineup | map(attribute='id') | unique | length == iptv_lineup | length
+      - iptv_lineup | map(attribute='number') | unique | length == iptv_lineup | length
+      - iptv_lineup | rejectattr('id', 'match', '^[a-z0-9]+$') | list | length == 0
+      - iptv_lineup | rejectattr('name', 'match', '^[A-Za-z0-9 .-]+$') | list | length == 0
+      - iptv_lineup | rejectattr('source', 'match', '^https://www[.]youtube[.]com/channel/UC[A-Za-z0-9_-]{22}/live$') | list | length == 0
+    fail_msg: "{{ iptv_lineup_file }}: duplicate id/number, unsafe id/name, or a source that is not a YouTube channel /live URL"
+    quiet: true
+
+- name: Stream sources and guide channels
+  ansible.builtin.set_fact:
+    iptv_stream_sources: "{{ dict(iptv_lineup | map(attribute='id') | zip(iptv_lineup | map(attribute='source'))) }}"
+    iptv_epg_channels: >-
+      {{ iptv_lineup | map('dict2items') | map('selectattr', 'key', 'in', ['id', 'name', 'dishtv'])
+         | map('items2dict') | list }}
+
+# --- secrets ---------------------------------------------------------------------------------
+- name: Key digests stored in Vault
+  ansible.builtin.command:
+    argv: ["{{ iptv_repo_scripts }}/vault-kv-digests.sh", "{{ iptv_vault_path }}"]
+  delegate_to: localhost
+  become: false
+  register: iptv_vault_digests
+  changed_when: false
+  check_mode: false
+
+# The password goes from openssl straight into Vault; it is never displayed or logged.
+- name: Generate the Threadfin admin password into Vault
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      openssl rand -hex 24 | tr -d '\n' |
+      vault kv {{ 'patch' if iptv_vault_digests.stdout_lines else 'put' }} -mount={{ iptv_vault_mount }}
+      {{ iptv_vault_path }} admin_password=- >/dev/null
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  when: "'admin_password' not in iptv_vault_digests.stdout_lines | map('split', ' ') | map('first') | list"
+
+# In check mode a password that would be generated above does not exist yet.
+- name: The Threadfin password is readable
+  ansible.builtin.set_fact:
+    iptv_have_secrets: >-
+      {{ not (ansible_check_mode and 'admin_password' not in
+              iptv_vault_digests.stdout_lines | map('split', ' ') | map('first') | list) }}
+
+- name: Read the Threadfin password from Vault
+  ansible.builtin.set_fact:
+    iptv_admin_password: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', iptv_vault_path,
+                 engine_mount_point=iptv_vault_mount,
+                 url=lookup('env', 'VAULT_ADDR'),
+                 token=lookup('env', 'VAULT_TOKEN'),
+                 ca_cert=lookup('env', 'VAULT_CACERT')).secret.admin_password) | default('') }}
+  no_log: true
+  when: iptv_have_secrets | bool
+
+- name: The password is present
+  ansible.builtin.assert:
+    that: iptv_admin_password | default('') | length >= 32
+    fail_msg: "kv/{{ iptv_vault_path }}: admin_password is missing or empty"
+    quiet: true
+  when: iptv_have_secrets | bool
+
+# --- host user and directories ---------------------------------------------------------------
+- name: IPTV group on the host
+  ansible.builtin.group:
+    name: iptv
+    gid: "{{ iptv_uid }}"
+    system: true
+
+- name: IPTV user on the host (no login, no home)
+  ansible.builtin.user:
+    name: iptv
+    uid: "{{ iptv_uid }}"
+    group: iptv
+    system: true
+    create_home: false
+    home: /nonexistent
+    shell: /usr/sbin/nologin
+
+- name: Project, build and source directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ iptv_dir }}"
+    - "{{ iptv_dir }}/build"
+    - "{{ iptv_dir }}/sources"
+
+- name: Threadfin's config directory (its uid only)
+  ansible.builtin.file:
+    path: "{{ iptv_dir }}/threadfin"
+    state: directory
+    owner: "{{ iptv_uid }}"
+    group: "{{ iptv_uid }}"
+    mode: "0700"
+
+# Read-only check (the role never changes ownership recursively).
+- name: Files in Threadfin's config directory that belong to another uid
+  ansible.builtin.command:
+    argv: [find, "{{ iptv_dir }}/threadfin", "!", -uid, "{{ iptv_uid }}", -print, -quit]
+  register: iptv_foreign_files
+  changed_when: false
+  failed_when: iptv_foreign_files.rc != 0 and not ansible_check_mode
+  check_mode: false
+
+- name: Every Threadfin file belongs to the IPTV uid
+  ansible.builtin.assert:
+    that: iptv_foreign_files.stdout | length == 0
+    fail_msg: >-
+      {{ iptv_foreign_files.stdout }} is not owned by uid {{ iptv_uid }}; stop Threadfin and
+      chown its config directory by hand
+    quiet: true
+
+# --- helper image (stream helper and guide grabber) ------------------------------------------
+- name: Helper scripts
+  ansible.builtin.copy:
+    src: "streams/{{ item }}"
+    dest: "{{ iptv_dir }}/build/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [server.py, epg.py]
+
+- name: Helper Dockerfile
+  ansible.builtin.template:
+    src: Dockerfile.j2
+    dest: "{{ iptv_dir }}/build/Dockerfile"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Is the helper image built
+  ansible.builtin.command:
+    argv: [docker, image, inspect, --format, "{{ '{{' }}.Id{{ '}}' }}", "{{ iptv_streams_image }}"]
+  register: iptv_image
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Helper image to build
+  ansible.builtin.debug:
+    msg: "build {{ iptv_streams_image }}"
+  changed_when: true
+  when: iptv_image.rc != 0 and ansible_check_mode
+
+- name: Build the helper image
+  ansible.builtin.command:
+    argv: [docker, build, --tag, "{{ iptv_streams_image }}", "{{ iptv_dir }}/build"]
+  changed_when: true
+  when: iptv_image.rc != 0 and not ansible_check_mode
+
+# --- guide grabber -----------------------------------------------------------------------------
+- name: Guide grabber script
+  ansible.builtin.template:
+    src: iptv-epg-grab.sh.j2
+    dest: /usr/local/sbin/iptv-epg-grab
+    owner: root
+    group: root
+    mode: "0755"
+  register: iptv_grab_script
+
+- name: Guide grabber units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [iptv-epg-grab.service, iptv-epg-grab.timer]
+  register: iptv_grab_units
+
+- name: Guide grabber timer
+  ansible.builtin.systemd_service:
+    name: iptv-epg-grab.timer
+    enabled: true
+    state: started
+    daemon_reload: "{{ iptv_grab_units.changed }}"
+  # In check mode on a new host the units do not exist yet.
+  when: not (ansible_check_mode and iptv_grab_units.changed)
+
+- name: Is there a guide
+  ansible.builtin.stat:
+    path: "{{ iptv_guide_dir }}/{{ iptv_guide_file }}"
+  register: iptv_guide
+
+# A new lineup gets its guide now, before Threadfin (re)reads it below.
+- name: Grab the guide now
+  ansible.builtin.command:
+    argv: [systemctl, start, iptv-epg-grab.service]
+  changed_when: true
+  when: not ansible_check_mode and (iptv_grab_script.changed or not iptv_guide.stat.exists)
+
+# --- Threadfin config (written before it starts; it reads them only at start) -----------------
+- name: Read Threadfin's settings, login database and source playlist
+  ansible.builtin.slurp:
+    src: "{{ iptv_dir }}/{{ item }}"
+  loop: [threadfin/settings.json, threadfin/authentication.json, sources/kannada.m3u]
+  register: iptv_live
+  # Missing on the first run; any other error stops the run.
+  failed_when: iptv_live.failed | default(false) and 'not found' not in iptv_live.msg | default('')
+  no_log: true
+
+- name: Parse them
+  ansible.builtin.set_fact:
+    iptv_settings_now: "{{ (iptv_live.results[0].content | b64decode | from_json) if iptv_live.results[0].content is defined else {} }}"
+    iptv_auth_now: "{{ (iptv_live.results[1].content | b64decode | from_json) if iptv_live.results[1].content is defined else {} }}"
+    iptv_m3u_now: "{{ (iptv_live.results[2].content | b64decode) if iptv_live.results[2].content is defined else '' }}"
+  no_log: true
+
+# Threadfin keeps its own keys (uuid, counters, last update) next to these. The source lists
+# are replaced whole, so sources added in the web UI are removed on the next run. A new
+# settings file needs a "version" (Threadfin refuses to start without one); after that
+# Threadfin owns it.
+- name: Settings the role owns
+  ansible.builtin.set_fact:
+    iptv_m3u_want: "{{ lookup('ansible.builtin.template', 'kannada.m3u.j2') }}"
+    iptv_settings_managed:
+      epgSource: XEPG
+      httpThreadfinDomain: "{{ iptv_public_ip }}:{{ iptv_threadfin_port }}"
+      port: "{{ iptv_threadfin_port | string }}"
+      buffer: "-"
+      ssdp: false
+      api: false
+      cache.images: false
+      files.update: true
+      update: "{{ iptv_threadfin_update }}"
+      ThreadfinAutoUpdate: false
+      mapping.first.channel: 1
+      authentication.web: true
+      authentication.m3u: false
+      authentication.xml: false
+      authentication.pms: false
+      authentication.api: false
+    iptv_files_managed:
+      m3u:
+        Mkannada:
+          name: Kannada (official)
+          description: iptv/channels.yml
+          type: m3u
+          file.source: /home/threadfin/sources/kannada.m3u
+          tuner: "{{ iptv_max_streams | int }}"
+          buffer: "-"
+          http_proxy.ip: ""
+          http_proxy.port: ""
+      xmltv:
+        Xkannada:
+          name: Kannada guide
+          description: iptv-epg grabber
+          type: xmltv
+          file.source: "{{ iptv_guide_url }}"
+          http_proxy.ip: ""
+          http_proxy.port: ""
+
+- name: Settings to keep
+  ansible.builtin.set_fact:
+    iptv_settings_want: >-
+      {{ {'version': iptv_threadfin_db_version} | combine(iptv_settings_now)
+         | combine(iptv_settings_managed, {'files': {
+           'hdhr': {},
+           'm3u': {'Mkannada': (iptv_settings_now.files.m3u.Mkannada | default({}))
+                               | combine(iptv_files_managed.m3u.Mkannada)},
+           'xmltv': {'Xkannada': (iptv_settings_now.files.xmltv.Xkannada | default({}))
+                                 | combine(iptv_files_managed.xmltv.Xkannada)}}}) }}
+
+# Threadfin's login hash is HMAC-SHA256 keyed with the secret over a fixed string (no
+# salt), base64. Computed on the VM so the password never lands in a controller log.
+- name: Hash the Threadfin login (on the VM)
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import base64, hashlib, hmac, json, sys
+        d = json.load(sys.stdin)
+        h = lambda s: base64.b64encode(hmac.new(s.encode(), b"_remote_db", hashlib.sha256).digest()).decode()
+        print(json.dumps({"u": h(d["u"]), "p": h(d["p"])}))
+    stdin: "{{ {'u': iptv_admin_user, 'p': iptv_admin_password} | to_json }}"
+  register: iptv_login_hash
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when: iptv_have_secrets | bool
+
+- name: Login database to keep (one user, web UI only)
+  ansible.builtin.set_fact:
+    iptv_auth_want:
+      dbVersion: "1.0"
+      hash: sha256
+      users:
+        id-ANVILADMIN:
+          _id: id-ANVILADMIN
+          _salt: anvil
+          _username: "{{ (iptv_login_hash.stdout | from_json).u }}"
+          _password: "{{ (iptv_login_hash.stdout | from_json).p }}"
+          data:
+            username: "{{ iptv_admin_user }}"
+            defaultUser: true
+            authentication.web: true
+            authentication.pms: false
+            authentication.m3u: false
+            authentication.xml: false
+            authentication.api: false
+  no_log: true
+  when: iptv_have_secrets | bool
+
+- name: Threadfin settings
+  ansible.builtin.copy:
+    content: "{{ iptv_settings_want | to_nice_json(indent=2) }}\n"
+    dest: "{{ iptv_dir }}/threadfin/settings.json"
+    owner: "{{ iptv_uid }}"
+    group: "{{ iptv_uid }}"
+    mode: "0600"
+  when: iptv_settings_want != iptv_settings_now
+
+- name: Threadfin login database
+  ansible.builtin.copy:
+    content: "{{ iptv_auth_want | to_nice_json(indent=2) }}\n"
+    dest: "{{ iptv_dir }}/threadfin/authentication.json"
+    owner: "{{ iptv_uid }}"
+    group: "{{ iptv_uid }}"
+    mode: "0600"
+  no_log: true
+  diff: false
+  when: iptv_have_secrets | bool and iptv_auth_want != iptv_auth_now
+
+- name: Source playlist (stream links on the forwarded address)
+  ansible.builtin.copy:
+    content: "{{ iptv_m3u_want }}"
+    dest: "{{ iptv_dir }}/sources/kannada.m3u"
+    owner: root
+    group: root
+    mode: "0644"
+
+# Into the compose file: a change to any of the three recreates Threadfin.
+- name: Digest of Threadfin's managed config
+  ansible.builtin.set_fact:
+    iptv_threadfin_config_digest: >-
+      {{ ((iptv_settings_managed | combine({'files': iptv_files_managed}) | to_json(sort_keys=true))
+          ~ (iptv_auth_want | default('check mode: no password yet') | to_json(sort_keys=true))
+          ~ iptv_m3u_want) | hash('sha256') }}
+  no_log: true
+
+# --- compose -----------------------------------------------------------------------------------
+- name: IPTV compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ iptv_dir }}"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+
+- name: The stream helper answers
+  ansible.builtin.uri:
+    url: "http://{{ iptv_bind_ip }}:{{ iptv_streams_port }}/health"
+  register: iptv_streams_health
+  retries: 20
+  delay: 3
+  until: iptv_streams_health.status == 200
+  when: not ansible_check_mode
+
+- name: Threadfin serves the whole lineup
+  ansible.builtin.uri:
+    url: "http://{{ iptv_bind_ip }}:{{ iptv_threadfin_port }}/m3u/threadfin.m3u"
+    return_content: true
+  register: iptv_playlist
+  retries: 20
+  delay: 3
+  until: >-
+    iptv_playlist.status == 200
+    and iptv_playlist.content | regex_findall('(?m)^#EXTINF') | length == iptv_lineup | length
+  when: not ansible_check_mode

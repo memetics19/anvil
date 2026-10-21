@@ -1,0 +1,17 @@
+#!/bin/sh
+# Managed by anvil (ansible/roles/iptv). Writes the IPTV guide for the iptv_epg nginx.
+# The grabber container has no mounts: it prints XMLTV, and this script replaces the
+# served file only with a complete, parseable result.
+set -eu
+out="{{ iptv_guide_dir }}/{{ iptv_guide_file }}"
+tmp=$(mktemp "$out.XXXXXX")
+trap 'rm -f "$tmp"' EXIT
+docker run --rm --name iptv-epg-grab \
+  --memory {{ iptv_epg_mem_limit }} --memory-swap {{ iptv_epg_mem_limit }} \
+  --read-only --cap-drop ALL --security-opt no-new-privileges \
+  --env IPTV_EPG_CHANNELS='{{ iptv_epg_channels | to_json }}' \
+  {{ iptv_streams_image }} /app/epg.py >"$tmp"
+python3 -c 'import sys, xml.etree.ElementTree as E; r = E.parse(sys.argv[1]).getroot(); sys.exit(r.tag != "tv" or not r.findall("channel"))' "$tmp"
+chmod 0644 "$tmp"
+mv -f "$tmp" "$out"
+trap - EXIT

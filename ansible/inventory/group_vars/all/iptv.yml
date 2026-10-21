@@ -1,0 +1,8 @@
+# IPTV (ansible/roles/iptv) runs on this host. pve_network forwards these two ports from
+# the Proxmox host's home-network (uplink) address to it, so home devices reach IPTV
+# without router changes. Nothing else is forwarded.
+iptv_host: ragnarok
+# Threadfin: playlist (/m3u/threadfin.m3u), guide (/xmltv/threadfin.xml), web UI.
+iptv_threadfin_port: 34400
+# Stream helper: one path per channel, streamlink on demand.
+iptv_streams_port: 34401

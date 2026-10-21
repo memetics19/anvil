@@ -1,0 +1,11 @@
+# Managed by anvil (ansible/roles/iptv).
+[Unit]
+Description=Refresh the IPTV guide
+
+[Timer]
+OnCalendar={{ iptv_epg_on_calendar }}
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

@@ -8,3 +8,6 @@ pve_network_rollback_after: 120
 # uplink gateway: a change that keeps the gateway reachable but cuts off the controller must
 # still roll back.
 pve_network_rollback_target: ""
+# The interfaces template also forwards the IPTV ports (inventory/group_vars/all/iptv.yml)
+# from the uplink address to the IPTV host, so home devices reach it without router
+# changes. The post-up lines check before adding, because ifreload runs post-up again.

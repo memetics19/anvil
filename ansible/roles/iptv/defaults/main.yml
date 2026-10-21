@@ -1,0 +1,54 @@
+# Kannada IPTV on ragnarok: compose project "iptv" in /opt/iptv with Threadfin (playlist
+# and guide) and a streamlink helper (streams on demand), plus a systemd timer that
+# refreshes the guide the iptv_epg nginx serves. The lineup is iptv/channels.yml in this
+# repo; there is no variable for other channels. Ports (shared with pve_network) are in
+# inventory/group_vars/all/iptv.yml.
+iptv_dir: /opt/iptv
+iptv_lineup_file: "{{ playbook_dir }}/../../iptv/channels.yml"
+# Threadfin and the helper run as this host user (created by the role), not as root and
+# not as the VM's first user (owner of the media library).
+iptv_uid: 10002
+# Published on the VM's LAN address only; home devices come in through the forward on pve.
+iptv_bind_ip: "{{ site.hosts[inventory_hostname].ip }}"
+# Address stream and guide links in the playlist are built from: the Proxmox host's
+# home-network address, forwarded to this VM.
+iptv_public_ip: "{{ site.pve.uplink_ip }}"
+
+# Threadfin 1.2.37 (2025-09-11), multi-arch digest, and its settings database version
+# (written only into a new settings file).
+iptv_threadfin_image: fyb3roptik/threadfin:1.2.37@sha256:96122ab220e14b881cbd40d7f8c7b022e1f9c6ecfe05aca2ab801e0321dc0d61
+iptv_threadfin_db_version: "0.5.0"
+# Base of the helper image, built on the VM (3.12.14-slim-bookworm, 2026-09-19).
+iptv_python_image: python:3.12.14-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e
+iptv_streamlink_version: 8.6.2
+# Tag of the locally built helper image: changes with the Dockerfile (base image,
+# streamlink, uid) and the scripts.
+iptv_streams_image: >-
+  anvil/iptv-streams:{{ iptv_streamlink_version }}-{{ ((lookup('ansible.builtin.template', 'Dockerfile.j2')
+  ~ lookup('ansible.builtin.file', 'streams/server.py') ~ lookup('ansible.builtin.file', 'streams/epg.py'))
+  | hash('sha256'))[:12] }}
+
+# Hard caps, swap included. Total 296 MB: the helper holds at most iptv_max_streams
+# streamlink processes (about 60 MB each); the grabber runs for seconds twice a day.
+iptv_threadfin_mem_limit: 64m
+iptv_streams_mem_limit: 192m
+iptv_epg_mem_limit: 40m
+iptv_max_streams: 2
+# Seconds the helper waits for the first bytes of a stream (and tolerates a stall).
+iptv_start_timeout: 25
+
+# The guide: written into the directory the iptv_epg nginx serves, read by Threadfin.
+iptv_guide_dir: "{{ iptv_epg_dir }}/output"
+iptv_guide_file: guide.xml
+iptv_guide_url: "http://{{ iptv_bind_ip }}:{{ iptv_epg_port }}/{{ iptv_guide_file }}"
+# Grabber runs (local time) and the Threadfin refreshes 30 minutes later (HHMM, local).
+iptv_epg_on_calendar: "*-*-* 03,15:30:00"
+iptv_threadfin_update: ["0400", "1600"]
+iptv_timezone: Asia/Kolkata
+
+# Threadfin web UI login (user below, admin_password generated into Vault by the role).
+# The playlist and guide URLs need no login.
+iptv_admin_user: admin
+iptv_vault_mount: kv
+iptv_vault_path: "homelab/{{ inventory_hostname }}/threadfin"
+iptv_repo_scripts: "{{ playbook_dir }}/../../scripts"

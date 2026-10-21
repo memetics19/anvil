@@ -1,0 +1,50 @@
+# Managed by anvil (ansible/roles/iptv); changes here are overwritten on the next run.
+services:
+  threadfin:
+    image: {{ iptv_threadfin_image }}
+    container_name: iptv-threadfin
+    restart: unless-stopped
+    ports:
+      - "{{ iptv_bind_ip }}:{{ iptv_threadfin_port }}:{{ iptv_threadfin_port }}"
+    environment:
+      THREADFIN_PORT: "{{ iptv_threadfin_port }}"
+      TZ: {{ iptv_timezone }}
+      # Digest of the settings, login and source playlist the role wrote: a change
+      # recreates the container, and Threadfin reads them at start.
+      ANVIL_CONFIG: "{{ iptv_threadfin_config_digest }}"
+    user: "{{ iptv_uid }}:{{ iptv_uid }}"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    volumes:
+      - ./threadfin:/home/threadfin/conf
+      - ./sources:/home/threadfin/sources:ro
+    mem_limit: {{ iptv_threadfin_mem_limit }}
+    memswap_limit: {{ iptv_threadfin_mem_limit }}
+
+  streams:
+    image: {{ iptv_streams_image }}
+    container_name: iptv-streams
+    restart: unless-stopped
+    init: true
+    ports:
+      - "{{ iptv_bind_ip }}:{{ iptv_streams_port }}:{{ iptv_streams_port }}"
+    environment:
+      IPTV_CHANNELS: '{{ iptv_stream_sources | to_json }}'
+      IPTV_PORT: "{{ iptv_streams_port }}"
+      IPTV_MAX_STREAMS: "{{ iptv_max_streams }}"
+      IPTV_START_TIMEOUT: "{{ iptv_start_timeout }}"
+      HOME: /tmp
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    mem_limit: {{ iptv_streams_mem_limit }}
+    memswap_limit: {{ iptv_streams_mem_limit }}

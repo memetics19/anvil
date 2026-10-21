@@ -1,0 +1,55 @@
+# Kannada IPTV lineup served by ragnarok (ansible/roles/iptv). Official free sources only:
+# each channel is the broadcaster's own verified YouTube channel, resolved to its current
+# live stream on demand by streamlink. The role accepts nothing else (it checks every
+# source against the YouTube channel /live URL form) and has no variable for extra
+# channels.
+#
+# Not included:
+#   - Paid channels (Zee Kannada, Colors Kannada, Udaya and the rest): subscription/DRM.
+#   - Third-party restreams (iptv-org playlists and the like) of any channel.
+#   - Kasturi News 24: no verifiable official source (no verified YouTube channel, the
+#     broadcaster's website does not answer; checked 2026-10-21).
+#
+# Fields:
+#   id        stream path and XMLTV channel id
+#   name      display name
+#   number    channel number in the playlist
+#   source    https://www.youtube.com/channel/<channel id>/live (the channel id, not a
+#             handle or a video id, so it follows the channel's current live stream)
+#   verified  how the source was checked (date, handle, badge)
+#   dishtv    channel id in Dish TV's public programme guide (the EPG grabber's source);
+#             omit for a placeholder guide entry
+channels:
+  - id: publictv
+    name: Public TV
+    number: 1
+    source: https://www.youtube.com/channel/UCl-OodciBGZ0k8K8rBZGe4w/live
+    verified: "2026-10-21: @PublicTV, verified badge, 6.5M subscribers, 'official channel of Public TV Kannada news channel'"
+    dishtv: "143688"
+  - id: tv9kannada
+    name: TV9 Kannada
+    number: 2
+    source: https://www.youtube.com/channel/UC8dnBi4WUErqYQHZ4PfsLTg/live
+    verified: "2026-10-21: @tv9kannada, verified badge, 12.3M subscribers"
+    dishtv: "144029"
+  - id: suvarnanews
+    name: Asianet Suvarna News
+    number: 3
+    source: https://www.youtube.com/channel/UCjElJyiXmQXnWmceQ1JyKrA/live
+    verified: "2026-10-21: @AsianetSuvarnaNews, verified badge, 5.66M subscribers"
+    dishtv: "142682"
+  - id: news18kannada
+    name: News18 Kannada
+    number: 4
+    source: https://www.youtube.com/channel/UCa-vioGhe2btBcZneaPonKA/live
+    verified: "2026-10-21: @News18Kannada, verified badge, 5.42M subscribers"
+    dishtv: "143612"
+  # Prasar Bharati publishes no 24x7 DD Chandana stream (prasarbharati.gov.in/live-tv
+  # embeds other DD channels only). This is Doordarshan Kendra Bengaluru's own verified
+  # channel; it is live during news bulletins and events, not around the clock.
+  - id: ddchandana
+    name: DD Chandana
+    number: 5
+    source: https://www.youtube.com/channel/UCbdMik2cV8pea1jcWdX_CYA/live
+    verified: "2026-10-21: @DoordarshanChandana, verified badge, 1.5M subscribers, 'Official YouTube Channel of DD Chandana, Doordarshan Kendra, Bengaluru'"
+    dishtv: "142781"

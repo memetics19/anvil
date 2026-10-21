@@ -1,0 +1,5 @@
+#EXTM3U
+{% for c in iptv_lineup %}
+#EXTINF:-1 tvg-id="{{ c.id }}" tvg-name="{{ c.name }}" tvg-chno="{{ c.number }}" group-title="Kannada",{{ c.name }}
+http://{{ iptv_public_ip }}:{{ iptv_streams_port }}/{{ c.id }}
+{% endfor %}

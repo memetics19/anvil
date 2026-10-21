@@ -75,6 +75,8 @@
         owner: root
         group: root
       register: pve_network_backup
+      # Check mode: the backup directory may not exist yet, and nothing is armed below.
+      when: not ansible_check_mode
 
     # A unit left over from an earlier run (still armed, failed or finished) would make
     # systemd-run refuse the name.
@@ -103,6 +105,7 @@
           - "{{ pve_network_target }}"
       changed_when: true
       no_log: true  # the command line holds the controller address
+      when: not ansible_check_mode
 
     - name: Write, reload and confirm
       block:

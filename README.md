@@ -22,7 +22,7 @@ Work in progress. See [Roadmap](#roadmap).
 | `pve`      | Proxmox VE 8.4, LAN gateway/NAT, NetBird, Ceph                |
 | `frigate`  | Frigate, Mosquitto, Gotify, nginx, cloudflared                |
 | `netbird`  | NetBird routing peer, Redis, ntfy, pulse, cloudflared         |
-| `ragnarok` | ARR stack, IPTV EPG web, Filestash (S3 browser), cloudflared  |
+| `ragnarok` | ARR stack, IPTV, Filestash (S3 browser), cloudflared          |
 | `vault`    | HashiCorp Vault (planned)                                     |
 
 ## Requirements
@@ -81,7 +81,7 @@ make host ARGS="--check --diff"   # dry run against the Proxmox host
 make host
 make ceph ARGS="--check --diff"   # see below before the first real run
 make vms ARGS="--check --diff"    # guest roles and workloads (tags: base, docker, cloudflared,
-                                  #   node_exporter, frigate, arr, iptv_epg, filestash)
+                                  #   node_exporter, frigate, arr, iptv_epg, filestash, iptv)
 make vm HOST=frigate              # one VM at a time
 make lint
 make secrets-scan
@@ -126,7 +126,7 @@ The public hostname reaches Frigate through nginx on the VM, and Frigate's own l
 
 ## ragnarok
 
-`make vm HOST=ragnarok` runs three compose projects, each through the `compose_project`
+`make vm HOST=ragnarok` runs four compose projects, each through the `compose_project`
 role. It compares the config hash compose stores on each container with the hash of the
 rendered file and brings up only the services that differ (`up -d --no-deps`). Check mode
 names them. It never runs `down` or removes anything. It reports containers that are not in
@@ -139,8 +139,9 @@ that could reach the media library.
   FlareSolverr, Radarr, Sonarr). The apps keep their own settings and API keys in
   `./<app>/config`, which is not templated. The media library appears only as bind-mount
   sources in the template, and `tests/test_media_untouched.sh` keeps it that way.
-- `iptv_epg`: nginx on port 8899 serving `/home/ubuntu/iptv-epg/output`. Nothing fills
-  that directory, so the site returns 403.
+- `iptv_epg`: nginx on port 8899 serving `/home/ubuntu/iptv-epg/output`, where the `iptv`
+  role's guide grabber writes `guide.xml`.
+- `iptv`: Kannada IPTV, see [IPTV](#iptv).
 - `filestash`: a read-only browser for the S3 gateway at `http://<ragnarok>:8334/`, bound
   to the VM's LAN address, with a 256 MB memory cap and no swap.
   - It runs as its own host user (uid 10001, not the VM's first user, who owns the media),
@@ -157,6 +158,48 @@ that could reach the media library.
   - Filestash rewrites its `config.json` at start, so the role manages only its own keys
     in it. Changes made in the admin console to the login, connections or sharing are
     overwritten.
+
+## IPTV
+
+Free Kannada channels for the TV, from the broadcasters' own official sources only:
+Public TV, TV9 Kannada, Asianet Suvarna News, News18 Kannada and DD Chandana, each from
+its verified YouTube channel. Paid channels (Zee Kannada, Colors Kannada, Udaya and the
+rest) are not included, and neither are third-party restreams. The lineup is
+[`iptv/channels.yml`](iptv/channels.yml); the role takes no other channels, and
+`tests/test_iptv_lineup.sh` checks the file. A channel plays only while its broadcaster
+is live on YouTube (DD Chandana during bulletins); otherwise the player shows an error.
+
+`make vm HOST=ragnarok ARGS="--tags iptv"` runs, on `ragnarok`, in `/opt/iptv`:
+
+- Threadfin (port 34400): the playlist and the guide. Its web UI asks for user `admin`
+  and `admin_password` from Vault `kv/homelab/ragnarok/threadfin`; the role owns its
+  sources and settings, so changes made in the UI are overwritten on the next run.
+- A stream helper (port 34401): on request it runs streamlink for that channel's live
+  stream and relays it. Nothing streams while nobody watches; at most two streams at once.
+- A guide grabber (systemd timer `iptv-epg-grab`, 03:30 and 15:30): today's and
+  tomorrow's programmes from Dish TV's public guide into `iptv-epg`'s `guide.xml`, which
+  Threadfin serves. A channel without guide data gets a "<name> Live" placeholder.
+
+Memory caps: 64 + 192 MB, and 40 MB for the grabber while it runs.
+
+Home devices reach it without router changes: `make host-network` forwards ports 34400
+and 34401 (and nothing else) from the Proxmox host's home-network address to `ragnarok`
+(DNAT and a forward rule in `/etc/network/interfaces`). Playlist links use that address,
+so they work from home Wi-Fi. Devices on the lab network itself cannot use these links
+(the replies bypass the forward); NetBird clients that route the home network can.
+
+- Playlist: `http://<proxmox-home-address>:34400/m3u/threadfin.m3u`
+- Guide (XMLTV): `http://<proxmox-home-address>:34400/xmltv/threadfin.xml`
+
+Fire TV:
+
+1. Install TiviMate: install Downloader from the Amazon Appstore, enable it under
+   Settings > My Fire TV > Developer options > Install unknown apps, and download the
+   TiviMate APK from its official site with it. Or install VLC for Fire from the Appstore.
+2. TiviMate: Add playlist > Enter URL > the playlist URL above. It picks up the guide URL
+   from the playlist; if not, Settings > EPG > Add EPG source > the guide URL.
+3. VLC: Browse > New favorite (or Stream) > the playlist URL. VLC shows the channels but
+   no guide.
 
 ## Ceph and the Terraform state bucket
 
@@ -282,7 +325,6 @@ history. [`.gitleaks.toml`](.gitleaks.toml) adds rules for:
 - Frigate's camera has not answered since 2026-01-13, so there are no new recordings.
 - Frigate's `genai` provider points at an Ollama address that does not answer.
 - `ragnarok` `/home` is 98% full
-- `ragnarok`'s IPTV EPG web serves an empty directory (403): no grabber fills it.
 
 ## License
 
