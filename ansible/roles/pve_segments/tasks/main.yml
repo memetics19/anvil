@@ -153,7 +153,8 @@
       # In check mode on a new host the unit is not there yet.
       when: not ansible_check_mode or pve_segments_live.stat.exists
 
-    # A changed [Install] section (RequiredBy=pve-guests.service) needs its links redone.
+    # A changed [Install] section needs its links redone (this also removed the
+    # RequiredBy=pve-guests.service an earlier version had).
     - name: Install the unit's links again after a unit change
       ansible.builtin.command:
         argv: [systemctl, reenable, segments-firewall.service]
@@ -184,16 +185,25 @@
     # Require it (a Requires= would stop every guest on a firewall restart).
     - name: The boot check is in place, without a stop-propagating dependency
       ansible.builtin.command:
-        argv: [systemctl, show, --property=Requires, --property=BindsTo, --property=PartOf,
-               --property=After, --property=ExecStartPre, pve-guests.service]
+        argv: [systemctl, show, --property=Requires, --property=Requisite, --property=BindsTo,
+               --property=PartOf, --property=After, --property=ExecStartPre, pve-guests.service]
       register: pve_segments_guests_deps
       changed_when: false
       check_mode: false
       failed_when: >-
         not ansible_check_mode
-        and (pve_segments_guests_deps.stdout is search('(Requires|BindsTo|PartOf)=[^\n]*segments-firewall')
+        and (pve_segments_guests_deps.stdout is search('(Requires|Requisite|BindsTo|PartOf)=[^\n]*segments-firewall')
              or pve_segments_guests_deps.stdout is not search('After=[^\n]*segments-firewall[.]service')
              or pve_segments_guests_deps.stdout is not search('ExecStartPre=[^\n]*nft list table inet ' ~ pve_segments_table))
+
+    - name: The firewall unit is tied to no guest unit either way
+      ansible.builtin.command:
+        argv: [systemctl, show, --property=PartOf, --property=BindsTo, --property=RequiredBy,
+               --property=RequisiteOf, --property=BoundBy, segments-firewall.service]
+      register: pve_segments_fw_deps
+      changed_when: false
+      check_mode: false
+      failed_when: pve_segments_fw_deps.stdout is search('pve-guests')
 
     - name: Apply the ruleset with timed rollback
       when: pve_segments_pending | bool and not ansible_check_mode
@@ -213,6 +223,8 @@
               f={{ (pve_segments_backup_dir ~ '/segments.nft.' ~ ansible_date_time.epoch) | quote }};
               if nft list table inet {{ pve_segments_table | quote }} >/dev/null 2>&1;
               then nft list table inet {{ pve_segments_table | quote }} >"$f"; else : >"$f"; fi;
+              if [ -f {{ (pve_segments_etc ~ '/segments.nft') | quote }} ];
+              then cp {{ (pve_segments_etc ~ '/segments.nft') | quote }} "$f.file"; else : >"$f.file"; fi;
               echo "$f"
             executable: /bin/bash
           register: pve_segments_backup
@@ -241,6 +253,10 @@
               - "0"
               - --table
               - "{{ pve_segments_table }}"
+              - --file
+              - "{{ pve_segments_backup.stdout | trim }}.file"
+              - --to
+              - "{{ pve_segments_etc }}/segments.nft"
               - --target
               - "{{ pve_segments_target }}"
           changed_when: true
@@ -291,7 +307,10 @@
             cmd: >-
               set -o pipefail;
               { printf 'table inet %s\ndelete table inet %s\n' {{ pve_segments_table | quote }} {{ pve_segments_table | quote }};
-              cat {{ pve_segments_backup.stdout | trim | quote }}; } | nft -f -
+              cat {{ pve_segments_backup.stdout | trim | quote }}; } | nft -f -;
+              s={{ (pve_segments_backup.stdout | trim ~ '.file') | quote }};
+              if [ -s "$s" ]; then cp "$s" {{ (pve_segments_etc ~ '/segments.nft') | quote }};
+              else rm -f {{ (pve_segments_etc ~ '/segments.nft') | quote }}; fi
             executable: /bin/bash
           changed_when: true
           when: pve_segments_backup.stdout is defined

@@ -109,6 +109,9 @@
     path: "{{ caddy_dir }}/caddy.env"
   register: caddy_env_stat
 
+- name: Caddy's own network (pinned subnet and bridge)
+  ansible.builtin.include_tasks: gateway_net.yml
+
 - name: Caddy compose project
   ansible.builtin.include_role:
     name: compose_project

@@ -33,7 +33,17 @@ services:
     memswap_limit: {{ caddy_mem_limit }}
 
 networks:
+{% if caddy_gateway_subnet | length > 0 %}
+  # Pinned (tasks/gateway_net.yml): the enclave guard matches this bridge and subnet.
+  gateway:
+    driver_opts:
+      com.docker.network.bridge.name: {{ caddy_gateway_bridge }}
+    ipam:
+      config:
+        - subnet: {{ caddy_gateway_subnet }}
+{% else %}
   gateway: {}
+{% endif %}
 {% for n in caddy_networks_joined | default(caddy_container_networks | list) %}
   {{ n }}:
     external: true

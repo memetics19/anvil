@@ -74,6 +74,7 @@ h=$tmp/retired-vault.hcl n=$tmp/retired-netplan.yaml
 check "retired: renders"                     '[ -s "$h" ]'
 check "retired: one listener"                '[ "$(grep -c "^listener \"tcp\"" "$h")" = 1 ] && ! grep -q 192.0.2.120 "$h"'
 check "retired: lab NIC kept with no address" 'grep -q "02:00:00:00:00:07" "$n" && ! grep -q 192.0.2.120 "$n" && grep -q "link-local: \[\]" "$n"'
+check "retired: lab NIC optional (boot does not wait)" 'grep -q "optional: true" "$n"'
 check "retired: netplan is YAML"             'yaml_ok "$n"'
 
 exit "$fail"

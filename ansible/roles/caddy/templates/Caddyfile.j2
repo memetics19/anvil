@@ -22,8 +22,10 @@
 	@{{ s.name }} host {{ s.fqdn }}
 	handle @{{ s.name }} {
 {% if s.name in caddy_admin_only_routes %}
-		# The operator's devices only; every other client gets 403.
+		# The operator's devices only; every other client gets 403, before anything else
+		# (a route block keeps this order; Caddy would otherwise run redir before respond).
 		@{{ s.name }}_denied not remote_ip {{ caddy_admin_sources | join(' ') }}
+		route {
 		respond @{{ s.name }}_denied 403
 {% endif %}
 {% if s.home is defined %}
@@ -52,6 +54,9 @@
 {% endif %}
 			}
 		}
+{% if s.name in caddy_admin_only_routes %}
+		}
+{% endif %}
 	}
 {% endfor %}
 

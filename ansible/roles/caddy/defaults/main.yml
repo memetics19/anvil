@@ -88,6 +88,13 @@ caddy_enclave_targets:
   - {host: vault, port: 8200}
   - {host: vaultwarden, port: 8080}
 caddy_enclave_guard_file: /etc/anvil/gateway-guard.nft
+# Caddy's own network is pinned (tasks/gateway_net.yml): its subnet from the site dict
+# (site.hosts.<gateway VM>.gateway_subnet, RFC 1918, /16../29, overlapping no other network)
+# and a fixed bridge name, so the guard can match both and no recreated or other network can
+# ever inherit the admitted addresses. A change recreates the network and Caddy once.
+caddy_gateway_network: caddy_gateway
+caddy_gateway_bridge: br-caddygw
+caddy_gateway_subnet: "{{ site.hosts[inventory_hostname].gateway_subnet | default('') }}"
 
 # DNS servers for the DNS-01 propagation check (public resolvers, so Pi-hole's split
 # horizon does not interfere): site.dns.acme_resolvers.

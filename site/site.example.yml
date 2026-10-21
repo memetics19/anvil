@@ -39,6 +39,9 @@ site:
       home_mac: "02:00:00:00:00:06"
       dns_subnet: 172.31.255.0/24
       dns_unbound_ip: 172.31.255.53
+      # Caddy's own Docker network (role caddy): RFC 1918, /16../29, overlapping nothing
+      # else; the gateway guard admits only this subnet on the bridge br-caddygw.
+      gateway_subnet: 172.31.254.0/28
   # The secrets enclave (Terraform sdn.tf, roles pve_enclave and pve_segments): a vnet with
   # no physical port; the Proxmox host is its gateway and does no NAT for it.
   sdn:
@@ -47,7 +50,9 @@ site:
   # (Vault, Vaultwarden) and use the gateway's pass and vault names; no VM ever is one.
   # admin_sources: the Mac's LAN addresses (/32s: home Wi-Fi, reserved in the router's DHCP;
   # USB LAN; Wi-Fi alias). admin_vpn_sources: the operator's NetBird peers (/32s).
-  # enclave.vpn_only: true admits the NetBird peers only (a home device could forge a LAN /32).
+  # enclave.vpn_only: true admits the NetBird peers only. A LAN /32 proves nothing: the lab and
+  # home networks share one L2 segment, so any VM or home device can take over the Mac's LAN
+  # addresses (ARP included) and finish a TCP connection as the Mac.
   admin_sources: [198.51.100.51/32, 192.0.2.30/32, 192.0.2.31/32]
   admin_vpn_sources: [100.64.0.7/32]
   enclave: {vpn_only: false}

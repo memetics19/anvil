@@ -6,7 +6,9 @@
 # name resolved to: a failed, empty or oversized answer leaves the set as it is (exit 1, so
 # the timer's unit shows the failure).
 # Usage: segments-set-refresh.sh <config>  (sourced: TABLE, SET,
-#   LOOKUP_HOST, RESOLVER, KEEP (nft timeout, e.g. 24h), MAX, and optionally EXPECT: a
+#   LOOKUP_HOST, RESOLVER, KEEP (nft timeout, e.g. 24h), MAX, SIZE (the set's size; when
+#   the answer would not fit next to the addresses kept from earlier answers, the set is
+#   replaced by the answer instead), and optionally EXPECT: a
 #   space-separated list of CIDRs the addresses must fall in, others are ignored)
 set -euo pipefail
 conf=${1:?usage: segments-set-refresh.sh <config>}
@@ -19,6 +21,8 @@ NFT=${NFT:-nft}
 DIG=${DIG:-dig}
 
 EXPECT=${EXPECT:-}
+SIZE=${SIZE:-64}
+[[ $SIZE =~ ^[0-9]+$ ]] || { echo "segments-set-refresh: bad SIZE" >&2; exit 2; }
 
 ip2int() { local a b c d; IFS=. read -r a b c d <<<"$1"; echo $(( (a << 24) + (b << 16) + (c << 8) + d )); }
 
@@ -85,6 +89,22 @@ fi
 # `add element` does not restart the timeout of an address already in the set: such an
 # address is deleted and added again, in the same transaction.
 present=$("$NFT" list set inet "$TABLE" "$SET" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || true)
+others=0
+while IFS= read -r p; do
+  [ -n "$p" ] || continue
+  printf '%s\n' "${addrs[@]}" | grep -qxF "$p" || others=$((others + 1))
+done <<<"$present"
+if [ $((others + ${#addrs[@]})) -gt "$SIZE" ]; then
+  # Full: the set becomes exactly this answer (in one transaction).
+  {
+    printf 'flush set inet %s %s\n' "$TABLE" "$SET"
+    for a in "${addrs[@]}"; do
+      printf 'add element inet %s %s { %s timeout %s }\n' "$TABLE" "$SET" "$a" "$KEEP"
+    done
+  } | "$NFT" -f -
+  echo "segments-set-refresh: set full; replaced by the ${#addrs[@]} current address(es)"
+  exit 0
+fi
 {
   for a in "${addrs[@]}"; do
     if printf '%s\n' "$present" | grep -qxF "$a"; then

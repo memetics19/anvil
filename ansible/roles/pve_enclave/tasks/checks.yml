@@ -4,7 +4,11 @@
       - pve_enclave_subnet is match('^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$')
       - pve_enclave_gateway is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
       - pve_enclave_admin_sources | length > 0
-      - pve_enclave_admin_sources | reject('match', '^([0-9]{1,3}\.){3}[0-9]{1,3}(/[0-9]{1,2})?$') | list | length == 0
+      # Single addresses only (a.b.c.d/32): an operator is one device, never a range.
+      - pve_enclave_admin_sources | reject('match', '^([0-9]{1,3}[.]){3}[0-9]{1,3}/32$') | list | length == 0
+      - >-
+        ((site.admin_sources | default([])) + (site.admin_vpn_sources | default([])))
+        | reject('match', '^([0-9]{1,3}[.]){3}[0-9]{1,3}/32$') | list | length == 0
       - site.hosts[pve_enclave_vault_host].ip | default('') is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
       - site.hosts[pve_enclave_gateway_host].ip | default('') is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
       - site.hosts[pve_enclave_dns_host].ip | default('') is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')

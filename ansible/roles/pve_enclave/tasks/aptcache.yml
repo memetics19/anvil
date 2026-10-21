@@ -18,7 +18,16 @@
     mode: "0644"
   register: pve_enclave_acng_conf
 
-# The report page can start maintenance jobs: it needs a login. The password is generated
+- name: Apt-cacher-ng
+  ansible.builtin.apt:
+    name: apt-cacher-ng
+    state: present
+    install_recommends: false
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+# After the package (it ships security.conf). The report page can start maintenance jobs:
+# it needs a login. The password is generated
 # straight into Vault (never displayed) and written only into security.conf (mode 640).
 - name: Apt cache admin password in Vault (digests only)
   ansible.builtin.command:
@@ -72,14 +81,6 @@
   no_log: true
   diff: false
   when: pve_enclave_acng_admin is defined
-
-- name: Apt-cacher-ng
-  ansible.builtin.apt:
-    name: apt-cacher-ng
-    state: present
-    install_recommends: false
-  environment:
-    DEBIAN_FRONTEND: noninteractive
 
 - name: Apt cache running
   ansible.builtin.systemd_service:

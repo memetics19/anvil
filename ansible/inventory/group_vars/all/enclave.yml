@@ -3,8 +3,9 @@
 # pve_enclave) and by the gateway's admin-only routes (role caddy, pass and vault).
 #   site.admin_sources      the Mac's LAN addresses (/32s: home Wi-Fi, USB LAN, Wi-Fi alias)
 #   site.admin_vpn_sources  the operator's NetBird peer addresses (/32s)
-#   site.enclave.vpn_only   true: NetBird peers only (a device on the home LAN could forge a
-#                           LAN /32; a NetBird address arrives only through WireGuard)
+#   site.enclave.vpn_only   true: NetBird peers only (any VM or home device on the shared L2
+#                           segment can take over a LAN /32, ARP included, and finish TCP as
+#                           it; a NetBird address arrives only through WireGuard)
 enclave_vpn_only: "{{ (site.enclave | default({})).vpn_only | default(false) | bool }}"
 enclave_admin_sources: >-
   {{ (site.admin_vpn_sources | default([]))

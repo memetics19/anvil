@@ -2,26 +2,32 @@
 # subnet of Caddy's network is read from Docker (the network is Caddy's alone; it keeps its
 # subnet while it exists). The ruleset is checked with nft -c before it is loaded; it only
 # drops traffic to the enclave, so it cannot cut DNS or this VM off.
-- name: Subnet of Caddy's network
-  ansible.builtin.command:
-    argv: [docker, network, inspect, --format, "{{ '{{' }}range .IPAM.Config{{ '}}{{' }}.Subnet{{ '}}{{' }}end{{ '}}' }}", caddy_gateway]
-  register: caddy_gateway_net
-  changed_when: false
-  check_mode: false
+- name: The guard needs Caddy's pinned network (site.hosts.<this VM>.gateway_subnet)
+  ansible.builtin.assert:
+    that: caddy_gateway_subnet | length > 0
+    fail_msg: "set site.hosts.{{ inventory_hostname }}.gateway_subnet: the guard admits only that pinned network"
+    quiet: true
 
-- name: Caddy's network is Caddy's alone, with one IPv4 subnet
+- name: Caddy's network has the pinned subnet and bridge and Caddy alone on it
   ansible.builtin.command:
-    argv: [docker, network, inspect, --format, "{{ '{{' }}range .Containers{{ '}}{{' }}.Name{{ '}} {{' }}end{{ '}}' }}", caddy_gateway]
-  register: caddy_gateway_members
+    argv:
+      - docker
+      - network
+      - inspect
+      - --format
+      - "{{ caddy_net_format }}"
+      - "{{ caddy_gateway_network }}"
+  vars:
+    caddy_net_format: >-
+      {{ '{{range .IPAM.Config}}{{.Subnet}}{{end}}|{{index .Options "com.docker.network.bridge.name"}}|'
+         ~ '{{range .Containers}}{{.Name}} {{end}}' }}
+  register: caddy_gateway_net_now
   changed_when: false
   check_mode: false
   failed_when: >-
-    caddy_gateway_members.stdout.split() | reject('equalto', 'caddy') | list | length > 0
-    or caddy_gateway_net.stdout | trim is not match('^([0-9]{1,3}[.]){3}[0-9]{1,3}/[0-9]{1,2}$')
-
-- name: Guard settings
-  ansible.builtin.set_fact:
-    caddy_gateway_subnet: "{{ caddy_gateway_net.stdout | trim }}"
+    not ansible_check_mode
+    and (caddy_gateway_net_now.stdout.split('|')[:2] != [caddy_gateway_subnet, caddy_gateway_bridge]
+         or (caddy_gateway_net_now.stdout.split('|')[2] | default('')).split() | reject('equalto', 'caddy') | list | length > 0)
 
 - name: Guard config directory
   ansible.builtin.file:

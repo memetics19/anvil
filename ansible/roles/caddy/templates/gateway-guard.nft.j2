@@ -1,6 +1,6 @@
 #!/usr/sbin/nft -f
 # Managed by Ansible (role caddy, tasks/enclave_guard.yml). Only Caddy's own network on this
-# VM may open connections to the secrets enclave, and only to Vault's and Vaultwarden's
+# VM (its pinned bridge and subnet) may open connections to the secrets enclave, and only to Vault's and Vaultwarden's
 # ports; other containers and the host itself reach nothing there. (The Proxmox host sees
 # every connection from this VM with the same address, so this is decided here.)
 table inet anvil_gateway_guard
@@ -12,7 +12,7 @@ table inet anvil_gateway_guard {
 		# Caddy's own connections
 		ct state established,related accept
 {% for t in caddy_enclave_targets if (site.hosts[t.host] | default({})).ip is defined %}
-		ip saddr {{ caddy_gateway_subnet }} ip daddr {{ site.hosts[t.host].ip }} tcp dport {{ t.port }} accept
+		iifname "{{ caddy_gateway_bridge }}" ip saddr {{ caddy_gateway_subnet }} ip daddr {{ site.hosts[t.host].ip }} tcp dport {{ t.port }} accept
 {% endfor %}
 		ip daddr {{ caddy_enclave_subnet }} counter drop
 	}

@@ -17,8 +17,9 @@ network:
         - {{ guest_base_lab_nic.ip }}/{{ guest_base_lab_nic.prefix }}
 {% else %}
       # Retired: kept under management with no address at all (its link is also down in
-      # Proxmox), so nothing is left configured on it.
+      # Proxmox), so nothing is left configured on it; optional, so boot never waits for it.
       link-local: []
+      optional: true
 {% endif %}
 {% endif %}
     enclave:

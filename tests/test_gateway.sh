@@ -31,13 +31,14 @@ run() {
     site:
       domain: example.com
       email: admin@example.com
-      admin_sources: [198.51.100.51/32, 192.0.2.31/32]
+      admin_sources: ${GW_ADMIN:-[198.51.100.51/32, 192.0.2.31/32]}
       admin_vpn_sources: [100.64.0.7/32]
+      enclave: {vpn_only: ${GW_VPN_ONLY:-false}}
       pve: {ip: 192.0.2.10, uplink_ip: 198.51.100.250, idrac_ip: 192.0.2.123}
       hosts:
         ragnarok: {ip: 192.0.2.119}
         vault: {ip: 192.0.2.120}
-        apps: {ip: 192.0.2.121, home_ip: 198.51.100.249}
+        apps: {ip: 192.0.2.121, home_ip: 198.51.100.249, gateway_subnet: 198.51.100.192/28}
       dns:
         local_records: [{name: vault, ref: hosts.vault.ip}]
         acme_resolvers: [198.51.100.53, 198.51.100.54]
@@ -192,6 +193,23 @@ reject "unknown CA"             '[{name: a, host: pve.ip, port: 1, scheme: https
 reject "insecure and a CA"      '[{name: a, host: pve.ip, port: 1, scheme: https, upstream_ca: vault, insecure_upstream: true}]'
 reject "bad host_header"        '[{name: a, host: pve.ip, port: 1, scheme: http, host_header: other}]'
 reject "bad subdomain"          '[{name: a, host: pve.ip, port: 1, scheme: http}]' '{subdomain: "In ternal"}'
+
+# Admin-only routes: the 403 comes first, inside a route block (kept in written order).
+good='[{name: vault, host: hosts.vault.ip, port: 8200, scheme: https, upstream_ca: vault, home: /ui/}]'
+run "$good"
+if awk '/handle @vault/{f=1} f&&/route \{/{r=1} f&&r&&/respond @vault_denied 403/{print "ok"; exit}' "$tmp/Caddyfile" | grep -q ok \
+   && [ "$(awk '/handle @vault/{f=1} f&&/respond @vault_denied/{print NR; exit}' "$tmp/Caddyfile")" -lt \
+        "$(awk '/handle @vault/{f=1} f&&/reverse_proxy/{print NR; exit}' "$tmp/Caddyfile")" ]
+then ok "vault: 403 first, in a route block"; else bad_ "vault: 403 ordering"; fi
+# Caddy's pinned network: fixed bridge name and the site subnet.
+if grep -q "com.docker.network.bridge.name: br-caddygw" "$tmp/compose.yaml" && grep -q "subnet: 198.51.100.192/28" "$tmp/compose.yaml"
+then ok "network: pinned bridge and subnet"; else bad_ "network: pinned bridge and subnet"; fi
+# vpn_only: the NetBird peers only.
+GW_VPN_ONLY=true run "$good"
+if grep -q "@vault_denied not remote_ip 100.64.0.7/32$" "$tmp/Caddyfile"; then ok "vpn_only: NetBird peers only"
+else bad_ "vpn_only: $(grep "_denied not remote_ip" "$tmp/Caddyfile")"; fi
+# An operator is one device: a wider prefix is refused.
+GW_ADMIN='[198.51.100.0/24]' reject "a range as an operator" "$good"
 
 [ "$fail" -eq 0 ] && echo "PASS: gateway routes and records"
 exit "$fail"

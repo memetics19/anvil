@@ -84,7 +84,7 @@ hasnt "no NAT for the enclave as a whole" "masquerade" "$f"
 has "only the mail hole is translated" "ip saddr 198.51.100.21 ip daddr @enclave_smtp_relay tcp dport 587 snat ip to 203.0.113.250" "$f"
 check "one source NAT rule" "$(grep -c 'snat ip to' "$f")" "1"
 hasnt "no Vault egress" "ip saddr 198.51.100.20 ip daddr" "$f"
-hasnt "no monitoring host, no monitoring rule" "dport 9100" "$f"
+hasnt "no monitoring rule" "dport 9100" "$f"
 
 # 2. Vaultwarden not created yet, SMTP off: its rules are left out, the set is plain.
 render "$tmp/novw.nft" '' false
@@ -99,9 +99,10 @@ render "$tmp/vpn.nft" 'vaultwarden: {ip: 198.51.100.21}' true true
 has "vpn_only: NetBird peers only" "elements = { 100.64.0.7/32 }" "$tmp/vpn.nft"
 hasnt "vpn_only: no LAN /32" "203.0.113.51/32" "$tmp/vpn.nft"
 
-# 3. A monitoring host gets node_exporter and Vault metrics.
+# 3. No VM is admitted, a monitoring VM included (its address is only in not_admin).
 render "$tmp/mon.nft" 'monitoring: {ip: 192.0.2.130}' true
-has "monitoring: node_exporter" "ip saddr 192.0.2.130 ip daddr { 198.51.100.20 } tcp dport 9100 accept" "$tmp/mon.nft"
+hasnt "monitoring: no rule admits it" "ip saddr 192.0.2.130" "$tmp/mon.nft"
+has "monitoring: its address is not an operator" "192.0.2.130" "$tmp/mon.nft"
 
 # 4. A second segment with NAT (the shape Task 13e uses).
 cat >"$tmp/vlan.yml" <<'PLAY'
@@ -194,6 +195,14 @@ check "refresh: EXPECT -> rc" "$?" "0"
 has "refresh: EXPECT keeps an address inside" "{ 8.8.8.8 timeout 24h }" "$tmp/nft-in"
 hasnt "refresh: EXPECT drops an address outside" "8.8.4.4" "$tmp/nft-in"
 
+# Full set: the answer replaces the set (never more than SIZE, nothing but the answer).
+: >"$tmp/nft-in"; printf 'elements = { 8.8.4.4 timeout 1d, 9.9.9.9 timeout 1d }\n' >"$tmp/present"; dig_answer 8.8.8.8
+{ cat "$tmp/set.conf"; echo 'SIZE=2'; } >"$tmp/set-full.conf"
+PATH="$tmp/bin:$PATH" bash "$refresh" "$tmp/set-full.conf" >/dev/null 2>&1
+check "refresh: full set -> rc" "$?" "0"
+check "refresh: full set -> replaced by the answer" "$(tr '\n' '|' <"$tmp/nft-in")" \
+  "flush set inet segments enclave_smtp_relay|add element inet segments enclave_smtp_relay { 8.8.8.8 timeout 24h }|"
+
 # 6. Firewall rollback script (stubbed ping/nft).
 rb=ansible/roles/pve_segments/files/segments-fw-rollback.sh
 printf '#!/bin/sh\ncat >>"%s/rb-in"\n' "$tmp" >"$tmp/bin/nft"; chmod +x "$tmp/bin/nft"
@@ -209,6 +218,13 @@ check "rollback with no previous table: table removed" "$(tr '\n' '|' <"$tmp/rb-
 printf '#!/bin/sh\nexit 0\n' >"$tmp/bin/ping"; : >"$tmp/rb-in"
 PATH="$tmp/bin:$PATH" bash "$rb" "$tmp/backup" --wait 0 --target 192.0.2.50 >/dev/null
 check "rollback reachable: nothing loaded" "$(wc -c <"$tmp/rb-in" | tr -d ' ')" "0"
+printf '#!/bin/sh\nexit 1\n' >"$tmp/bin/ping"; printf 'table inet segments { }\n' >"$tmp/backup"
+printf 'OLD\n' >"$tmp/saved"; printf 'NEW\n' >"$tmp/live.nft"
+PATH="$tmp/bin:$PATH" bash "$rb" "$tmp/backup" --wait 0 --target 192.0.2.50 --file "$tmp/saved" --to "$tmp/live.nft" >/dev/null
+check "rollback: the previous ruleset file comes back" "$(cat "$tmp/live.nft")" "OLD"
+: >"$tmp/saved"
+PATH="$tmp/bin:$PATH" bash "$rb" "$tmp/backup" --wait 0 --target 192.0.2.50 --file "$tmp/saved" --to "$tmp/live.nft" >/dev/null
+check "rollback: no previous file -> the file is removed" "$([ -e "$tmp/live.nft" ] && echo present || echo gone)" "gone"
 rc=0; PATH="$tmp/bin:$PATH" bash "$rb" "$tmp/backup" --wait 0 --target 192.0.2.50 --table 'x;y' >/dev/null 2>&1 || rc=$?
 check "rollback: bad table name refused" "$rc" "2"
 

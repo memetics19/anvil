@@ -45,11 +45,8 @@ pve_enclave_vaultwarden_host: vaultwarden
 pve_enclave_gateway_host: apps
 # Pi-hole (on apps): Vaultwarden's resolver, for the SMTP relay's name only.
 pve_enclave_dns_host: apps
-# Monitoring (Task 13f): site.hosts.<this>.ip, when present, may scrape both VMs.
-pve_enclave_monitoring_host: monitoring
 pve_enclave_vault_port: 8200
 pve_enclave_vaultwarden_port: 8080
-pve_enclave_node_exporter_port: 9100
 # Ceph RGW (Vaultwarden's backups), on the host's lab address.
 pve_enclave_rgw_port: 7480
 pve_enclave_aptcache_port: 3142
@@ -74,7 +71,6 @@ _pve_enclave_ip: >-
           | zip(site.hosts | dict2items | map(attribute='value') | map(attribute='ip', default=''))) }}
 _pve_enclave_vault: "{{ _pve_enclave_ip[pve_enclave_vault_host] | default('') }}"
 _pve_enclave_vw: "{{ _pve_enclave_ip[pve_enclave_vaultwarden_host] | default('') }}"
-_pve_enclave_mon: "{{ _pve_enclave_ip[pve_enclave_monitoring_host] | default('') }}"
 _pve_enclave_members: "{{ [_pve_enclave_vault, _pve_enclave_vw] | select | list }}"
 # Every address the site dict gives a host or the Proxmox host (ip, lab_ip, home_ip, and
 # the host's lab, gateway and uplink addresses).
@@ -124,15 +120,6 @@ pve_enclave_segment:
     - saddr: "@admin"
       daddr: "{{ _pve_enclave_members }}"
       proto: icmp
-    - comment: "monitoring: node_exporter on both VMs, Vault's metrics"
-      saddr: "{{ _pve_enclave_mon }}"
-      daddr: "{{ _pve_enclave_members }}"
-      proto: tcp
-      dport: "{{ pve_enclave_node_exporter_port }}"
-    - saddr: "{{ _pve_enclave_mon }}"
-      daddr: "{{ _pve_enclave_vault }}"
-      proto: tcp
-      dport: "{{ pve_enclave_vault_port }}"
   egress:
     - comment: "Vaultwarden: DNS to Pi-hole, SMTP to the relay (Vault: nothing)"
       saddr: "{{ _pve_enclave_vw }}"
