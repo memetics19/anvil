@@ -50,8 +50,7 @@ pre-commit install
 
 ## Configuration
 
-Nothing site-specific is committed: no addresses, MACs, domain, credentials or VM IDs.
-Code refers to hosts by name only. Ansible and Terraform read one `site` dict from:
+Ansible and Terraform read one `site` dict from:
 
 1. Vault, `kv/homelab/site`, when `VAULT_TOKEN` is set (`make site-to-vault` copies it
    there from the Keychain)

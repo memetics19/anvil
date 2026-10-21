@@ -86,9 +86,9 @@ command line. To replace an item, add `-U`.
 
 ## The site dict
 
-Nothing site-specific is committed. Addresses, MACs, VM IDs, the domain and the e-mail
-address live in one `site` dict. [`site/site.example.yml`](../site/site.example.yml) shows
-its structure with documentation addresses.
+Addresses, MACs, VM IDs, the domain and the e-mail address live in one `site` dict.
+[`site/site.example.yml`](../site/site.example.yml) shows its structure with documentation
+addresses.
 
 Ansible and Terraform read it from:
 
