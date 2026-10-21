@@ -1,0 +1,22 @@
+# Managed by Ansible (role vault_server).
+ui = true
+
+# Integrated storage (Raft) memory-maps its database, so HashiCorp recommends
+# disable_mlock with Raft; the role asserts that swap is off on this VM instead.
+disable_mlock = true
+
+api_addr     = "https://{{ vault_server_ip }}:{{ vault_server_port }}"
+cluster_addr = "https://{{ vault_server_ip }}:{{ vault_server_cluster_port }}"
+
+storage "raft" {
+  path    = "{{ vault_server_data_dir }}"
+  node_id = "{{ inventory_hostname }}"
+}
+
+listener "tcp" {
+  address         = "{{ vault_server_ip }}:{{ vault_server_port }}"
+  cluster_address = "{{ vault_server_ip }}:{{ vault_server_cluster_port }}"
+  tls_cert_file   = "{{ vault_server_tls_dir }}/vault.crt"
+  tls_key_file    = "{{ vault_server_tls_dir }}/vault.key"
+  tls_min_version = "tls12"
+}

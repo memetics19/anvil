@@ -1,0 +1,13 @@
+# Vault server (Raft, TLS from a small on-VM CA). Leaves Vault sealed and, on a new box,
+# uninitialised: the operator runs scripts/vault-init.sh once, then `make vault-unseal`.
+- name: Vault server
+  hosts: vault_servers
+  pre_tasks:
+    - name: Resolve the site dict once for this run
+      ansible.builtin.set_fact:
+        site: "{{ site_src }}"
+      run_once: true
+      no_log: true
+      tags: [always]
+  roles:
+    - vault_server

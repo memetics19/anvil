@@ -1,0 +1,23 @@
+# Pinned Vault package (HashiCorp apt repo). Bump deliberately; the package is held.
+vault_server_version: "2.2.0-1"
+# HashiCorp's apt signing key and its full fingerprint as gpg prints it (checked before the
+# repository is used; spaces are ignored).
+vault_server_apt_key_url: https://apt.releases.hashicorp.com/gpg
+vault_server_apt_key_fingerprint: "D55C 0D1A C78A 8D81 26CB  631C FC9C A96A CA02 6560"
+vault_server_apt_keyring: /usr/share/keyrings/hashicorp-archive-keyring.asc
+
+# Address comes from the site dict (never a literal in the repo).
+vault_server_ip: "{{ site.hosts.vault.ip }}"
+vault_server_port: 8200
+vault_server_cluster_port: 8201
+vault_server_data_dir: /opt/vault/data
+
+# TLS: a small CA (root-only) signs the listener certificate. SAN = vault IP + hostname.
+vault_server_ca_dir: /opt/vault/ca
+vault_server_tls_dir: /opt/vault/tls
+vault_server_ca_days: 3650
+vault_server_cert_days: 825
+# Reissue the listener certificate when it expires within this window.
+vault_server_cert_renew_days: 30
+# Where the (public) CA certificate lands on the Mac; scripts/env.sh sets VAULT_CACERT to it.
+vault_server_ca_local_path: "{{ lookup('env', 'HOME') }}/.config/homelab/vault-ca.pem"

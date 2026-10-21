@@ -1,4 +1,5 @@
 collections:
   - name: community.general
   - name: community.hashi_vault
+  - name: community.crypto
   - name: ansible.posix

@@ -1,0 +1,2 @@
+# Managed by Ansible (role vault_server).
+deb [arch={{ 'arm64' if ansible_facts['architecture'] == 'aarch64' else 'amd64' }} signed-by={{ vault_server_apt_keyring }}] https://apt.releases.hashicorp.com {{ ansible_facts['distribution_release'] }} main

@@ -2,7 +2,7 @@ SHELL := /bin/bash
 # lint and secrets-scan need no secrets (CI has no Keychain); only infra targets source env.sh.
 ENV := source scripts/env.sh
 
-.PHONY: lint secrets-scan bootstrap-ssh host host-network ceph tf-init tf-plan tf-apply
+.PHONY: lint secrets-scan bootstrap-ssh host host-network ceph vault vault-unseal backup tf-init tf-plan tf-apply
 
 lint:
 	@set -eu -o pipefail; \
@@ -40,6 +40,22 @@ host-network:
 ceph:
 	@set -eu -o pipefail; $(ENV); \
 	cd ansible && ansible-playbook playbooks/ceph.yml $(ARGS)
+
+# Vault server role. Leaves Vault sealed; a config change restarts (and so seals) it.
+# First time only, the operator runs scripts/vault-init.sh (it writes the Keychain).
+vault:
+	@set -eu -o pipefail; $(ENV); \
+	cd ansible && ansible-playbook playbooks/vault.yml $(ARGS)
+
+# Unseal with 3 of the 5 keys from Keychain item vault-init-json (keys never printed).
+vault-unseal:
+	@set -eu -o pipefail; $(ENV); \
+	scripts/vault-unseal.sh
+
+# Terraform state + Vault Raft snapshot into ~/homelab-backups (keeps the newest 30 of each).
+backup:
+	@set -eu -o pipefail; $(ENV); \
+	scripts/backup.sh
 
 # Terraform. The S3 backend endpoint is not committed: it is built from PVE_IP (Keychain).
 tf-init:

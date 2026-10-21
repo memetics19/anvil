@@ -1,0 +1,224 @@
+- name: Preconditions
+  tags: [always]
+  block:
+    # disable_mlock is only safe without swap (secrets could be paged to disk).
+    - name: Read active swap
+      ansible.builtin.command: swapon --noheadings --show=NAME
+      register: vault_server_swap
+      changed_when: false
+      check_mode: false
+
+    - name: Swap is off
+      ansible.builtin.assert:
+        that: vault_server_swap.stdout | trim | length == 0
+        fail_msg: Swap is active on the Vault VM; disable it (disable_mlock = true relies on that).
+        quiet: true
+
+- name: HashiCorp apt repository
+  tags: [repos]
+  block:
+    - name: HashiCorp signing key
+      ansible.builtin.get_url:
+        url: "{{ vault_server_apt_key_url }}"
+        dest: "{{ vault_server_apt_keyring }}"
+        mode: "0644"
+        owner: root
+        group: root
+
+    - name: Read the signing key fingerprints
+      ansible.builtin.command: gpg --show-keys --with-colons {{ vault_server_apt_keyring }}
+      register: vault_server_key_info
+      changed_when: false
+      check_mode: false
+
+    - name: Signing key has the expected fingerprint
+      ansible.builtin.assert:
+        that: vault_server_key_info.stdout is search('(?m)^fpr:+' ~ (vault_server_apt_key_fingerprint | replace(' ', '')) ~ ':')
+        fail_msg: "{{ vault_server_apt_keyring }} does not contain key {{ vault_server_apt_key_fingerprint }}; refusing to use the repository."
+        quiet: true
+
+    - name: HashiCorp repository
+      ansible.builtin.template:
+        src: hashicorp.list.j2
+        dest: /etc/apt/sources.list.d/hashicorp.list
+        mode: "0644"
+        owner: root
+        group: root
+      notify: Update apt cache
+
+    - name: Refresh apt cache before installing
+      ansible.builtin.meta: flush_handlers
+
+- name: Vault package
+  tags: [packages]
+  block:
+    - name: Install the pinned Vault version
+      ansible.builtin.apt:
+        name: "vault={{ vault_server_version }}"
+        state: present
+        allow_change_held_packages: true
+
+    - name: Hold the Vault package at the pinned version
+      ansible.builtin.dpkg_selections:
+        name: vault
+        selection: hold
+
+- name: Raft data directory
+  tags: [storage]
+  ansible.builtin.file:
+    path: "{{ vault_server_data_dir }}"
+    state: directory
+    owner: vault
+    group: vault
+    mode: "0700"
+
+- name: TLS
+  tags: [tls]
+  block:
+    - name: CA directory (root only)
+      ansible.builtin.file:
+        path: "{{ vault_server_ca_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Listener TLS directory
+      ansible.builtin.file:
+        path: "{{ vault_server_tls_dir }}"
+        state: directory
+        owner: vault
+        group: vault
+        mode: "0750"
+
+    - name: CA private key
+      community.crypto.openssl_privatekey:
+        path: "{{ vault_server_ca_dir }}/ca.key"
+        type: ECC
+        curve: secp384r1
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: CA signing request
+      community.crypto.openssl_csr_pipe:
+        privatekey_path: "{{ vault_server_ca_dir }}/ca.key"
+        common_name: homelab vault CA
+        use_common_name_for_san: false
+        basic_constraints: ["CA:TRUE", "pathlen:0"]
+        basic_constraints_critical: true
+        key_usage: [keyCertSign, cRLSign]
+        key_usage_critical: true
+      register: vault_server_ca_csr
+      changed_when: false
+
+    - name: CA certificate
+      community.crypto.x509_certificate:
+        path: "{{ vault_server_ca_dir }}/ca.crt"
+        csr_content: "{{ vault_server_ca_csr.csr }}"
+        privatekey_path: "{{ vault_server_ca_dir }}/ca.key"
+        provider: selfsigned
+        selfsigned_not_after: "+{{ vault_server_ca_days }}d"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload vault
+
+    - name: Listener private key
+      community.crypto.openssl_privatekey:
+        path: "{{ vault_server_tls_dir }}/vault.key"
+        type: ECC
+        curve: secp256r1
+        owner: vault
+        group: vault
+        mode: "0600"
+      notify: Reload vault
+
+    - name: Listener signing request
+      community.crypto.openssl_csr_pipe:
+        privatekey_path: "{{ vault_server_tls_dir }}/vault.key"
+        common_name: "{{ inventory_hostname }}"
+        subject_alt_name:
+          - "IP:{{ vault_server_ip }}"
+          - "DNS:{{ inventory_hostname }}"
+        basic_constraints: ["CA:FALSE"]
+        key_usage: [digitalSignature]
+        extended_key_usage: [serverAuth]
+      register: vault_server_csr
+      changed_when: false
+
+    - name: Check whether the listener certificate expires soon
+      community.crypto.x509_certificate_info:
+        path: "{{ vault_server_tls_dir }}/vault.crt"
+        valid_at:
+          renew: "+{{ vault_server_cert_renew_days }}d"
+      register: vault_server_cert_info
+      failed_when: false
+
+    - name: Listener certificate signed by the CA
+      community.crypto.x509_certificate:
+        path: "{{ vault_server_tls_dir }}/vault.crt"
+        csr_content: "{{ vault_server_csr.csr }}"
+        provider: ownca
+        ownca_path: "{{ vault_server_ca_dir }}/ca.crt"
+        ownca_privatekey_path: "{{ vault_server_ca_dir }}/ca.key"
+        ownca_not_after: "+{{ vault_server_cert_days }}d"
+        force: "{{ not (vault_server_cert_info.valid_at.renew | default(true)) }}"
+        owner: vault
+        group: vault
+        mode: "0644"
+      notify: Reload vault
+
+- name: Vault configuration
+  tags: [config]
+  ansible.builtin.template:
+    src: vault.hcl.j2
+    dest: /etc/vault.d/vault.hcl
+    owner: vault
+    group: vault
+    mode: "0640"
+  notify: Restart vault
+
+- name: Vault service
+  tags: [service]
+  block:
+    - name: Vault enabled and running
+      ansible.builtin.systemd_service:
+        name: vault
+        enabled: true
+        state: started
+
+    - name: Apply pending restarts
+      ansible.builtin.meta: flush_handlers
+
+    # 200 active, 429 standby, 472/473 DR/perf standby, 501 not initialised, 503 sealed.
+    - name: Vault API answers over TLS
+      ansible.builtin.uri:
+        url: "https://{{ vault_server_ip }}:{{ vault_server_port }}/v1/sys/health"
+        ca_path: "{{ vault_server_ca_dir }}/ca.crt"
+        status_code: [200, 429, 472, 473, 501, 503]
+      register: vault_server_health
+      retries: 10
+      delay: 3
+      until: vault_server_health.status in [200, 429, 472, 473, 501, 503]
+      changed_when: false
+      check_mode: false
+
+- name: CA certificate on the Mac
+  tags: [ca]
+  block:
+    - name: Local config directory
+      ansible.builtin.file:
+        path: "{{ vault_server_ca_local_path | dirname }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      become: false
+      run_once: true
+
+    - name: Fetch the CA certificate (public)
+      ansible.builtin.fetch:
+        src: "{{ vault_server_ca_dir }}/ca.crt"
+        dest: "{{ vault_server_ca_local_path }}"
+        flat: true
+      run_once: true
