@@ -283,6 +283,8 @@
                     (iptv_settings_now.files.m3u.Mkannada | default({})) | combine(iptv_files_managed.m3u.Mkannada)}),
            'xmltv': (iptv_settings_now.files.xmltv | default({})) | combine({'Xkannada':
                     (iptv_settings_now.files.xmltv.Xkannada | default({})) | combine(iptv_files_managed.xmltv.Xkannada)})}}) }}
+  # The settings may hold sources added by hand; their URLs stay out of the output.
+  no_log: true
 
 # A count only: their names and URLs are not read out or logged.
 - name: Sources the role does not manage
@@ -367,6 +369,9 @@
         owner: "{{ iptv_uid }}"
         group: "{{ iptv_uid }}"
         mode: "0600"
+      # No content or diff in the output: hand-added sources' URLs are in this file.
+      no_log: true
+      diff: false
       when: iptv_settings_want != iptv_settings_now
 
     - name: Threadfin login database
@@ -432,7 +437,9 @@
   when: not ansible_check_mode
 
 # Only the managed lineup is checked; hand-added channels may be in the playlist too.
-- name: Threadfin serves the whole lineup
+# The playlist may list hand-added channels: its content stays out of the output, and the
+# assert below says what is missing (managed channel names only).
+- name: Fetch Threadfin's playlist
   ansible.builtin.uri:
     url: "http://{{ iptv_bind_ip }}:{{ iptv_threadfin_port }}/m3u/threadfin.m3u"
     return_content: true
@@ -443,4 +450,22 @@
     iptv_playlist.status == 200
     and iptv_lineup | map(attribute='name') | map('regex_replace', '^(.*)$', 'tvg-name="\\1"')
         | reject('in', iptv_playlist.content) | list | length == 0
+  failed_when: false
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Threadfin serves the whole lineup
+  ansible.builtin.assert:
+    that:
+      - iptv_playlist.status | default(-1) == 200
+      - iptv_playlist_missing | length == 0
+    fail_msg: >-
+      Threadfin playlist: HTTP {{ iptv_playlist.status | default('no answer') }}; managed channels
+      missing: {{ iptv_playlist_missing | join(', ') or 'none' }}
+    quiet: true
+  vars:
+    iptv_playlist_missing: >-
+      {{ iptv_lineup | map(attribute='name')
+         | reject('in', (iptv_playlist.content | default('')) | regex_findall('tvg-name="([^"]*)"'))
+         | list }}
   when: not ansible_check_mode
