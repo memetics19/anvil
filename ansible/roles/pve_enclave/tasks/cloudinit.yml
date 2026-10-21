@@ -1,0 +1,16 @@
+# The vendor-data snippet the enclave's VMs boot with (storage local has snippets enabled).
+- name: Snippets directory
+  ansible.builtin.file:
+    path: "{{ pve_enclave_vendor_data | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Cloud-init vendor data for the enclave's VMs
+  ansible.builtin.template:
+    src: enclave-vendor.yaml.j2
+    dest: "{{ pve_enclave_vendor_data }}"
+    owner: root
+    group: root
+    mode: "0644"

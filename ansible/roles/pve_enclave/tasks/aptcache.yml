@@ -1,0 +1,60 @@
+# apt-cacher-ng for the enclave (see templates/acng.conf.j2). The config is written before
+# the package is installed (apt keeps an existing conffile), so it never listens anywhere
+# but the enclave gateway address.
+- name: Apt cache config directory
+  ansible.builtin.file:
+    path: "{{ pve_enclave_aptcache_conf | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Apt cache config (gateway address only, Debian and Ubuntu archives only)
+  ansible.builtin.template:
+    src: acng.conf.j2
+    dest: "{{ pve_enclave_aptcache_conf }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: pve_enclave_acng_conf
+
+- name: Apt-cacher-ng
+  ansible.builtin.apt:
+    name: apt-cacher-ng
+    state: present
+    install_recommends: false
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Apt cache running
+  ansible.builtin.systemd_service:
+    name: apt-cacher-ng
+    enabled: true
+    state: started
+  when: not ansible_check_mode
+
+# Without its own handler: restart only when the config changed in this run.
+- name: Restart the apt cache for a new config
+  ansible.builtin.systemd_service:
+    name: apt-cacher-ng
+    state: restarted
+  when: pve_enclave_acng_conf is changed and not ansible_check_mode
+
+- name: Listening sockets of the apt cache
+  ansible.builtin.shell:
+    cmd: set -o pipefail; ss -Hltnp | grep -F '"apt-cacher-ng"' | awk '{print $4}' | sort -u
+    executable: /bin/bash
+  register: pve_enclave_acng_listen
+  changed_when: false
+  check_mode: false
+  until: pve_enclave_acng_listen.stdout_lines | length > 0
+  retries: 5
+  delay: 2
+  when: not ansible_check_mode
+
+- name: The apt cache listens on the enclave gateway address only
+  ansible.builtin.assert:
+    that: pve_enclave_acng_listen.stdout_lines == [pve_enclave_gateway ~ ':' ~ pve_enclave_aptcache_port]
+    fail_msg: "apt-cacher-ng listens on {{ pve_enclave_acng_listen.stdout_lines | length }} socket(s) other than the enclave gateway address"
+    quiet: true
+  when: not ansible_check_mode

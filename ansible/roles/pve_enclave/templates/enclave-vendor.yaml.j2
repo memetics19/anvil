@@ -1,0 +1,16 @@
+#cloud-config
+# Managed by Ansible (role pve_enclave). Cloud-init vendor data for the secrets enclave's VMs
+# (Terraform vendor_data_file_id): they have no internet, so apt goes through the host's
+# apt cache and time comes from the host's chrony, from the first boot on. The guest agent
+# is installed at once (Proxmox reads the VM's addresses through it).
+apt:
+  proxy: http://{{ pve_enclave_gateway }}:{{ pve_enclave_aptcache_port }}
+ntp:
+  enabled: true
+  ntp_client: systemd-timesyncd
+  servers:
+    - {{ pve_enclave_gateway }}
+packages:
+  - qemu-guest-agent
+runcmd:
+  - [systemctl, start, qemu-guest-agent]

@@ -1,0 +1,20 @@
+# Managed by Ansible (role pve_enclave). apt-cacher-ng for the secrets enclave: the enclave's
+# one HTTP path out, for Debian and Ubuntu archives only. It listens on the enclave gateway
+# address only. ForceManaged: only requests for the repositories named in the Remap lines
+# below are served (no other host). PassThroughPattern matches nothing: no CONNECT tunnel to
+# any host (HTTPS repositories are not reachable through it). AllowUserPorts: port 80 only.
+CacheDir: /var/cache/apt-cacher-ng
+LogDir: /var/log/apt-cacher-ng
+SupportDir: /usr/lib/apt-cacher-ng
+BindAddress: {{ pve_enclave_gateway }}
+Port: {{ pve_enclave_aptcache_port }}
+Remap-debrep: file:deb_mirror*.gz /debian ; file:backends_debian # Debian Archives
+Remap-secdeb: security.debian.org security.debian.org/debian-security deb.debian.org/debian-security /debian-security cdn-fastly.deb.debian.org/debian-security ; deb.debian.org/debian-security security.debian.org cdn-fastly.deb.debian.org/debian-security
+Remap-uburep: file:ubuntu_mirrors /ubuntu archive.ubuntu.com/ubuntu ; file:backends_ubuntu # Ubuntu Archives
+Remap-ubusec: security.ubuntu.com/ubuntu ; security.ubuntu.com/ubuntu # Ubuntu security updates
+ForceManaged: 1
+PassThroughPattern: ^$
+AllowUserPorts: 80
+ReportPage: acng-report.html
+ExThreshold: 4
+FollowIndexFileRemoval: 1

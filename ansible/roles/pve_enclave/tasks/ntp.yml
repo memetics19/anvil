@@ -1,0 +1,40 @@
+# The host's chrony serves time to the enclave (TOTP and TLS need it): NTP requests are
+# answered on the gateway address only, and only for the enclave's subnet.
+- name: Chrony serves the enclave
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible (role pve_enclave): NTP for the secrets enclave.
+      allow {{ pve_enclave_subnet }}
+      bindaddress {{ pve_enclave_gateway }}
+    dest: "{{ pve_enclave_chrony_conf }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: pve_enclave_chrony
+
+- name: Restart chrony for the new config (the host's own sync continues)
+  ansible.builtin.systemd_service:
+    name: chrony
+    state: restarted
+  when: pve_enclave_chrony is changed and not ansible_check_mode
+
+- name: Chrony's NTP server socket
+  ansible.builtin.shell:
+    cmd: set -o pipefail; ss -Hlunp | grep -F '"chronyd"' | awk '{print $4}' | grep -v ':323$' | sort -u
+    executable: /bin/bash
+  register: pve_enclave_chrony_listen
+  changed_when: false
+  check_mode: false
+  until: pve_enclave_chrony_listen.stdout_lines | length > 0
+  retries: 5
+  delay: 2
+  when: not ansible_check_mode
+
+- name: Chrony answers NTP on the enclave gateway address only (IPv4)
+  ansible.builtin.assert:
+    that: >-
+      pve_enclave_chrony_listen.stdout_lines | select('match', '^[0-9.]+:') | list
+      == [pve_enclave_gateway ~ ':123']
+    fail_msg: chrony's IPv4 NTP socket is not bound to the enclave gateway address only
+    quiet: true
+  when: not ansible_check_mode

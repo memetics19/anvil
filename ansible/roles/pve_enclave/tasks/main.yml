@@ -44,3 +44,24 @@
     apply:
       tags: [sdn]
   tags: [sdn]
+
+- name: Apt cache for the enclave
+  ansible.builtin.include_tasks:
+    file: aptcache.yml
+    apply:
+      tags: [aptcache]
+  tags: [aptcache]
+
+- name: NTP for the enclave
+  ansible.builtin.include_tasks:
+    file: ntp.yml
+    apply:
+      tags: [ntp]
+  tags: [ntp]
+
+- name: Cloud-init vendor data for the enclave's VMs
+  ansible.builtin.include_tasks:
+    file: cloudinit.yml
+    apply:
+      tags: [cloudinit]
+  tags: [cloudinit]
