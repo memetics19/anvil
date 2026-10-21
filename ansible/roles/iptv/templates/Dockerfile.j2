@@ -2,6 +2,7 @@
 # The stream helper (server.py, with the web TV page in web/) and the EPG grabber
 # (epg.py) share this image.
 FROM {{ iptv_python_image }}
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir --disable-pip-version-check streamlink=={{ iptv_streamlink_version }}
 COPY server.py epg.py /app/
 COPY web/ /app/web/

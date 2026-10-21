@@ -6,10 +6,10 @@ at start; no request reaches the filesystem). GET /guide.json gives now/next for
 lineup channel (IPTV_LINEUP) from the XMLTV guide at IPTV_GUIDE, parsed again only when
 that file changes. Page, guide and streams share one origin, so the page needs no CORS.
 
-GET /<id> (or /<id>.ts) runs `streamlink --stdout <source> <quality>` for that channel and
-relays the MPEG-TS to the client until either side ends. Nothing runs while nobody
-watches. Channels come from IPTV_CHANNELS ({"id": "source URL"}), set by the role from
-iptv/channels.yml; any other path is a 404.
+GET /<id> (or /<id>.ts) relays MPEG-TS until either side ends. HLS sources are muxed with
+FFmpeg so separate audio renditions reach the client; other sources use Streamlink.
+Nothing runs while nobody watches. Channels come from IPTV_CHANNELS ({"id": "source URL"}),
+set by the role from iptv/channels.yml; any other path is a 404.
 
 Answers 503 when IPTV_MAX_STREAMS streams already run (the container is memory-capped)
 and 504 when streamlink produces no data within IPTV_START_TIMEOUT seconds (for example
@@ -391,9 +391,19 @@ class Handler(BaseHTTPRequestHandler):
         except (OSError, ValueError, urllib.error.URLError) as exc:
             log(f"{cid}: cannot resolve Threadfin stream: {exc}")
             return self._plain(502, "cannot resolve channel stream")
-        proc = subprocess.Popen(
+        hls = source.startswith("hls://")
+        if hls:
+            source = source[len("hls://"):]
+        hls = hls or urlsplit(source).path.lower().endswith(".m3u8")
+        command = (
+            ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-i", source,
+             "-map", "0:v:0?", "-map", "0:a:0?", "-c", "copy", "-f", "mpegts", "pipe:1"]
+            if hls else
             ["streamlink", "--stdout", "--loglevel", "warning", "--ringbuffer-size", "8M",
-             source, QUALITY],
+             source, QUALITY]
+        )
+        proc = subprocess.Popen(
+            command,
             stdout=subprocess.PIPE, stdin=subprocess.DEVNULL, start_new_session=True)
         fd = proc.stdout.fileno()
         sock = self.connection
