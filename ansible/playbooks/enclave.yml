@@ -1,0 +1,14 @@
+# The secrets enclave on the Proxmox host (role pve_enclave): its firewall, the SDN apply
+# (after Terraform created the zone and vnet), the apt cache, NTP and the cloud-init vendor
+# data its VMs use. Network changes go through timed rollbacks. Dry-run first:
+#   make enclave ARGS="--check"
+# Never in the same run as a netbird VM change.
+- name: Secrets enclave (Proxmox host)
+  hosts: proxmox
+  force_handlers: true
+  pre_tasks:
+    - name: Resolve the site dict once for this run
+      ansible.builtin.import_tasks: tasks/site.yml
+      tags: [always]
+  roles:
+    - pve_enclave

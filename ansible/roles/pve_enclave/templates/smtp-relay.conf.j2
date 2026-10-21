@@ -1,0 +1,6 @@
+# Managed by Ansible (role pve_enclave). Read by /usr/local/sbin/enclave-smtp-relay.
+# The relay's host name comes from Vault (Vaultwarden's SMTP settings); RESOLVER is Pi-hole.
+SMTP_HOST={{ pve_enclave_smtp_host | quote }}
+RESOLVER={{ site.hosts[pve_enclave_dns_host].ip | quote }}
+KEEP={{ pve_enclave_smtp_keep | quote }}
+MAX={{ pve_enclave_smtp_max | int }}

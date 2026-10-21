@@ -1,0 +1,24 @@
+# The controller's address as the host sees it (as in pve_network): the timed rollbacks
+# ping it and undo the change when it stops answering.
+- name: Read the controller address as the host sees it
+  ansible.builtin.command: printenv SSH_CLIENT
+  register: pve_enclave_ssh_client
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Pick the rollback ping target
+  ansible.builtin.set_fact:
+    pve_enclave_target: >-
+      {{ pve_enclave_rollback_target
+         or (pve_enclave_ssh_client.stdout | default('') | trim).split(' ')[0] }}
+  no_log: true
+
+- name: The rollback ping target is known
+  ansible.builtin.assert:
+    that: pve_enclave_target | length > 0
+    fail_msg: >-
+      Could not read the controller address (SSH_CLIENT) on {{ inventory_hostname }}; set
+      pve_enclave_rollback_target explicitly. No fallback.
+    quiet: true

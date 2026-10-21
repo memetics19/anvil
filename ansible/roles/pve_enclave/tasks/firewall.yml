@@ -1,0 +1,295 @@
+# The enclave's nftables table. The ruleset is rendered into a temporary directory and
+# checked with `nft -c` first; a change is shown with addresses masked, then applied under
+# a timed rollback (enclave-fw-rollback.sh puts the previous table back if the controller
+# stops answering).
+- name: Mail hole settings
+  ansible.builtin.include_tasks: smtp.yml
+
+- name: Firewall scripts
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "/usr/local/sbin/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - {src: enclave-fw-rollback.sh, dest: enclave-fw-rollback.sh}
+    - {src: enclave-smtp-relay.sh, dest: enclave-smtp-relay}
+
+- name: Enclave config directory
+  ansible.builtin.file:
+    path: "{{ pve_enclave_etc }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Stage, check and apply the ruleset
+  block:
+    - name: Staging directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: enclave-nft.
+      register: pve_enclave_stage
+      changed_when: false
+      check_mode: false
+
+    - name: Render the ruleset into the staging directory
+      ansible.builtin.template:
+        src: enclave.nft.j2
+        dest: "{{ pve_enclave_stage.path }}/enclave.nft"
+        owner: root
+        group: root
+        mode: "0644"
+      changed_when: false
+      check_mode: false
+
+    - name: The ruleset parses (nft -c, nothing loaded)
+      ansible.builtin.command:
+        argv: [nft, -c, -f, "{{ pve_enclave_stage.path }}/enclave.nft"]
+      changed_when: false
+      check_mode: false
+
+    - name: Staged ruleset
+      ansible.builtin.stat:
+        path: "{{ pve_enclave_stage.path }}/enclave.nft"
+      register: pve_enclave_nft_new
+
+    - name: Live ruleset file
+      ansible.builtin.stat:
+        path: "{{ pve_enclave_etc }}/enclave.nft"
+      register: pve_enclave_nft_live
+
+    - name: Is the table loaded
+      ansible.builtin.command:
+        argv: [nft, list, table, inet, enclave]
+      register: pve_enclave_nft_loaded
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Note whether the firewall would change
+      ansible.builtin.set_fact:
+        pve_enclave_fw_pending: >-
+          {{ not pve_enclave_nft_live.stat.exists
+             or pve_enclave_nft_live.stat.checksum != pve_enclave_nft_new.stat.checksum
+             or pve_enclave_nft_loaded.rc != 0 }}
+
+    - name: Ruleset change (addresses masked)
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          diff -u {{ (pve_enclave_etc ~ '/enclave.nft') | quote }} {{ (pve_enclave_stage.path ~ '/enclave.nft') | quote }}
+          | sed -E 's/[0-9]+(\.[0-9]+){3}(\/[0-9]+)?/<addr>/g' || true
+        executable: /bin/bash
+      register: pve_enclave_nft_diff
+      changed_when: false
+      check_mode: false
+      when: pve_enclave_fw_pending | bool and pve_enclave_nft_live.stat.exists
+
+    - name: Show the change
+      ansible.builtin.debug:
+        msg: >-
+          {{ pve_enclave_nft_diff.stdout_lines | default([]) if pve_enclave_nft_live.stat.exists
+             else 'new ruleset ' ~ pve_enclave_etc ~ '/enclave.nft (table inet enclave)' }}
+      changed_when: ansible_check_mode
+      when: pve_enclave_fw_pending | bool
+
+    - name: Boot unit for the table
+      ansible.builtin.template:
+        src: enclave-firewall.service.j2
+        dest: /etc/systemd/system/enclave-firewall.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload systemd
+
+    - name: Apply a pending systemd reload
+      ansible.builtin.meta: flush_handlers
+
+    - name: Load the table at boot
+      ansible.builtin.systemd_service:
+        name: enclave-firewall
+        enabled: true
+      # In check mode on a new host the unit is not there yet.
+      when: not ansible_check_mode or pve_enclave_nft_live.stat.exists
+
+    - name: Apply the ruleset with timed rollback
+      when: pve_enclave_fw_pending | bool and not ansible_check_mode
+      block:
+        - name: Backup directory
+          ansible.builtin.file:
+            path: "{{ pve_enclave_backup_dir }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0700"
+
+        - name: Back up the loaded table (empty file when there is none)
+          ansible.builtin.shell:
+            cmd: >-
+              set -o pipefail; umask 077;
+              f={{ (pve_enclave_backup_dir ~ '/enclave.nft.' ~ ansible_date_time.epoch) | quote }};
+              if nft list table inet enclave >/dev/null 2>&1; then nft list table inet enclave >"$f"; else : >"$f"; fi;
+              echo "$f"
+            executable: /bin/bash
+          register: pve_enclave_fw_backup
+          changed_when: true
+
+        - name: Stop a leftover rollback timer
+          ansible.builtin.systemd_service:
+            name: enclave-fw-rollback.timer
+            state: stopped
+          failed_when: false
+
+        - name: Clear a stale rollback unit
+          ansible.builtin.command: systemctl reset-failed enclave-fw-rollback.service enclave-fw-rollback.timer
+          changed_when: false
+          failed_when: false
+
+        - name: Arm the timed rollback
+          ansible.builtin.command:
+            argv:
+              - systemd-run
+              - --unit=enclave-fw-rollback
+              - --on-active={{ pve_enclave_rollback_after }}
+              - "{{ pve_enclave_fw_rollback_script }}"
+              - "{{ pve_enclave_fw_backup.stdout | trim }}"
+              - --wait
+              - "0"
+              - --target
+              - "{{ pve_enclave_target }}"
+          changed_when: true
+          no_log: true  # the command line holds the controller address
+
+        - name: Install the ruleset
+          ansible.builtin.copy:
+            src: "{{ pve_enclave_stage.path }}/enclave.nft"
+            dest: "{{ pve_enclave_etc }}/enclave.nft"
+            remote_src: true
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Load it (one transaction; the SMTP relay set starts empty)
+          ansible.builtin.systemd_service:
+            name: enclave-firewall
+            state: restarted
+          register: pve_enclave_fw_loaded
+
+        - name: Wait for the host to answer
+          ansible.builtin.wait_for_connection:
+            delay: 3
+            timeout: 30
+
+        - name: The table is loaded
+          ansible.builtin.command:
+            argv: [nft, list, table, inet, enclave]
+          changed_when: false
+          no_log: true
+
+        - name: Disarm the rollback
+          ansible.builtin.systemd_service:
+            name: enclave-fw-rollback.timer
+            state: stopped
+      rescue:
+        - name: Put the previous table back
+          ansible.builtin.shell:
+            cmd: >-
+              set -o pipefail;
+              { printf 'table inet enclave\ndelete table inet enclave\n'; cat {{ pve_enclave_fw_backup.stdout | trim | quote }}; } | nft -f -
+            executable: /bin/bash
+          changed_when: true
+          when: pve_enclave_fw_backup.stdout is defined
+
+        - name: Stop the rollback timer
+          ansible.builtin.systemd_service:
+            name: enclave-fw-rollback.timer
+            state: stopped
+          failed_when: false
+
+        - name: Fail after rolling back
+          ansible.builtin.fail:
+            msg: The enclave firewall change failed and the previous table was put back
+  always:
+    - name: Remove the staging directory
+      ansible.builtin.file:
+        path: "{{ pve_enclave_stage.path }}"
+        state: absent
+      changed_when: false
+      check_mode: false
+      when: pve_enclave_stage.path is defined
+
+# --- the mail hole: the SMTP relay set and its refresh timer ---------------------------------
+- name: SMTP relay settings for the refresh
+  ansible.builtin.template:
+    src: smtp-relay.conf.j2
+    dest: "{{ pve_enclave_etc }}/smtp-relay.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  register: pve_enclave_smtp_conf
+  when: pve_enclave_smtp_enabled | bool
+
+- name: SMTP relay refresh units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [enclave-smtp-relay.service, enclave-smtp-relay.timer]
+  register: pve_enclave_smtp_units
+  notify: Reload systemd
+  when: pve_enclave_smtp_enabled | bool
+
+- name: Apply a pending systemd reload
+  ansible.builtin.meta: flush_handlers
+
+- name: SMTP relay refresh timer
+  ansible.builtin.systemd_service:
+    name: enclave-smtp-relay.timer
+    enabled: true
+    state: started
+  when:
+    - pve_enclave_smtp_enabled | bool
+    - not (ansible_check_mode and pve_enclave_smtp_units is changed)
+
+- name: No SMTP login in Vault, no mail hole
+  ansible.builtin.systemd_service:
+    name: enclave-smtp-relay.timer
+    enabled: false
+    state: stopped
+  failed_when: false
+  when: not pve_enclave_smtp_enabled | bool
+
+- name: Addresses in the SMTP relay set
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      nft list set inet enclave smtp_relay | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | wc -l
+    executable: /bin/bash
+  register: pve_enclave_smtp_count
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Fill the SMTP relay set now (empty after a reload, or new settings)
+  ansible.builtin.systemd_service:
+    name: enclave-smtp-relay.service
+    state: started
+  when:
+    - pve_enclave_smtp_enabled | bool
+    - not ansible_check_mode
+    - (pve_enclave_smtp_count.stdout | default('0') | trim | int == 0) or pve_enclave_smtp_conf is changed
+
+- name: The SMTP relay set holds addresses
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      nft list set inet enclave smtp_relay | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | wc -l
+    executable: /bin/bash
+  register: pve_enclave_smtp_after
+  changed_when: false
+  failed_when: pve_enclave_smtp_after.stdout | trim | int == 0
+  when: pve_enclave_smtp_enabled | bool and not ansible_check_mode

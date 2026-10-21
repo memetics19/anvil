@@ -1,0 +1,18 @@
+# See defaults/main.yml. Order: the firewall first (its rules name the vnet's interface, so
+# they are in place before the bridge exists), then the SDN config, then the host services
+# the enclave may use.
+- name: Site values for the enclave
+  ansible.builtin.include_tasks: checks.yml
+  tags: [always]
+
+- name: Rollback target (the controller)
+  ansible.builtin.include_tasks: target.yml
+  tags: [firewall, sdn]
+
+- name: Firewall
+  ansible.builtin.include_tasks: firewall.yml
+  tags: [firewall]
+
+- name: SDN (the vnet and its gateway address)
+  ansible.builtin.include_tasks: sdn.yml
+  tags: [sdn]

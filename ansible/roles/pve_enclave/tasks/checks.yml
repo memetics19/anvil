@@ -1,0 +1,16 @@
+- name: The enclave's site values are well formed
+  ansible.builtin.assert:
+    that:
+      - pve_enclave_subnet is match('^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$')
+      - pve_enclave_gateway is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
+      - pve_enclave_admin_sources | length > 0
+      - pve_enclave_admin_sources | reject('match', '^([0-9]{1,3}\.){3}[0-9]{1,3}(/[0-9]{1,2})?$') | list | length == 0
+      - site.hosts[pve_enclave_vault_host].ip | default('') is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
+      - site.hosts[pve_enclave_gateway_host].ip | default('') is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
+      - site.hosts[pve_enclave_dns_host].ip | default('') is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
+      - pve_enclave_admin_exclude_hosts | reject('in', site.hosts) | list | length == 0
+    fail_msg: >-
+      site: need sdn.enclave.subnet (a.b.c.d/n) and .gateway, admin_sources (a list of
+      a.b.c.d[/n]), hosts.{{ pve_enclave_vault_host }}.ip, hosts.{{ pve_enclave_gateway_host }}.ip
+      and every host in pve_enclave_admin_exclude_hosts
+    quiet: true

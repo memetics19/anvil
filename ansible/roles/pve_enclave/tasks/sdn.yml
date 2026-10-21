@@ -1,0 +1,202 @@
+# Apply the pending SDN config (Terraform created the zone, vnet and subnet; Proxmox keeps
+# them pending until applied). Applying regenerates /etc/network/interfaces.d/sdn and runs
+# ifreload, so it goes through the same timed rollback as pve_network: back up the file,
+# arm net-rollback.sh on it, apply, confirm, disarm. Only this zone's objects may be
+# pending; anything else pending stops the run (it would be applied too).
+- name: Read the SDN state
+  ansible.builtin.command:
+    argv: [pvesh, get, "/cluster/sdn/{{ item }}", --pending, "1", --output-format, json]
+  loop: [zones, vnets]
+  register: pve_enclave_sdn_state
+  changed_when: false
+  check_mode: false
+
+- name: Read every vnet's subnets
+  ansible.builtin.command:
+    argv: [pvesh, get, "/cluster/sdn/vnets/{{ item }}/subnets", --pending, "1", --output-format, json]
+  loop: "{{ pve_enclave_sdn_state.results[1].stdout | from_json | map(attribute='vnet') | list }}"
+  register: pve_enclave_sdn_subnets
+  changed_when: false
+  check_mode: false
+
+- name: What is pending
+  ansible.builtin.set_fact:
+    pve_enclave_sdn_objects: >-
+      {{ (pve_enclave_sdn_state.results | map(attribute='stdout') | map('from_json') | flatten)
+         + (pve_enclave_sdn_subnets.results | map(attribute='stdout') | map('from_json') | flatten) }}
+
+- name: Note the pending objects
+  ansible.builtin.set_fact:
+    pve_enclave_sdn_pending: "{{ pve_enclave_sdn_objects | selectattr('state', 'defined') | list }}"
+
+- name: The vnet exists (Terraform, make tf-apply)
+  ansible.builtin.assert:
+    that: pve_enclave_sdn_objects | selectattr('vnet', 'defined') | selectattr('vnet', 'equalto', pve_enclave_vnet) | list | length > 0
+    fail_msg: "SDN vnet {{ pve_enclave_vnet }} does not exist: run make tf-plan and make tf-apply first"
+    quiet: true
+
+- name: Only the enclave is pending
+  ansible.builtin.assert:
+    that: >-
+      pve_enclave_sdn_pending | rejectattr('vnet', 'defined') | rejectattr('zone', 'equalto', 'enclave')
+      | list | length == 0
+      and pve_enclave_sdn_pending | selectattr('vnet', 'defined') | rejectattr('vnet', 'equalto', pve_enclave_vnet)
+      | list | length == 0
+    fail_msg: >-
+      Other SDN changes are pending ({{ pve_enclave_sdn_pending | map(attribute='type') | list }}):
+      applying would apply them too. Apply or revert them first.
+    quiet: true
+
+- name: SDN config to apply
+  ansible.builtin.debug:
+    msg: "pending: {{ pve_enclave_sdn_pending | map(attribute='type') | zip(pve_enclave_sdn_pending | map(attribute='state')) | map('join', '=') | list }}"
+  changed_when: ansible_check_mode
+  when: pve_enclave_sdn_pending | length > 0
+
+- name: Apply the SDN config with timed rollback
+  when: pve_enclave_sdn_pending | length > 0 and not ansible_check_mode
+  block:
+    - name: The rollback script is there (pve_network, make host-network)
+      ansible.builtin.stat:
+        path: "{{ pve_enclave_net_rollback_script }}"
+      register: pve_enclave_rb_script
+      failed_when: not pve_enclave_rb_script.stat.exists
+
+    - name: Backup directory
+      ansible.builtin.file:
+        path: "{{ pve_enclave_backup_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Back up the SDN interfaces file (empty when there is none)
+      ansible.builtin.shell:
+        cmd: >-
+          umask 077; f={{ (pve_enclave_backup_dir ~ '/sdn.' ~ ansible_date_time.epoch) | quote }};
+          if [ -f {{ pve_enclave_sdn_file | quote }} ]; then cp {{ pve_enclave_sdn_file | quote }} "$f"; else : >"$f"; fi;
+          echo "$f"
+      register: pve_enclave_sdn_backup
+      changed_when: true
+
+    - name: Stop a leftover rollback timer
+      ansible.builtin.systemd_service:
+        name: net-rollback.timer
+        state: stopped
+      failed_when: false
+
+    - name: Clear a stale rollback unit
+      ansible.builtin.command: systemctl reset-failed net-rollback.service net-rollback.timer
+      changed_when: false
+      failed_when: false
+
+    - name: Arm the timed rollback
+      ansible.builtin.command:
+        argv:
+          - systemd-run
+          - --unit=net-rollback
+          - --on-active={{ pve_enclave_rollback_after }}
+          - "{{ pve_enclave_net_rollback_script }}"
+          - "{{ pve_enclave_sdn_backup.stdout | trim }}"
+          - --wait
+          - "0"
+          - --target
+          - "{{ pve_enclave_target }}"
+          - --interfaces-file
+          - "{{ pve_enclave_sdn_file }}"
+      changed_when: true
+      no_log: true  # the command line holds the controller address
+
+    - name: Apply, wait, confirm
+      block:
+        - name: Apply the SDN config (a Proxmox task; it reloads the network)
+          ansible.builtin.command:
+            argv: [pvesh, set, /cluster/sdn]
+          register: pve_enclave_sdn_apply
+          changed_when: true
+
+        - name: Wait for the reload task to finish
+          ansible.builtin.command:
+            argv: [pvesh, get, "/nodes/{{ ansible_facts.hostname }}/tasks/{{ pve_enclave_sdn_apply.stdout | trim }}/status", --output-format, json]
+          register: pve_enclave_sdn_task
+          changed_when: false
+          until: (pve_enclave_sdn_task.stdout | from_json).status == 'stopped'
+          retries: 30
+          delay: 2
+          when: pve_enclave_sdn_apply.stdout | trim is match('^UPID:')
+
+        - name: The reload task succeeded
+          ansible.builtin.assert:
+            that: (pve_enclave_sdn_task.stdout | from_json).exitstatus == 'OK'
+            fail_msg: "the SDN apply task ended with {{ (pve_enclave_sdn_task.stdout | from_json).exitstatus }}"
+            quiet: true
+          when: pve_enclave_sdn_task.stdout is defined
+
+        - name: Wait for the host to answer
+          ansible.builtin.wait_for_connection:
+            delay: 5
+            timeout: 60
+
+        - name: The vnet bridge holds the gateway address
+          ansible.builtin.command:
+            argv: [ip, -4, -o, addr, show, dev, "{{ pve_enclave_vnet }}"]
+          register: pve_enclave_bridge
+          changed_when: false
+          retries: 10
+          delay: 3
+          until: (' ' ~ pve_enclave_gateway ~ '/' ~ pve_enclave_prefix ~ ' ') in pve_enclave_bridge.stdout
+          no_log: true
+
+        - name: Confirm the host still answers
+          ansible.builtin.wait_for_connection:
+            delay: 0
+            timeout: 20
+
+        - name: Disarm the rollback
+          ansible.builtin.systemd_service:
+            name: net-rollback.timer
+            state: stopped
+      rescue:
+        - name: Restore the SDN interfaces file
+          ansible.builtin.copy:
+            src: "{{ pve_enclave_sdn_backup.stdout | trim }}"
+            dest: "{{ pve_enclave_sdn_file }}"
+            remote_src: true
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Reload the restored network configuration
+          ansible.builtin.command: ifreload -a
+          changed_when: true
+
+        - name: Stop the rollback timer
+          ansible.builtin.systemd_service:
+            name: net-rollback.timer
+            state: stopped
+          failed_when: false
+
+        - name: Fail after rolling back
+          ansible.builtin.fail:
+            msg: The SDN apply failed and the previous interfaces.d/sdn was restored
+
+# Every run (also when nothing was pending): the bridge carries the gateway, forwards, and
+# has no NAT rule of its own.
+- name: The vnet bridge is up with the gateway address
+  ansible.builtin.command:
+    argv: [ip, -4, -o, addr, show, dev, "{{ pve_enclave_vnet }}"]
+  register: pve_enclave_bridge_now
+  changed_when: false
+  check_mode: false
+  failed_when: (' ' ~ pve_enclave_gateway ~ '/' ~ pve_enclave_prefix ~ ' ') not in pve_enclave_bridge_now.stdout
+  no_log: true
+  when: pve_enclave_sdn_pending | length == 0 or not ansible_check_mode
+
+- name: No NAT rule names the enclave's subnet
+  ansible.builtin.shell:
+    cmd: set -o pipefail; iptables-save -t nat | grep -cF -- {{ pve_enclave_subnet | quote }} || true
+    executable: /bin/bash
+  register: pve_enclave_nat
+  changed_when: false
+  check_mode: false
+  failed_when: pve_enclave_nat.stdout | trim != '0'

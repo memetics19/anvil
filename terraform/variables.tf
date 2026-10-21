@@ -51,6 +51,14 @@ variable "site_json" {
     )])
     error_message = "site.sdn.subnets.{servers,cameras,personal} need cidr (a.b.c.d/n) and gateway (a.b.c.d); add them to the site dict (Keychain site-bootstrap or Vault)."
   }
+
+  validation {
+    condition = (
+      can(cidrhost(jsondecode(var.site_json).sdn.enclave.subnet, 0)) &&
+      can(regex("^[0-9.]+$", jsondecode(var.site_json).sdn.enclave.gateway))
+    )
+    error_message = "site.sdn.enclave needs subnet (a.b.c.d/n) and gateway (a.b.c.d): the secrets enclave's network (pve_enclave role)."
+  }
 }
 
 variable "ssh_public_key_path" {

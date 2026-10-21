@@ -6,7 +6,7 @@ HVAC_CHECK := py=$$(ansible-playbook --version | sed -n 's/^  python version = .
 	"$${py:-python3}" -c 'import hvac' 2>/dev/null || { \
 	  echo "hvac is missing in the Python that runs Ansible; fix: \"$$py\" -m pip install hvac" >&2; exit 1; }
 
-.PHONY: lint secrets-scan bootstrap-ssh host host-network ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply
+.PHONY: lint secrets-scan bootstrap-ssh host host-network enclave ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply
 
 lint:
 	@set -eu -o pipefail; \
@@ -39,6 +39,12 @@ host:
 host-network:
 	@set -eu -o pipefail; $(ENV); $(HVAC_CHECK); \
 	cd ansible && ansible-playbook playbooks/host-network.yml $(ARGS)
+
+# The secrets enclave on the Proxmox host: firewall, SDN apply (both with timed rollback),
+# apt cache, NTP, cloud-init vendor data. Dry-run first: make enclave ARGS="--check".
+enclave:
+	@set -eu -o pipefail; $(ENV); $(HVAC_CHECK); \
+	cd ansible && ansible-playbook playbooks/enclave.yml $(ARGS)
 
 # Single-node Ceph + S3 gateway. The first real run wipes the OSD disk: dry-run first.
 ceph:

@@ -1,0 +1,45 @@
+# The mail hole's target: Vaultwarden's SMTP relay host and port, from Vault (the keys role
+# vaultwarden reads, with its defaults). Without an SMTP login there is no hole.
+- name: Vaultwarden's SMTP keys in Vault (digests only)
+  ansible.builtin.command:
+    argv: ["{{ pve_enclave_repo_scripts }}/vault-kv-digests.sh", "{{ pve_enclave_smtp_vault_path }}"]
+  delegate_to: localhost
+  become: false
+  register: pve_enclave_smtp_digests
+  changed_when: false
+  check_mode: false
+
+- name: Is SMTP configured
+  ansible.builtin.set_fact:
+    pve_enclave_smtp_enabled: >-
+      {{ (['smtp_username', 'smtp_password']
+          | select('in', pve_enclave_smtp_digests.stdout_lines | map('split', ' ') | map('first') | list)
+          | list | length) == 2 }}
+
+- name: Read the SMTP relay's host and port from Vault
+  ansible.builtin.set_fact:
+    pve_enclave_smtp_relay: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', pve_enclave_smtp_vault_path,
+                engine_mount_point=pve_enclave_smtp_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret
+         | dict2items | selectattr('key', 'in', ['smtp_host', 'smtp_port']) | items2dict }}
+  no_log: true
+  when: pve_enclave_smtp_enabled | bool
+
+- name: The SMTP relay's host and port
+  ansible.builtin.set_fact:
+    pve_enclave_smtp_host: >-
+      {{ (pve_enclave_smtp_relay | default({})).smtp_host | default(pve_enclave_smtp_default_host, true) | string | trim }}
+    pve_enclave_smtp_port: >-
+      {{ (pve_enclave_smtp_relay | default({})).smtp_port | default(pve_enclave_smtp_default_port, true) | string | trim }}
+
+- name: The SMTP relay is a host name and a port
+  ansible.builtin.assert:
+    that:
+      - pve_enclave_smtp_host is match('^([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$')
+      - pve_enclave_smtp_port is match('^[0-9]{1,5}$')
+      - pve_enclave_smtp_port | int is ge(1) and pve_enclave_smtp_port | int is le(65535)
+    fail_msg: "kv/{{ pve_enclave_smtp_vault_path }}: smtp_host must be a host name and smtp_port a port number"
+    quiet: true

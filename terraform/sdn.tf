@@ -65,3 +65,40 @@ resource "proxmox_sdn_subnet" "this" {
     prevent_destroy = true
   }
 }
+
+# The secrets enclave (Vault and Vaultwarden): a simple zone, a bridge on the Proxmox host
+# with no physical port, so no frame of it reaches the switch or the home network. The host
+# is its only router (the subnet gateway is the host's address on the bridge) and does no
+# NAT for it (snat off): there is no internet path. What may cross is the allow-list in the
+# pve_enclave role (nftables, make enclave). isolate_ports: the enclave VMs reach the
+# gateway, not each other. Subnet and gateway are site values (site.sdn.enclave). Creating
+# these leaves them pending; `make enclave` applies the SDN config under a timed rollback.
+resource "proxmox_sdn_zone_simple" "enclave" {
+  id = "enclave"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "proxmox_sdn_vnet" "secrets" {
+  id            = "secrets"
+  zone          = proxmox_sdn_zone_simple.enclave.id
+  alias         = "Secrets enclave"
+  isolate_ports = true
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "proxmox_sdn_subnet" "secrets" {
+  vnet    = proxmox_sdn_vnet.secrets.id
+  cidr    = local.site.sdn.enclave.subnet
+  gateway = local.site.sdn.enclave.gateway
+  snat    = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
