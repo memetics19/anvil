@@ -17,6 +17,8 @@
     compose_project_dir: "{{ ntfy_dir }}"
     compose_project_file: "{{ ntfy_dir }}/docker-compose.yml"
     compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yml.j2') }}"
+    # The file holds the VM's address (base URL): keep it out of --diff output.
+    compose_project_diff: false
     compose_project_owner: "{{ ntfy_owner }}"
     compose_project_group: "{{ ntfy_owner }}"
     compose_project_mode: "0664"

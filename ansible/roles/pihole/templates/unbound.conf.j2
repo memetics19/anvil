@@ -1,7 +1,6 @@
-# Managed by Ansible (role pihole). Read after the image's own unbound.conf (recursive
-# resolver from the root hints, DNSSEC validation, private-address rebinding protection).
+# Managed by Ansible (role pihole). Read after the image's own unbound.conf (listens on
+# port 53 in its container, recursive resolver from the root hints, DNSSEC validation,
+# private-address rebinding protection, access for private source addresses only).
 server:
-    # Inside Pi-hole's network namespace; Pi-hole owns port 53 there.
-    port: {{ pihole_unbound_port }}
     msg-cache-size: {{ pihole_unbound_msg_cache }}
     rrset-cache-size: {{ pihole_unbound_rrset_cache }}

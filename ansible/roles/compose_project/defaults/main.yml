@@ -8,6 +8,9 @@ compose_project_name: "{{ compose_project_dir | basename | lower }}"
 compose_project_owner: root
 compose_project_group: root
 compose_project_mode: "0644"
+# false: the compose file is written without --diff output (callers whose file embeds site
+# addresses or other values that must stay out of terminal logs).
+compose_project_diff: true
 # false: the file belongs to something else (a git checkout); the role reads it from disk
 # and never writes it.
 compose_project_write_file: true

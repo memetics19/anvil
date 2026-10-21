@@ -6,4 +6,4 @@
   changed_when: true
   when:
     - not ansible_check_mode
-    - not pihole_unbound_up | default(false) | bool
+    - "'unbound' not in pihole_compose_up | default([])"

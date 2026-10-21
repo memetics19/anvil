@@ -209,12 +209,18 @@ subnet. Each NIC answers ARP only for its own address.
 
 - Pi-hole (pinned tag and digest) publishes DNS (53) and its web UI (80) on those two
   addresses only. It is not a DHCP server.
-- Its only upstream is Unbound, which runs in Pi-hole's network namespace on port 5335
-  (never published), resolves from the root servers and validates DNSSEC.
+- Its only upstream is Unbound, at a fixed address on the project's own Docker network
+  (`site.hosts.apps.dns_subnet` / `dns_unbound_ip`, never published). Unbound resolves
+  from the root servers and validates DNSSEC. Either container can restart on its own
+  (crash, memory cap, `docker restart`, daemon restart) and resolution comes back without
+  a run. Unbound has a healthcheck.
 - Per-client rate limit: 1000 queries per 60 seconds.
-- Local records come from `site.dns.local_records` in Vault, each as
-  `<name>.lan.<domain>`. The `lan` sub-zone keeps them from shadowing a public hostname
-  of the domain.
+- Local records come from `site.dns.local_records` in Vault. An entry with `name` is
+  served as `<name>.lan.<domain>`; the `lan` sub-zone keeps it from shadowing a public
+  hostname. An entry with `fqdn` is served under exactly that name, for split horizon: a
+  public hostname (Vaultwarden's, the self-hosted NetBird server's) answered at home with
+  a home-reachable address. The address is `ref` (a path into the site dict) or `ip`.
+  `tests/test_pihole_records.sh` covers the rules.
 - Block lists (`pihole_blocklists`): StevenBlack plus a few lists from firebog and
   URLhaus. A change runs a gravity update. Lists added in the web UI are left alone.
 - Web UI: `http://<apps home address>/admin`, password `web_password` from Vault

@@ -247,6 +247,8 @@
   vars:
     compose_project_dir: "{{ filestash_dir }}"
     compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+    # The file holds the VM's address: keep it out of --diff output.
+    compose_project_diff: false
 
 # For the restart handler: a container brought up in this run already read the new config.
 - name: Services this run brought up

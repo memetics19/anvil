@@ -12,9 +12,11 @@ pihole_listen_ips:
   - "{{ site.hosts[inventory_hostname].home_ip }}"
 pihole_web_port: 80
 
-# Unbound shares Pi-hole's network namespace and listens on this port there; it is never
-# published. Pi-hole forwards only to it. Unbound resolves recursively and validates DNSSEC.
-pihole_unbound_port: 5335
+# Unbound has a fixed address on the project's network (site values: a private subnet not
+# used elsewhere); it is never published. Pi-hole forwards only to it. Unbound resolves
+# recursively and validates DNSSEC.
+pihole_dns_subnet: "{{ site.hosts[inventory_hostname].dns_subnet }}"
+pihole_unbound_ip: "{{ site.hosts[inventory_hostname].dns_unbound_ip }}"
 pihole_unbound_msg_cache: 16m
 pihole_unbound_rrset_cache: 32m
 

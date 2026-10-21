@@ -413,6 +413,8 @@
       vars:
         compose_project_dir: "{{ iptv_dir }}"
         compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+        # The file holds the VM's address: keep it out of --diff output.
+        compose_project_diff: false
 
   always:
     - name: State of a Threadfin this run stopped

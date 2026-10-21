@@ -53,29 +53,18 @@
   when: pihole_have_secrets | bool
 
 # --- local DNS records -----------------------------------------------------------------------
-# "<address> <name>.<zone>" per record; a ref is looked up in the site dict.
-- name: Local DNS records from the site dict
-  ansible.builtin.set_fact:
-    pihole_hosts: >-
-      {%- set out = [] -%}
-      {%- for r in pihole_local_records -%}
-      {%- set ns = namespace(v=site) -%}
-      {%- if r.ip is defined -%}{%- set ns.v = r.ip -%}
-      {%- else -%}{%- for k in r.ref.split('.') -%}{%- set ns.v = ns.v[k] | default('') if ns.v is mapping else '' -%}{%- endfor -%}
-      {%- endif -%}
-      {%- set _ = out.append(ns.v ~ ' ' ~ r.name ~ '.' ~ pihole_local_zone) -%}
-      {%- endfor -%}
-      {{ out }}
-  no_log: true
+- name: Local DNS records
+  ansible.builtin.include_tasks: records.yml
 
-- name: Every local record has a name and an IPv4 address
+- name: Unbound's address is in the project network
   ansible.builtin.assert:
     that:
-      - pihole_hosts | length == pihole_local_records | length
-      - pihole_hosts | reject('match', '^[0-9]{1,3}(\.[0-9]{1,3}){3} [a-z0-9][a-z0-9-]*\.[a-z0-9.-]+$') | list | length == 0
-    fail_msg: >-
-      site.dns.local_records: each entry needs a lower-case `name` and an `ip` or a `ref` to an
-      address in the site dict (records: {{ pihole_local_records | map(attribute='name') | join(', ') }})
+      - pihole_dns_subnet is match('^([0-9]{1,3}\.){3}[0-9]{1,3}/(1[6-9]|2[0-8])$')
+      - pihole_unbound_ip is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
+      - >-
+        (pihole_unbound_ip.split('.') | map('int') | list)[:(pihole_dns_subnet.split('/')[1] | int) // 8]
+        == (pihole_dns_subnet.split('/')[0].split('.') | map('int') | list)[:(pihole_dns_subnet.split('/')[1] | int) // 8]
+    fail_msg: site.hosts.{{ inventory_hostname }}.dns_subnet (a.b.c.d/16..28) and dns_unbound_ip (inside it) are required
     quiet: true
 
 # --- ARP on two NICs in one L2 segment ---------------------------------------------------------
@@ -162,98 +151,20 @@
   when: pihole_have_secrets | bool
 
 # --- compose ---------------------------------------------------------------------------------
-- name: Render the compose file
-  ansible.builtin.set_fact:
-    pihole_compose_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
-
-# Unbound is left out here: it joins Pi-hole's network namespace, and compose stores its
-# config hash with that resolved to Pi-hole's container ID, so the plain file hash never
-# matches. It is compared below instead.
 - name: Pi-hole compose project
   ansible.builtin.include_role:
     name: compose_project
   vars:
     compose_project_dir: "{{ pihole_dir }}"
-    compose_project_content: "{{ pihole_compose_content }}"
-    compose_project_skip_services: [unbound]
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+    # The file holds the site addresses: keep them out of --diff output.
+    compose_project_diff: false
   # In check mode on a new host the env file the compose file names does not exist yet.
   when: pihole_have_secrets | bool
 
 - name: Services this run brought up
   ansible.builtin.set_fact:
     pihole_compose_up: "{{ compose_project_plan.up | default([]) }}"
-
-# "<name> <container ID> <config hash>" for each container that exists.
-- name: Pi-hole's container ID and Unbound's config hash
-  ansible.builtin.command:
-    argv:
-      - docker
-      - inspect
-      - --format
-      - "{{ '{{' }}.Name{{ '}}' }} {{ '{{' }}.Id{{ '}}' }} {{ '{{' }}index .Config.Labels \"com.docker.compose.config-hash\"{{ '}}' }}"
-      - pihole
-      - unbound
-  register: pihole_containers
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-- name: Index the containers
-  ansible.builtin.set_fact:
-    pihole_containers_by_name: >-
-      {%- set m = {} -%}
-      {%- for l in pihole_containers.stdout_lines if l.split() | length == 3 -%}
-      {%- set _ = m.update({l.split()[0] | regex_replace('^/', ''): {'id': l.split()[1], 'hash': l.split()[2]}}) -%}
-      {%- endfor -%}
-      {{ m }}
-
-# The same file, with network_mode as compose resolves it when it creates the container.
-- name: Unbound's wanted config hash
-  ansible.builtin.command:
-    argv: [docker, compose, --project-name, pihole, --project-directory, "{{ pihole_dir }}", --file, "-", config, --hash, unbound]
-    stdin: >-
-      {{ pihole_compose_content | replace('network_mode: "service:pihole"',
-         'network_mode: "container:' ~ pihole_containers_by_name.pihole.id ~ '"') }}
-  register: pihole_unbound_want
-  changed_when: false
-  check_mode: false
-  when: "'pihole' in pihole_containers_by_name"
-
-# Also after Pi-hole was recreated (by this run or by hand): Unbound would be left in the
-# old namespace, and the new container ID changes the wanted hash.
-- name: Note whether Unbound must be brought up
-  ansible.builtin.set_fact:
-    pihole_unbound_up: >-
-      {{ 'pihole' not in pihole_containers_by_name
-         or 'unbound' not in pihole_containers_by_name
-         or 'pihole' in pihole_compose_up
-         or (pihole_unbound_want.stdout | default('')).split() | last | default('')
-            != pihole_containers_by_name.unbound.hash }}
-
-- name: Bring up Unbound in Pi-hole's namespace
-  ansible.builtin.command:
-    argv:
-      - docker
-      - compose
-      - --project-name
-      - pihole
-      - --project-directory
-      - "{{ pihole_dir }}"
-      - --file
-      - "{{ pihole_dir }}/docker-compose.yaml"
-      - up
-      - --detach
-      - --no-deps
-      - unbound
-    chdir: "{{ pihole_dir }}"
-  changed_when: true
-  when: pihole_unbound_up | bool and not ansible_check_mode
-
-- name: Unbound would be brought up
-  ansible.builtin.debug:
-    msg: "pihole: bring up unbound"
-  changed_when: true
-  when: pihole_unbound_up | bool and ansible_check_mode
 
 - name: Pi-hole answers DNS through Unbound on every address
   ansible.builtin.command:
@@ -280,4 +191,4 @@
 # --- blocklists ------------------------------------------------------------------------------
 - name: Blocklists in gravity
   ansible.builtin.include_tasks: blocklists.yml
-  when: not (ansible_check_mode and 'pihole' not in pihole_containers_by_name)
+  when: not (ansible_check_mode and 'pihole' in compose_project_plan.up | default(['pihole']))

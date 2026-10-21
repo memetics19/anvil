@@ -122,6 +122,7 @@
     owner: "{{ compose_project_owner }}"
     group: "{{ compose_project_group }}"
     mode: "{{ compose_project_mode }}"
+  diff: "{{ compose_project_diff | bool }}"
   when: compose_project_write_file | bool
 
 - name: Bring up the services that differ

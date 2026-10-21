@@ -1,0 +1,40 @@
+# Local DNS records: one "<address> <fqdn>" line per entry of pihole_local_records.
+# An entry names the host with either
+#   name: a label, served as <name>.<pihole_local_zone> (default: lan.<domain>), or
+#   fqdn: the full name, served as is (split horizon: a public hostname answered with a
+#         home-reachable address on this network),
+# and gives the address with either `ref` (a dotted path into the site dict, e.g.
+# hosts.vault.ip) or `ip`. Values are not logged. Tested by tests/test_pihole_records.sh.
+- name: Local DNS records from the site dict
+  ansible.builtin.set_fact:
+    pihole_hosts: >-
+      {%- set out = [] -%}
+      {%- for r in pihole_local_records -%}
+      {%- set ns = namespace(v=site) -%}
+      {%- if r.ip is defined -%}{%- set ns.v = r.ip -%}
+      {%- elif r.ref is defined -%}
+      {%- for k in r.ref.split('.') -%}{%- set ns.v = ns.v[k] | default('') if ns.v is mapping else '' -%}{%- endfor -%}
+      {%- else -%}{%- set ns.v = '' -%}
+      {%- endif -%}
+      {%- if (r.name is defined) == (r.fqdn is defined) -%}{%- set fqdn = '' -%}
+      {%- elif r.fqdn is defined -%}{%- set fqdn = r.fqdn | string | lower | regex_replace('\.$', '') -%}
+      {%- else -%}{%- set fqdn = r.name ~ '.' ~ pihole_local_zone -%}
+      {%- endif -%}
+      {%- set _ = out.append(ns.v ~ ' ' ~ fqdn) -%}
+      {%- endfor -%}
+      {{ out }}
+  no_log: true
+
+- name: Every local record has one name and an IPv4 address, no name twice
+  ansible.builtin.assert:
+    that:
+      - pihole_hosts | length == pihole_local_records | length
+      - >-
+        pihole_hosts | reject('match', '^([0-9]{1,3}\.){3}[0-9]{1,3} ([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]*[a-z0-9])?$')
+        | list | length == 0
+      - pihole_hosts | map('split', ' ') | map('last') | unique | list | length == pihole_hosts | length
+    fail_msg: >-
+      site.dns.local_records: each entry needs exactly one of `name` (a lower-case label) or
+      `fqdn` (a full host name), an `ip` or a `ref` to an IPv4 address in the site dict, and
+      no name may appear twice ({{ pihole_local_records | length }} entries)
+    quiet: true
