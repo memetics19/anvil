@@ -30,6 +30,8 @@ exceptions=(
   'ansible/roles/frigate_stack/tasks/main.yml|rm -rf "$d"'
   # a shell function that keeps the newest local backups on the operator's Mac
   'scripts/backup.sh|prune'
+  # apt cache cleanup inside the IPTV image build, not on the host
+  'ansible/roles/iptv/templates/Dockerfile.j2|rm -rf /var/lib/apt/lists/*'
 )
 
 destructive_re='recurse:|(^|[^A-Za-z_-])prune([^A-Za-z_-]|$)|compose[^#]*[[:space:]]down([[:space:]]|$)|^[[:space:]]*-[[:space:]]*["'"'"']?down["'"'"']?[[:space:]]*$|["'"'"']down["'"'"']|down[^#]*[[:space:]]-v([[:space:]]|$)|--volumes|remove-orphans|(^|[^A-Za-z_])rm[[:space:]]+(-[A-Za-z]*[rR]|--recursive)'
