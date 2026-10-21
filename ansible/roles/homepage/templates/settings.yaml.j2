@@ -1,13 +1,22 @@
-# Managed by Ansible (role homepage). Groups in homepage_groups order.
+# Managed by Ansible (role homepage). Groups in homepage_groups order; the wide groups
+# (homepage_wide_groups) get 3 columns, the others 2.
 {% set used = homepage_groups | select('in', homepage_entries | map(attribute='group') | list) | list %}
-{{ {
+{% set s = {
   'title': homepage_title,
   'theme': 'dark',
   'color': 'slate',
+  'cardBlur': 'md',
   'headerStyle': 'clean',
   'statusStyle': 'dot',
   'hideVersion': true,
   'disableUpdateCheck': true,
   'disableIndexing': true,
-  'layout': dict(used | zip([{'style': 'row', 'columns': 4}] * (used | length)))
-} | to_nice_json(indent=2, sort_keys=false) }}
+  'layout': {}
+} %}
+{% for g in used %}
+{%   set _ = s.layout.update({g: {'style': 'row', 'columns': 3 if g in homepage_wide_groups else 2}}) %}
+{% endfor %}
+{% if homepage_background_src is file %}
+{%   set _ = s.update({'background': homepage_background | combine({'image': '/images/' ~ (homepage_background_src | basename)})}) %}
+{% endif %}
+{{ s | to_nice_json(indent=2, sort_keys=false) }}

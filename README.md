@@ -354,6 +354,14 @@ gateway service.
   inspect (container environments hold secrets), logs, exec or writes. Containers on
   other VMs show no status: a socket proxy there would listen on the lab network, where
   Docker-published ports bypass ufw.
+- **Look:** dark slate theme, blurred cards, clean header, status dots, no version
+  footer; Infrastructure and Media in 3 columns, the other groups in 2; a date and time
+  widget (no search widget: it would send what is typed to an internet search engine).
+  Weather (Open-Meteo) appears only when `site.homepage.weather` has `latitude` and
+  `longitude`. An optional background picture is a file on the controller outside the
+  repo, `~/homelab-assets/homepage-bg.jpg` (`homepage_background_src`); when it exists the
+  run copies it to `/opt/homepage/images` (served as `/images/`, Homepage restarts once)
+  and uses it with blur, saturation, brightness and opacity filters.
 - Homepage has no login of its own here; like the other gateway names it is reachable
   only from the home and lab networks and the VPN.
 

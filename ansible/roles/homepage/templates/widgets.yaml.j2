@@ -1,2 +1,10 @@
-# Managed by Ansible (role homepage).
-{{ [{'datetime': {'text_size': 'xl', 'format': {'dateStyle': 'long', 'timeStyle': 'short', 'hour12': false}}}] | to_nice_json(indent=2) }}
+# Managed by Ansible (role homepage). Date and time; the weather (Open-Meteo, fetched by
+# Homepage's server) only when site.homepage.weather has latitude and longitude. No search
+# widget: it sends what is typed to an internet search engine.
+{% set w = [{'datetime': {'text_size': 'xl', 'format': {'dateStyle': 'long', 'timeStyle': 'short', 'hour12': false}}}] %}
+{% set weather = ((site.homepage | default({}, true)).weather | default({}, true)) %}
+{% if weather.latitude is defined and weather.longitude is defined %}
+{%   set _ = w.append({'openmeteo': {'label': weather.label | default('Weather'), 'latitude': weather.latitude | float,
+                                    'longitude': weather.longitude | float, 'units': 'metric', 'cache': 15}}) %}
+{% endif %}
+{{ w | to_nice_json(indent=2) }}

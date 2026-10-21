@@ -24,6 +24,14 @@ homepage_socket_proxy_mem_limit: 32m
 homepage_self: home
 homepage_title: Home
 
+# Look: dark slate theme, blurred cards; these groups get 3 columns, the others 2.
+homepage_wide_groups: [Infrastructure, Media]
+# Optional background picture, a local file on the controller outside the repo (never
+# committed). When it exists it is copied to the images directory Homepage serves as
+# /images/ and used with these filters; when it does not, there is no background.
+homepage_background_src: "{{ lookup('env', 'HOME') }}/homelab-assets/homepage-bg.jpg"
+homepage_background: {blur: sm, saturate: 50, brightness: 50, opacity: 50}
+
 # Groups in page order. An entry with no group (catalog or site hint) goes to Other.
 homepage_groups: [Infrastructure, Media, Home, Monitoring, Security, Other]
 

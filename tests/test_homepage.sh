@@ -35,6 +35,7 @@ run() {
         vault: {ip: 192.0.2.120}
         apps: {ip: 192.0.2.121, home_ip: 198.51.100.249}
       services: $1
+      homepage: ${SITE_HOMEPAGE:-{\}}
     caddy_upstream_cas: {vault: /nonexistent/vault-ca.pem}
   tasks:
     - name: Routes
@@ -58,7 +59,9 @@ run() {
       loop: [services.yaml, settings.yaml, widgets.yaml, bookmarks.yaml, docker.yaml, homepage.env, docker-compose.yaml]
 PLAY
   rm -f "$tmp"/*.yaml "$tmp/homepage.env"
-  ANSIBLE_ROLES_PATH=ansible/roles ANSIBLE_LOCALHOST_WARNING=false ANSIBLE_INVENTORY_UNPARSED_WARNING=false \
+  # A HOME of its own: the optional background picture is looked up under it.
+  mkdir -p "$tmp/home"
+  HOME="$tmp/home" ANSIBLE_ROLES_PATH=ansible/roles ANSIBLE_LOCALHOST_WARNING=false ANSIBLE_INVENTORY_UNPARSED_WARNING=false \
     ansible-playbook -i localhost, -c local "$tmp/play.yml" >"$tmp/log" 2>&1
 }
 
@@ -113,12 +116,19 @@ check "env file: exactly the used secrets" \
   '[ "$(sort "$tmp/homepage.env")" = "$(printf "%s\n" HOMEPAGE_VAR_FRIGATE_PASSWORD=fake-value-for-FRIGATE_PASSWORD HOMEPAGE_VAR_PIHOLE_KEY=fake-value-for-PIHOLE_KEY HOMEPAGE_VAR_PVE_TOKEN=fake-value-for-PVE_TOKEN HOMEPAGE_VAR_SONARR_KEY=fake-value-for-SONARR_KEY | sort)" ]'
 
 st=$(json settings.yaml) || { bad_ "settings.yaml is JSON (YAML)"; st='{}'; }
+check "settings: dark slate, blurred cards, clean header, dots, no version" \
+  '[ "$(jq -c "[.theme, .color, .cardBlur, .headerStyle, .statusStyle, .hideVersion]" <<<"$st")" = "[\"dark\",\"slate\",\"md\",\"clean\",\"dot\",true]" ]'
+check "settings: wide groups 3 columns, others 2" \
+  '[ "$(jq -c "[.layout[] | .columns]" <<<"$st")" = "[3,3,2,2]" ]'
+check "settings: no background without the picture" '[ "$(jq -c "has(\"background\")" <<<"$st")" = false ]'
+check "widgets: date and time only (no search, no weather)" '[ "$(json widgets.yaml | jq -c "map(keys[0])")" = "[\"datetime\"]" ]'
 check "settings: layout in group order"     '[ "$(jq -c ".layout | keys_unsorted" <<<"$st")" = "[\"Infrastructure\",\"Media\",\"Home\",\"Other\"]" ]'
 check "settings: no update check, no index" '[ "$(jq -c "[.disableUpdateCheck, .disableIndexing]" <<<"$st")" = "[true,true]" ]'
 check "docker.yaml: the proxy only"        '[ "$(json docker.yaml)" = "{\"apps\":{\"host\":\"dockerproxy\",\"port\":2375}}" ]'
 check "widgets and bookmarks are JSON"     'json widgets.yaml && [ "$(json bookmarks.yaml)" = "[]" ]'
 
 c="$tmp/docker-compose.yaml"
+check "compose: images directory read-only"  'grep -q "./images:/app/public/images:ro" "$c"'
 check "compose: no published port"         '! grep -qE "^\s+ports:" "$c"'
 check "compose: allowed host is the gateway name only" 'grep -qx "      HOMEPAGE_ALLOWED_HOSTS: \"home.internal.example.com\"" "$c"'
 check "compose: images pinned by digest"   '[ "$(grep -cE "^    image: [^ ]+:v[0-9.]+@sha256:[0-9a-f]{64}$" "$c")" = 2 ]'
@@ -134,6 +144,17 @@ check "proxy: exactly two allowed paths"  '[ "$(grep -c "http-request allow" "$h
 check "proxy: everything else denied"      'grep -qx "    http-request deny" "$h"'
 
 check "no private address in the output"   '! grep -rqE "\b(10\.[0-9]+|172\.(1[6-9]|2[0-9]|3[01])|192\.168)\.[0-9]+\.[0-9]+" "$tmp"/*.yaml'
+
+# The optional background picture (a placeholder file in the test HOME) and the weather.
+mkdir -p "$tmp/home/homelab-assets" && printf 'placeholder' >"$tmp/home/homelab-assets/homepage-bg.jpg"
+SITE_HOMEPAGE='{weather: {latitude: 12.5, longitude: 77.5, label: Here}}' \
+  run '[{name: pve, host: pve.ip, port: 8006, scheme: https}, {name: home, container: homepage, port: 3000, scheme: http}]'
+rm -rf "$tmp/home/homelab-assets"
+st=$(json settings.yaml) || st='{}'
+check "background: the picture with its filters" \
+  '[ "$(jq -c .background <<<"$st")" = "{\"blur\":\"sm\",\"saturate\":50,\"brightness\":50,\"opacity\":50,\"image\":\"/images/homepage-bg.jpg\"}" ]'
+check "weather: Open-Meteo from site.homepage.weather" \
+  '[ "$(json widgets.yaml | jq -c ".[1].openmeteo | [.label, .latitude, .longitude, .units]")" = "[\"Here\",12.5,77.5,\"metric\"]" ]'
 
 # Widget results: an error is a warning (the play goes on), or a failure when strict.
 widgets() {

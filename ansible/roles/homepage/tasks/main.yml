@@ -109,6 +109,7 @@
     # Owned by Homepage's uid, so its start script finds it right and changes nothing; the
     # mount is read-only and the files below are root's.
     - {path: "{{ homepage_dir }}/config", owner: homepage, group: homepage, mode: "0750"}
+    - {path: "{{ homepage_dir }}/images", owner: root, group: homepage, mode: "0750"}
 
 # Hold the gateway names and upstream addresses, no secret: no --diff output anyway.
 - name: Homepage config (generated)
@@ -131,6 +132,24 @@
     group: homepage
     mode: "0640"
   loop: [custom.css, custom.js, kubernetes.yaml, proxmox.yaml]
+  notify: Restart homepage
+
+- name: The background picture has a plain file name
+  ansible.builtin.assert:
+    that: homepage_background_src | basename is match('^[A-Za-z0-9._-]+\\.(jpe?g|png|webp)$')
+    fail_msg: "homepage_background_src: use a .jpg, .png or .webp file with a plain name"
+    quiet: true
+  when: homepage_background_src is file
+
+# Homepage finds new local images only at start: a new picture restarts it.
+- name: Background picture (when the controller has one)
+  ansible.builtin.copy:
+    src: "{{ homepage_background_src }}"
+    dest: "{{ homepage_dir }}/images/{{ homepage_background_src | basename }}"
+    owner: root
+    group: homepage
+    mode: "0640"
+  when: homepage_background_src is file
   notify: Restart homepage
 
 - name: Socket proxy rules

@@ -21,6 +21,8 @@ services:
     env_file: homepage.env
     volumes:
       - ./config:/app/config:ro
+      # The optional background picture (homepage_background_src).
+      - ./images:/app/public/images:ro
     networks:
       - web
       - docker_api
