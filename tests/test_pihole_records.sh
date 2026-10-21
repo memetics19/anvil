@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Pi-hole local records (ansible/roles/pihole/tasks/records.yml), run locally with a
 # fixture site dict: `name` goes under the lan zone, `fqdn` is served as is (split
-# horizon), `ref` and `ip` give the address; malformed entries fail the run.
-# Uses documentation-range addresses and example.com only.
+# horizon), `ref` and `ip` give the address; malformed entries fail the run. Also the DNS
+# network check (tasks/dns_network.yml): RFC 1918, no overlap with the lab or home network,
+# NetBird's range or Docker's default bridge, Unbound's address inside.
+# Uses documentation-range addresses and example.com; private addresses are assembled at
+# run time so this file holds no private literal (gitleaks rule private-ipv4).
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
@@ -64,5 +67,41 @@ bad "fqdn without a dot"    '[{fqdn: vw, ip: 198.51.100.1}]'
 bad "upper-case name"       '[{name: Vault, ip: 198.51.100.1}]'
 bad "same name twice"       '[{name: a, ip: 198.51.100.1}, {fqdn: a.lan.example.com, ip: 198.51.100.2}]'
 
-[ "$fail" -eq 0 ] && echo "PASS: pihole records"
+# --- DNS network ---------------------------------------------------------------------------
+p10="10."; p172="172."; p192="192.""168."
+# net <subnet> <unbound ip> -> exit code of the play (lab p10 2.0.0/24, home p192 100.0/24)
+net() {
+  cat >"$tmp/net.yml" <<PLAY
+- name: DNS network test
+  hosts: localhost
+  gather_facts: false
+  vars:
+    site:
+      lan_cidr: ${p10}2.0.0/24
+      pve: {uplink_ip: ${p192}100.250, uplink_prefix: 24}
+    pihole_dns_subnet: "$1"
+    pihole_unbound_ip: "$2"
+  tasks:
+    - name: Check
+      ansible.builtin.include_role:
+        name: pihole
+        tasks_from: dns_network.yml
+PLAY
+  ANSIBLE_ROLES_PATH=ansible/roles ANSIBLE_LOCALHOST_WARNING=false ANSIBLE_INVENTORY_UNPARSED_WARNING=false \
+    ansible-playbook -i localhost, -c local "$tmp/net.yml" >"$tmp/log" 2>&1
+}
+net "${p172}31.53.0/24" "${p172}31.53.53"; check "DNS network: private, no overlap" "$?" 0
+badnet() {
+  net "$2" "$3"; rc=$?
+  if [ "$rc" -ne 0 ] && grep -q "$4" "$tmp/log"; then echo "ok   DNS network rejects $1"
+  else echo "FAIL DNS network accepts $1 (rc $rc)"; fail=1; fi
+}
+badnet "a public range"         198.51.100.0/24        198.51.100.53        "RFC 1918"
+badnet "overlap with the lab"   "${p10}2.0.0/16"       "${p10}2.9.53"       "overlaps the lab network"
+badnet "overlap with home"      "${p192}100.128/25"    "${p192}100.153"     "overlaps the home network"
+badnet "Docker's bridge"        "${p172}17.5.0/24"     "${p172}17.5.53"     "overlaps Docker"
+badnet "Unbound outside"        "${p172}31.53.0/24"    "${p172}31.54.53"    "not inside dns_subnet"
+badnet "too large a prefix"     "${p10}0.0.0/8"        "${p10}9.0.53"       "prefix must be"
+
+[ "$fail" -eq 0 ] && echo "PASS: pihole records and DNS network"
 exit "$fail"

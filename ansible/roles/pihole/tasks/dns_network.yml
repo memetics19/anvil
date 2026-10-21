@@ -1,0 +1,48 @@
+# The project network Unbound sits on (pihole_dns_subnet, pihole_unbound_ip): a private
+# (RFC 1918) range that overlaps none of the lab network, the home network, NetBird's
+# 100.64.0.0/10 and Docker's default bridge, with Unbound's address inside it.
+# Tested by tests/test_pihole_records.sh.
+- name: Check the DNS network against the others
+  ansible.builtin.set_fact:
+    pihole_dns_net_problems: >-
+      {%- macro n(a) -%}{%- set o = a.split('.') | map('int') | list -%}{{ o[0] * 16777216 + o[1] * 65536 + o[2] * 256 + o[3] }}{%- endmacro -%}
+      {%- set cidr_re = '^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$' -%}
+      {%- set ip_re = '^([0-9]{1,3}\.){3}[0-9]{1,3}$' -%}
+      {%- set problems = [] -%}
+      {%- if pihole_dns_subnet is not match(cidr_re) or pihole_unbound_ip is not match(ip_re) -%}
+      {%- set _ = problems.append('dns_subnet must be a.b.c.d/n and dns_unbound_ip a.b.c.d') -%}
+      {%- else -%}
+      {%- set s = n(pihole_dns_subnet.split('/')[0]) | int -%}
+      {%- set sp = pihole_dns_subnet.split('/')[1] | int -%}
+      {%- if sp < 16 or sp > 28 -%}{%- set _ = problems.append('dns_subnet prefix must be /16../28') -%}{%- endif -%}
+      {%- set within = namespace(ok=false) -%}
+      {%- for r in pihole_rfc1918 -%}
+      {%- set rp = r[1] -%}
+      {%- if sp >= rp and s // 2 ** (32 - rp) == n(r[0] | join('.')) | int // 2 ** (32 - rp) -%}{%- set within.ok = true -%}{%- endif -%}
+      {%- endfor -%}
+      {%- if not within.ok -%}{%- set _ = problems.append('dns_subnet is not inside an RFC 1918 range') -%}{%- endif -%}
+      {%- for label, a, p in pihole_dns_net_avoid -%}
+      {%- set op = [sp, p | int] | min -%}
+      {%- if s // 2 ** (32 - op) == n(a) | int // 2 ** (32 - op) -%}
+      {%- set _ = problems.append('dns_subnet overlaps ' ~ label) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {%- if (n(pihole_unbound_ip) | int) // 2 ** (32 - sp) != s // 2 ** (32 - sp) -%}
+      {%- set _ = problems.append('dns_unbound_ip is not inside dns_subnet') -%}
+      {%- endif -%}
+      {%- endif -%}
+      {{ problems }}
+  # Fixed ranges as octet lists (dotted private literals are reserved for site values).
+  vars:
+    pihole_rfc1918: [[[10, 0, 0, 0], 8], [[172, 16, 0, 0], 12], [[192, 168, 0, 0], 16]]
+    pihole_dns_net_avoid:
+      - ["the lab network", "{{ site.lan_cidr.split('/')[0] }}", "{{ site.lan_cidr.split('/')[1] }}"]
+      - ["the home network", "{{ site.pve.uplink_ip }}", "{{ site.pve.uplink_prefix }}"]
+      - ["NetBird's CGNAT range", "{{ [100, 64, 0, 0] | join('.') }}", 10]
+      - ["Docker's default bridge", "{{ [172, 17, 0, 0] | join('.') }}", 16]
+
+- name: The DNS network is private and overlaps nothing
+  ansible.builtin.assert:
+    that: pihole_dns_net_problems | length == 0
+    fail_msg: "site.hosts.{{ inventory_hostname }}: {{ pihole_dns_net_problems | join('; ') }}"
+    quiet: true

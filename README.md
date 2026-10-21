@@ -227,11 +227,14 @@ subnet. Each NIC answers ARP only for its own address.
   `kv/homelab/apps/pihole`. Settings passed by the role are read-only in the UI.
 
 Host firewall (`host_firewall` role, ufw): inbound denied by default; SSH (22), DNS (53
-tcp/udp) and the web UI (80) are allowed, each bound to its NIC and address. Ports that
-Docker publishes pass the FORWARD chain, not ufw's input rules, so their exposure is set
-by the two addresses they are published on. A firewall change is applied with a timed
-rollback: ufw disables itself after 3 minutes unless a fresh SSH connection and DNS and
-HTTP checks from the controller succeed first.
+tcp/udp) and the web UI (80) are allowed, each bound to its NIC and address. A firewall
+change is applied with a timed rollback: ufw disables itself after 3 minutes unless a
+fresh SSH connection and DNS and HTTP checks from the controller succeed first.
+
+ufw does **not** filter ports that Docker publishes: they are forwarded to the container
+(FORWARD chain, Docker's chains first) and never reach ufw's input rules. For those ports
+the `ip:port` binding in the compose file is the boundary. Bind every published port to
+specific addresses, never `0.0.0.0`; that includes Vaultwarden's 443 when it arrives.
 
 Rate limit caveat: the limit (1000 queries per 60 s) counts per client address. Hand
 Pi-hole out to devices directly (router DHCP, below). If the router is instead set up to

@@ -62,3 +62,9 @@
   ansible.builtin.systemd_service:
     name: "{{ host_firewall_rollback_unit }}.timer"
     state: stopped
+
+- name: The firewall is still active
+  ansible.builtin.command: ufw status
+  register: host_firewall_status
+  changed_when: false
+  failed_when: "host_firewall_status.stdout_lines | first | default('') != 'Status: active'"

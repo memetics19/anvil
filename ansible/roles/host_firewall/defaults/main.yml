@@ -1,9 +1,11 @@
 # Host firewall (ufw): inbound denied by default, outbound allowed, and one allow rule per
 # entry of host_firewall_rules: {ip, port, proto (tcp|udp)}. Each rule is bound to the NIC
 # that holds `ip` (found from facts) and to that address.
-# Ports Docker publishes are DNATed to containers and pass the FORWARD chain, not ufw's
-# INPUT rules: their exposure is set by the addresses they are published on. Their rules
-# here state the intent and cover a later move to host networking.
+# ufw does NOT filter ports Docker publishes: they are DNATed to containers and pass the
+# FORWARD chain (Docker's own chains first), never ufw's INPUT rules. For those ports the
+# boundary is the ip:port binding in the compose file, so every published port (Pi-hole's
+# 53/80 now, Vaultwarden's 443 later) must be bound to specific addresses, never 0.0.0.0.
+# Their rules here only record the intent and would apply to host-network services.
 host_firewall_rules: []
 # A change is applied with a timed rollback: ufw is disabled after this many seconds
 # unless a fresh SSH connection and the checks below succeed first.

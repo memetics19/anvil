@@ -56,16 +56,8 @@
 - name: Local DNS records
   ansible.builtin.include_tasks: records.yml
 
-- name: Unbound's address is in the project network
-  ansible.builtin.assert:
-    that:
-      - pihole_dns_subnet is match('^([0-9]{1,3}\.){3}[0-9]{1,3}/(1[6-9]|2[0-8])$')
-      - pihole_unbound_ip is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
-      - >-
-        (pihole_unbound_ip.split('.') | map('int') | list)[:(pihole_dns_subnet.split('/')[1] | int) // 8]
-        == (pihole_dns_subnet.split('/')[0].split('.') | map('int') | list)[:(pihole_dns_subnet.split('/')[1] | int) // 8]
-    fail_msg: site.hosts.{{ inventory_hostname }}.dns_subnet (a.b.c.d/16..28) and dns_unbound_ip (inside it) are required
-    quiet: true
+- name: The DNS network
+  ansible.builtin.include_tasks: dns_network.yml
 
 # --- ARP on two NICs in one L2 segment ---------------------------------------------------------
 # The VM has a lab and a home address on two NICs of the same bridge. By default Linux
