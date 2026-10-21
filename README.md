@@ -206,8 +206,10 @@ IPTV setup. The lineup is [`iptv/channels.yml`](iptv/channels.yml), checked by
   `admin_password` in Vault `kv/homelab/ragnarok/threadfin`. The role owns its two sources
   and its settings; sources added by hand in the UI are left alone and not recreated on a
   rebuild.
-- Stream helper (port 34401): streams a channel on request (streamlink), at most two at
-  once; it also serves the web TV page and `/guide.json` (now/next).
+- Stream helper (port 34401): reads the entire generated Threadfin M3U, streams a selected
+  channel on request (streamlink), at most two at once, and serves the web TV page and
+  `/guide.json` (now/next). The web page refreshes its channel list from Threadfin every
+  minute, so channels enabled in Threadfin's Mapping appear without changing the repo lineup.
 - Guide grabber (timer `iptv-epg-grab`, 03:30 and 15:30): writes `iptv-epg`'s `guide.xml`.
 
 Memory caps: 64 + 192 MB, and 40 MB for the grabber while it runs.
@@ -220,8 +222,12 @@ the home network) can use these URLs; devices on the lab network cannot.
 - Playlist: `http://<proxmox-home-address>:34400/m3u/threadfin.m3u`
 - Guide (XMLTV): `http://<proxmox-home-address>:34400/xmltv/threadfin.xml`
 
+The web TV page reads this Threadfin playlist and shows every channel currently enabled in
+Threadfin's Mapping. It refreshes the list once a minute; adding or enabling a channel there
+does not require a repo lineup change.
+
 Web TV page (Fire TV, phone, laptop): opens playing the last-watched channel. Left/Right
-change channel, OK shows what is on, Up/Down open the channel list, Back closes it.
+or FF/REW change channel, OK shows what is on, Up/Down open the channel list, Back closes it.
 
 - On a Vega-OS Fire TV: open Silk → `http://<proxmox-home-address>:34401/`
 - Fire OS with sideloading: TiviMate (Add playlist > Enter URL > the playlist URL) or VLC

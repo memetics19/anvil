@@ -36,6 +36,10 @@ services:
     environment:
       IPTV_CHANNELS: '{{ iptv_stream_sources | to_json }}'
       IPTV_LINEUP: '{{ iptv_web_lineup | to_json }}'
+      IPTV_THREADFIN_M3U_URL: '{{ iptv_threadfin_m3u_url }}'
+      IPTV_THREADFIN_INTERNAL_ORIGIN: '{{ iptv_threadfin_internal_origin }}'
+      IPTV_THREADFIN_PUBLIC_ORIGIN: '{{ iptv_threadfin_public_origin }}'
+      IPTV_PLAYLIST_REFRESH: "{{ iptv_playlist_refresh }}"
       IPTV_GUIDE: /guide/{{ iptv_guide_file }}
       IPTV_PORT: "{{ iptv_streams_port }}"
       IPTV_MAX_STREAMS: "{{ iptv_max_streams }}"

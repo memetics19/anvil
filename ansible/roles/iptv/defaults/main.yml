@@ -1,7 +1,6 @@
 # Kannada IPTV on ragnarok: compose project "iptv" in /opt/iptv with Threadfin (playlist
 # and guide) and a streamlink helper (streams on demand), plus a systemd timer that
-# refreshes the guide the iptv_epg nginx serves. The lineup is iptv/channels.yml in this
-# repo; there is no variable for other channels. Ports (shared with pve_network) are in
+# refreshes the guide the iptv_epg nginx serves. Ports (shared with pve_network) are in
 # inventory/group_vars/all/iptv.yml.
 iptv_dir: /opt/iptv
 iptv_lineup_file: "{{ playbook_dir }}/../../iptv/channels.yml"
@@ -13,6 +12,10 @@ iptv_bind_ip: "{{ site.hosts[inventory_hostname].ip }}"
 # Address stream and guide links in the playlist are built from: the Proxmox host's
 # home-network address, forwarded to this VM.
 iptv_public_ip: "{{ site.pve.uplink_ip }}"
+iptv_threadfin_public_origin: "http://{{ iptv_public_ip }}:{{ iptv_threadfin_port }}"
+iptv_threadfin_m3u_url: "http://threadfin:{{ iptv_threadfin_port }}/m3u/threadfin.m3u"
+iptv_threadfin_internal_origin: "http://threadfin:{{ iptv_threadfin_port }}"
+iptv_playlist_refresh: 60
 
 # Threadfin 1.2.37 (2025-09-11), multi-arch digest, and its settings database version
 # (written only into a new settings file).

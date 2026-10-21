@@ -28,13 +28,24 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
+from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
 import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 CHANNELS = json.loads(os.environ["IPTV_CHANNELS"])
 # [{"id", "name", "number"}] in lineup order: what the page and guide.json list.
 LINEUP = json.loads(os.environ.get("IPTV_LINEUP", "[]"))
+MANAGED_CHANNELS = CHANNELS.copy()
+MANAGED_LINEUP = LINEUP.copy()
+MANAGED_SOURCES_BY_NAME = {channel["name"].strip().casefold(): MANAGED_CHANNELS[channel["id"]]
+                           for channel in MANAGED_LINEUP if channel["id"] in MANAGED_CHANNELS}
 GUIDE = os.environ.get("IPTV_GUIDE", "/guide/guide.xml")
+THREADFIN_M3U = os.environ.get("IPTV_THREADFIN_M3U_URL", "")
+THREADFIN_INTERNAL_ORIGIN = os.environ.get("IPTV_THREADFIN_INTERNAL_ORIGIN", "")
+THREADFIN_PUBLIC_ORIGIN = os.environ.get("IPTV_THREADFIN_PUBLIC_ORIGIN", "")
+PLAYLIST_REFRESH = int(os.environ.get("IPTV_PLAYLIST_REFRESH", "60"))
 WEB_DIR = os.environ.get("IPTV_WEB_DIR", "/app/web")
 PORT = int(os.environ.get("IPTV_PORT", "34401"))
 MAX_STREAMS = int(os.environ.get("IPTV_MAX_STREAMS", "2"))
@@ -44,6 +55,8 @@ QUALITY = os.environ.get("IPTV_QUALITY", "best")
 CHUNK = 64 * 1024
 
 slots = threading.BoundedSemaphore(MAX_STREAMS)
+playlist_lock = threading.Lock()
+playlist_checked = 0.0
 
 # The only files served: URL path -> (file in WEB_DIR, content type).
 WEB_FILES = {
@@ -96,6 +109,111 @@ def xmltv_time(stamp):
     return int(dt.datetime.strptime(stamp.strip(), "%Y%m%d%H%M%S %z").timestamp())
 
 
+def _m3u_attributes(line):
+    import re
+    return {key: (quoted if quoted is not None else bare)
+            for key, quoted, bare in re.findall(r'([\w-]+)=(?:"([^"]*)"|([^\s,]+))', line)}
+
+
+def parse_threadfin_m3u(content):
+    entries = []
+    pending = None
+    used = set()
+    for raw in content.splitlines():
+        line = raw.strip()
+        if line.startswith("#EXTINF:"):
+            attrs = _m3u_attributes(line)
+            title = line.split(",", 1)[1].strip() if "," in line else ""
+            pending = (attrs, title or attrs.get("tvg-name") or "Unnamed channel")
+        elif line and not line.startswith("#") and pending:
+            attrs, title = pending
+            pending = None
+            name = (attrs.get("tvg-name") or title).strip()
+            source = line
+            if not urlsplit(source).scheme:
+                source = urljoin(THREADFIN_M3U, source)
+            if THREADFIN_PUBLIC_ORIGIN and THREADFIN_INTERNAL_ORIGIN:
+                public = urlsplit(THREADFIN_PUBLIC_ORIGIN)
+                actual = urlsplit(source)
+                if (actual.scheme, actual.netloc) == (public.scheme, public.netloc):
+                    internal = urlsplit(THREADFIN_INTERNAL_ORIGIN)
+                    source = urlunsplit((actual.scheme, internal.netloc, actual.path,
+                                         actual.query, actual.fragment))
+            source = MANAGED_SOURCES_BY_NAME.get(name.casefold(), source)
+            base = attrs.get("tvg-id") or attrs.get("tvg-chno") or attrs.get("tvg-name") or title
+            cid = base.strip()
+            if not cid:
+                cid = "channel-" + hashlib.sha256(source.encode()).hexdigest()[:12]
+            if cid in used:
+                suffix = attrs.get("tvg-chno") or str(len(entries) + 1)
+                cid = f"{cid}-{suffix}"
+                while cid in used:
+                    cid += "-2"
+            used.add(cid)
+            try:
+                number = int(float(attrs.get("tvg-chno", "")))
+            except (ValueError, TypeError):
+                number = len(entries) + 1
+            entries.append({
+                "id": cid,
+                "name": name,
+                "number": number,
+                "logo": attrs.get("tvg-logo", ""),
+                "group": attrs.get("group-title", ""),
+                "source": source,
+            })
+    return entries
+
+
+def refresh_threadfin_playlist(force=False):
+    global CHANNELS, LINEUP, playlist_checked
+    if not THREADFIN_M3U:
+        return
+    now = time.monotonic()
+    if not force and now - playlist_checked < PLAYLIST_REFRESH:
+        return
+    with playlist_lock:
+        now = time.monotonic()
+        if not force and now - playlist_checked < PLAYLIST_REFRESH:
+            return
+        playlist_checked = now
+        try:
+            req = urllib.request.Request(THREADFIN_M3U, headers={"User-Agent": "anvil-iptv/1"})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                content = response.read(4 * 1024 * 1024 + 1)
+            if len(content) > 4 * 1024 * 1024:
+                raise ValueError("playlist exceeds 4 MiB")
+            entries = parse_threadfin_m3u(content.decode("utf-8-sig"))
+            if not entries:
+                raise ValueError("playlist contains no playable channels")
+            CHANNELS = {entry["id"]: entry["source"] for entry in entries}
+            LINEUP = [{key: entry[key] for key in ("id", "name", "number", "logo", "group")}
+                      for entry in entries]
+        except (OSError, UnicodeError, ValueError, urllib.error.URLError) as exc:
+            log(f"playlist: refresh failed, keeping {len(CHANNELS)} cached channels: {exc}")
+
+
+def resolve_threadfin_stream(source):
+    if not THREADFIN_INTERNAL_ORIGIN:
+        return source
+    parsed = urlsplit(source)
+    internal = urlsplit(THREADFIN_INTERNAL_ORIGIN)
+    if ((parsed.scheme, parsed.netloc) != (internal.scheme, internal.netloc)
+            or not parsed.path.startswith("/stream/")):
+        return source
+
+    req = urllib.request.Request(source, headers={"User-Agent": "anvil-iptv/1"})
+    with urllib.request.urlopen(req, timeout=min(TIMEOUT, 10)) as response:
+        resolved = response.geturl()
+        content_type = response.headers.get_content_type()
+    final = urlsplit(resolved)
+    if final.scheme not in ("http", "https") or not final.netloc:
+        raise ValueError("Threadfin returned an invalid stream URL")
+    if resolved == source and content_type in ("application/vnd.apple.mpegurl", "application/x-mpegurl"):
+        return "hls://" + source
+    return resolved
+
+
 class Guide:
     """Programmes per lineup channel from the XMLTV file, parsed again when it changes
     (the grabber replaces it with a rename, so the directory is mounted, not the file)."""
@@ -107,6 +225,7 @@ class Guide:
         self.lock = threading.Lock()
 
     def _parse(self):
+        refresh_threadfin_playlist()
         ids = {c["id"] for c in LINEUP}
         out = {cid: [] for cid in ids}
         for p in ET.parse(self.path).getroot().iter("programme"):
@@ -129,7 +248,7 @@ class Guide:
             st = os.stat(self.path)
         except OSError:
             return {}, False
-        key = (st.st_ino, st.st_mtime_ns, st.st_size)
+        key = (tuple(c["id"] for c in LINEUP), st.st_ino, st.st_mtime_ns, st.st_size)
         with self.lock:
             if key != self.key:
                 try:
@@ -179,7 +298,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data)
 
     def _channel(self):
-        cid = self.path.split("?", 1)[0].strip("/")
+        cid = unquote(self.path.split("?", 1)[0].strip("/"))
         return cid[:-3] if cid.endswith(".ts") else cid
 
     def _send(self, code, ctype, data, body=True, headers=None):
@@ -196,6 +315,7 @@ class Handler(BaseHTTPRequestHandler):
     def _web(self, path, body=True):
         """The page and its assets (exact paths only), the guide. False if not one of them."""
         if path == "/guide.json":
+            refresh_threadfin_playlist()
             data = json.dumps(guide.now_next(), separators=(",", ":")).encode()
             self._send(200, "application/json", data, body, {"Cache-Control": "no-cache"})
             return True
@@ -266,6 +386,11 @@ class Handler(BaseHTTPRequestHandler):
                 return b""
 
     def _relay(self, cid, source):
+        try:
+            source = resolve_threadfin_stream(source)
+        except (OSError, ValueError, urllib.error.URLError) as exc:
+            log(f"{cid}: cannot resolve Threadfin stream: {exc}")
+            return self._plain(502, "cannot resolve channel stream")
         proc = subprocess.Popen(
             ["streamlink", "--stdout", "--loglevel", "warning", "--ringbuffer-size", "8M",
              source, QUALITY],
@@ -309,5 +434,6 @@ class Server(ThreadingHTTPServer):
 
 if __name__ == "__main__":
     WEB.update(load_web())
+    refresh_threadfin_playlist(force=True)
     log(f"listening on :{PORT}, channels: {', '.join(sorted(CHANNELS))}, guide: {GUIDE}")
     Server(("", PORT), Handler).serve_forever()

@@ -449,23 +449,47 @@
 
   var BACK_KEYS = { Escape: 1, Backspace: 1, GoBack: 1, BrowserBack: 1 };
   var BACK_CODES = { 4: 1, 8: 1, 27: 1, 461: 1, 10009: 1 };
-  var NEXT_KEYS = { ArrowRight: 1, PageUp: 1, ChannelUp: 1, MediaTrackNext: 1, MediaNextTrack: 1 };
-  var PREV_KEYS = { ArrowLeft: 1, PageDown: 1, ChannelDown: 1, MediaTrackPrevious: 1, MediaPreviousTrack: 1 };
+  var NEXT_KEYS = { ArrowRight: 1, PageUp: 1, ChannelUp: 1, MediaTrackNext: 1, MediaNextTrack: 1, MediaFastForward: 1, FastForward: 1, AudioFastForward: 1, FastFwd: 1, '>': 1, '>>': 1 };
+  var PREV_KEYS = { ArrowLeft: 1, PageDown: 1, ChannelDown: 1, MediaTrackPrevious: 1, MediaPreviousTrack: 1, MediaRewind: 1, Rewind: 1, AudioRewind: 1, '<<': 1, '<': 1 };
+  var PLAY_KEYS = { MediaPlayPause: 1, MediaPlay: 1, MediaPause: 1 };
+  var NEXT_CODES = { 90: 1, 190: 1, 228: 1, 417: 1, 176: 1 };
+  var PREV_CODES = { 89: 1, 188: 1, 227: 1, 412: 1, 177: 1 };
+  var PLAY_CODES = { 85: 1, 126: 1, 127: 1, 179: 1, 415: 1, 19: 1 };
   var ARROWS = { ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1 };
+
+  function remote(e) {
+    var key = e.key;
+    if (NEXT_KEYS[key]) return 'next';
+    if (PREV_KEYS[key]) return 'prev';
+    if (PLAY_KEYS[key]) return 'play';
+    if (key && key.length === 1) return '';
+    if (NEXT_CODES[e.keyCode]) return 'next';
+    if (PREV_CODES[e.keyCode]) return 'prev';
+    if (PLAY_CODES[e.keyCode]) return 'play';
+    return '';
+  }
+
+  function playPause() {
+    if (banner.hidden || !(state === 'playing' || state === 'buffering')) showBanner();
+    else { clearTimeout(timers.banner); banner.hidden = true; }
+  }
 
   document.addEventListener('keydown', function (e) {
     var key = e.key;
+    var act = remote(e);
     var isBack = BACK_KEYS[key] || BACK_CODES[e.keyCode];
     if (!list.hidden) {
       if (isBack) { e.preventDefault(); closeList(); showBanner(); }
+      else if (act === 'next' || act === 'prev') { e.preventDefault(); closeList(); zap(act === 'next' ? 1 : -1); }
       else if (ARROWS[key]) { e.preventDefault(); moveFocus(key); }
-      else if (NEXT_KEYS[key] || PREV_KEYS[key]) e.preventDefault();
+      else if (act) e.preventDefault();
       // Enter: the focused card's own click tunes it.
       return;
     }
     if (!channels.length) return;
-    if (NEXT_KEYS[key]) { e.preventDefault(); zap(1); }
-    else if (PREV_KEYS[key]) { e.preventDefault(); zap(-1); }
+    if (act === 'next') { e.preventDefault(); zap(1); }
+    else if (act === 'prev') { e.preventDefault(); zap(-1); }
+    else if (act === 'play') { e.preventDefault(); playPause(); }
     else if (key === 'ArrowUp' || key === 'ArrowDown') { e.preventDefault(); openList(); }
     else if (key === 'Enter' || key === ' ') { e.preventDefault(); ok(); }
     else if (isBack) { e.preventDefault(); showBanner(); }
@@ -487,10 +511,18 @@
 
   function render(data) {
     channels = data.channels;
+    var present = {};
     var t = Date.now() / 1000;
     channels.forEach(function (ch) {
+      present[ch.id] = true;
       if (!cards[ch.id]) cards[ch.id] = buildCard(ch);
+      grid.appendChild(cards[ch.id]);
       fillCard(cards[ch.id], ch, t);
+    });
+    Object.keys(cards).forEach(function (id) {
+      if (present[id]) return;
+      cards[id].remove();
+      delete cards[id];
     });
     var notice = $('notice');
     notice.hidden = data.guide;
