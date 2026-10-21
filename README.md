@@ -144,6 +144,10 @@ it is briefly visible in the process list on your Mac):
 source scripts/env.sh && security add-generic-password -U -s homelab -a ceph-dashboard-password -w "$(ssh root@"$PVE_IP" cat /root/.ceph-dashboard-admin)"
 ```
 
+Known issue: Object Gateway zone and multisite pages return 500 on Proxmox. The mgr drops
+supplementary groups and cannot read /etc/ceph/ceph.conf (a link into pmxcfs). Buckets and
+users pages work; use Filestash (Task 12b) or the aws CLI to browse objects.
+
 ## Terraform
 
 Terraform manages the VMs and the Proxmox SDN zone and VNets. State is in the Ceph S3
