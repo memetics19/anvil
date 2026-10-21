@@ -15,6 +15,12 @@ rather than repaired by hand.
 
 Work in progress. See [Roadmap](#roadmap).
 
+## Documentation
+
+- [docs/setup.md](docs/setup.md): operator Mac, Keychain items, site dict, first build, rebuild on a new box
+- [docs/usage.md](docs/usage.md): make targets, adding a service, secrets, backups, safety rails, upgrades, troubleshooting
+- [docs/secrets.md](docs/secrets.md): every Vault path and key
+
 ## Hosts
 
 | Host       | Role                                                          |
@@ -615,14 +621,27 @@ history. [`.gitleaks.toml`](.gitleaks.toml) adds rules for:
 
 - [x] Secret scanning, linters, CI
 - [x] Inventory, SSH bootstrap, Proxmox host base role
-- [ ] Host network, with automatic rollback
-- [ ] SDN VLANs and inter-VLAN firewall
-- [ ] Single-node Ceph and S3 gateway for Terraform state
-- [ ] Terraform: adopt existing VMs and SDN, guard against destroys
+- [x] Host network, with automatic rollback
+- [x] Single-node Ceph and S3 gateway for Terraform state
+- [x] Terraform: adopt existing VMs and SDN, guard against destroys
 - [x] Vault VM, Keychain-held unseal keys, snapshot backups
-- [ ] Move secrets and site values into Vault
-- [ ] Guest roles: base, Docker, node_exporter, cloudflared
+- [x] Move secrets and site values into Vault
+- [x] Guest roles: base, Docker, node_exporter, cloudflared
 - [x] Workload roles for `frigate`, `ragnarok`, `netbird`
+- [x] Private service gateway (Caddy, wildcard DNS-01, Pi-hole records)
+- [x] Pi-hole + Unbound for the home network
+- [x] Homepage dashboard
+- [x] Vaultwarden with encrypted backups and restore drill
+- [ ] Secrets enclave: Vault and Vaultwarden on an isolated network (in progress)
+- [ ] VLANs 10/20/30 with an inter-VLAN firewall
+- [ ] Monitoring: VictoriaMetrics, Grafana, exporters, alerts to ntfy
+- [ ] Single sign-on (Authelia) in front of the gateway
+- [ ] Self-hosted NetBird alongside the hosted one
+- [ ] Bare-metal provisioning of the second server (iDRAC virtual media or Tinkerbell)
+- [ ] Releases: semver tags with a changelog generated from conventional commits (release-please), published as GitHub Releases
+- [ ] Split the generic core (roles, Terraform modules, scripts) from this lab's site layer, so the toolkit is usable on another Proxmox box
+- [ ] `anvil` CLI wrapper (init, check, apply, backup, restore) over the make targets
+- [ ] Packages: `.deb` built with nfpm on each release (installs the CLI and the repo under /usr/share/anvil, depends on ansible, terraform, vault, jq, age), served from an apt repo on GitHub Pages, plus a Homebrew tap for macOS controllers; release artifacts attached to the GitHub Release
 - [ ] Rebuild runbook, tested on a second server
 
 ## Known issues
