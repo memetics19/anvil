@@ -440,9 +440,11 @@
   until: iptv_streams_health.status == 200
   when: not ansible_check_mode
 
-# Only the managed lineup is checked; hand-added channels may be in the playlist too.
-# The playlist may list hand-added channels: its content stays out of the output, and the
-# assert below says what is missing (managed channel names only).
+# Threadfin's channel mapping is the owner's (web UI): a managed channel the owner unmapped
+# or replaced is reported, not an error. Only a Threadfin that does not answer fails the run.
+# The playlist may list hand-added channels: its content stays out of the output, and only
+# managed channel names are reported. After a (re)start this run, wait for the lineup to
+# appear; otherwise only for an answer.
 - name: Fetch Threadfin's playlist
   ansible.builtin.uri:
     url: "http://{{ iptv_bind_ip }}:{{ iptv_threadfin_port }}/m3u/threadfin.m3u"
@@ -452,24 +454,31 @@
   delay: 3
   until: >-
     iptv_playlist.status == 200
-    and iptv_lineup | map(attribute='name') | map('regex_replace', '^(.*)$', 'tvg-name="\\1"')
-        | reject('in', iptv_playlist.content) | list | length == 0
+    and (not iptv_threadfin_restarted | bool
+         or iptv_lineup | map(attribute='name') | map('regex_replace', '^(.*)$', 'tvg-name="\\1"')
+            | reject('in', iptv_playlist.content) | list | length == 0)
   failed_when: false
   no_log: true
+  vars:
+    iptv_threadfin_restarted: >-
+      {{ iptv_threadfin_stop.rc | default(1) == 0 or 'threadfin' in compose_project_plan.up | default([]) }}
   when: not ansible_check_mode
 
-- name: Threadfin serves the whole lineup
+- name: Threadfin answers
   ansible.builtin.assert:
-    that:
-      - iptv_playlist.status | default(-1) == 200
-      - iptv_playlist_missing | length == 0
-    fail_msg: >-
-      Threadfin playlist: HTTP {{ iptv_playlist.status | default('no answer') }}; managed channels
-      missing: {{ iptv_playlist_missing | join(', ') or 'none' }}
+    that: iptv_playlist.status | default(-1) == 200
+    fail_msg: "Threadfin playlist: HTTP {{ iptv_playlist.status | default('no answer') }}"
     quiet: true
+  when: not ansible_check_mode
+
+- name: Managed channels missing from Threadfin's playlist (mapping changed in its UI)
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: not in Threadfin's playlist: {{ iptv_playlist_missing | join(', ') }}. Threadfin's
+      channel mapping is managed in its web UI; the stream helper and web page still serve them.
   vars:
     iptv_playlist_missing: >-
       {{ iptv_lineup | map(attribute='name')
          | reject('in', (iptv_playlist.content | default('')) | regex_findall('tvg-name="([^"]*)"'))
          | list }}
-  when: not ansible_check_mode
+  when: not ansible_check_mode and iptv_playlist_missing | length > 0
