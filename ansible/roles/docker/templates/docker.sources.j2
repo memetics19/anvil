@@ -1,0 +1,5 @@
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: {{ ansible_facts['distribution_release'] }}
+Components: stable
+Signed-By: {{ docker_apt_keyring }}

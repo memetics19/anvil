@@ -1,0 +1,10 @@
+# The version installed today; the monitoring task upgrades it.
+node_exporter_version: 1.0.1
+node_exporter_arch: amd64
+# sha256 of node_exporter-<version>.linux-<arch>.tar.gz (from the release's sha256sums.txt)
+node_exporter_tarball_sha256: 3369b76cd2b0ba678b6d618deab320e565c3d93ccb5c2a0d5db51a53857768ae
+node_exporter_listen_address: ":9200"
+node_exporter_binary: /usr/bin/node_exporter
+node_exporter_unit_path: /usr/lib/systemd/system/node_exporter.service
+# Same mode as the hand-installed unit today; tightened when the monitoring task replaces it.
+node_exporter_unit_mode: "0664"

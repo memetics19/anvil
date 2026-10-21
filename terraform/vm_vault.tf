@@ -1,7 +1,7 @@
 # The Vault VM: Ubuntu 24.04 cloud image, cloud-init for user, key and static address.
 # Everything goes through the Proxmox API (no SSH): the image is downloaded into local's
 # import store (enabled by the pve_host role, tag storage). The guest agent is installed
-# afterwards by ansible/playbooks/guest-agent.yml, then the VM is restarted once. It will hold secrets, so it is never destroyed by Terraform.
+# afterwards by the guest_base role (make vms), then the VM is restarted once. It will hold secrets, so it is never destroyed by Terraform.
 # Addresses and VMID are site values (var.site_json); the public key is read at plan
 # time from var.ssh_public_key_path and is not committed.
 

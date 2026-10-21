@@ -1,0 +1,11 @@
+docker_apt_key_url: https://download.docker.com/linux/ubuntu/gpg
+docker_apt_keyring: /etc/apt/keyrings/docker.asc
+# Pinned so a changed key is refused instead of trusted; update it when Docker rotates the key.
+docker_gpg_sha256: 1500c1f56fa9e26b9b8f42452a553675796ade0807cdce11975eb98170b3a570
+# Installed at whatever version is current; upgrades are left to unattended-upgrades/apt.
+docker_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin

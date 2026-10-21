@@ -1,0 +1,9 @@
+# Handlers run in this order.
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart node_exporter
+  ansible.builtin.systemd_service:
+    name: node_exporter
+    state: restarted

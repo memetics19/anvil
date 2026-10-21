@@ -1,0 +1,89 @@
+- name: Cloudflare apt signing key
+  ansible.builtin.get_url:
+    url: "{{ cloudflared_apt_key_url }}"
+    dest: "{{ cloudflared_apt_keyring }}"
+    checksum: "sha256:{{ cloudflared_gpg_sha256 }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Cloudflare apt repository
+  ansible.builtin.template:
+    src: cloudflared.list.j2
+    dest: /etc/apt/sources.list.d/cloudflared.list
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Update apt cache
+
+- name: Refresh apt cache before installing
+  ansible.builtin.meta: flush_handlers
+
+- name: Install cloudflared
+  ansible.builtin.apt:
+    name: cloudflared
+    state: present
+
+# The token is never logged or diffed: every task that holds it has no_log.
+- name: Read the tunnel token from Vault
+  ansible.builtin.set_fact:
+    cloudflared_token: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', cloudflared_vault_path,
+                 engine_mount_point=cloudflared_vault_mount,
+                 url=lookup('env', 'VAULT_ADDR'),
+                 token=lookup('env', 'VAULT_TOKEN'),
+                 ca_cert=lookup('env', 'VAULT_CACERT')).secret)[cloudflared_vault_key] }}
+  no_log: true
+
+- name: The tunnel token is present
+  ansible.builtin.assert:
+    that: cloudflared_token | length > 0
+    fail_msg: "{{ cloudflared_vault_mount }}/{{ cloudflared_vault_path }} has no {{ cloudflared_vault_key }}"
+    quiet: true
+  no_log: true
+
+- name: Render the unit
+  ansible.builtin.set_fact:
+    cloudflared_unit: "{{ lookup('ansible.builtin.template', 'cloudflared.service.j2') }}"
+  no_log: true
+
+- name: Read the installed unit
+  ansible.builtin.stat:
+    path: "{{ cloudflared_unit_path }}"
+    checksum_algorithm: sha256
+  register: cloudflared_unit_stat
+
+# Content and mode are handled apart: the unit holds the token, so it is 0600, and
+# tightening the mode alone must not restart the tunnel.
+- name: Unit content (token from Vault)
+  ansible.builtin.copy:
+    content: "{{ cloudflared_unit }}"
+    dest: "{{ cloudflared_unit_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when: >-
+    not cloudflared_unit_stat.stat.exists
+    or cloudflared_unit_stat.stat.checksum != (cloudflared_unit | hash('sha256'))
+  no_log: true
+  diff: false
+  notify:
+    - Reload systemd
+    - Restart cloudflared
+
+- name: Unit file mode
+  ansible.builtin.file:
+    path: "{{ cloudflared_unit_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when: cloudflared_unit_stat.stat.exists or not ansible_check_mode
+
+- name: Apply unit changes before starting
+  ansible.builtin.meta: flush_handlers
+
+- name: Cloudflared running and enabled
+  ansible.builtin.systemd_service:
+    name: cloudflared
+    enabled: true
+    state: started

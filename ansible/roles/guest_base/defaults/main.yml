@@ -1,0 +1,13 @@
+guest_base_timezone: Asia/Kolkata
+
+# Static netplan file. Only for the adopted guests (group_vars/guests.yml); the vault VM keeps
+# the netplan that cloud-init wrote. The file name is the one the guests use today, so the
+# first run changes nothing; renaming it is a later, deliberate change (set netplan_file).
+guest_base_manage_netplan: false
+guest_base_netplan_file: "{{ netplan_file | default('60-opnsense.yaml') }}"
+guest_base_netplan_interface: ens18
+# Addresses come from the site dict (Vault), never from this repo.
+guest_base_ip: "{{ site.hosts[inventory_hostname].ip }}"
+guest_base_prefix: "{{ site.lan_cidr.split('/')[1] }}"
+guest_base_gateway: "{{ site.pve.gateway_alias_ip }}"
+guest_base_dns: "{{ site.guest_dns }}"

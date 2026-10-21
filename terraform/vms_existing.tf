@@ -16,7 +16,7 @@ resource "proxmox_virtual_environment_vm" "frigate" {
   reboot_after_update = false
   boot_order          = ["scsi0", "ide2", "net0"]
 
-  # qemu-guest-agent runs in the guest (ansible/playbooks/guest-agent.yml). The IPs are
+  # qemu-guest-agent runs in the guest (ansible role guest_base, make vms). The IPs are
   # site values, so the provider never waits on the agent to report them.
   agent {
     enabled = true
@@ -83,7 +83,7 @@ resource "proxmox_virtual_environment_vm" "netbird" {
   reboot_after_update = false
   boot_order          = ["scsi0", "ide2", "net0"]
 
-  # qemu-guest-agent runs in the guest (ansible/playbooks/guest-agent.yml). The IPs are
+  # qemu-guest-agent runs in the guest (ansible role guest_base, make vms). The IPs are
   # site values, so the provider never waits on the agent to report them.
   agent {
     enabled = true
@@ -149,7 +149,7 @@ resource "proxmox_virtual_environment_vm" "ragnarok" {
   reboot_after_update = false
   boot_order          = ["scsi0", "ide2", "net0"]
 
-  # qemu-guest-agent runs in the guest (ansible/playbooks/guest-agent.yml). The IPs are
+  # qemu-guest-agent runs in the guest (ansible role guest_base, make vms). The IPs are
   # site values, so the provider never waits on the agent to report them.
   agent {
     enabled = true

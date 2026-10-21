@@ -6,7 +6,7 @@ HVAC_CHECK := py=$$(ansible-playbook --version | sed -n 's/^  python version = .
 	"$${py:-python3}" -c 'import hvac' 2>/dev/null || { \
 	  echo "hvac is missing in the Python that runs Ansible; fix: \"$$py\" -m pip install hvac" >&2; exit 1; }
 
-.PHONY: lint secrets-scan bootstrap-ssh host host-network ceph vault vault-unseal vault-policies site-to-vault backup tf-init tf-plan tf-apply
+.PHONY: lint secrets-scan bootstrap-ssh host host-network ceph vms vm vault vault-unseal vault-policies site-to-vault backup tf-init tf-plan tf-apply
 
 lint:
 	@set -eu -o pipefail; \
@@ -44,6 +44,17 @@ host-network:
 ceph:
 	@set -eu -o pipefail; $(ENV); $(HVAC_CHECK); \
 	cd ansible && ansible-playbook playbooks/ceph.yml $(ARGS)
+
+# Common guest roles (playbooks/vms.yml): base, docker, cloudflared, node_exporter.
+vms:
+	@set -eu -o pipefail; $(ENV); $(HVAC_CHECK); \
+	cd ansible && ansible-playbook playbooks/vms.yml $(ARGS)
+
+# One VM at a time: make vm HOST=frigate
+vm:
+	@set -eu -o pipefail; [ -n "$(HOST)" ] || { echo "usage: make vm HOST=<name>" >&2; exit 1; }; \
+	$(ENV); $(HVAC_CHECK); \
+	cd ansible && ansible-playbook playbooks/vms.yml --limit "$(HOST)" $(ARGS)
 
 # Vault server role. Leaves Vault sealed; a config change restarts (and so seals) it.
 # First time only, the operator runs scripts/vault-init.sh (it writes the Keychain).

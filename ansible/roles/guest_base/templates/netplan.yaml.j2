@@ -1,0 +1,15 @@
+network:
+  version: 2
+  ethernets:
+    {{ guest_base_netplan_interface }}:
+      dhcp4: false
+      addresses:
+        - {{ guest_base_ip }}/{{ guest_base_prefix }}
+      routes:
+        - to: default
+          via: {{ guest_base_gateway }}
+      nameservers:
+        addresses:
+{% for ns in guest_base_dns %}
+          - {{ ns }}
+{% endfor %}

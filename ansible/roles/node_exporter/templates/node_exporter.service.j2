@@ -1,0 +1,16 @@
+[Unit]
+Description=Node Exporter
+Documentation=https://prometheus.io/docs/guides/node-exporter/
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=node_exporter
+Group=node_exporter
+Type=simple
+Restart=on-failure
+ExecStart={{ node_exporter_binary }} \
+  --web.listen-address={{ node_exporter_listen_address }}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+# Handlers run in this order.
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart cloudflared
+  ansible.builtin.systemd_service:
+    name: cloudflared
+    state: restarted

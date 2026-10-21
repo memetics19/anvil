@@ -1,0 +1,9 @@
+cloudflared_apt_key_url: https://pkg.cloudflare.com/cloudflare-public-v2.gpg
+cloudflared_apt_keyring: /usr/share/keyrings/cloudflare-public-v2.gpg
+# Pinned so a changed key is refused instead of trusted; update it when Cloudflare rotates the key.
+cloudflared_gpg_sha256: 1bd95f4082b320d541bee351560fc2765aa9f9cd8efa4c9e32135e63f252721d
+cloudflared_unit_path: /etc/systemd/system/cloudflared.service
+# Tunnel token: Vault KV v2, mount kv (docs/secrets.md).
+cloudflared_vault_mount: kv
+cloudflared_vault_path: "homelab/{{ inventory_hostname }}/cloudflared"
+cloudflared_vault_key: token

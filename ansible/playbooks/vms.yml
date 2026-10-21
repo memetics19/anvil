@@ -1,0 +1,28 @@
+# Common roles for the guest VMs: guest_base (timezone, qemu-guest-agent, fstrim.timer,
+# static netplan on the adopted guests), docker, cloudflared (token from Vault) and
+# node_exporter (group node_exporter in the inventory).
+# Run: make vms ARGS="--check --diff"   or one VM: make vm HOST=frigate
+# Tags: base, docker, cloudflared, node_exporter.
+- name: Guest base
+  hosts: guests:vault_servers
+  pre_tasks:
+    - name: Resolve the site dict once for this run
+      ansible.builtin.import_tasks: tasks/site.yml
+      tags: [always]
+  roles:
+    - role: guest_base
+      tags: [base]
+
+- name: Docker and the Cloudflare tunnel
+  hosts: guests
+  roles:
+    - role: docker
+      tags: [docker]
+    - role: cloudflared
+      tags: [cloudflared]
+
+- name: Node exporter
+  hosts: node_exporter
+  roles:
+    - role: node_exporter
+      tags: [node_exporter]

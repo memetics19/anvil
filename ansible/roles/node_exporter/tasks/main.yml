@@ -1,0 +1,78 @@
+- name: Group node_exporter
+  ansible.builtin.group:
+    name: node_exporter
+    system: true
+
+- name: User node_exporter
+  ansible.builtin.user:
+    name: node_exporter
+    group: node_exporter
+    system: true
+    shell: /bin/false
+    home: /home/node_exporter
+    create_home: false
+
+- name: Read the installed node_exporter version
+  ansible.builtin.command: "{{ node_exporter_binary }} --version"
+  register: node_exporter_installed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Install node_exporter from the release tarball
+  when: >-
+    node_exporter_installed.rc != 0
+    or ('version ' ~ node_exporter_version ~ ' ') not in (node_exporter_installed.stdout ~ node_exporter_installed.stderr)
+  vars:
+    node_exporter_dist: "node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}"
+  block:
+    - name: Download the release tarball
+      ansible.builtin.get_url:
+        url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/{{ node_exporter_dist }}.tar.gz"
+        dest: "/tmp/{{ node_exporter_dist }}.tar.gz"
+        checksum: "sha256:{{ node_exporter_tarball_sha256 }}"
+        mode: "0644"
+
+    - name: Unpack the tarball
+      ansible.builtin.unarchive:
+        src: "/tmp/{{ node_exporter_dist }}.tar.gz"
+        dest: /tmp
+        remote_src: true
+
+    - name: Install the binary
+      ansible.builtin.copy:
+        src: "/tmp/{{ node_exporter_dist }}/node_exporter"
+        dest: "{{ node_exporter_binary }}"
+        remote_src: true
+        owner: node_exporter
+        group: node_exporter
+        mode: "0755"
+      notify: Restart node_exporter
+
+- name: Ownership of the node_exporter binary
+  ansible.builtin.file:
+    path: "{{ node_exporter_binary }}"
+    owner: node_exporter
+    group: node_exporter
+    mode: "0755"
+  when: not ansible_check_mode or node_exporter_installed.rc == 0
+
+- name: Systemd unit for node_exporter
+  ansible.builtin.template:
+    src: node_exporter.service.j2
+    dest: "{{ node_exporter_unit_path }}"
+    owner: root
+    group: root
+    mode: "{{ node_exporter_unit_mode }}"
+  notify:
+    - Reload systemd
+    - Restart node_exporter
+
+- name: Apply unit changes before starting
+  ansible.builtin.meta: flush_handlers
+
+- name: Node_exporter running and enabled
+  ansible.builtin.systemd_service:
+    name: node_exporter
+    enabled: true
+    state: started

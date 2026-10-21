@@ -80,6 +80,8 @@ make bootstrap-ssh                # once: install your SSH key on all hosts
 make host ARGS="--check --diff"   # dry run against the Proxmox host
 make host
 make ceph ARGS="--check --diff"   # see below before the first real run
+make vms ARGS="--check --diff"    # guest roles: base, docker, cloudflared, node_exporter
+make vm HOST=frigate              # one VM at a time
 make lint
 make secrets-scan
 ```
