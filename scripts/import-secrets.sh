@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Copy the secrets the live VMs use into Vault (KV v2, mount kv, kv/homelab/<host>/<app>).
 # docs/secrets.md lists every path and key. Each value is read on the VM (as root, via
-# sudo fed from ANSIBLE_BECOME_PASSWORD) and travels ssh stdout -> `vault kv put|patch
+# sudo fed from ANSIBLE_BECOME_PASSWORD, see remote_wrap) and travels ssh stdout -> `vault kv put|patch
 # <path> <key>=-` stdin: never argv, never disk, never printed. Hosts resolve from the
 # site dict (kv/homelab/site) at run time.
 # Per key: SHA-256 of the VM value vs the Vault value. Equal -> unchanged; missing ->
@@ -14,6 +14,7 @@ set -euo pipefail
 
 die() { echo "import-secrets: $*" >&2; exit 1; }
 
+[ $# -le 1 ] || die "usage: $0 [--force | --verify]"
 mode=import
 case ${1:-} in
   --force) mode=force ;;
@@ -52,21 +53,30 @@ entries=(
 remote_lib='
 set -euo pipefail
 nonempty() { v="$(cat; printf x)"; v="${v%x}"; [ -n "$v" ] || { echo "empty value" >&2; exit 3; }; printf "%s" "$v"; }
-unit_token() { systemctl cat "$1" | grep -oE -- "--token[ =][^ ]+" | head -n1 | sed -E "s/^--token[ =]//; s/^\"//; s/\"$//" | tr -d "\n" | nonempty; }
+# The effective ExecStart (systemd has already dropped comments and quotes); awk reads to EOF.
+unit_token() { systemctl show -p ExecStart --value "$1" | awk "!d { for (i = 1; i <= NF; i++) {
+  if (\$i == \"--token\" && i < NF) { printf \"%s\", \$(i + 1); d = 1; break }
+  if (index(\$i, \"--token=\") == 1) { printf \"%s\", substr(\$i, 9); d = 1; break } } }" | nonempty; }
 file() { [ -f "$1" ] || { echo "no file $1" >&2; exit 3; }; nonempty < "$1"; }
 dotenv() { sed -n "s/^$2=//p" "$1" | tail -n1 | tr -d "\r\n" | sed -E "s/^\"(.*)\"$/\\1/; s/^'"'"'(.*)'"'"'$/\\1/" | nonempty; }
-py() { python3 -I -c "
-import sys, yaml
-from urllib.parse import urlsplit, unquote
-mode, f, p = sys.argv[1:4]
-v = yaml.safe_load(open(f))
-for k in p.split(\".\"):
-    v = v[int(k)] if isinstance(v, list) else v[k]
-v = str(v)
-if mode == \"url_user\": v = unquote(urlsplit(v).username or \"\")
-if mode == \"url_pass\": v = unquote(urlsplit(v).password or \"\")
+# Parse errors can quote file content, so the Python stderr is dropped and any failure
+# becomes one generic message.
+py() { { python3 -I -c "
+import sys
+try:
+    import yaml
+    from urllib.parse import urlsplit, unquote
+    mode, f, p = sys.argv[1:4]
+    v = yaml.safe_load(open(f))
+    for k in p.split(\".\"):
+        v = v[int(k)] if isinstance(v, list) else v[k]
+    v = str(v)
+    if mode == \"url_user\": v = unquote(urlsplit(v).username or \"\")
+    if mode == \"url_pass\": v = unquote(urlsplit(v).password or \"\")
+except BaseException:
+    sys.exit(3)
 sys.stdout.write(v)
-" "$@" | nonempty; }
+" "$@" 2>/dev/null || { echo "cannot extract $1 $3 from $2" >&2; exit 3; }; } | nonempty; }
 yaml() { py yaml "$@"; }
 url_user() { py url_user "$@"; }
 url_pass() { py url_pass "$@"; }
@@ -74,15 +84,24 @@ url_pass() { py url_pass "$@"; }
 
 ipof() { printf '%s' "$TF_VAR_site_json" | jq -er --arg h "$1" '.hosts[$h].ip'; }
 
+# Remote wrapper. ssh stdin carries only the sudo password: the login shell reads that one
+# line into pw and hands it to `sudo -S` through its own pipe. The code arrives base64 in
+# the ssh command (code only, no values) and runs with stdin from /dev/null, so when sudo
+# does not prompt (NOPASSWD, cached ticket) the unread password is never executed or read.
+# shellcheck disable=SC2016  # expanded on the VM, not here
+remote_wrap='IFS= read -r pw || exit 97
+code="$(printf %s "$B64" | base64 -d)" || exit 98
+printf "%s\n" "$pw" | sudo -S -p "" -- bash -c "exec </dev/null
+$code"
+rc=$?; unset pw code; exit "$rc"'
+
 # remote <host> <command...>: run "<command>" as root on <host>; stdout is the value.
 remote() {
-  local ip host=$1; shift
+  local ip host=$1 b64; shift
   ip="$(ipof "$host")" || die "no site.hosts.$host.ip"
-  {
-    printf '%s\n' "$ANSIBLE_BECOME_PASSWORD"
-    printf '%s\n' "$remote_lib"
-    printf '%q ' "$@"; printf '\n'
-  } | ssh -o BatchMode=yes -o ConnectTimeout=10 "ubuntu@$ip" 'sudo -S -p "" bash -s'
+  b64="$({ printf '%s\n' "$remote_lib"; printf '%q ' "$@"; printf '\n'; } | base64 | tr -d '\n')"
+  printf '%s\n' "$ANSIBLE_BECOME_PASSWORD" |
+    ssh -o BatchMode=yes -o ConnectTimeout=10 "ubuntu@$ip" "B64=$b64; $remote_wrap"
 }
 
 digest() { shasum -a 256 | cut -d' ' -f1; }
@@ -108,8 +127,10 @@ vault_state() {
 fail=0
 for e in "${entries[@]}"; do
   read -r path key host kind args <<<"$e"
-  # shellcheck disable=SC2086  # args is a word list on purpose
+  set -f  # args is a word list on purpose: split it, never glob it
+  # shellcheck disable=SC2086
   set -- $args
+  set +f
   label="kv/homelab/$path $key"
 
   src="$(remote "$host" "$kind" "$@" | digest)" || die "$label: cannot read it on $host"
