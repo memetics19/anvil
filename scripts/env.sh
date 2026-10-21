@@ -41,10 +41,9 @@ _hl_main() {
   export VAULT_ADDR="https://${VAULT_IP}:8200"
   export VAULT_CACERT="$HOME/.config/homelab/vault-ca.pem"
   # Ansible's hashi_vault lookup (hvac -> requests) asks macOS for system proxies inside a
-  # forked worker, which crashes it ("A worker was found in a dead state"). Skipping the
-  # proxy lookup avoids that; the lab is reached directly over the LAN anyway.
-  : "${no_proxy:=*}"
-  export no_proxy
+  # forked worker, which crashes it ("A worker was found in a dead state"). Listing the
+  # lab hosts in no_proxy makes requests skip that lookup for them.
+  export no_proxy="${no_proxy:-$VAULT_IP,$PVE_IP}"
 
   _hl_v="$(_hl_get pve-api-token)" && [ -n "$_hl_v" ] && export PROXMOX_VE_API_TOKEN="$_hl_v"
   _hl_v="$(_hl_get ceph-s3-access-key)" && [ -n "$_hl_v" ] && export AWS_ACCESS_KEY_ID="$_hl_v"
@@ -55,21 +54,33 @@ _hl_main() {
     _hl_v="$(printf '%s' "$_hl_v" | jq -r '.root_token // empty' 2>/dev/null)" && \
     [ -n "$_hl_v" ] && export VAULT_TOKEN="$_hl_v"
 
-  # Site values for Terraform (var.site_json): Vault kv/homelab/site when VAULT_TOKEN is
-  # set and the path is readable, else the site-bootstrap YAML in the Keychain.
+  # Site values for Terraform (var.site_json). scripts/site-source.sh picks the source and
+  # fails closed: when VAULT_TOKEN is set, only a genuinely absent kv/homelab/site falls
+  # back to the Keychain (site-bootstrap YAML), unless the operator sets
+  # HOMELAB_SITE_SOURCE=keychain. On failure TF_VAR_site_json stays unset, so Terraform
+  # stops. HOMELAB_SITE_USED (vault | keychain) names the source; it is not a site value.
   # `security -w` prints multi-line values hex-encoded, so decode when the value is all hex.
-  # HOMELAB_SITE_SOURCE (vault | keychain) names the source; it is not a site value.
-  unset HOMELAB_SITE_SOURCE
-  if [ -n "${VAULT_TOKEN:-}" ] && command -v vault >/dev/null 2>&1 &&
-    _hl_v="$(vault kv get -format=json -mount=kv homelab/site 2>/dev/null |
-      jq -c '.data.data.site | select(type == "object")' 2>/dev/null)" && [ -n "$_hl_v" ]; then
-    export TF_VAR_site_json="$_hl_v" HOMELAB_SITE_SOURCE=vault
-  elif _hl_v="$(_hl_get site-bootstrap)" && [ -n "$_hl_v" ]; then
+  unset HOMELAB_SITE_USED
+  _hl_kc=
+  if _hl_v="$(_hl_get site-bootstrap)" && [ -n "$_hl_v" ]; then
     case $_hl_v in *[!0-9a-f]*) ;; *) _hl_v="$(printf '%s' "$_hl_v" | xxd -r -p)" ;; esac
-    if _hl_v="$(printf '%s' "$_hl_v" | _hl_site_json)" && [ -n "$_hl_v" ]; then
-      export TF_VAR_site_json="$_hl_v" HOMELAB_SITE_SOURCE=keychain
-    else
-      echo "env.sh: Keychain item site-bootstrap is not YAML with a top-level site dict; TF_VAR_site_json not set" >&2
+    _hl_kc="$(printf '%s' "$_hl_v" | _hl_site_json)" || _hl_kc=
+    [ -n "$_hl_kc" ] || echo "env.sh: Keychain item site-bootstrap is not YAML with a top-level site dict" >&2
+  fi
+  if _hl_from="$("$_hl_root/scripts/site-source.sh")"; then
+    if [ "$_hl_from" = vault ]; then
+      _hl_v="$(VAULT_CLIENT_TIMEOUT=5 VAULT_MAX_RETRIES=0 vault kv get -format=json -mount=kv homelab/site 2>/dev/null |
+        jq -c '.data.data.site | select(type == "object")' 2>/dev/null)" || _hl_v=
+      if [ -n "$_hl_v" ]; then
+        export TF_VAR_site_json="$_hl_v" HOMELAB_SITE_USED=vault
+        if [ -n "$_hl_kc" ] && [ "$(printf '%s' "$_hl_v" | jq -S -c . | shasum -a 256)" != "$(printf '%s' "$_hl_kc" | jq -S -c . | shasum -a 256)" ]; then
+          echo "env.sh: warning: Keychain site-bootstrap differs from Vault kv/homelab/site (Vault is used)" >&2
+        fi
+      else
+        echo "env.sh: kv/homelab/site holds no site dict; TF_VAR_site_json not set" >&2
+      fi
+    elif [ -n "$_hl_kc" ]; then
+      export TF_VAR_site_json="$_hl_kc" HOMELAB_SITE_USED=keychain
     fi
   fi
   return 0
@@ -77,7 +88,7 @@ _hl_main() {
 
 _hl_main
 _hl_rc=$?
-unset _hl_v _hl_src _hl_root
+unset _hl_v _hl_src _hl_root _hl_kc _hl_from
 unset -f _hl_get _hl_site_json _hl_main
 if [ -n "$_hl_x" ]; then unset _hl_x; set -x; else unset _hl_x; fi
 # shellcheck disable=SC2317

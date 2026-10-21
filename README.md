@@ -34,7 +34,7 @@ Work in progress. See [Roadmap](#roadmap).
 ```sh
 brew tap hashicorp/tap
 brew install hashicorp/tap/terraform hashicorp/tap/vault ansible ansible-lint \
-  gitleaks tflint yamllint jq pre-commit sshpass awscli
+  gitleaks tflint yamllint jq pre-commit sshpass awscli age
 ansible-galaxy collection install -r ansible/requirements.yml -p ~/.ansible/collections
 # hvac for the community.hashi_vault lookup, in the Python that runs Ansible
 "$(brew --prefix ansible)/libexec/bin/python" -m pip install hvac
@@ -44,11 +44,18 @@ pre-commit install
 ## Configuration
 
 Nothing site-specific is committed: no addresses, MACs, domain, credentials or VM IDs.
-Code refers to hosts by name only. Ansible reads one `site` dict, with the following
-precedence:
+Code refers to hosts by name only. Ansible and Terraform read one `site` dict from:
 
-1. Vault, `kv/homelab/site`, when `VAULT_TOKEN` is set
-2. macOS Keychain, service `homelab`, account `site-bootstrap`
+1. Vault, `kv/homelab/site`, when `VAULT_TOKEN` is set (`make site-to-vault` copies it
+   there from the Keychain)
+2. macOS Keychain, service `homelab`, account `site-bootstrap`, when there is no token
+   yet or `kv/homelab/site` does not exist
+
+This fails closed: with `VAULT_TOKEN` set, any other Vault error (sealed, unreachable,
+token rejected) stops the run instead of quietly using the Keychain copy. Set
+`HOMELAB_SITE_SOURCE=keychain` to use the Keychain copy on purpose; `make vault` allows
+that fallback by itself (with a warning) so it can repair Vault. Each run prints which
+source it used, and warns, without values, when the two copies differ.
 
 [`site/site.example.yml`](site/site.example.yml) documents the structure.
 
@@ -63,7 +70,8 @@ Keychain accounts (service `homelab`):
 | `ceph-osd-disk-id`                         | Ceph OSD disk (by-id name)      |
 | `ceph-s3-access-key`, `ceph-s3-secret-key` | Terraform state (S3 keys)       |
 | `ceph-dashboard-password`                  | Ceph dashboard `admin` login    |
-| `vault-init-json`                          | unseal keys (planned)           |
+| `vault-init-json`                          | Vault unseal keys, root token   |
+| `backup-age-recipient`, `backup-age-identity` | encrypting tfstate backups   |
 
 ## Usage
 
@@ -78,6 +86,24 @@ make secrets-scan
 
 Infrastructure targets source `scripts/env.sh`, which loads endpoints and tokens from
 the Keychain. Dry-run first. A box that matches the code reports `changed=0`.
+
+## Vault
+
+```sh
+make vault                  # install/configure; leaves Vault sealed on a new box
+scripts/vault-init.sh       # once, by the operator: keys go straight into the Keychain
+make vault-unseal           # 3 of the 5 keys, read from the Keychain
+make vault-policies site-to-vault
+scripts/backup-key-init.sh  # once, by the operator: age key pair for backups
+make backup                 # ~/homelab-backups: tfstate (age-encrypted) + Raft snapshot
+scripts/backup-restore-tfstate.sh | jq .serial   # decrypts to stdout only
+```
+
+Restarting Vault seals it, so `make vault` refuses a run that would restart a running
+Vault (config, systemd unit or package version change, including bumping
+`vault_server_version`). Rerun it with `ARGS="-e vault_server_allow_restart=true"`, then
+`make vault-unseal`; the play fails at the end if it left Vault sealed. A certificate change
+only reloads Vault and does not seal it.
 
 ## Ceph and the Terraform state bucket
 
@@ -122,8 +148,8 @@ source scripts/env.sh && security add-generic-password -U -s homelab -a ceph-das
 
 Terraform manages the VMs and the Proxmox SDN zone and VNets. State is in the Ceph S3
 bucket above. Site values (VM IDs, MACs) reach Terraform as `TF_VAR_site_json`, which
-`scripts/env.sh` builds from the `site-bootstrap` Keychain item (python3 with PyYAML, else
-the system Ruby, converts the YAML).
+`scripts/env.sh` builds from the site source above (for the Keychain copy, python3 with
+PyYAML, else the system Ruby, converts the YAML). `make tf-plan` prints the source.
 
 ```sh
 make tf-init
@@ -188,7 +214,7 @@ history. [`.gitleaks.toml`](.gitleaks.toml) adds rules for:
 - [ ] SDN VLANs and inter-VLAN firewall
 - [ ] Single-node Ceph and S3 gateway for Terraform state
 - [ ] Terraform: adopt existing VMs and SDN, guard against destroys
-- [ ] Vault VM, Keychain-held unseal keys, snapshot backups
+- [x] Vault VM, Keychain-held unseal keys, snapshot backups
 - [ ] Move secrets and site values into Vault
 - [ ] Guest roles: base, Docker, node_exporter, cloudflared
 - [ ] Workload roles for `frigate`, `ragnarok`, `netbird`

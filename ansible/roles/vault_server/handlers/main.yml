@@ -1,12 +1,24 @@
+# Handlers run in this order.
 - name: Update apt cache
   ansible.builtin.apt:
     update_cache: true
 
-# A restart seals Vault (unseal again with `make vault-unseal`); only config changes do it.
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+# A restart seals Vault (unseal again with `make vault-unseal`). The restart guard in
+# tasks/main.yml only lets this happen with vault_server_allow_restart=true or when Vault
+# was not running.
 - name: Restart vault
   ansible.builtin.systemd_service:
     name: vault
     state: restarted
+
+- name: Record the restart
+  ansible.builtin.set_fact:
+    vault_server_restarted: true
+  listen: Restart vault
 
 # SIGHUP reloads the listener certificate without sealing.
 - name: Reload vault

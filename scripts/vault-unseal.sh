@@ -14,7 +14,7 @@ api() { curl -fsS --cacert "$VAULT_CACERT" "$@"; }
 [ -n "${VAULT_IP:-}" ] || die "Keychain item vault-ip (service homelab) not found"
 [ -s "$VAULT_CACERT" ] || die "CA certificate $VAULT_CACERT missing; run make vault first"
 
-status="$(api "$VAULT_ADDR/v1/sys/seal-status")" || die "cannot reach Vault at $VAULT_ADDR"
+status="$(api "$VAULT_ADDR/v1/sys/seal-status")" || die "cannot reach Vault (Keychain vault-ip)"
 [ "$(printf '%s' "$status" | jq -r '.initialized')" = true ] ||
   die "Vault is not initialised; the operator runs scripts/vault-init.sh first"
 if [ "$(printf '%s' "$status" | jq -r '.sealed')" = false ]; then

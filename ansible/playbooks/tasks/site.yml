@@ -1,19 +1,45 @@
 # Freeze the site dict once per run (see inventory/group_vars/all/site.yml) and report
 # which source it came from. Values are never logged.
-- name: Read the site dict from Vault (empty when unavailable)
+- name: Pick the site source (fails closed, see scripts/site-source.sh)
   ansible.builtin.set_fact:
-    _site_vault_once: "{{ _site_from_vault }}"
+    site_source_line: "{{ _site_source_line }}"
   run_once: true
-  no_log: true
+
+- name: The site source is usable
+  ansible.builtin.assert:
+    that: site_source_line is match('(vault|keychain)( |$)')
+    fail_msg: "site-source: {{ site_source_line }}"
+    quiet: true
+  run_once: true
+
+- name: Note the site source
+  ansible.builtin.set_fact:
+    site_source: "{{ site_source_line.split(' ')[0] }}"
+    site_source_note: "{{ site_source_line.split(' ', 1)[1] | default('') }}"
+  run_once: true
 
 - name: Resolve the site dict once for this run
   ansible.builtin.set_fact:
-    site: "{{ _site_vault_once or (_site_from_keychain | mandatory(_site_missing_msg)) }}"
-    site_source: "{{ 'vault' if _site_vault_once else 'keychain' }}"
+    site: >-
+      {{ _site_from_vault if site_source == 'vault'
+         else (_site_from_keychain | mandatory(_site_missing_msg)) }}
+  run_once: true
+  no_log: true
+
+# When Vault is the source and the Keychain copy is readable too, compare digests only.
+- name: Compare the Vault and Keychain copies
+  ansible.builtin.set_fact:
+    site_copies_differ: >-
+      {{ site_source == 'vault'
+         and (_site_keychain_doc.site | default({}, true) | length > 0)
+         and ((_site_keychain_doc.site | to_json(sort_keys=true) | hash('sha256'))
+              != (site | to_json(sort_keys=true) | hash('sha256'))) }}
   run_once: true
   no_log: true
 
 - name: Report the site source
   ansible.builtin.debug:
-    msg: "site source: {{ site_source }}"
+    msg: >-
+      site source: {{ site_source }}{{ ' (WARNING: ' ~ site_source_note ~ ')' if site_source_note else '' }}{{
+      ' (WARNING: the Keychain site-bootstrap copy differs from Vault)' if site_copies_differ | bool else '' }}
   run_once: true

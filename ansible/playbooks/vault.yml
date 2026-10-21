@@ -1,7 +1,14 @@
 # Vault server (Raft, TLS from a small on-VM CA). Leaves Vault sealed and, on a new box,
 # uninitialised: the operator runs scripts/vault-init.sh once, then `make vault-unseal`.
+# This play may run while Vault is broken or sealed (that is when it is needed), so it
+# allows the site dict to fall back to the Keychain copy with a warning
+# (site_allow_keychain_fallback); other playbooks fail closed.
+# A change that needs a restart (config, unit, version) seals Vault, so it is refused
+# unless `-e vault_server_allow_restart=true`; then run `make vault-unseal`.
 - name: Vault server
   hosts: vault_servers
+  vars:
+    site_allow_keychain_fallback: true
   pre_tasks:
     - name: Resolve the site dict once for this run
       ansible.builtin.import_tasks: tasks/site.yml

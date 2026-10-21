@@ -49,6 +49,63 @@
     - name: Refresh apt cache before installing
       ansible.builtin.meta: flush_handlers
 
+
+# Restarting Vault seals it. When Vault is running, refuse a run that would restart it
+# (new package version, config or unit change) unless vault_server_allow_restart is set.
+- name: Restart guard
+  tags: [always]
+  block:
+    - name: Read the Vault service state
+      ansible.builtin.systemd_service:
+        name: vault
+      register: vault_server_unit
+      failed_when: false
+      check_mode: false
+
+    - name: Note whether Vault is running
+      ansible.builtin.set_fact:
+        vault_server_active: "{{ (vault_server_unit.status | default({})).ActiveState | default('') == 'active' }}"
+
+    - name: Read the installed Vault version
+      ansible.builtin.command: dpkg-query -W -f=${Version} vault
+      register: vault_server_installed
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      when: vault_server_active | bool
+
+    - name: Would the Vault configuration change
+      ansible.builtin.template:
+        src: vault.hcl.j2
+        dest: /etc/vault.d/vault.hcl
+        owner: root
+        group: vault
+        mode: "0640"
+      check_mode: true
+      register: vault_server_config_pending
+      when: vault_server_active | bool
+
+    - name: Read the systemd drop-in
+      ansible.builtin.stat:
+        path: "{{ vault_server_unit_dropin_path }}"
+        checksum_algorithm: sha1
+      register: vault_server_unit_current
+      when: vault_server_active | bool
+
+    - name: Refuse to restart (and so seal) a running Vault unless allowed
+      ansible.builtin.assert:
+        that: >-
+          vault_server_allow_restart | bool
+          or not (vault_server_active | bool)
+          or not (vault_server_installed.stdout != vault_server_version
+                  or vault_server_config_pending is changed
+                  or not vault_server_unit_current.stat.exists
+                  or vault_server_unit_current.stat.checksum != (vault_server_unit_dropin | hash('sha1')))
+        fail_msg: >-
+          This run would restart Vault (version, config or unit change), which seals it.
+          Rerun with: make vault ARGS="-e vault_server_allow_restart=true", then make vault-unseal.
+        quiet: true
+
 - name: Vault package
   tags: [packages]
   block:
@@ -57,6 +114,7 @@
         name: "vault={{ vault_server_version }}"
         state: present
         allow_change_held_packages: true
+      notify: Restart vault
 
     - name: Hold the Vault package at the pinned version
       ansible.builtin.dpkg_selections:
@@ -75,7 +133,7 @@
 - name: TLS
   tags: [tls]
   block:
-    - name: CA directory (root only)
+    - name: CA directory (root only, outside the vault user's tree)
       ansible.builtin.file:
         path: "{{ vault_server_ca_dir }}"
         state: directory
@@ -90,6 +148,17 @@
         owner: vault
         group: vault
         mode: "0750"
+
+    # The package generates a self-signed pair on install; it is unused, and an earlier
+    # version of this role kept the CA under /opt/vault/ca.
+    - name: Remove unused key material
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ vault_server_tls_dir }}/tls.crt"
+        - "{{ vault_server_tls_dir }}/tls.key"
+        - /opt/vault/ca
 
     - name: CA private key
       community.crypto.openssl_privatekey:
@@ -122,6 +191,7 @@
         owner: root
         group: root
         mode: "0644"
+      register: vault_server_ca_cert
       notify: Reload vault
 
     - name: Listener private key
@@ -155,6 +225,8 @@
       register: vault_server_cert_info
       failed_when: false
 
+    # Reissued when it is about to expire or when the CA changed. A cert change is
+    # picked up with SIGHUP (no restart, no seal).
     - name: Listener certificate signed by the CA
       community.crypto.x509_certificate:
         path: "{{ vault_server_tls_dir }}/vault.crt"
@@ -163,7 +235,7 @@
         ownca_path: "{{ vault_server_ca_dir }}/ca.crt"
         ownca_privatekey_path: "{{ vault_server_ca_dir }}/ca.key"
         ownca_not_after: "+{{ vault_server_cert_days }}d"
-        force: "{{ not (vault_server_cert_info.valid_at.renew | default(true)) }}"
+        force: "{{ (vault_server_ca_cert is changed) or not (vault_server_cert_info.valid_at.renew | default(true)) }}"
         owner: vault
         group: vault
         mode: "0644"
@@ -174,7 +246,7 @@
   ansible.builtin.template:
     src: vault.hcl.j2
     dest: /etc/vault.d/vault.hcl
-    owner: vault
+    owner: root
     group: vault
     mode: "0640"
   notify: Restart vault
@@ -182,14 +254,33 @@
 - name: Vault service
   tags: [service]
   block:
+    - name: Systemd drop-in directory
+      ansible.builtin.file:
+        path: "{{ vault_server_unit_dropin_path | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Systemd drop-in (no core dumps of a process holding keys)
+      ansible.builtin.copy:
+        content: "{{ vault_server_unit_dropin }}"
+        dest: "{{ vault_server_unit_dropin_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Reload systemd
+        - Restart vault
+
+    - name: Apply a pending systemd reload before starting
+      ansible.builtin.meta: flush_handlers
+
     - name: Vault enabled and running
       ansible.builtin.systemd_service:
         name: vault
         enabled: true
         state: started
-
-    - name: Apply pending restarts
-      ansible.builtin.meta: flush_handlers
 
     # 200 active, 429 standby, 472/473 DR/perf standby, 501 not initialised, 503 sealed.
     - name: Vault API answers over TLS
@@ -222,3 +313,10 @@
         dest: "{{ vault_server_ca_local_path }}"
         flat: true
       run_once: true
+
+- name: Vault was not left sealed by this run
+  tags: [service]
+  ansible.builtin.assert:
+    that: not (vault_server_restarted | default(false) | bool) or vault_server_health.status | default(0) != 503
+    fail_msg: This run restarted Vault and it is now sealed. Run make vault-unseal.
+    quiet: true

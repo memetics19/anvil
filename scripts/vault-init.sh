@@ -13,30 +13,11 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=/dev/null  # env.sh ends in a top-level return, which confuses -x
 source "$root/scripts/env.sh"
 
-kc_service=homelab
+# shellcheck source=scripts/keychain-lib.sh
+source "$root/scripts/keychain-lib.sh"
 kc_account=vault-init-json
 
 die() { echo "vault-init: $*" >&2; exit 1; }
-
-# Quote a value for one `security -i` command line: wrap in double quotes, escape \ and ".
-kc_quote() {
-  local v=$1
-  v=${v//\\/\\\\}
-  v=${v//\"/\\\"}
-  printf '"%s"' "$v"
-}
-
-# Store stdin as the password of a Keychain item without putting it in argv, then read it
-# back and compare. Never overwrites an existing item (no -U).
-kc_store_stdin() {
-  local account=$1 value back
-  value="$(cat)"
-  [ -n "$value" ] || { echo "vault-init: nothing to store" >&2; return 1; }
-  printf 'add-generic-password -s %s -a %s -w %s\n' \
-    "$kc_service" "$account" "$(kc_quote "$value")" | security -i >/dev/null 2>&1 || return 1
-  back="$(security find-generic-password -s "$kc_service" -a "$account" -w 2>/dev/null)" || return 1
-  [ "$back" = "$value" ]
-}
 
 # One-line JSON (`security -w` prints multi-line values hex-encoded). Deliberately no
 # shape check here: storing an unexpected shape beats losing the only copy.
@@ -47,16 +28,16 @@ command -v jq >/dev/null || die "jq not found"
 [ -n "${VAULT_IP:-}" ] || die "Keychain item vault-ip (service homelab) not found"
 [ -s "$VAULT_CACERT" ] || die "CA certificate $VAULT_CACERT missing; run make vault first"
 
-if security find-generic-password -s "$kc_service" -a "$kc_account" >/dev/null 2>&1; then
+if kc_exists "$kc_account"; then
   die "Keychain item $kc_account already exists; refusing (it may hold the only copy of the keys)"
 fi
 
 init_state="$(curl -fsS --cacert "$VAULT_CACERT" "$VAULT_ADDR/v1/sys/init" | jq -r '.initialized')" ||
-  die "cannot reach Vault at $VAULT_ADDR"
+  die "cannot reach Vault (Keychain vault-ip)"
 case $init_state in
   false) ;;
   true) die "Vault is already initialised; refusing" ;;
-  *) die "unexpected answer from $VAULT_ADDR/v1/sys/init" ;;
+  *) die "unexpected answer from Vault (Keychain vault-ip) at /v1/sys/init" ;;
 esac
 
 # Prove the Keychain write path (quoting included) with a throwaway item before init,
@@ -85,9 +66,10 @@ security find-generic-password -s "$kc_service" -a "$kc_account" -w |
 cat <<EOF
 initialized; keys stored in Keychain (service $kc_service, account $kc_account)
 
-Keep an offline paper copy (Vault cannot be unsealed without 3 of the 5 keys). Print them
-when you are ready to write them down, then clear the terminal:
+Keep an offline paper copy of the unseal keys (Vault cannot be unsealed without 3 of
+the 5). Print them only when you are ready to write them down, then clear the terminal:
   security find-generic-password -s $kc_service -a $kc_account -w | jq -r '.unseal_keys_b64[]'
-  security find-generic-password -s $kc_service -a $kc_account -w | jq -r '.root_token'
+Do not copy the root token to paper: if it is ever lost, make a new one from the unseal
+keys with \`vault operator generate-root\`.
 Next: make vault-unseal
 EOF
