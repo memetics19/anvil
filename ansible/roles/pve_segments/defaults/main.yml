@@ -24,7 +24,9 @@
 #   refresh: {host, resolver, keep, max}} -- a refreshed set starts empty and a timer
 #   (segments-set-refresh@<name>, every 10 min) adds the A records of `host` as resolved by `resolver`,
 #   each kept for `keep`; a failed, empty or oversized answer changes nothing, and only public
-#   unicast addresses are taken.
+#   unicast addresses are taken. Optional in refresh: size (most elements the set holds,
+#   default 64; a refresh that would pass it fails and changes nothing) and expect (CIDRs
+#   the answers must fall in; others are ignored).
 #
 # Applied as a whole in one transaction, checked with `nft -c` first, shown with addresses
 # masked, and under a timed rollback (the previous table comes back when the controller stops
@@ -39,3 +41,12 @@ pve_segments_rollback_after: 120
 pve_segments_backup_dir: /var/backups/pve-network
 # The controller's address (the caller resolves it from SSH_CLIENT).
 pve_segments_target: ""
+
+# Bridged traffic and these chains: they see routed traffic only (the host as a router).
+# Frames between two ports of the same bridge (two VMs on one vnet) are bridged, not routed,
+# and pass the inet hooks only when br_netfilter is loaded with bridge-nf-call-iptables=1
+# (Proxmox sets that when its own firewall is on; here it is 0). The VMs' NICs with
+# firewall=1 sit behind fwbr/fwpr veth pairs, so in that mode their frames would show the
+# fw* port names, not the vnet's name, and the iifname/oifname rules would not match.
+# Intra-segment isolation therefore comes from the vnet (isolate_ports), not from here: a
+# segment whose VMs must not talk to each other needs isolate_ports (or its own vnet).

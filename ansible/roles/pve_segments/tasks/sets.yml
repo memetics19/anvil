@@ -76,3 +76,32 @@
   changed_when: false
   failed_when: pve_segments_set_after.stdout | trim | int == 0
   when: not ansible_check_mode
+
+# A set that is no longer DNS-fed (or gone) keeps no refresh timer.
+- name: Refresh timers present
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      systemctl list-units --all --plain --no-legend 'segments-set-refresh@*.timer'
+      | awk '{print $1}' | sed -n 's/^segments-set-refresh@\(.*\)[.]timer$/\1/p'
+    executable: /bin/bash
+  register: pve_segments_timers_present
+  changed_when: false
+  check_mode: false
+
+- name: Stop the timers of sets no longer DNS-fed
+  ansible.builtin.systemd_service:
+    name: "segments-set-refresh@{{ item }}.timer"
+    enabled: false
+    state: stopped
+  loop: >-
+    {{ pve_segments_timers_present.stdout_lines
+       | reject('in', pve_segments_sets | selectattr('refresh', 'defined') | map(attribute='name') | list) | list }}
+
+- name: Remove their settings
+  ansible.builtin.file:
+    path: "{{ pve_segments_etc }}/sets/{{ item }}.conf"
+    state: absent
+  loop: >-
+    {{ pve_segments_timers_present.stdout_lines
+       | reject('in', pve_segments_sets | selectattr('refresh', 'defined') | map(attribute='name') | list) | list }}

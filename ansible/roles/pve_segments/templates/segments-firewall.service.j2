@@ -1,7 +1,7 @@
 # Managed by Ansible (role pve_segments). Loads the routed segments' nftables table at boot,
 # before the network comes up and before Proxmox starts the guests. After editing the
-# ruleset: systemctl restart segments-firewall, then start every segments-set-refresh@<set>
-# (a reload empties the DNS-fed sets).
+# ruleset: nft -f {{ pve_segments_etc }}/segments.nft, then start every
+# segments-set-refresh@<set> (a reload empties the DNS-fed sets).
 [Unit]
 Description=Routed segments firewall (nftables table inet {{ pve_segments_table }})
 DefaultDependencies=no
@@ -17,3 +17,6 @@ ExecStart=/usr/sbin/nft -f {{ pve_segments_etc }}/segments.nft
 
 [Install]
 WantedBy=multi-user.target
+# Not RequiredBy pve-guests: a stop or restart of a required unit propagates, and restarting
+# this one would stop every guest. Fail-closed boot is a check in pve-guests instead
+# (pve-guests.service.d/10-segments-firewall.conf).

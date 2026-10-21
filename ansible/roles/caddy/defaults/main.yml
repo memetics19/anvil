@@ -70,6 +70,23 @@ caddy_container_networks:
   homepage_web: [homepage]
   vaultwarden_web: [vaultwarden]
 
+# Routes only the operator's devices may use (the secrets enclave's: Vaultwarden and Vault):
+# every other client gets 403. The sources are the enclave's operators (inventory
+# group_vars/all/enclave.yml), matched on the real client address (no proxy in front of
+# Caddy; Docker's DNAT keeps it).
+caddy_admin_only_routes: [pass, vault]
+caddy_admin_sources: "{{ enclave_admin_sources | default([]) }}"
+
+# The secrets enclave, which only Caddy on this VM may reach (tasks/enclave_guard.yml): an
+# nftables table here lets only Caddy's own network (gateway, its default route, no other
+# container on it) open connections to Vault and Vaultwarden, and nothing else on this VM
+# (other containers, the host) reach the enclave at all. Empty subnet: no guard.
+caddy_enclave_subnet: "{{ (site.sdn | default({})).enclave.subnet | default('') }}"
+caddy_enclave_targets:
+  - {host: vault, port: 8200}
+  - {host: vaultwarden, port: 8080}
+caddy_enclave_guard_file: /etc/anvil/gateway-guard.nft
+
 # DNS servers for the DNS-01 propagation check (public resolvers, so Pi-hole's split
 # horizon does not interfere): site.dns.acme_resolvers.
 caddy_dns_resolvers: "{{ site.dns.acme_resolvers }}"

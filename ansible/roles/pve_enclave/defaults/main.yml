@@ -28,12 +28,15 @@ pve_enclave_sdn_file: /etc/network/interfaces.d/sdn
 pve_enclave_net_rollback_script: /usr/local/sbin/net-rollback.sh
 
 # --- who talks to whom ------------------------------------------------------------------------
-# Operators (SSH, Vault's API): site.admin_sources, CIDRs (the lab network, the NetBird
-# range, the operator's home Wi-Fi address). Lab VMs that run workloads (some with public
-# tunnels) are not operators: their lab addresses are excluded. The netbird VM stays an admin
-# source: NetBird clients reach the lab through it (masqueraded).
-pve_enclave_admin_sources: "{{ site.admin_sources }}"
-pve_enclave_admin_exclude_hosts: [apps, frigate, ragnarok]
+# Operators (SSH, Vault's API): the operator's own devices only (inventory
+# group_vars/all/enclave.yml: the Mac's LAN /32s and NetBird peer /32s, or the NetBird ones
+# only with site.enclave.vpn_only). No VM is one: every address of every host in the site
+# dict (VMs, their lab and home addresses, the Proxmox host's) is in the set not_admin,
+# which is dropped before the operator rules. The host's own connections (Ansible's
+# ProxyJump) leave from the host itself and are not forwarded traffic.
+# NetBird: the routing peers (the Proxmox host, which masquerades only after this firewall,
+# and the netbird VM, which does not masquerade) keep the peer's address up to here.
+pve_enclave_admin_sources: "{{ enclave_admin_sources }}"
 # The enclave's VMs (site.hosts.<name>.ip).
 pve_enclave_vault_host: vault
 pve_enclave_vaultwarden_host: vaultwarden
@@ -73,11 +76,19 @@ _pve_enclave_vault: "{{ _pve_enclave_ip[pve_enclave_vault_host] | default('') }}
 _pve_enclave_vw: "{{ _pve_enclave_ip[pve_enclave_vaultwarden_host] | default('') }}"
 _pve_enclave_mon: "{{ _pve_enclave_ip[pve_enclave_monitoring_host] | default('') }}"
 _pve_enclave_members: "{{ [_pve_enclave_vault, _pve_enclave_vw] | select | list }}"
+# Every address the site dict gives a host or the Proxmox host (ip, lab_ip, home_ip, and
+# the host's lab, gateway and uplink addresses).
+_pve_enclave_host_addrs: >-
+  {{ (site.hosts | dict2items | map(attribute='value')
+      | map('dict2items') | flatten | selectattr('key', 'in', ['ip', 'lab_ip', 'home_ip'])
+      | map(attribute='value') | list
+      + [site.pve.ip, site.pve.gateway_alias_ip, site.pve.uplink_ip])
+     | select('match', '^([0-9]{1,3}[.]){3}[0-9]{1,3}$') | unique | list }}
 
 # The SMTP relay set is DNS-fed only when Vault holds an SMTP login (tasks/smtp.yml).
 pve_enclave_sets: >-
   {{ [{'name': 'admin', 'interval': true, 'elements': pve_enclave_admin_sources},
-      {'name': 'not_admin', 'elements': pve_enclave_admin_exclude_hosts | map('extract', _pve_enclave_ip) | list},
+      {'name': 'not_admin', 'elements': _pve_enclave_host_addrs},
       {'name': 'enclave_smtp_relay'} | combine(
         {'refresh': {'host': pve_enclave_smtp_host | default(''), 'resolver': _pve_enclave_ip[pve_enclave_dns_host],
                      'keep': pve_enclave_smtp_keep, 'max': pve_enclave_smtp_max}}
@@ -99,7 +110,7 @@ pve_enclave_segment:
       daddr: "{{ _pve_enclave_vw }}"
       proto: tcp
       dport: "{{ pve_enclave_vaultwarden_port }}"
-    - comment: "operators: Vault's API, SSH and ping on both VMs (workload VMs excluded)"
+    - comment: "operators: Vault's API, SSH and ping on both VMs (never a VM's address)"
       saddr: "@not_admin"
       action: drop
     - saddr: "@admin"
@@ -166,6 +177,8 @@ pve_enclave_segment:
 # The enclave's one HTTP path out: Debian and Ubuntu archives only (ForceManaged with only
 # those remaps), plain HTTP, no CONNECT tunnels (PassThroughPattern matches nothing).
 pve_enclave_aptcache_conf: /etc/apt-cacher-ng/acng.conf
+# The report page's login (AdminAuth), generated into Vault.
+pve_enclave_aptcache_vault_path: homelab/pve/apt-cacher-ng
 
 # --- NTP (the host's chrony serves the enclave) ----------------------------------------------
 pve_enclave_chrony_conf: /etc/chrony/conf.d/enclave.conf

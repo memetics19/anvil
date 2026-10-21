@@ -21,6 +21,11 @@
 
 	@{{ s.name }} host {{ s.fqdn }}
 	handle @{{ s.name }} {
+{% if s.name in caddy_admin_only_routes %}
+		# The operator's devices only; every other client gets 403.
+		@{{ s.name }}_denied not remote_ip {{ caddy_admin_sources | join(' ') }}
+		respond @{{ s.name }}_denied 403
+{% endif %}
 {% if s.home is defined %}
 		redir / {{ s.home }}
 {% endif %}

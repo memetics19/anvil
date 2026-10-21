@@ -22,9 +22,12 @@ services:
       - ./data:/data
       - ./config:/config
     networks:
-      - gateway
+      # Caddy's own network carries its default route (its connections to upstreams leave
+      # through it; the enclave guard admits only this network's subnet).
+      gateway:
+        gw_priority: 100
 {% for n in caddy_networks_joined | default(caddy_container_networks | list) %}
-      - {{ n }}
+      {{ n }}: {}
 {% endfor %}
     mem_limit: {{ caddy_mem_limit }}
     memswap_limit: {{ caddy_mem_limit }}

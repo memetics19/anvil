@@ -18,6 +18,61 @@
     mode: "0644"
   register: pve_enclave_acng_conf
 
+# The report page can start maintenance jobs: it needs a login. The password is generated
+# straight into Vault (never displayed) and written only into security.conf (mode 640).
+- name: Apt cache admin password in Vault (digests only)
+  ansible.builtin.command:
+    argv: ["{{ pve_enclave_repo_scripts }}/vault-kv-digests.sh", "{{ pve_enclave_aptcache_vault_path }}"]
+  delegate_to: localhost
+  become: false
+  register: pve_enclave_acng_digests
+  changed_when: false
+  check_mode: false
+
+- name: Generate the apt cache admin password into Vault
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail; openssl rand -hex 24 | tr -d '\n' |
+      vault kv put -mount=kv {{ pve_enclave_aptcache_vault_path }} admin_password=- >/dev/null
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  when: "'admin_password' not in (pve_enclave_acng_digests.stdout_lines | map('split', ' ') | map('first') | list)"
+
+- name: Read the apt cache admin password
+  ansible.builtin.set_fact:
+    pve_enclave_acng_admin: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', pve_enclave_aptcache_vault_path,
+                engine_mount_point='kv',
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret.admin_password | default('') }}
+  no_log: true
+  when: not ansible_check_mode or 'admin_password' in (pve_enclave_acng_digests.stdout_lines | map('split', ' ') | map('first') | list)
+
+- name: The admin password is a plain token
+  ansible.builtin.assert:
+    that: pve_enclave_acng_admin is match('^[0-9a-f]{32,}$')
+    fail_msg: "kv/{{ pve_enclave_aptcache_vault_path }}: admin_password must be 32+ hex characters"
+    quiet: true
+  when: pve_enclave_acng_admin is defined
+
+- name: Apt cache admin login (report page and maintenance)
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible (role pve_enclave). Login for the report page and maintenance
+      # jobs; the password is in Vault (kv/{{ pve_enclave_aptcache_vault_path }}).
+      AdminAuth: admin:{{ pve_enclave_acng_admin }}
+    dest: /etc/apt-cacher-ng/security.conf
+    owner: root
+    group: apt-cacher-ng
+    mode: "0640"
+  register: pve_enclave_acng_security
+  no_log: true
+  diff: false
+  when: pve_enclave_acng_admin is defined
+
 - name: Apt-cacher-ng
   ansible.builtin.apt:
     name: apt-cacher-ng
@@ -38,7 +93,7 @@
   ansible.builtin.systemd_service:
     name: apt-cacher-ng
     state: restarted
-  when: pve_enclave_acng_conf is changed and not ansible_check_mode
+  when: (pve_enclave_acng_conf is changed or pve_enclave_acng_security is changed) and not ansible_check_mode
 
 - name: Listening sockets of the apt cache
   ansible.builtin.shell:

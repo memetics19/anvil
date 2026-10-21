@@ -1,0 +1,9 @@
+# Managed by Ansible (role pve_segments). Proxmox starts no guest unless the segments
+# firewall table is loaded: if `nft -f` failed at boot, every VM stays down rather than the
+# segments open. A check, not a Requires dependency: restarting the firewall unit must never
+# stop pve-guests (that stops every guest).
+[Unit]
+After=segments-firewall.service
+
+[Service]
+ExecStartPre=/bin/sh -c 'nft list table inet {{ pve_segments_table }} >/dev/null'

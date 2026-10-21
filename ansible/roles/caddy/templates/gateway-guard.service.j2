@@ -1,0 +1,19 @@
+# Managed by Ansible (role caddy). Loads the gateway guard (only Caddy reaches the secrets
+# enclave) before Docker starts any container. Not required by Docker: if it failed, the
+# home network's DNS (Pi-hole) must still start; the enclave firewall on the Proxmox host
+# still limits this VM to Vault's and Vaultwarden's ports.
+[Unit]
+Description=Gateway guard (nftables table inet anvil_gateway_guard)
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target docker.service shutdown.target
+Wants=network-pre.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f {{ caddy_enclave_guard_file }}
+
+[Install]
+WantedBy=multi-user.target

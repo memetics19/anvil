@@ -13,7 +13,7 @@ check() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (got '$2',
 has() { if grep -qF -- "$2" "$3"; then echo "ok   $1"; else echo "FAIL $1 (missing: $2)"; fail=1; fi; }
 hasnt() { if grep -qF -- "$2" "$3"; then echo "FAIL $1 (present: $2)"; fail=1; else echo "ok   $1"; fi; }
 
-# render <out> <extra hosts yaml flow> <smtp enabled> -> the enclave's ruleset
+# render <out> <extra hosts yaml flow> <smtp enabled> [vpn_only] -> the enclave's ruleset
 render() {
   cat >"$tmp/play.yml" <<PLAY
 - name: Segments test
@@ -21,6 +21,7 @@ render() {
   gather_facts: false
   vars_files:
     - $PWD/ansible/roles/pve_enclave/defaults/main.yml
+    - $PWD/ansible/inventory/group_vars/all/enclave.yml
   vars:
     pve_segments_table: segments
     pve_segments_list: "{{ [pve_enclave_segment] }}"
@@ -29,14 +30,16 @@ render() {
     pve_enclave_smtp_host: smtp.example.com
     pve_enclave_smtp_port: "587"
     site:
-      pve: {ip: 192.0.2.10, uplink_ip: 203.0.113.250}
+      pve: {ip: 192.0.2.10, gateway_alias_ip: 192.0.2.1, uplink_ip: 203.0.113.250}
       sdn: {enclave: {subnet: 198.51.100.0/24, gateway: 198.51.100.1}}
-      admin_sources: [192.0.2.0/24, 203.0.113.0/24, 198.51.100.200/32]
+      admin_sources: [203.0.113.51/32, 192.0.2.30/32]
+      admin_vpn_sources: [100.64.0.7/32]
+      enclave: {vpn_only: ${4:-false}}
       hosts:
-        apps: {ip: 192.0.2.121}
+        apps: {ip: 192.0.2.121, home_ip: 203.0.113.249}
         frigate: {ip: 192.0.2.114}
         ragnarok: {ip: 192.0.2.119}
-        vault: {ip: 198.51.100.20}
+        vault: {ip: 198.51.100.20, lab_ip: 192.0.2.120}
         $2
   tasks:
     - name: Ruleset
@@ -53,8 +56,11 @@ render "$tmp/full.nft" 'vaultwarden: {ip: 198.51.100.21}' true
 check "render: rc" "$?" "0"
 f=$tmp/full.nft
 has "one table, replaced in one transaction" "delete table inet segments" "$f"
-has "admin set from site.admin_sources" "elements = { 192.0.2.0/24, 203.0.113.0/24, 198.51.100.200/32 }" "$f"
-has "workload VMs are not operators" "elements = { 192.0.2.121, 192.0.2.114, 192.0.2.119 }" "$f"
+has "operators: NetBird peers and the Mac's LAN /32s" "elements = { 100.64.0.7/32, 203.0.113.51/32, 192.0.2.30/32 }" "$f"
+has "no host address is an operator" "elements = { 192.0.2.121, 203.0.113.249, 192.0.2.114, 192.0.2.119, 198.51.100.20, 192.0.2.120, 198.51.100.21, 192.0.2.10, 192.0.2.1, 203.0.113.250 }" "$f"
+check "anti-spoofing comes before established" "$(awk '/chain forward/{f=1} f&&/iifname != "secrets" counter drop/{print "spoof"; } f&&/ct state established/{print "est"; exit}' "$f" | tr '\n' ' ')" "spoof est "
+check "invalid dropped in every segment chain" "$(grep -c 'ct state invalid counter drop' "$f")" "3"
+has "DNS-fed set has a size cap" "size 64" "$f"
 has "the SMTP set is DNS-fed (timeout)" "flags timeout" "$f"
 has "forward: established first" "ct state established,related accept" "$f"
 has "forward: out of the enclave" 'iifname "secrets" jump enclave_out' "$f"
@@ -87,6 +93,11 @@ hasnt "no Vaultwarden rule" "198.51.100.21" "$tmp/novw.nft"
 hasnt "SMTP off: no timeout set" "flags timeout" "$tmp/novw.nft"
 hasnt "without Vaultwarden: nothing translated" "snat" "$tmp/novw.nft"
 has "SSH still to Vault" "ip saddr @admin ip daddr { 198.51.100.20 } tcp dport 22 accept" "$tmp/novw.nft"
+
+# 2b. vpn_only: NetBird peers only.
+render "$tmp/vpn.nft" 'vaultwarden: {ip: 198.51.100.21}' true true
+has "vpn_only: NetBird peers only" "elements = { 100.64.0.7/32 }" "$tmp/vpn.nft"
+hasnt "vpn_only: no LAN /32" "203.0.113.51/32" "$tmp/vpn.nft"
 
 # 3. A monitoring host gets node_exporter and Vault metrics.
 render "$tmp/mon.nft" 'monitoring: {ip: 192.0.2.130}' true
@@ -121,6 +132,15 @@ has "NAT only for the NAT segment" 'ip saddr 203.0.113.0/24 oifname != "vlan20" 
 check "one masquerade" "$(grep -c masquerade "$tmp/vlan.nft")" "1"
 check "out jumps before in jumps" "$(grep -nE 'jump (enclave|cameras)_(out|in)' "$tmp/vlan.nft" | awk -F: '{print $2}' | tr -d '\t' | cut -d' ' -f4 | tr '\n' ' ')" \
   "enclave_out cameras_out enclave_in cameras_in "
+
+# 4b. Boot: guests start only with the table loaded, through a check in pve-guests, never a
+# Requires= on the firewall unit (restarting a required unit stops every guest).
+u=ansible/roles/pve_segments/templates
+hasnt "firewall unit: not RequiredBy pve-guests" "RequiredBy=pve-guests" "$u/segments-firewall.service.j2"
+has "pve-guests drop-in: ordered after the firewall" "After=segments-firewall.service" "$u/pve-guests-segments.conf.j2"
+has "pve-guests drop-in: checks the table before startall" "ExecStartPre=/bin/sh -c 'nft list table inet {{ pve_segments_table }} >/dev/null'" "$u/pve-guests-segments.conf.j2"
+hasnt "pve-guests drop-in: no Requires" "Requires=" "$u/pve-guests-segments.conf.j2"
+hasnt "the apply never restarts the unit" "state: restarted" ansible/roles/pve_segments/tasks/main.yml
 
 # 5. Set refresh script (stubbed dig/nft). Private addresses are built at run time (the
 # repo's gitleaks rule rejects private IPv4 literals).
@@ -166,6 +186,13 @@ check "refresh: more than MAX -> set unchanged" "$(wc -c <"$tmp/nft-in" | tr -d 
 PATH="$tmp/bin:$PATH" bash "$refresh" "$tmp/set.conf" >/dev/null 2>&1
 check "refresh: lookup failure -> rc 1" "$?" "1"
 check "refresh: lookup failure -> set unchanged" "$(wc -c <"$tmp/nft-in" | tr -d ' ')" "0"
+
+: >"$tmp/nft-in"; printf ': ' >"$tmp/present"; dig_answer 8.8.8.8 8.8.4.4
+{ cat "$tmp/set.conf"; echo 'EXPECT="8.8.8.0/24 9.9.9.0/24"'; } >"$tmp/set-expect.conf"
+PATH="$tmp/bin:$PATH" bash "$refresh" "$tmp/set-expect.conf" >/dev/null 2>&1
+check "refresh: EXPECT -> rc" "$?" "0"
+has "refresh: EXPECT keeps an address inside" "{ 8.8.8.8 timeout 24h }" "$tmp/nft-in"
+hasnt "refresh: EXPECT drops an address outside" "8.8.4.4" "$tmp/nft-in"
 
 # 6. Firewall rollback script (stubbed ping/nft).
 rb=ansible/roles/pve_segments/files/segments-fw-rollback.sh

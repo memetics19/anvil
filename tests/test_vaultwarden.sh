@@ -38,12 +38,15 @@ run() {
   gather_facts: false
   vars_files:
     - $PWD/ansible/inventory/group_vars/all/gateway.yml
+    - $PWD/ansible/inventory/group_vars/all/enclave.yml
   vars:
     inventory_hostname: ${VW_HOST:-apps}
     site:
       domain: example.com
       gateway: {subdomain: internal}
       email: admin@example.com
+      admin_sources: [198.51.100.51/32, 192.0.2.31/32]
+      admin_vpn_sources: [100.64.0.7/32]
       pve: {ip: 192.0.2.10}
       hosts:
         apps: {ip: 192.0.2.121, home_ip: 198.51.100.249}
@@ -151,7 +154,7 @@ check "timer: nightly, persistent"             'grep -qx "OnCalendar=\*-\*-\* 03
 cf="$out/Caddyfile"
 check "gateway: pass route to the container"   'grep -q "@pass host pass.internal.example.com" "$cf" && grep -q "reverse_proxy http://vaultwarden:8080" "$cf"'
 check "gateway: websockets survive a reload"   'awk "/handle @pass/{f=1} f&&/stream_close_delay/{print; exit}" "$cf" | grep -q 5m'
-check "gateway: Caddy joins vaultwarden_web"   'grep -qx "      - vaultwarden_web" "$out/caddy-compose.yaml" && grep -q "^  vaultwarden_web:" "$out/caddy-compose.yaml"'
+check "gateway: Caddy joins vaultwarden_web"   'grep -qx "      vaultwarden_web: {}" "$out/caddy-compose.yaml" && grep -q "^  vaultwarden_web:" "$out/caddy-compose.yaml"'
 
 s=$(grep -v '^#' "$out/services.yaml" | jq -c .) || s='[]'
 check "dashboard: Vaultwarden under Security"  '[ "$(jq -r ".[] | select(has(\"Security\")) | .Security[] | select(has(\"Vaultwarden\")) | .Vaultwarden.href" <<<"$s")" = "https://pass.internal.example.com" ]'
@@ -182,6 +185,8 @@ c="$out/docker-compose.yaml"
 check "enclave: published on the VM's address only" '[ "$(grep -A1 "^    ports:" "$c" | tail -1)" = "      - \"198.51.100.21:8080:8080/tcp\"" ] && [ "$(grep -c ":8080/tcp" "$c")" = 1 ]'
 check "enclave: image by tag, never pulled"   'grep -qx "    image: vaultwarden/server:1.37.4" "$c" && grep -qx "    pull_policy: never" "$c"'
 check "enclave: Caddy proxies to the VM"      'grep -q "reverse_proxy http://198.51.100.21:8080" "$out/Caddyfile"'
+check "enclave: pass is for the operator only" 'grep -q "@pass_denied not remote_ip 100.64.0.7/32 198.51.100.51/32 192.0.2.31/32" "$out/Caddyfile" && grep -q "respond @pass_denied 403" "$out/Caddyfile"'
+check "enclave: dns is open to the LAN"        '! grep -q "@dns_denied" "$out/Caddyfile"'
 s=$(grep -v '^#' "$out/services.yaml" | jq -c .) || s='[]'
 check "enclave: dashboard entry without container status" '[ "$(jq -c ".[] | select(has(\"Security\")) | .Security[0].Vaultwarden | has(\"container\")" <<<"$s")" = "false" ]'
 VW_HOST=vaultwarden VW_EXTRA=$xv run "$good"; rc=$?

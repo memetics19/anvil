@@ -41,6 +41,7 @@ table inet {{ pve_segments_table }} {
 		auto-merge
 {% elif s.refresh is defined %}
 		flags timeout
+		size {{ s.refresh.size | default(64) }}
 {% endif %}
 {% if s.elements | default([]) | select | list %}
 		elements = { {{ s.elements | select | join(', ') }} }
@@ -50,12 +51,13 @@ table inet {{ pve_segments_table }} {
 {% endfor %}
 	chain forward {
 		type filter hook forward priority filter; policy accept;
-		ct state established,related accept
 {% for g in pve_segments_list %}
 		# {{ g.name }}: its addresses only ever arrive on its own interface (no spoofing,
-		# no detour through another NIC of a host that has one there too).
+		# no detour through another NIC of a host that has one there too), checked before
+		# anything is accepted as established.
 		ip saddr {{ g.subnet }} iifname != "{{ g.interface }}" counter drop
 {% endfor %}
+		ct state established,related accept
 {% for g in pve_segments_list %}
 		iifname "{{ g.interface }}" jump {{ g.name }}_out
 {% endfor %}
@@ -66,10 +68,10 @@ table inet {{ pve_segments_table }} {
 
 	chain input {
 		type filter hook input priority filter; policy accept;
-		ct state established,related accept
 {% for g in pve_segments_list %}
 		ip saddr {{ g.subnet }} iifname != { "{{ g.interface }}", "lo" } counter drop
 {% endfor %}
+		ct state established,related accept
 {% for g in pve_segments_list %}
 		iifname "{{ g.interface }}" jump {{ g.name }}_host
 {% endfor %}
@@ -83,6 +85,7 @@ table inet {{ pve_segments_table }} {
 	# --- segment {{ g.name }} ({{ 'NAT' if g.nat | default(false) else 'no NAT' }}) ---
 	# New connections into it.
 	chain {{ g.name }}_in {
+		ct state invalid counter drop
 {% for r in g.ingress | default([]) %}
 {{ rule(r, 'accept') }}{% endfor %}
 		counter drop
@@ -90,6 +93,7 @@ table inet {{ pve_segments_table }} {
 
 	# New connections out of it: allowed ones go on (the destination's rules still apply).
 	chain {{ g.name }}_out {
+		ct state invalid counter drop
 {% for r in g.egress | default([]) %}
 {{ rule(r, 'return') }}{% endfor %}
 		counter drop
@@ -97,6 +101,7 @@ table inet {{ pve_segments_table }} {
 
 	# New connections from it to this host.
 	chain {{ g.name }}_host {
+		ct state invalid counter drop
 {% for r in g.host | default([]) %}
 {{ rule(r, 'accept') }}{% endfor %}
 		counter drop

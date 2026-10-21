@@ -34,6 +34,11 @@
       controller) must be set
     quiet: true
 
+- name: Conntrack tools (old sessions are cleared after a ruleset change)
+  ansible.builtin.apt:
+    name: conntrack
+    state: present
+
 - name: Firewall scripts
   ansible.builtin.copy:
     src: "{{ item.src }}"
@@ -135,6 +140,7 @@
         owner: root
         group: root
         mode: "0644"
+      register: pve_segments_unit
       notify: Reload systemd
 
     - name: Apply a pending systemd reload
@@ -146,6 +152,48 @@
         enabled: true
       # In check mode on a new host the unit is not there yet.
       when: not ansible_check_mode or pve_segments_live.stat.exists
+
+    # A changed [Install] section (RequiredBy=pve-guests.service) needs its links redone.
+    - name: Install the unit's links again after a unit change
+      ansible.builtin.command:
+        argv: [systemctl, reenable, segments-firewall.service]
+      changed_when: true
+      when: pve_segments_unit is changed and not ansible_check_mode
+
+    - name: Guests start only with the table loaded (drop-in directory)
+      ansible.builtin.file:
+        path: /etc/systemd/system/pve-guests.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Guests start only with the table loaded (check before startall)
+      ansible.builtin.template:
+        src: pve-guests-segments.conf.j2
+        dest: /etc/systemd/system/pve-guests.service.d/10-segments-firewall.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload systemd
+
+    - name: Apply a pending systemd reload (drop-in)
+      ansible.builtin.meta: flush_handlers
+
+    # Read from systemd: pve-guests is ordered after the table and checks it, and does not
+    # Require it (a Requires= would stop every guest on a firewall restart).
+    - name: The boot check is in place, without a stop-propagating dependency
+      ansible.builtin.command:
+        argv: [systemctl, show, --property=Requires, --property=BindsTo, --property=PartOf,
+               --property=After, --property=ExecStartPre, pve-guests.service]
+      register: pve_segments_guests_deps
+      changed_when: false
+      check_mode: false
+      failed_when: >-
+        not ansible_check_mode
+        and (pve_segments_guests_deps.stdout is search('(Requires|BindsTo|PartOf)=[^\n]*segments-firewall')
+             or pve_segments_guests_deps.stdout is not search('After=[^\n]*segments-firewall[.]service')
+             or pve_segments_guests_deps.stdout is not search('ExecStartPre=[^\n]*nft list table inet ' ~ pve_segments_table))
 
     - name: Apply the ruleset with timed rollback
       when: pve_segments_pending | bool and not ansible_check_mode
@@ -207,10 +255,11 @@
             group: root
             mode: "0644"
 
+        # nft directly, never a restart of the unit (no systemd job, nothing else involved).
         - name: Load it (one transaction; DNS-fed sets start empty)
-          ansible.builtin.systemd_service:
-            name: segments-firewall
-            state: restarted
+          ansible.builtin.command:
+            argv: [nft, -f, "{{ pve_segments_etc }}/segments.nft"]
+          changed_when: true
 
         - name: Wait for the host to answer
           ansible.builtin.wait_for_connection:
@@ -222,6 +271,15 @@
             argv: [nft, list, table, inet, "{{ pve_segments_table }}"]
           changed_when: false
           no_log: true
+
+        # Connections admitted under the old rules would otherwise live on as established.
+        # Allowed ones re-enter conntrack with their next packet.
+        - name: Clear the segments' tracked connections
+          ansible.builtin.shell:
+            cmd: >-
+              for n in {{ pve_segments_list | map(attribute='subnet') | map('quote') | join(' ') }}; do
+              conntrack -D -s "$n" >/dev/null 2>&1; conntrack -D -d "$n" >/dev/null 2>&1; done; true
+          changed_when: true
 
         - name: Disarm the rollback
           ansible.builtin.systemd_service:

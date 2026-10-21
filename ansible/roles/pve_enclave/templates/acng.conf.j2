@@ -3,6 +3,10 @@
 # address only. ForceManaged: only requests for the repositories named in the Remap lines
 # below are served (no other host). PassThroughPattern matches nothing: no CONNECT tunnel to
 # any host (HTTPS repositories are not reachable through it). AllowUserPorts: port 80 only.
+# Each remap names its upstream (after the ;), so whatever mirror host a client asks for, the
+# file comes from that one archive host; and no remap matches on a path alone (Debian's
+# defaults also match /debian or /ubuntu on any host). The report page (it can start
+# maintenance jobs) needs the AdminAuth login in security.conf.
 CacheDir: /var/cache/apt-cacher-ng
 LogDir: /var/log/apt-cacher-ng
 SupportDir: /usr/lib/apt-cacher-ng
@@ -10,10 +14,10 @@ BindAddress: {{ pve_enclave_gateway }}
 Port: {{ pve_enclave_aptcache_port }}
 # The host has no IPv6 route out: connect upstream over IPv4 only.
 ConnectProto: v4
-Remap-debrep: file:deb_mirror*.gz /debian ; file:backends_debian # Debian Archives
-Remap-secdeb: security.debian.org security.debian.org/debian-security deb.debian.org/debian-security /debian-security cdn-fastly.deb.debian.org/debian-security ; deb.debian.org/debian-security security.debian.org cdn-fastly.deb.debian.org/debian-security
-Remap-uburep: file:ubuntu_mirrors /ubuntu archive.ubuntu.com/ubuntu ; file:backends_ubuntu # Ubuntu Archives
-Remap-ubusec: security.ubuntu.com/ubuntu ; security.ubuntu.com/ubuntu # Ubuntu security updates
+Remap-debrep: file:deb_mirror*.gz deb.debian.org/debian ; http://deb.debian.org/debian/ # Debian archive
+Remap-secdeb: security.debian.org/debian-security deb.debian.org/debian-security ; http://deb.debian.org/debian-security/ # Debian security updates
+Remap-uburep: file:ubuntu_mirrors archive.ubuntu.com/ubuntu ; http://archive.ubuntu.com/ubuntu/ # Ubuntu archive
+Remap-ubusec: security.ubuntu.com/ubuntu ; http://security.ubuntu.com/ubuntu/ # Ubuntu security updates
 ForceManaged: 1
 PassThroughPattern: ^$
 AllowUserPorts: 80

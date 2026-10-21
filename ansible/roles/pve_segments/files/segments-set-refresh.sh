@@ -6,7 +6,8 @@
 # name resolved to: a failed, empty or oversized answer leaves the set as it is (exit 1, so
 # the timer's unit shows the failure).
 # Usage: segments-set-refresh.sh <config>  (sourced: TABLE, SET,
-#   LOOKUP_HOST, RESOLVER, KEEP (nft timeout, e.g. 24h), MAX)
+#   LOOKUP_HOST, RESOLVER, KEEP (nft timeout, e.g. 24h), MAX, and optionally EXPECT: a
+#   space-separated list of CIDRs the addresses must fall in, others are ignored)
 set -euo pipefail
 conf=${1:?usage: segments-set-refresh.sh <config>}
 # shellcheck source=/dev/null
@@ -16,6 +17,24 @@ conf=${1:?usage: segments-set-refresh.sh <config>}
 [[ $KEEP =~ ^[0-9]+[smhd]$ && $MAX =~ ^[0-9]+$ ]] || { echo "segments-set-refresh: bad KEEP or MAX" >&2; exit 2; }
 NFT=${NFT:-nft}
 DIG=${DIG:-dig}
+
+EXPECT=${EXPECT:-}
+
+ip2int() { local a b c d; IFS=. read -r a b c d <<<"$1"; echo $(( (a << 24) + (b << 16) + (c << 8) + d )); }
+
+# 0 when $1 is inside one of the CIDRs in EXPECT (or EXPECT is empty).
+expected() {
+  [ -n "$EXPECT" ] || return 0
+  local c net bits ip mask
+  ip=$(ip2int "$1")
+  for c in $EXPECT; do
+    net=${c%/*}; bits=${c#*/}
+    [[ $net =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ && $bits =~ ^[0-9]+$ && $bits -le 32 ]] || continue
+    mask=$(( bits == 0 ? 0 : (0xFFFFFFFF << (32 - bits)) & 0xFFFFFFFF ))
+    [ $(( ip & mask )) -eq $(( $(ip2int "$net") & mask )) ] && return 0
+  done
+  return 1
+}
 
 # 0 when $1 is a dotted quad outside the private, shared, loopback, link-local,
 # documentation, benchmark, multicast and reserved ranges.
@@ -45,8 +64,12 @@ fi
 addrs=()
 while IFS= read -r line; do
   [[ $line =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue   # CNAME targets
-  if public_ipv4 "$line"; then addrs+=("$line"); else
+  if ! public_ipv4 "$line"; then
     echo "segments-set-refresh: ignoring a non-public address in the answer" >&2
+  elif ! expected "$line"; then
+    echo "segments-set-refresh: ignoring an address outside EXPECT" >&2
+  else
+    addrs+=("$line")
   fi
 done < <(printf '%s\n' "$answer" | sort -u)
 

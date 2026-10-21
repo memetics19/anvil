@@ -388,9 +388,12 @@ sudo networksetup -setadditionalroutes "Wi-Fi" <enclave-network> <enclave-netmas
 netstat -rn -f inet | grep <enclave-network-prefix>
 ```
 
-The enclave firewall lets the Mac in only from an address in `site.admin_sources` (its home
-Wi-Fi address: reserve it in the router's DHCP). Then point the Keychain at Vault's enclave
-address and check:
+The enclave firewall and the gateway's `pass` and `vault` routes let in only the operator's
+devices: the Mac's LAN addresses in `site.admin_sources` (its home Wi-Fi address, reserved
+in the router's DHCP, its USB LAN and Wi-Fi alias lab addresses) and its NetBird peers in
+`site.admin_vpn_sources`. `site.enclave.vpn_only: true` keeps only the NetBird ones (a
+device on the home network could forge a LAN address). Then point the Keychain at Vault's
+enclave address and check:
 
 ```sh
 security add-generic-password -U -s homelab -a vault-ip -w <vault-enclave-address>
@@ -401,10 +404,27 @@ Without the route, Ansible still works (it goes through the Proxmox host), and
 `HOMELAB_VAULT_ADDR=https://vault.<gateway-domain>` with `HOMELAB_VAULT_CACERT` set to a
 public CA bundle reaches Vault through the gateway.
 
-NetBird: the host is the routing peer for the lab's /16, which contains the enclave
-network, so peers that use that route reach the enclave already (as operators, from the
-NetBird range). If the enclave network is ever outside a routed range, add it as a network
-route on the host's peer in the dashboard.
+NetBird reaches the lab through two routing peers for the lab's /16: the Proxmox host
+(masquerade on, applied after its firewall) and the `netbird` VM (no masquerade). Either way
+the enclave firewall sees the peer's own NetBird address, so only the peers listed in
+`site.admin_vpn_sources` get in. To make that path reliable and keep other peers out, in the
+NetBird dashboard:
+
+1. Groups: make a group (for example `operator`) with only your own devices (today the
+   Mac's peers; remove the stale duplicates of it), and list their NetBird addresses in
+   `site.admin_vpn_sources`.
+2. Access control: the policy that opens the lab's /16 route today also admits the GitHub
+   Actions runner peers. Limit it to the `operator` group, or add a policy for the enclave
+   route below that only `operator` gets.
+3. Network routes: add the enclave network (`site.sdn.enclave.subnet`) with the Proxmox host
+   (`pve`) as its only routing peer, masquerade on, distribution group `operator`. Through the
+   `netbird` VM the answers would come back over the Proxmox host's tunnel instead, which the
+   client drops.
+4. For the gateway names (`pass`, `vault`) over NetBird, Caddy must see the peer's address:
+   add the `apps` home address as a /32 route with the Proxmox host as routing peer,
+   masquerade off, distribution group `operator`. (`apps` answers through its default
+   gateway, the Proxmox host, which sends it back through NetBird.) With masquerade, Caddy
+   sees the routing peer's address, which is not an operator, and answers 403.
 
 ### Switch
 

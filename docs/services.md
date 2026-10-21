@@ -368,7 +368,7 @@ Vaultwarden gets only its Argon2id hash, `admin_token_hash`, in
 `/opt/vaultwarden/vaultwarden.env` (mode 600). Each run checks that the hash matches the
 token, the admin page accepts the token, `/alive` answers and an uninvited address cannot
 sign up. To change the token, write a new `admin_token` to Vault and rerun
-`make vm HOST=apps`.
+`make vm HOST=vaultwarden`.
 
 #### Mail
 
@@ -384,7 +384,9 @@ invitations are mailed and `SIGNUPS_VERIFY` is on. `smtp_host`, `smtp_port`,
   key, and `smtp_from` an address on the verified domain.
 
 Write each value from stdin (see [Secrets in Vault](usage.md#secrets-in-vault)), then run
-`make vm HOST=apps`.
+`make vm HOST=vaultwarden`. When `smtp_host` or `smtp_port` changed, also run
+`make enclave ARGS="--tags firewall"`: the enclave firewall's mail hole (the relay set and
+its port) is built from them.
 
 #### Two-step login
 
@@ -430,7 +432,7 @@ user every night at about 03:30. The job:
 
 The plaintext copy and the archive live on tmpfs in `/run/vaultwarden-backup` and are
 removed when the job ends. The job stops if there is less than twice the data free there
-(`/run` is about 145 MB on `apps`).
+(`/run` is about 50 MB on the 512 MB `vaultwarden` VM; the data is well under 1 MB).
 
 The bucket belongs to the S3 user `vaultwarden-backup`, made by `make ceph`. It may own no
 other bucket and cannot read any other. Its keys are in
@@ -497,13 +499,38 @@ The enclave's rules (`pve_enclave_segment` in `ansible/roles/pve_enclave/default
 
 | Direction | Allowed |
 |---|---|
-| Into the enclave | Caddy (the `apps` lab address) to Vault 8200 and Vaultwarden 8080. Operators to Vault 8200, and SSH and ping on both VMs. Operators are `site.admin_sources` (the lab network, the NetBird range, the Mac's home Wi-Fi address) minus the workload VMs `apps`, `frigate` and `ragnarok`. Monitoring (`site.hosts.monitoring`, once it exists) to node_exporter on both and Vault 8200. |
+| Into the enclave | Caddy (the `apps` lab address; on `apps` only Caddy's own network may use it, see below) to Vault 8200 and Vaultwarden 8080. Operators to Vault 8200, and SSH and ping on both VMs. Operators are the operator's own devices only (`inventory/group_vars/all/enclave.yml`): the Mac's LAN /32s (`site.admin_sources`) and the operator's NetBird peers (`site.admin_vpn_sources`), or only the NetBird peers with `site.enclave.vpn_only: true`. Every address of every host in the site dict (VMs, their lab and home addresses, the Proxmox host's) is dropped before those rules, so no VM is an operator. Monitoring (`site.hosts.monitoring`, once it exists) to node_exporter on both and Vault 8200. |
 | Out of the enclave | Vaultwarden only: DNS to Pi-hole, and the SMTP port to the set `enclave_smtp_relay`, source-NATed to the host's home address. That is the only translated flow. Vault: nothing. |
 | To the host | NTP and the apt cache on the gateway address, and ping. Vaultwarden also reaches the Ceph S3 gateway (backups). |
 
+No VM reaches the enclave apart from that gateway path. The Proxmox host itself is not
+filtered on its way in: its own connections (Ansible's SSH through `ProxyJump`, the
+operator path) are not forwarded traffic. From the enclave the host offers only NTP, the
+apt cache and (Vaultwarden) the Ceph S3 gateway.
+
+On `apps`, Caddy shares its lab address with every other container and the host, so the
+Proxmox host cannot tell Caddy's connections apart. `apps` decides it: the nftables table
+`inet anvil_gateway_guard` (role `caddy`, `tasks/enclave_guard.yml`, loaded at boot by
+`gateway-guard.service` before Docker) lets only the subnet of Caddy's own network
+`caddy_gateway` (Caddy alone, its default route via `gw_priority`) open connections to
+Vault's and Vaultwarden's ports, and drops everything else from that VM to the enclave
+(other containers, the host). It is not required by Docker, so a failed guard never keeps
+Pi-hole down. In Caddy, the `pass` and `vault` routes (`caddy_admin_only_routes`) answer
+only the same operator addresses, matched on the real client address; any other client
+gets 403.
+
+NetBird: both routing peers for the lab's /16, the Proxmox host (which masquerades only
+after its forward chain) and the `netbird` VM (which does not masquerade), keep a peer's
+own address up to the enclave firewall, so the operator's peers are listed by address and
+no VM is admitted. See [NetBird](setup.md#netbird) for the routes and access policy that
+make this reliable.
+
 The mail hole: `smtp_host` and `smtp_port` come from `kv/homelab/apps/vaultwarden`. The
 timer resolves the host through Pi-hole, the resolver Vaultwarden uses, every 10 minutes,
-and keeps each address for 24 h. Without an SMTP login in Vault the set stays empty.
+and keeps each address for 24 h. Without an SMTP login in Vault the set stays empty. Not done: Vaultwarden may ask Pi-hole
+for any name, not only the relay's (a narrow DNS channel out through Pi-hole's own
+recursion). Closing it needs a Pi-hole client group for Vaultwarden that allows only the
+relay's name, or a resolver of its own; neither is managed here yet.
 
 The lab SNAT rule on the host also matches lab-to-enclave traffic, so the enclave VMs see
 lab clients (Caddy included) as the host's home address. The firewall decides on the real

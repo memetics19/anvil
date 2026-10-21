@@ -5,3 +5,4 @@ LOOKUP_HOST={{ item.refresh.host | quote }}
 RESOLVER={{ item.refresh.resolver | quote }}
 KEEP={{ item.refresh.keep | default('24h') | quote }}
 MAX={{ item.refresh.max | default(16) | int }}
+EXPECT={{ item.refresh.expect | default([]) | join(' ') | quote }}

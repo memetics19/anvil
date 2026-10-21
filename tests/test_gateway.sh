@@ -25,11 +25,14 @@ run() {
   gather_facts: false
   vars_files:
     - $PWD/ansible/inventory/group_vars/all/gateway.yml
+    - $PWD/ansible/inventory/group_vars/all/enclave.yml
   vars:
     inventory_hostname: apps
     site:
       domain: example.com
       email: admin@example.com
+      admin_sources: [198.51.100.51/32, 192.0.2.31/32]
+      admin_vpn_sources: [100.64.0.7/32]
       pve: {ip: 192.0.2.10, uplink_ip: 198.51.100.250, idrac_ip: 192.0.2.123}
       hosts:
         ragnarok: {ip: 192.0.2.119}
@@ -138,11 +141,19 @@ else ok "ports: no unbound, 0.0.0.0 or UDP entry"; fi
 
 # Networks: all three by default; only the existing ones when some are missing, and the
 # routes to containers on a missing network are not checked.
-nets() { awk '/^    networks:/{on=1; next} on && /^      - /{print $2; next} on{on=0}' "$1" | tr '\n' ' '; }
+# Service networks are a mapping (gateway carries gw_priority): the 6-space keys under it.
+nets() { awk '/^    networks:/{on=1; next} on && /^      [a-z_]+:/{sub(":","",$1); print $1; next} on && /^        /{next} on && /^      #/{next} on{on=0}' "$1" | tr '\n' ' '; }
 if [ "$(nets "$tmp/compose.yaml")" = "gateway pihole_dns homepage_web vaultwarden_web " ]; then ok "networks: all container networks by default"
 else bad_ "networks default: $(nets "$tmp/compose.yaml")"; fi
 if [ "$(nets "$tmp/compose-partial.yaml")" = "gateway pihole_dns " ] && ! grep -q "homepage_web" "$tmp/compose-partial.yaml"
 then ok "networks: a missing network is left out"; else bad_ "networks partial: $(nets "$tmp/compose-partial.yaml")"; fi
+if grep -q "@vault_denied not remote_ip 100.64.0.7/32 198.51.100.51/32 192.0.2.31/32" "$tmp/Caddyfile" \
+   && grep -q "respond @vault_denied 403" "$tmp/Caddyfile"; then ok "vault: the operator's devices only (403 for others)"
+else bad_ "vault: admin-only matcher"; fi
+if [ "$(grep -c "_denied not remote_ip" "$tmp/Caddyfile")" = 1 ]; then ok "other routes stay open to the LAN"
+else bad_ "admin-only matchers: $(grep -c "_denied not remote_ip" "$tmp/Caddyfile")"; fi
+if grep -A1 "^      gateway:" "$tmp/compose.yaml" | grep -q "gw_priority: 100"; then ok "networks: Caddy's own network carries its default route"
+else bad_ "networks: gw_priority on gateway"; fi
 if [ "$(cat "$tmp/unchecked")" = "home" ]; then ok "routes to a container on a missing network are not checked"
 else bad_ "unchecked routes: $(cat "$tmp/unchecked")"; fi
 

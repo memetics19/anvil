@@ -55,6 +55,7 @@ writing them to a file. Each write is checked by reading the SHA-256 digests bac
 
 | Vault path | Key | Used for |
 |---|---|---|
+| `kv/homelab/pve/apt-cacher-ng` | `admin_password` | `make enclave` (pve_enclave role, `openssl rand`) | Login `admin` for the apt cache's report page and maintenance jobs (AdminAuth) |
 | `kv/homelab/pve/netbird` | `setup_key` | Enrolling the Proxmox host in NetBird |
 | `kv/homelab/netbird/netbird` | `setup_key` | Enrolling the `netbird` VM. The netbird_peer role reads it only for a client that needs a login. |
 

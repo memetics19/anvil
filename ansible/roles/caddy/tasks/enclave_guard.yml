@@ -1,0 +1,117 @@
+# Only Caddy reaches the secrets enclave from this VM (templates/gateway-guard.nft.j2). The
+# subnet of Caddy's network is read from Docker (the network is Caddy's alone; it keeps its
+# subnet while it exists). The ruleset is checked with nft -c before it is loaded; it only
+# drops traffic to the enclave, so it cannot cut DNS or this VM off.
+- name: Subnet of Caddy's network
+  ansible.builtin.command:
+    argv: [docker, network, inspect, --format, "{{ '{{' }}range .IPAM.Config{{ '}}{{' }}.Subnet{{ '}}{{' }}end{{ '}}' }}", caddy_gateway]
+  register: caddy_gateway_net
+  changed_when: false
+  check_mode: false
+
+- name: Caddy's network is Caddy's alone, with one IPv4 subnet
+  ansible.builtin.command:
+    argv: [docker, network, inspect, --format, "{{ '{{' }}range .Containers{{ '}}{{' }}.Name{{ '}} {{' }}end{{ '}}' }}", caddy_gateway]
+  register: caddy_gateway_members
+  changed_when: false
+  check_mode: false
+  failed_when: >-
+    caddy_gateway_members.stdout.split() | reject('equalto', 'caddy') | list | length > 0
+    or caddy_gateway_net.stdout | trim is not match('^([0-9]{1,3}[.]){3}[0-9]{1,3}/[0-9]{1,2}$')
+
+- name: Guard settings
+  ansible.builtin.set_fact:
+    caddy_gateway_subnet: "{{ caddy_gateway_net.stdout | trim }}"
+
+- name: Guard config directory
+  ansible.builtin.file:
+    path: "{{ caddy_enclave_guard_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  register: caddy_guard_dir
+
+- name: Render and check the guard in a staging directory
+  block:
+    - name: Staging directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: gateway-guard.
+      register: caddy_guard_stage
+      changed_when: false
+      check_mode: false
+
+    - name: Render the guard
+      ansible.builtin.template:
+        src: gateway-guard.nft.j2
+        dest: "{{ caddy_guard_stage.path }}/gateway-guard.nft"
+        owner: root
+        group: root
+        mode: "0644"
+      changed_when: false
+      check_mode: false
+
+    - name: The guard parses (nft -c)
+      ansible.builtin.command:
+        argv: [nft, -c, -f, "{{ caddy_guard_stage.path }}/gateway-guard.nft"]
+      changed_when: false
+      check_mode: false
+
+    - name: Install the guard
+      ansible.builtin.copy:
+        src: "{{ caddy_guard_stage.path }}/gateway-guard.nft"
+        dest: "{{ caddy_enclave_guard_file }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      diff: false
+      register: caddy_guard_file
+      # In check mode on a new host the directory is not there yet.
+      when: not (ansible_check_mode and caddy_guard_dir is changed)
+  always:
+    - name: Remove the staging directory
+      ansible.builtin.file:
+        path: "{{ caddy_guard_stage.path }}"
+        state: absent
+      changed_when: false
+      check_mode: false
+      when: caddy_guard_stage.path is defined
+
+- name: Boot unit for the guard
+  ansible.builtin.template:
+    src: gateway-guard.service.j2
+    dest: /etc/systemd/system/gateway-guard.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: caddy_guard_unit
+
+- name: Reload systemd and link the unit
+  ansible.builtin.systemd_service:
+    name: gateway-guard
+    enabled: true
+    daemon_reload: true
+  when: not ansible_check_mode or not caddy_guard_unit is changed
+
+- name: Link the unit again after a unit change
+  ansible.builtin.command:
+    argv: [systemctl, reenable, gateway-guard.service]
+  changed_when: true
+  when: caddy_guard_unit is changed and not ansible_check_mode
+
+- name: Is the guard loaded
+  ansible.builtin.command:
+    argv: [nft, list, table, inet, anvil_gateway_guard]
+  register: caddy_guard_loaded
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Load the guard (one transaction)
+  ansible.builtin.command:
+    argv: [nft, -f, "{{ caddy_enclave_guard_file }}"]
+  changed_when: true
+  when: not ansible_check_mode and (caddy_guard_file is changed or caddy_guard_loaded.rc != 0)

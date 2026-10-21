@@ -120,6 +120,10 @@
   # In check mode on a new host the env file the compose file names does not exist yet.
   when: caddy_env_stat.stat.exists or not ansible_check_mode
 
+- name: Only Caddy reaches the secrets enclave from this VM
+  ansible.builtin.include_tasks: enclave_guard.yml
+  when: caddy_enclave_subnet | length > 0 and not (ansible_check_mode and caddy_env_stat is not defined)
+
 # Caddy reads its config at start; a running container gets a graceful reload.
 - name: Reload Caddy for a new Caddyfile or CA
   ansible.builtin.command:
