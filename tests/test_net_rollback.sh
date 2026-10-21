@@ -24,7 +24,7 @@ PATH="$tmp/bin:$PATH" bash "$script" "$tmp/backup" --wait 1 --target 192.0.2.10 
 check "unreachable: rc" "$?" "0"
 check "unreachable: file restored" "$(cat "$tmp/interfaces")" "OLD"
 check "unreachable: target reached ping" "$(grep -c -- '192.0.2.10' "$tmp/pingargs")" "1"
-mode=$(stat -f %Lp "$tmp/interfaces" 2>/dev/null || stat -c %a "$tmp/interfaces")
+mode=$(stat -c %a "$tmp/interfaces" 2>/dev/null || stat -f %Lp "$tmp/interfaces")  # GNU first: GNU `stat -f` means filesystem status
 check "unreachable: restored mode 644" "$mode" "644"
 check "unreachable: ifreload -a called" "$(cat "$tmp/calls")" "ifreload -a"
 
