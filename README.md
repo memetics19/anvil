@@ -208,8 +208,8 @@ subnet. Each NIC answers ARP only for its own address.
 `make vm HOST=apps` runs the `pihole` role, compose project `/opt/pihole`:
 
 - Pi-hole (pinned tag and digest) publishes DNS (53) on those two addresses only. Its web
-  UI is not published; it is reached through the service gateway as `https://dns.<domain>`
-  (below). It is not a DHCP server.
+  UI is not published; it is reached through the service gateway as
+  `https://dns.<gateway domain>` (below). It is not a DHCP server.
 - Its only upstream is Unbound, at a fixed address on the project's own Docker network
   (`site.hosts.apps.dns_subnet` / `dns_unbound_ip`, never published). Unbound resolves
   from the root servers and validates DNSSEC. Either container can restart on its own
@@ -226,7 +226,7 @@ subnet. Each NIC answers ARP only for its own address.
   when they differ, so a change never restarts Pi-hole or interrupts DNS.
 - Block lists (`pihole_blocklists`): StevenBlack plus a few lists from firebog and
   URLhaus. A change runs a gravity update. Lists added in the web UI are left alone.
-- Web UI: `https://dns.<domain>/admin/`, password `web_password` from Vault
+- Web UI: `https://dns.<gateway domain>/admin/`, password `web_password` from Vault
   `kv/homelab/apps/pihole`. Settings passed by the role are read-only in the UI. Local DNS
   records come from Vault: one added in the UI is removed on the next run.
 
@@ -242,8 +242,13 @@ specific addresses, never `0.0.0.0`; Caddy's 80 and 443 are bound that way.
 
 ### Service gateway (private)
 
-Every web UI in the lab has a name, `https://<name>.<domain>`, served by Caddy on the
-`apps` VM (`caddy` role, compose project `/opt/caddy`) with a publicly trusted certificate.
+Every web UI in the lab has a name, `https://<name>.<gateway domain>`, served by Caddy on
+the `apps` VM (`caddy` role, compose project `/opt/caddy`) with a publicly trusted
+certificate. The gateway domain is `<subdomain>.<domain>` with `site.gateway.subdomain`
+from Vault (`internal` here, so `https://pve.internal.<domain>`), or `<domain>` itself when
+that key is empty or absent. It is built in one place,
+`ansible/inventory/group_vars/all/gateway.yml` (`gateway_domain`), which the caddy,
+pihole and homepage roles use; `site.domain` itself (public tunnel names) is unchanged.
 
 - **Private only.** The names exist only in Pi-hole: each one is a local record pointing at
   the `apps` home address. They are reachable only on the home or lab network, or over the
@@ -251,7 +256,7 @@ Every web UI in the lab has a name, `https://<name>.<domain>`, served by Caddy o
   home address, so that network, or that one address, must be a route the peers use). Nothing is added to public DNS, no
   Cloudflare tunnel or router port forward points at the gateway, and Caddy is published
   only on the `apps` lab and home addresses.
-- **One wildcard certificate**, `*.<domain>`, from Let's Encrypt by the DNS-01 challenge:
+- **One wildcard certificate**, `*.<gateway domain>`, from Let's Encrypt by the DNS-01 challenge:
   Caddy creates a `_acme-challenge` TXT record through the Cloudflare API, and removes it
   once the certificate is issued. Certificate Transparency logs therefore show only the
   wildcard, never the individual names. The API token (`cloudflare_dns_token` in Vault
@@ -263,9 +268,10 @@ Every web UI in the lab has a name, `https://<name>.<domain>`, served by Caddy o
   service: self-signed upstream, own CA (Vault's), websockets, long streams (TV), the
   upstream's Host header. Adding a service is one entry there and `make vm HOST=apps`.
   `tests/test_gateway.sh` covers the rules.
-- A public name of the same label (a Cloudflare tunnel name such as `frigate` or `ntfy`)
-  is answered at home with the gateway's address, so home devices use the local path; the
-  tunnel is unchanged for everyone else.
+- Under the private subdomain no public name is shadowed: `frigate.<domain>` and
+  `ntfy.<domain>` (Cloudflare tunnel names) resolve to their tunnels as everywhere else,
+  and the local path is `frigate.<gateway domain>`. (Without a subdomain the gateway names
+  would answer those public names at home.)
 - HTTP redirects to HTTPS. Names not in the list get the connection closed. Only HTTP/1.1
   and HTTP/2 (no UDP published).
 - The image is Caddy with the `caddy-dns/cloudflare` module, built by xcaddy from pinned
@@ -299,13 +305,13 @@ network now, and the self-hosted one once it exists.
    The lab network must be a route the peers use (the `netbird` routing peer).
 2. Distribution groups: the peer groups that should use it (for example All).
 3. Either leave match domains empty (all queries go to Pi-hole, so remote devices get
-   filtering too), or set match domains `lan.<domain>` and `<domain>` for local names and
-   the gateway's names only. Leave
+   filtering too), or set match domains `lan.<domain>` and `<gateway domain>` for local
+   names and the gateway's names only. Leave
    "Enabled" on and save. Peers pick it up within a minute; check with `netbird status -d`.
 
 ### Homepage dashboard (private)
 
-`https://home.<domain>` (the `home` entry of `site.services`) is a
+`https://home.<gateway domain>` (the `home` entry of `site.services`) is a
 [Homepage](https://gethomepage.dev) dashboard on `apps` (`homepage` role, compose project
 `/opt/homepage`) with a link and, where it has one, a live widget for every enabled
 gateway service.
@@ -333,7 +339,7 @@ gateway service.
   `make vm HOST=apps` (Pi-hole application password, set live). On a new site run those
   before `make vm HOST=apps`.
 - **Hardening:** pinned image (tag and digest); no published port (Caddy reaches it on
-  the project network `homepage_web`); only `home.<domain>` is an allowed Host; runs as its
+  the project network `homepage_web`); only `home.<gateway domain>` is an allowed Host; runs as its
   own uid with a read-only config directory; memory cap 192 MB. Container status goes
   through a Docker socket proxy (pinned) on an internal network only Homepage shares,
   whose rules allow only `GET /containers/json` and `GET /containers/<id>/stats`: no

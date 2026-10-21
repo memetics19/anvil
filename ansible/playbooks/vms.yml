@@ -83,7 +83,7 @@
 
 # Workloads on the apps VM (shared, small always-on services): Pi-hole with Unbound, DNS
 # for the home and lab networks, the Homepage dashboard and the service gateway (Caddy:
-# https://<name>.<domain> for every entry of site.services; its image is built on
+# https://<name>.<gateway domain> for every entry of site.services; its image is built on
 # ragnarok). No Cloudflare tunnel here.
 - name: Apps workloads
   hosts: apps_servers

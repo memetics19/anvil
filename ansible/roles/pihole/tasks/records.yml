@@ -6,13 +6,13 @@
 # and gives the address with either `ref` (a dotted path into the site dict, e.g.
 # hosts.vault.ip) or `ip`. Values are not logged. Tested by tests/test_pihole_records.sh.
 # The gateway's names (pihole_gateway_services, enabled entries) are added as fqdn records
-# <name>.<domain> -> pihole_gateway_ref.
+# <name>.<pihole_gateway_domain> -> pihole_gateway_ref.
 - name: Gateway names as records
   ansible.builtin.set_fact:
     pihole_all_records: >-
       {%- set out = pihole_local_records | list -%}
       {%- for s in pihole_gateway_services if s.enabled | default(true) | bool -%}
-      {%- set _ = out.append({'fqdn': s.name ~ '.' ~ site.domain, 'ref': pihole_gateway_ref}) -%}
+      {%- set _ = out.append({'fqdn': s.name ~ '.' ~ pihole_gateway_domain, 'ref': pihole_gateway_ref}) -%}
       {%- endfor -%}
       {{ out }}
   no_log: true

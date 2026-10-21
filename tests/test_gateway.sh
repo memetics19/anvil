@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Service gateway (role caddy + pihole records), run locally with a fixture site dict:
 # site.services -> Caddy routes (Caddyfile) and Pi-hole fqdn records at the gateway's home
-# address; disabled entries get neither; malformed entries fail the run.
+# address, under the gateway domain (inventory group_vars/all/gateway.yml: the private
+# subdomain site.gateway.subdomain of site.domain, or site.domain without one); disabled
+# entries get neither; malformed entries fail the run.
 # Uses documentation-range addresses and example.com only.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
@@ -12,12 +14,17 @@ fail=0
 ok() { echo "ok   $1"; }
 bad_() { echo "FAIL $1"; fail=1; }
 
-# run <services-yaml-flow> -> renders $tmp/Caddyfile and $tmp/records; returns the play's rc
+# run <services-yaml-flow> [<gateway-yaml-flow>] -> renders $tmp/Caddyfile and $tmp/records;
+# returns the play's rc
 run() {
+  local gw=${2:-}
+  [ -n "$gw" ] || gw='{subdomain: internal}'
   cat >"$tmp/play.yml" <<PLAY
 - name: Gateway test
   hosts: localhost
   gather_facts: false
+  vars_files:
+    - $PWD/ansible/inventory/group_vars/all/gateway.yml
   vars:
     inventory_hostname: apps
     site:
@@ -32,6 +39,7 @@ run() {
         local_records: [{name: vault, ref: hosts.vault.ip}]
         acme_resolvers: [198.51.100.53, 198.51.100.54]
       services: $1
+      gateway: $gw
     caddy_upstream_cas: {vault: /nonexistent/vault-ca.pem}
   tasks:
     - name: Routes
@@ -81,9 +89,9 @@ run '[
 if [ "$?" -eq 0 ] && [ -s "$tmp/Caddyfile" ]; then ok "good services render"
 else bad_ "good services render"; tail -20 "$tmp/log"; exit 1; fi
 
-has   "one wildcard site"                  "*.example.com {"
+has   "one wildcard site under the subdomain" "*.internal.example.com {"
 has   "DNS-01 through Cloudflare"          "dns cloudflare {env.CLOUDFLARE_API_TOKEN}"
-has   "pve route by host"                  "@pve host pve.example.com"
+has   "pve route by host"                  "@pve host pve.internal.example.com"
 has   "pve upstream from the site dict"    "reverse_proxy https://192.0.2.10:8006 {"
 block pve | grep -q tls_insecure_skip_verify && ok "pve: self-signed upstream" || bad_ "pve: self-signed upstream"
 block pve | grep -q 'stream_close_delay' && ok "pve: websockets survive reloads" || bad_ "pve: websocket"
@@ -110,15 +118,23 @@ if printf '%s\n' "$ports" | grep -qvE '^(192\.0\.2\.121|198\.51\.100\.249):(80|4
 else ok "ports: no unbound, 0.0.0.0 or UDP entry"; fi
 
 if [ "$(cat "$tmp/records" 2>/dev/null)" = "192.0.2.120 vault.lan.example.com
-198.51.100.249 pve.example.com
-198.51.100.249 vault.example.com
-198.51.100.249 qbit.example.com
-198.51.100.249 tv.example.com
-198.51.100.249 dns.example.com" ]; then ok "records: every enabled name at the gateway's home address, local records kept"
+198.51.100.249 pve.internal.example.com
+198.51.100.249 vault.internal.example.com
+198.51.100.249 qbit.internal.example.com
+198.51.100.249 tv.internal.example.com
+198.51.100.249 dns.internal.example.com" ]; then ok "records: every enabled name at the gateway's home address, local records kept"
 else bad_ "records"; cat "$tmp/records" 2>/dev/null; fi
 
+# No subdomain (empty or absent): the names sit directly under site.domain.
+for g in '{subdomain: ""}' '{}'; do
+  run '[{name: pve, host: pve.ip, port: 8006, scheme: https, insecure_upstream: true}]' "$g"
+  if [ "$?" -eq 0 ] && grep -qF '*.example.com {' "$tmp/Caddyfile" && grep -qF '@pve host pve.example.com' "$tmp/Caddyfile" \
+     && grep -qx '198.51.100.249 pve.example.com' "$tmp/records"; then ok "no subdomain ($g): names under the domain"
+  else bad_ "no subdomain ($g)"; fi
+done
+
 reject() {
-  run "$2"; rc=$?
+  run "$2" "${3:-}"; rc=$?
   if [ "$rc" -ne 0 ] && grep -q 'site.services' "$tmp/log"; then ok "rejects $1"
   else bad_ "accepts $1 (rc $rc)"; fi
 }
@@ -134,6 +150,7 @@ reject "insecure on http"       '[{name: a, host: pve.ip, port: 1, scheme: http,
 reject "unknown CA"             '[{name: a, host: pve.ip, port: 1, scheme: https, upstream_ca: other}]'
 reject "insecure and a CA"      '[{name: a, host: pve.ip, port: 1, scheme: https, upstream_ca: vault, insecure_upstream: true}]'
 reject "bad host_header"        '[{name: a, host: pve.ip, port: 1, scheme: http, host_header: other}]'
+reject "bad subdomain"          '[{name: a, host: pve.ip, port: 1, scheme: http}]' '{subdomain: "In ternal"}'
 
 [ "$fail" -eq 0 ] && echo "PASS: gateway routes and records"
 exit "$fail"

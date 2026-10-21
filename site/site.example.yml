@@ -47,8 +47,12 @@ site:
       - {name: printer, ip: 198.51.100.40}
     # Public resolvers Caddy uses to see its DNS-01 challenge record (role caddy).
     acme_resolvers: [198.51.100.53, 198.51.100.54]
+  # The service gateway's names: <name>.<subdomain>.<domain> (inventory
+  # group_vars/all/gateway.yml); empty or absent subdomain: <name>.<domain>.
+  gateway:
+    subdomain: internal
   # The service gateway (roles caddy and pihole): each enabled entry is served as
-  # https://<name>.<domain> by Caddy on the apps VM, and Pi-hole answers <name>.<domain>
+  # https://<name>.<gateway domain> by Caddy on the apps VM, and Pi-hole answers that name
   # with the apps home address. `host` is a dotted path into this dict (or `container`, a
   # container on a network Caddy shares). Field reference: ansible/roles/caddy/defaults/main.yml.
   # The Homepage dashboard (role homepage) lists every enabled entry except its own (home);

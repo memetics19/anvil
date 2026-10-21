@@ -46,10 +46,13 @@
         | reject('in', caddy_upstream_cas) | list | length == 0
       - caddy_routes | map(attribute='host_header', default='original') | reject('in', ['original', 'upstream']) | list | length == 0
       - caddy_routes | map(attribute='home', default='/') | reject('match', '^/[A-Za-z0-9/_.-]*$') | list | length == 0
+      # The gateway domain (site.domain, or site.gateway.subdomain under it) is a host name.
+      - caddy_domain is match('^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z][a-z0-9-]*[a-z0-9]$')
     fail_msg: >-
       site.services: each entry needs a lower-case `name` (unique), exactly one of `host` (a
       dotted path to an IPv4 address in the site dict) or `container`, a `port` and a
       `scheme` (http|https); insecure_upstream / upstream_ca (one of {{ caddy_upstream_cas | list }})
-      only with https and not both; host_header original|upstream; home a path
+      only with https and not both; host_header original|upstream; home a path;
+      site.gateway.subdomain a lower-case label
       ({{ caddy_services | length }} entries)
     quiet: true

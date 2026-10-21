@@ -1,0 +1,9 @@
+# The service gateway's domain, the one place it is built (roles caddy, pihole, homepage):
+# gateway names are <name>.<gateway_domain>, served by Caddy with the wildcard certificate
+# *.<gateway_domain> and answered by Pi-hole. site.gateway.subdomain (Vault) puts them under
+# a private subdomain of site.domain (e.g. <name>.internal.<domain>); empty or absent: the
+# names sit directly under site.domain. site.domain itself is unchanged (public tunnel
+# names, Frigate, Proxmox use it). tests/test_gateway.sh loads this file.
+gateway_domain: >-
+  {% set sub = (site.gateway | default({}, true)).subdomain | default('', true) | string %}{{
+  (sub ~ '.' if sub | length > 0 else '') ~ site.domain }}

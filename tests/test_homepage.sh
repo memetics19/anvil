@@ -20,10 +20,13 @@ run() {
 - name: Homepage test
   hosts: localhost
   gather_facts: false
+  vars_files:
+    - $PWD/ansible/inventory/group_vars/all/gateway.yml
   vars:
     inventory_hostname: apps
     site:
       domain: example.com
+      gateway: {subdomain: internal}
       email: admin@example.com
       pve: {ip: 192.0.2.10}
       hosts:
@@ -83,9 +86,9 @@ check "groups in order, empty ones left out" \
   '[ "$(jq -c "map(keys[0])" <<<"$s")" = "[\"Infrastructure\",\"Media\",\"Home\",\"Other\"]" ]'
 # svc <group> <title>: that entry's object
 svc() { jq -c --arg g "$1" --arg t "$2" '.[] | select(has($g)) | .[$g][] | select(has($t)) | .[$t]' <<<"$s"; }
-check "the dashboard itself is not listed"  '! grep -q "home.example.com" "$tmp/services.yaml"'
-check "disabled entry is not listed"        '! grep -qi "vaultwarden\|pass.example.com" "$tmp/services.yaml"'
-check "links are the gateway names"         '[ "$(svc Infrastructure Proxmox | jq -r .href)" = "https://pve.example.com" ]'
+check "the dashboard itself is not listed"  '! grep -q "home.internal.example.com" "$tmp/services.yaml"'
+check "disabled entry is not listed"        '! grep -qi "vaultwarden\|pass.internal.example.com" "$tmp/services.yaml"'
+check "links are the gateway names"         '[ "$(svc Infrastructure Proxmox | jq -r .href)" = "https://pve.internal.example.com" ]'
 check "catalog icon and description"        '[ "$(svc Media Sonarr | jq -r .icon)" = "sonarr.png" ]'
 check "proxmox widget at the pve upstream"  '[ "$(svc Infrastructure Proxmox | jq -r .widget.url)" = "https://192.0.2.10:8006" ]'
 check "proxmox token id, secret placeholder" \
@@ -100,9 +103,9 @@ check "upstreams on other VMs: no status"   '[ "$(svc Media Sonarr | jq -c "has(
 check "sonarr key placeholder"              '[ "$(svc Media Sonarr | jq -r .widget.key)" = "{{HOMEPAGE_VAR_SONARR_KEY}}" ]'
 check "qbittorrent without credentials"     '[ "$(svc Media qBittorrent | jq -c ".widget | keys")" = "[\"type\",\"url\"]" ]'
 check "frigate viewer login"                '[ "$(svc Home Frigate | jq -c "[.widget.url, .widget.username, .widget.password]")" = "[\"https://192.0.2.114:8971\",\"homepage\",\"{{HOMEPAGE_VAR_FRIGATE_PASSWORD}}\"]" ]'
-check "site hints override the catalog"     '[ "$(svc Media Push | jq -c "[.icon, .description, .href]")" = "[\"mdi-bell\",\"Alerts\",\"https://gotify.example.com\"]" ]'
+check "site hints override the catalog"     '[ "$(svc Media Push | jq -c "[.icon, .description, .href]")" = "[\"mdi-bell\",\"Alerts\",\"https://gotify.internal.example.com\"]" ]'
 check "widget: none turns a widget off"     '[ "$(svc Media Jackett | jq -c "has(\"widget\")")" = false ]'
-check "unknown service goes to Other"       '[ "$(svc Other newapp | jq -r .href)" = "https://newapp.example.com" ]'
+check "unknown service goes to Other"       '[ "$(svc Other newapp | jq -r .href)" = "https://newapp.internal.example.com" ]'
 check "internal keys stay out (check, service, path)" '! grep -qE "\"(check|service|path)\":" "$tmp/services.yaml"'
 check "no fake secret value in the config" '! grep -rq "fake-value" "$tmp/services.yaml" "$tmp/settings.yaml" "$tmp/docker.yaml"'
 
@@ -117,7 +120,7 @@ check "widgets and bookmarks are JSON"     'json widgets.yaml && [ "$(json bookm
 
 c="$tmp/docker-compose.yaml"
 check "compose: no published port"         '! grep -qE "^\s+ports:" "$c"'
-check "compose: allowed host is the gateway name only" 'grep -qx "      HOMEPAGE_ALLOWED_HOSTS: \"home.example.com\"" "$c"'
+check "compose: allowed host is the gateway name only" 'grep -qx "      HOMEPAGE_ALLOWED_HOSTS: \"home.internal.example.com\"" "$c"'
 check "compose: images pinned by digest"   '[ "$(grep -cE "^    image: [^ ]+:v[0-9.]+@sha256:[0-9a-f]{64}$" "$c")" = 2 ]'
 check "compose: memory caps"               'grep -q "mem_limit: 192m" "$c" && grep -q "mem_limit: 32m" "$c"'
 check "compose: runs as its own uid"        'grep -q "PUID: \"10003\"" "$c"'

@@ -11,7 +11,7 @@ pihole_listen_ips:
   - "{{ site.hosts[inventory_hostname].ip }}"
   - "{{ site.hosts[inventory_hostname].home_ip }}"
 pihole_web_port: 80
-# The web UI is reached through the service gateway (role caddy, https://dns.<domain>),
+# The web UI is reached through the service gateway (role caddy, https://dns.<gateway domain>),
 # which shares the project's network; port 80 on the VM belongs to the gateway. true
 # publishes it again on pihole_web_port (only with no gateway on this host).
 pihole_web_published: false
@@ -41,12 +41,14 @@ pihole_rate_limit_interval: 60
 # tunnel names).
 pihole_local_records: "{{ site.dns.local_records }}"
 pihole_local_zone: "lan.{{ site.domain }}"
-# Gateway names: every enabled entry of site.services is served as <name>.<domain> at the
-# gateway's home address (records.yml adds them as fqdn records). For home clients this
-# overrides a public name of the same label (a Cloudflare tunnel name), on purpose: the
-# gateway serves the same app locally. Other names are untouched.
+# Gateway names: every enabled entry of site.services is served as <name>.<gateway domain> at the
+# gateway's home address (records.yml adds them as fqdn records). Under a private
+# subdomain (site.gateway.subdomain) no public name is touched; without one, a public name
+# of the same label (a Cloudflare tunnel name) is answered locally with the gateway.
 pihole_gateway_services: "{{ site.services | default([]) }}"
 pihole_gateway_ref: "hosts.{{ inventory_hostname }}.home_ip"
+# The same domain Caddy serves (inventory group_vars/all/gateway.yml).
+pihole_gateway_domain: "{{ gateway_domain }}"
 
 # Blocklists the role keeps present and enabled. Lists added in the web UI are left alone
 # (counted in the run output). A change runs a gravity update.

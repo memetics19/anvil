@@ -1,6 +1,7 @@
 # Service gateway on the apps VM: Caddy (compose project "caddy" in /opt/caddy) answers
-# https://<name>.<site.domain> for every entry of site.services and proxies it to the
-# service. One wildcard certificate, *.<site.domain>, from Let's Encrypt by DNS-01 through
+# https://<name>.<gateway domain> for every entry of site.services and proxies it to the
+# service (gateway_domain, inventory group_vars/all/gateway.yml: site.domain or a private
+# subdomain of it). One wildcard certificate, *.<gateway domain>, from Let's Encrypt by DNS-01 through
 # Cloudflare, so no name is ever published in public DNS (only _acme-challenge TXT records,
 # created and removed by Caddy) and Certificate Transparency logs show only the wildcard.
 # The names exist only in Pi-hole (role pihole, from the same list), pointing at the apps
@@ -36,7 +37,7 @@ caddy_listen_ips:
   - "{{ site.hosts[inventory_hostname].home_ip }}"
 
 # The service list (Vault, kv/homelab/site, key site.services). Each entry:
-#   name               label: served as <name>.<site.domain>
+#   name               label: served as <name>.<gateway domain>
 #   host | container   upstream address: `host` is a dotted path into the site dict to an
 #                      IPv4 address (e.g. hosts.ragnarok.ip); `container` is a container
 #                      on a Docker network Caddy shares (caddy_container_networks)
@@ -51,7 +52,7 @@ caddy_listen_ips:
 #   home               path to redirect "/" to (e.g. /admin/)
 #   enabled            false: keep the slot, but no route and no DNS record
 caddy_services: "{{ site.services | default([]) }}"
-caddy_domain: "{{ site.domain }}"
+caddy_domain: "{{ gateway_domain }}"
 caddy_email: "{{ site.email }}"
 
 # CA certificates (public) for upstreams with `upstream_ca`, copied from the controller.
