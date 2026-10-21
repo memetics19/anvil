@@ -1,0 +1,37 @@
+# Managed by Ansible (role caddy). The service gateway: published on the VM's lab and home
+# addresses only (never 0.0.0.0; ufw does not filter Docker-published ports).
+services:
+  caddy:
+    image: {{ caddy_image }}
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+{% for ip in caddy_listen_ips %}
+      - "{{ ip }}:80:80/tcp"
+      - "{{ ip }}:443:443/tcp"
+{% endfor %}
+    environment:
+      GOMEMLIMIT: {{ caddy_gomemlimit | to_json }}
+      GODEBUG: {{ caddy_godebug | to_json }}
+    # CLOUDFLARE_API_TOKEN (from Vault).
+    env_file: caddy.env
+    volumes:
+      # The directory, not the file: Ansible replaces the Caddyfile by rename, which a
+      # file bind mount would not see.
+      - ./etc:/etc/caddy:ro
+      - ./data:/data
+      - ./config:/config
+    networks:
+      - gateway
+{% for n in caddy_container_networks %}
+      - {{ n }}
+{% endfor %}
+    mem_limit: {{ caddy_mem_limit }}
+    memswap_limit: {{ caddy_mem_limit }}
+
+networks:
+  gateway: {}
+{% for n in caddy_container_networks %}
+  {{ n }}:
+    external: true
+{% endfor %}

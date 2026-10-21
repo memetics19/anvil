@@ -13,6 +13,8 @@ site:
     uplink_ip: 198.51.100.250
     uplink_prefix: 24
     uplink_gw: 198.51.100.1
+    # The server's BMC (iDRAC), on the lab network.
+    idrac_ip: 192.0.2.123
   hosts:
     frigate: {ip: 192.0.2.114, vmid: 9001, mac: "02:00:00:00:00:01"}
     netbird: {ip: 192.0.2.115, vmid: 9002, mac: "02:00:00:00:00:02"}
@@ -43,3 +45,14 @@ site:
       - {name: vault, ref: hosts.vault.ip}
       - {name: apps, ref: hosts.apps.home_ip}
       - {name: printer, ip: 198.51.100.40}
+  # The service gateway (roles caddy and pihole): each enabled entry is served as
+  # https://<name>.<domain> by Caddy on the apps VM, and Pi-hole answers <name>.<domain>
+  # with the apps home address. `host` is a dotted path into this dict (or `container`, a
+  # container on a network Caddy shares). Field reference: ansible/roles/caddy/defaults/main.yml.
+  services:
+    - {name: pve, host: pve.ip, port: 8006, scheme: https, insecure_upstream: true, websocket: true}
+    - {name: vault, host: hosts.vault.ip, port: 8200, scheme: https, upstream_ca: vault}
+    - {name: tv, host: hosts.ragnarok.ip, port: 34401, scheme: http, stream: true}
+    - {name: qbit, host: hosts.ragnarok.ip, port: 8080, scheme: http, host_header: upstream}
+    - {name: dns, container: pihole, port: 80, scheme: http, home: /admin/}
+    - {name: pass, container: vaultwarden, port: 80, scheme: http, websocket: true, enabled: false}

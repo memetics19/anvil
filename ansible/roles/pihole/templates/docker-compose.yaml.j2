@@ -15,7 +15,9 @@ services:
 {% for ip in pihole_listen_ips %}
       - "{{ ip }}:53:53/tcp"
       - "{{ ip }}:53:53/udp"
+{% if pihole_web_published | bool %}
       - "{{ ip }}:{{ pihole_web_port }}:80/tcp"
+{% endif %}
 {% endfor %}
     environment:
       TZ: {{ pihole_tz | to_json }}

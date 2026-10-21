@@ -5,11 +5,23 @@
 #         home-reachable address on this network),
 # and gives the address with either `ref` (a dotted path into the site dict, e.g.
 # hosts.vault.ip) or `ip`. Values are not logged. Tested by tests/test_pihole_records.sh.
+# The gateway's names (pihole_gateway_services, enabled entries) are added as fqdn records
+# <name>.<domain> -> pihole_gateway_ref.
+- name: Gateway names as records
+  ansible.builtin.set_fact:
+    pihole_all_records: >-
+      {%- set out = pihole_local_records | list -%}
+      {%- for s in pihole_gateway_services if s.enabled | default(true) | bool -%}
+      {%- set _ = out.append({'fqdn': s.name ~ '.' ~ site.domain, 'ref': pihole_gateway_ref}) -%}
+      {%- endfor -%}
+      {{ out }}
+  no_log: true
+
 - name: Local DNS records from the site dict
   ansible.builtin.set_fact:
     pihole_hosts: >-
       {%- set out = [] -%}
-      {%- for r in pihole_local_records -%}
+      {%- for r in pihole_all_records -%}
       {%- set ns = namespace(v=site) -%}
       {%- if r.ip is defined -%}{%- set ns.v = r.ip -%}
       {%- elif r.ref is defined -%}
@@ -28,13 +40,14 @@
 - name: Every local record has one name and an IPv4 address, no name twice
   ansible.builtin.assert:
     that:
-      - pihole_hosts | length == pihole_local_records | length
+      - pihole_hosts | length == pihole_all_records | length
       - >-
         pihole_hosts | reject('match', '^([0-9]{1,3}\.){3}[0-9]{1,3} ([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]*[a-z0-9])?$')
         | list | length == 0
       - pihole_hosts | map('split', ' ') | map('last') | unique | list | length == pihole_hosts | length
     fail_msg: >-
-      site.dns.local_records: each entry needs exactly one of `name` (a lower-case label) or
-      `fqdn` (a full host name), an `ip` or a `ref` to an IPv4 address in the site dict, and
-      no name may appear twice ({{ pihole_local_records | length }} entries)
+      site.dns.local_records (and the gateway names from site.services): each entry needs
+      exactly one of `name` (a lower-case label) or `fqdn` (a full host name), an `ip` or a
+      `ref` to an IPv4 address in the site dict, and no name may appear twice
+      ({{ pihole_all_records | length }} entries)
     quiet: true

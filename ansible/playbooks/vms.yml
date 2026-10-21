@@ -3,7 +3,7 @@
 # node_exporter (group node_exporter in the inventory).
 # Run: make vms ARGS="--check --diff"   or one VM: make vm HOST=frigate
 # Tags: base, docker, cloudflared, node_exporter, frigate, arr, iptv_epg, filestash, iptv,
-# netbird_peer, redis, ntfy, pulse, pihole, firewall.
+# netbird_peer, redis, ntfy, pulse, pihole, caddy, firewall.
 - name: Guest base
   hosts: guests:vault_servers:apps_servers
   pre_tasks:
@@ -80,7 +80,9 @@
       tags: [always]
 
 # Workloads on the apps VM (shared, small always-on services): Pi-hole with Unbound, DNS
-# for the home and lab networks. No Cloudflare tunnel here.
+# for the home and lab networks, and the service gateway (Caddy: https://<name>.<domain>
+# for every entry of site.services; its image is built on ragnarok). No Cloudflare tunnel
+# here.
 - name: Apps workloads
   hosts: apps_servers
   force_handlers: true
@@ -89,6 +91,9 @@
       tags: [docker]
     - role: pihole
       tags: [pihole]
+    # After pihole: it joins Pi-hole's network and takes port 80 from its web UI.
+    - role: caddy
+      tags: [caddy]
     # After the services it lets in, so its checks can reach them.
     - role: host_firewall
       tags: [firewall]

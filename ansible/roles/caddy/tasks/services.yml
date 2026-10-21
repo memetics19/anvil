@@ -1,0 +1,55 @@
+# site.services -> caddy_routes: the enabled entries with their upstream URL resolved
+# (`host` is a dotted path into the site dict). Values are not logged. Tested by
+# tests/test_gateway.sh.
+- name: Resolve the gateway's upstreams
+  ansible.builtin.set_fact:
+    caddy_routes: >-
+      {%- set out = [] -%}
+      {%- for s in caddy_services if s.enabled | default(true) | bool -%}
+      {%- set ns = namespace(v=site) -%}
+      {%- if s.host is defined and s.container is not defined -%}
+      {%- for k in (s.host | string).split('.') -%}{%- set ns.v = ns.v[k] | default('') if ns.v is mapping else '' -%}{%- endfor -%}
+      {%- elif s.container is defined and s.host is not defined -%}{%- set ns.v = s.container | string -%}
+      {%- else -%}{%- set ns.v = '' -%}
+      {%- endif -%}
+      {%- set _ = out.append(s | combine({
+            'addr': ns.v | string,
+            'url': (s.scheme | default('')) ~ '://' ~ ns.v ~ ':' ~ (s.port | default('')),
+            'fqdn': (s.name | default('') | string) ~ '.' ~ caddy_domain})) -%}
+      {%- endfor -%}
+      {{ out }}
+  no_log: true
+
+- name: Every service has a valid name, upstream, port and scheme, no name twice
+  ansible.builtin.assert:
+    that:
+      - caddy_services | map(attribute='name', default='') | select('match', '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$') | list | length
+        == caddy_services | length
+      - caddy_services | map(attribute='name') | unique | list | length == caddy_services | length
+      - caddy_routes | map(attribute='port') | map('string') | select('match', '^[0-9]{1,5}$') | map('int')
+        | select('ge', 1) | select('le', 65535) | list | length == caddy_routes | length
+      - caddy_routes | map(attribute='scheme', default='') | reject('in', ['http', 'https']) | list | length == 0
+      # An address (dotted IPv4 from the site dict) or a container name.
+      - >-
+        caddy_routes | selectattr('container', 'undefined') | map(attribute='addr')
+        | reject('match', '^([0-9]{1,3}\.){3}[0-9]{1,3}$') | list | length == 0
+      - >-
+        caddy_routes | selectattr('container', 'defined') | map(attribute='addr')
+        | reject('match', '^[a-z0-9][a-z0-9_.-]*$') | list | length == 0
+      # Certificate options only for https upstreams, and one of them at most.
+      - caddy_routes | selectattr('scheme', 'ne', 'https') | selectattr('insecure_upstream', 'defined')
+        | selectattr('insecure_upstream') | list | length == 0
+      - caddy_routes | selectattr('scheme', 'ne', 'https') | selectattr('upstream_ca', 'defined') | list | length == 0
+      - caddy_routes | selectattr('insecure_upstream', 'defined') | selectattr('insecure_upstream')
+        | selectattr('upstream_ca', 'defined') | list | length == 0
+      - caddy_routes | selectattr('upstream_ca', 'defined') | map(attribute='upstream_ca')
+        | reject('in', caddy_upstream_cas) | list | length == 0
+      - caddy_routes | map(attribute='host_header', default='original') | reject('in', ['original', 'upstream']) | list | length == 0
+      - caddy_routes | map(attribute='home', default='/') | reject('match', '^/[A-Za-z0-9/_.-]*$') | list | length == 0
+    fail_msg: >-
+      site.services: each entry needs a lower-case `name` (unique), exactly one of `host` (a
+      dotted path to an IPv4 address in the site dict) or `container`, a `port` and a
+      `scheme` (http|https); insecure_upstream / upstream_ca (one of {{ caddy_upstream_cas | list }})
+      only with https and not both; host_header original|upstream; home a path
+      ({{ caddy_services | length }} entries)
+    quiet: true

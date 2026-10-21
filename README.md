@@ -24,7 +24,7 @@ Work in progress. See [Roadmap](#roadmap).
 | `netbird`  | NetBird routing peer, Redis, ntfy, pulse, cloudflared         |
 | `ragnarok` | ARR stack, IPTV, Filestash (S3 browser), cloudflared          |
 | `vault`    | HashiCorp Vault (planned)                                     |
-| `apps`     | Pi-hole with Unbound (DNS for the home and lab networks)      |
+| `apps`     | Pi-hole with Unbound (home and lab DNS), service gateway (Caddy) |
 
 ## Requirements
 
@@ -207,8 +207,9 @@ subnet. Each NIC answers ARP only for its own address.
 
 `make vm HOST=apps` runs the `pihole` role, compose project `/opt/pihole`:
 
-- Pi-hole (pinned tag and digest) publishes DNS (53) and its web UI (80) on those two
-  addresses only. It is not a DHCP server.
+- Pi-hole (pinned tag and digest) publishes DNS (53) on those two addresses only. Its web
+  UI is not published; it is reached through the service gateway as `https://dns.<domain>`
+  (below). It is not a DHCP server.
 - Its only upstream is Unbound, at a fixed address on the project's own Docker network
   (`site.hosts.apps.dns_subnet` / `dns_unbound_ip`, never published). Unbound resolves
   from the root servers and validates DNSSEC. Either container can restart on its own
@@ -223,18 +224,56 @@ subnet. Each NIC answers ARP only for its own address.
   `tests/test_pihole_records.sh` covers the rules.
 - Block lists (`pihole_blocklists`): StevenBlack plus a few lists from firebog and
   URLhaus. A change runs a gravity update. Lists added in the web UI are left alone.
-- Web UI: `http://<apps home address>/admin`, password `web_password` from Vault
+- Web UI: `https://dns.<domain>/admin/`, password `web_password` from Vault
   `kv/homelab/apps/pihole`. Settings passed by the role are read-only in the UI.
 
 Host firewall (`host_firewall` role, ufw): inbound denied by default; SSH (22), DNS (53
-tcp/udp) and the web UI (80) are allowed, each bound to its NIC and address. A firewall
+tcp/udp) and the gateway (80, 443) are allowed, each bound to its NIC and address. A firewall
 change is applied with a timed rollback: ufw disables itself after 3 minutes unless a
 fresh SSH connection and DNS and HTTP checks from the controller succeed first.
 
 ufw does **not** filter ports that Docker publishes: they are forwarded to the container
 (FORWARD chain, Docker's chains first) and never reach ufw's input rules. For those ports
 the `ip:port` binding in the compose file is the boundary. Bind every published port to
-specific addresses, never `0.0.0.0`; that includes Vaultwarden's 443 when it arrives.
+specific addresses, never `0.0.0.0`; Caddy's 80 and 443 are bound that way.
+
+### Service gateway (private)
+
+Every web UI in the lab has a name, `https://<name>.<domain>`, served by Caddy on the
+`apps` VM (`caddy` role, compose project `/opt/caddy`) with a publicly trusted certificate.
+
+- **Private only.** The names exist only in Pi-hole: each one is a local record pointing at
+  the `apps` home address. They are reachable only on the home or lab network, or over the
+  VPN (NetBird, using Pi-hole as its nameserver; the gateway names point at the `apps`
+  home address, so that network, or that one address, must be a route the peers use). Nothing is added to public DNS, no
+  Cloudflare tunnel or router port forward points at the gateway, and Caddy is published
+  only on the `apps` lab and home addresses.
+- **One wildcard certificate**, `*.<domain>`, from Let's Encrypt by the DNS-01 challenge:
+  Caddy creates a `_acme-challenge` TXT record through the Cloudflare API, and removes it
+  once the certificate is issued. Certificate Transparency logs therefore show only the
+  wildcard, never the individual names. The API token (`cloudflare_dns_token` in Vault
+  `kv/homelab/apps/caddy`) may only edit DNS in that zone; it reaches Caddy through a 0600
+  env file.
+- **One list drives both sides**: `site.services` in Vault (structure in
+  `site/site.example.yml`, fields in `ansible/roles/caddy/defaults/main.yml`): name,
+  upstream (`host`, a path into the site dict, or `container`), port, scheme, and per
+  service: self-signed upstream, own CA (Vault's), websockets, long streams (TV), the
+  upstream's Host header. Adding a service is one entry there and `make vm HOST=apps`.
+  `tests/test_gateway.sh` covers the rules.
+- A public name of the same label (a Cloudflare tunnel name such as `frigate` or `ntfy`)
+  is answered at home with the gateway's address, so home devices use the local path; the
+  tunnel is unchanged for everyone else.
+- HTTP redirects to HTTPS. Names not in the list get the connection closed. Only HTTP/1.1
+  and HTTP/2 (no UDP published).
+- The image is Caddy with the `caddy-dns/cloudflare` module, built by xcaddy from pinned
+  versions and base-image digests (`caddy_*` in the role defaults). It is built on
+  `ragnarok`, not on `apps` (1.5 GB, no swap: a Go build of Caddy needs more than it has
+  free), then copied through the controller and loaded; the tag includes a hash of the
+  Dockerfile, so a version change builds a new one. Memory cap 128 MB.
+- Apps that should have their own login: the gateway does not add authentication. Turn
+  it on in each app (for qBittorrent: set a password and remove the "bypass
+  authentication for clients in whitelisted IP subnets" entry), because every client
+  reaches it through the gateway's address.
 
 Rate limit caveat: the limit (1000 queries per 60 s) counts per client address. Hand
 Pi-hole out to devices directly (router DHCP, below). If the router is instead set up to
@@ -257,7 +296,8 @@ network now, and the self-hosted one once it exists.
    The lab network must be a route the peers use (the `netbird` routing peer).
 2. Distribution groups: the peer groups that should use it (for example All).
 3. Either leave match domains empty (all queries go to Pi-hole, so remote devices get
-   filtering too), or set match domain `lan.<domain>` for local names only. Leave
+   filtering too), or set match domains `lan.<domain>` and `<domain>` for local names and
+   the gateway's names only. Leave
    "Enabled" on and save. Peers pick it up within a minute; check with `netbird status -d`.
 
 ## IPTV

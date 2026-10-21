@@ -1,0 +1,80 @@
+# Service gateway on the apps VM: Caddy (compose project "caddy" in /opt/caddy) answers
+# https://<name>.<site.domain> for every entry of site.services and proxies it to the
+# service. One wildcard certificate, *.<site.domain>, from Let's Encrypt by DNS-01 through
+# Cloudflare, so no name is ever published in public DNS (only _acme-challenge TXT records,
+# created and removed by Caddy) and Certificate Transparency logs show only the wildcard.
+# The names exist only in Pi-hole (role pihole, from the same list), pointing at the apps
+# home address.
+caddy_dir: /opt/caddy
+
+# Caddy with the caddy-dns/cloudflare module, built by xcaddy from pinned versions on the
+# build host (not on the apps VM: 1.5 GB, no swap; a Go build of Caddy needs more than
+# the VM has free) and then loaded into the apps VM's Docker. The tag carries both
+# versions and a hash of the Dockerfile, so any change builds a new image.
+# Go is pinned to 1.26 (GOTOOLCHAIN=local, no automatic toolchain switch): Go 1.27 removed
+# the tlsrsakex setting (caddy_godebug), and the official caddy builder image already
+# uses 1.27. Caddy 2.11.7 needs Go >= 1.26.0.
+caddy_version: 2.11.7
+caddy_cloudflare_version: v0.2.4
+caddy_xcaddy_version: v0.4.7
+caddy_builder_image: golang:1.26.10-alpine@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca
+caddy_go_version: go1.26.10
+caddy_base_image: caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+caddy_dockerfile: "{{ lookup('ansible.builtin.template', 'Dockerfile.j2') }}"
+caddy_image: >-
+  anvil/caddy:{{ caddy_version }}-cloudflare-{{ caddy_cloudflare_version | regex_replace('^v', '') }}-{{
+  (caddy_dockerfile | hash('sha256'))[:12] }}
+# Where the image is built (an inventory host with Docker and memory to spare). Its build
+# directory holds only the Dockerfile and, briefly, the exported image.
+caddy_build_host: ragnarok
+caddy_build_dir: /opt/caddy-build
+
+# Published on these addresses only (the VM's lab and home addresses), never 0.0.0.0.
+# Docker-published ports bypass ufw, so this binding is the boundary.
+caddy_listen_ips:
+  - "{{ site.hosts[inventory_hostname].ip }}"
+  - "{{ site.hosts[inventory_hostname].home_ip }}"
+
+# The service list (Vault, kv/homelab/site, key site.services). Each entry:
+#   name               label: served as <name>.<site.domain>
+#   host | container   upstream address: `host` is a dotted path into the site dict to an
+#                      IPv4 address (e.g. hosts.ragnarok.ip); `container` is a container
+#                      on a Docker network Caddy shares (caddy_container_networks)
+#   port, scheme       upstream port and http|https
+#   insecure_upstream  true: do not verify the upstream's certificate (self-signed)
+#   upstream_ca        verify the upstream against this CA (key of caddy_upstream_cas)
+#   websocket          the app uses websockets: they survive a Caddy reload (5 minutes)
+#   stream             long responses (live TV, event streams): flushed at once, no
+#                      response timeout
+#   host_header        original (default) or upstream: send Host = the upstream's
+#                      address (apps that check Host, e.g. qBittorrent's CSRF check)
+#   home               path to redirect "/" to (e.g. /admin/)
+#   enabled            false: keep the slot, but no route and no DNS record
+caddy_services: "{{ site.services | default([]) }}"
+caddy_domain: "{{ site.domain }}"
+caddy_email: "{{ site.email }}"
+
+# CA certificates (public) for upstreams with `upstream_ca`, copied from the controller.
+caddy_upstream_cas:
+  vault: "{{ lookup('env', 'VAULT_CACERT') }}"
+
+# Docker networks of other projects Caddy joins, for `container` upstreams.
+caddy_container_networks:
+  - pihole_dns
+
+# DNS servers for the DNS-01 propagation check (public, so Pi-hole's split horizon
+# does not interfere).
+caddy_dns_resolvers: [1.1.1.1, 1.0.0.1]
+
+# Hard cap, swap included; the Go runtime is told to stay below it.
+caddy_mem_limit: 128m
+caddy_gomemlimit: 100MiB
+# Go's TLS client no longer offers RSA key exchange by default; old BMC firmware (iDRAC8)
+# offers nothing else (no ECDHE). Affects only connections Caddy makes to upstreams (its
+# own server side has an explicit ECDHE-only cipher list). Needs Go <= 1.26 (above).
+caddy_godebug: tlsrsakex=1
+
+# Secret: Vault KV v2, mount kv. cloudflare_dns_token: a Cloudflare API token limited to
+# Zone.DNS edit on the site's zone.
+caddy_vault_mount: kv
+caddy_vault_path: "homelab/{{ inventory_hostname }}/caddy"

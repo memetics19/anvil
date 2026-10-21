@@ -1,0 +1,57 @@
+# Managed by Ansible (role caddy) from site.services. Every name is <name>.<domain>, served
+# with the one wildcard certificate; plain HTTP redirects to HTTPS.
+{
+	email {{ caddy_email }}
+	servers {
+		# No HTTP/3: only TCP is published.
+		protocols h1 h2
+		timeouts {
+			read_header 15s
+			idle 5m
+		}
+	}
+}
+
+*.{{ caddy_domain }} {
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+		resolvers {{ caddy_dns_resolvers | join(' ') }}
+	}
+{% for s in caddy_routes %}
+
+	@{{ s.name }} host {{ s.fqdn }}
+	handle @{{ s.name }} {
+{% if s.home is defined %}
+		redir / {{ s.home }}
+{% endif %}
+		reverse_proxy {{ s.url }} {
+{% if s.host_header | default('original') == 'upstream' %}
+			header_up Host {upstream_hostport}
+{% endif %}
+{% if s.stream | default(false) | bool %}
+			flush_interval -1
+{% endif %}
+{% if s.websocket | default(false) | bool %}
+			stream_close_delay 5m
+{% endif %}
+			transport http {
+				dial_timeout 5s
+{% if not (s.stream | default(false) | bool) %}
+				response_header_timeout 5m
+{% endif %}
+{% if s.insecure_upstream | default(false) | bool %}
+				tls_insecure_skip_verify
+{% endif %}
+{% if s.upstream_ca is defined %}
+				tls_trust_pool file /etc/caddy/ca/{{ s.upstream_ca }}.pem
+{% endif %}
+			}
+		}
+	}
+{% endfor %}
+
+	# Any other name under the domain: close the connection.
+	handle {
+		abort
+	}
+}

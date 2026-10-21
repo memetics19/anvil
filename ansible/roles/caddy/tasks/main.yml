@@ -1,0 +1,182 @@
+# Service gateway: Caddy on the VM's lab and home addresses, one route per enabled entry
+# of site.services, wildcard certificate by DNS-01 (Cloudflare token from Vault).
+
+- name: Gateway routes
+  ansible.builtin.include_tasks: services.yml
+
+# --- secret ----------------------------------------------------------------------------------
+- name: Read the Cloudflare token from Vault
+  ansible.builtin.set_fact:
+    caddy_secrets: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', caddy_vault_path,
+                engine_mount_point=caddy_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
+  no_log: true
+
+- name: The Cloudflare token is present
+  ansible.builtin.assert:
+    that: caddy_secrets.cloudflare_dns_token | default('') | length >= 32
+    fail_msg: "kv/{{ caddy_vault_path }}: cloudflare_dns_token is missing or too short"
+    quiet: true
+
+# --- files -----------------------------------------------------------------------------------
+- name: Project directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ caddy_dir }}", mode: "0755"}
+    - {path: "{{ caddy_dir }}/etc", mode: "0755"}
+    - {path: "{{ caddy_dir }}/etc/ca", mode: "0755"}
+    # Certificates and the ACME account key.
+    - {path: "{{ caddy_dir }}/data", mode: "0700"}
+    - {path: "{{ caddy_dir }}/config", mode: "0700"}
+
+- name: Caddy image
+  ansible.builtin.include_tasks: image.yml
+
+- name: Upstream CA certificates (public)
+  ansible.builtin.copy:
+    src: "{{ caddy_upstream_cas[item] }}"
+    dest: "{{ caddy_dir }}/etc/ca/{{ item }}.pem"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ caddy_routes | selectattr('upstream_ca', 'defined') | map(attribute='upstream_ca') | unique | list }}"
+  register: caddy_cas
+
+- name: Render the env file
+  ansible.builtin.set_fact:
+    caddy_env_content: "{{ lookup('ansible.builtin.template', 'caddy.env.j2') }}"
+  no_log: true
+
+# The compose config hash includes the env file, so a new token recreates Caddy.
+- name: Caddy env file (Cloudflare token from Vault)
+  ansible.builtin.copy:
+    content: "{{ caddy_env_content }}"
+    dest: "{{ caddy_dir }}/caddy.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+
+# Checked by the pinned Caddy before it replaces the live file (modules, syntax, CA files).
+# Holds the domain and upstream addresses: no --diff output.
+- name: Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ caddy_dir }}/etc/Caddyfile"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: >-
+      docker run --rm --network none --memory 128m
+      --env-file {{ caddy_dir }}/caddy.env
+      --volume %s:/etc/caddy/Caddyfile:ro
+      --volume {{ caddy_dir }}/etc/ca:/etc/caddy/ca:ro
+      {{ caddy_image }} caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+  diff: false
+  register: caddy_file
+
+# --- compose ---------------------------------------------------------------------------------
+- name: Is the env file there
+  ansible.builtin.stat:
+    path: "{{ caddy_dir }}/caddy.env"
+  register: caddy_env_stat
+
+- name: Caddy compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ caddy_dir }}"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+    # The file holds the site addresses: keep them out of --diff output.
+    compose_project_diff: false
+  # In check mode on a new host the env file the compose file names does not exist yet.
+  when: caddy_env_stat.stat.exists or not ansible_check_mode
+
+# Caddy reads its config at start; a running container gets a graceful reload.
+- name: Reload Caddy for a new Caddyfile or CA
+  ansible.builtin.command:
+    argv: [docker, exec, caddy, caddy, reload, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - caddy_file is changed or caddy_cas is changed
+    - "'caddy' not in compose_project_plan.up | default([])"
+
+# --- checks ----------------------------------------------------------------------------------
+# Every route answers through Caddy with a publicly trusted certificate (the first start
+# issues the wildcard by DNS-01, which takes a minute or two). Connects to the lab address
+# with the name pinned (curl --resolve), so the check needs no DNS. Only the status code
+# is kept; names and addresses stay out of the output.
+- name: The wildcard certificate is served
+  ansible.builtin.command:
+    argv:
+      - curl
+      - --silent
+      - --output
+      - /dev/null
+      - --max-time
+      - "10"
+      - --write-out
+      - "%{ssl_verify_result}"
+      - --resolve
+      - "{{ caddy_routes[0].fqdn }}:443:{{ caddy_listen_ips[0] }}"
+      - "https://{{ caddy_routes[0].fqdn }}/"
+  register: caddy_cert_check
+  changed_when: false
+  retries: 30
+  delay: 6
+  until: caddy_cert_check.rc == 0 and caddy_cert_check.stdout == '0'
+  when: not ansible_check_mode and caddy_routes | length > 0
+  no_log: true
+
+- name: Every route answers over HTTPS
+  ansible.builtin.command:
+    argv:
+      - curl
+      - --silent
+      - --output
+      - /dev/null
+      - --max-time
+      - "10"
+      - --write-out
+      - "%{http_code}"
+      - --resolve
+      - "{{ item.fqdn }}:443:{{ caddy_listen_ips[0] }}"
+      - "https://{{ item.fqdn }}/"
+  loop: "{{ caddy_routes }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: caddy_route_check
+  changed_when: false
+  failed_when: false
+  retries: 3
+  delay: 3
+  until: caddy_route_check.stdout is match('^(2[0-9][0-9]|30[1-8]|401|403)$')
+  when: not ansible_check_mode
+  no_log: true
+
+- name: Route status codes
+  ansible.builtin.set_fact:
+    caddy_route_codes: >-
+      {{ caddy_route_check.results | map(attribute='item.name')
+         | zip(caddy_route_check.results | map(attribute='stdout')) | map('join', '=') | list }}
+  when: not ansible_check_mode
+
+- name: Every route answers (name=HTTP code; 000 means no TLS or connection)
+  ansible.builtin.assert:
+    that: >-
+      caddy_route_codes | reject('match', '^[a-z0-9-]+=(2[0-9][0-9]|30[1-8]|401|403)$') | list | length == 0
+    fail_msg: >-
+      routes not answering: {{ caddy_route_codes
+      | reject('match', '^[a-z0-9-]+=(2[0-9][0-9]|30[1-8]|401|403)$') | list }}
+    success_msg: "{{ caddy_route_codes }}"
+  when: not ansible_check_mode

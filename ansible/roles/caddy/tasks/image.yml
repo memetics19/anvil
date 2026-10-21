@@ -1,0 +1,102 @@
+# The Caddy image: built on caddy_build_host, exported, copied through the controller and
+# loaded on this host. Nothing happens when the image (tag) is already here. The build
+# host keeps its copy of the image (a later VM rebuild loads it without a rebuild) but no
+# export file.
+- name: Is the Caddy image loaded
+  ansible.builtin.command:
+    argv: [docker, image, inspect, --format, "{{ '{{' }}.Id{{ '}}' }}", "{{ caddy_image }}"]
+  register: caddy_image_here
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Caddy image to build and load
+  ansible.builtin.debug:
+    msg: "build on {{ caddy_build_host }} and load {{ caddy_image }}"
+  changed_when: true
+  when: caddy_image_here.rc != 0 and ansible_check_mode
+
+- name: Build, copy and load the image
+  when: caddy_image_here.rc != 0 and not ansible_check_mode
+  block:
+    - name: Build directory on the build host
+      ansible.builtin.file:
+        path: "{{ caddy_build_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      delegate_to: "{{ caddy_build_host }}"
+
+    - name: Dockerfile on the build host
+      ansible.builtin.copy:
+        content: "{{ caddy_dockerfile }}"
+        dest: "{{ caddy_build_dir }}/Dockerfile"
+        owner: root
+        group: root
+        mode: "0644"
+      delegate_to: "{{ caddy_build_host }}"
+
+    - name: Build the image (skipped by Docker's cache when it exists)
+      ansible.builtin.command:
+        argv: [docker, build, --pull=false, --tag, "{{ caddy_image }}", "{{ caddy_build_dir }}"]
+      delegate_to: "{{ caddy_build_host }}"
+      changed_when: true
+
+    - name: Export the image
+      ansible.builtin.command:
+        argv: [docker, image, save, --output, "{{ caddy_build_dir }}/image.tar", "{{ caddy_image }}"]
+      delegate_to: "{{ caddy_build_host }}"
+      changed_when: true
+
+    - name: Controller scratch directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: caddy-image.
+      delegate_to: localhost
+      become: false
+      register: caddy_image_tmp
+
+    - name: Fetch the image to the controller
+      ansible.builtin.fetch:
+        src: "{{ caddy_build_dir }}/image.tar"
+        dest: "{{ caddy_image_tmp.path }}/image.tar"
+        flat: true
+      delegate_to: "{{ caddy_build_host }}"
+
+    - name: Copy the image to this host
+      ansible.builtin.copy:
+        src: "{{ caddy_image_tmp.path }}/image.tar"
+        dest: "{{ caddy_dir }}/image.tar"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Load the image
+      ansible.builtin.command:
+        argv: [docker, image, load, --input, "{{ caddy_dir }}/image.tar"]
+      changed_when: true
+
+    - name: The image is loaded under its tag
+      ansible.builtin.command:
+        argv: [docker, image, inspect, --format, "{{ '{{' }}.Id{{ '}}' }}", "{{ caddy_image }}"]
+      changed_when: false
+  always:
+    - name: Remove the export on this host
+      ansible.builtin.file:
+        path: "{{ caddy_dir }}/image.tar"
+        state: absent
+
+    - name: Remove the export on the build host
+      ansible.builtin.file:
+        path: "{{ caddy_build_dir }}/image.tar"
+        state: absent
+      delegate_to: "{{ caddy_build_host }}"
+
+    - name: Remove the controller copy
+      ansible.builtin.file:
+        path: "{{ caddy_image_tmp.path }}"
+        state: absent
+      delegate_to: localhost
+      become: false
+      when: caddy_image_tmp.path is defined

@@ -170,14 +170,16 @@
   when: not ansible_check_mode
   no_log: true
 
+# Inside the container: the UI is published only through the gateway (or on
+# pihole_web_port when pihole_web_published).
 - name: Pi-hole web UI answers
-  ansible.builtin.uri:
-    url: "http://{{ pihole_listen_ips[0] }}:{{ pihole_web_port }}/admin/login"
-    status_code: 200
+  ansible.builtin.command:
+    argv: [docker, exec, pihole, curl, --silent, --output, /dev/null, --write-out, "%{http_code}", "http://127.0.0.1/admin/login"]
   register: pihole_web
+  changed_when: false
   retries: 10
   delay: 3
-  until: pihole_web.status == 200
+  until: pihole_web.stdout == '200'
   when: not ansible_check_mode
 
 # --- blocklists ------------------------------------------------------------------------------
