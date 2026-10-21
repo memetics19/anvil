@@ -85,6 +85,25 @@
   register: caddy_file
 
 # --- compose ---------------------------------------------------------------------------------
+- name: Docker networks on the host
+  ansible.builtin.command:
+    argv: [docker, network, ls, --format, "{{ '{{' }}.Name{{ '}}' }}"]
+  register: caddy_networks_here
+  changed_when: false
+  check_mode: false
+
+- name: Networks to join
+  ansible.builtin.include_tasks: networks.yml
+  vars:
+    caddy_networks_present: "{{ caddy_networks_here.stdout_lines }}"
+
+- name: Networks not on this host yet (their roles have not run here)
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: not joined (absent): {{ caddy_container_networks | list | reject('in', caddy_networks_joined) | list }};
+      routes not checked: {{ caddy_routes_unchecked }}
+  when: caddy_networks_joined | length < caddy_container_networks | length
+
 - name: Is the env file there
   ansible.builtin.stat:
     path: "{{ caddy_dir }}/caddy.env"
@@ -152,7 +171,7 @@
       - --resolve
       - "{{ item.fqdn }}:443:{{ caddy_listen_ips[0] }}"
       - "https://{{ item.fqdn }}/"
-  loop: "{{ caddy_routes }}"
+  loop: "{{ caddy_routes | rejectattr('name', 'in', caddy_routes_unchecked) | list }}"
   loop_control:
     label: "{{ item.name }}"
   register: caddy_route_check

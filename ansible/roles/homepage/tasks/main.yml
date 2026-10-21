@@ -243,23 +243,13 @@
   register: homepage_widget_check
   changed_when: false
   failed_when: false
-  retries: 5
+  retries: "{{ 5 if homepage_strict_widgets | bool else 2 }}"
   delay: 6
   until: homepage_widget_check.stdout is match('^200 ok$')
   when: not ansible_check_mode
 
 - name: Widget results
-  ansible.builtin.set_fact:
-    homepage_widget_results: >-
-      {{ homepage_widget_check.results | map(attribute='item.name')
-         | zip(homepage_widget_check.results | map(attribute='stdout')) | map('join', '=') | list }}
-  when: not ansible_check_mode
-
-- name: Every widget has data (name=HTTP code and result)
-  ansible.builtin.assert:
-    that: homepage_widget_results | reject('match', '^[a-z0-9-]+=200 ok$') | list | length == 0
-    fail_msg: "widgets with an error: {{ homepage_widget_results | reject('match', '^[a-z0-9-]+=200 ok$') | list }}"
-    success_msg: "{{ homepage_widget_results }}"
+  ansible.builtin.include_tasks: widget_results.yml
   when: not ansible_check_mode
 
 # The proxy allows the container list and stats, and nothing else (inspect would show the

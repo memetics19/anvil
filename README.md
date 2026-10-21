@@ -332,7 +332,9 @@ gateway service.
   session login), Pi-hole (an application password, not the web password), Sonarr, Radarr,
   Prowlarr (their API keys), qBittorrent (no login), Frigate (a viewer login) and the
   container status of `apps` services that are containers (Pi-hole). Each run checks
-  every widget through Homepage's own API and fails on an error.
+  every widget through Homepage's own API; a widget with an error is a warning that names
+  it (its app is on another VM, and the gateway and firewall still run after it), and
+  `ARGS="-e homepage_strict_widgets=true"` makes it fail.
 - **Credentials** (docs/secrets.md), each made by the role that owns the app and checked on
   every run: `make host ARGS="--tags homepage"` (Proxmox user `homepage@pve`, no password,
   and its privilege-separated token, both PVEAuditor), `make vm HOST=ragnarok ARGS="--tags

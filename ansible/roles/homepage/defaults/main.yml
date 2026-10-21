@@ -100,6 +100,11 @@ homepage_widgets:
     password: ${FRIGATE_PASSWORD}
     check: stats
 
+# A widget that does not answer (its VM is down, an app changed its login) is a warning at
+# the end of the run, listed by name; true makes it fail the run (verification runs:
+# make vm HOST=apps ARGS="-e homepage_strict_widgets=true").
+homepage_strict_widgets: false
+
 # Widget secrets: placeholder name -> Vault KV v2 (mount homepage_vault_mount) path and key.
 # Only those used by an enabled widget are read.
 homepage_vault_mount: kv

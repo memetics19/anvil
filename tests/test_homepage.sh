@@ -135,6 +135,40 @@ check "proxy: everything else denied"      'grep -qx "    http-request deny" "$h
 
 check "no private address in the output"   '! grep -rqE "\b(10\.[0-9]+|172\.(1[6-9]|2[0-9]|3[01])|192\.168)\.[0-9]+\.[0-9]+" "$tmp"/*.yaml'
 
+# Widget results: an error is a warning (the play goes on), or a failure when strict.
+widgets() {
+  cat >"$tmp/w.yml" <<PLAY
+- name: Widget results test
+  hosts: localhost
+  gather_facts: false
+  vars:
+    homepage_strict_widgets: $1
+    homepage_widget_check:
+      results:
+        - {item: {name: pve}, stdout: 200 ok}
+        - {item: {name: frigate}, stdout: 000 error}
+        - {item: {name: sonarr}, stdout: 401 error}
+  tasks:
+    - name: Results
+      ansible.builtin.include_role:
+        name: homepage
+        tasks_from: widget_results.yml
+    - name: Still running
+      ansible.builtin.debug:
+        msg: AFTER-WIDGETS
+PLAY
+  ANSIBLE_ROLES_PATH=ansible/roles ANSIBLE_LOCALHOST_WARNING=false ANSIBLE_INVENTORY_UNPARSED_WARNING=false \
+    ansible-playbook -i localhost, -c local "$tmp/w.yml" >"$tmp/wlog" 2>&1
+}
+widgets false; rc=$?
+if [ "$rc" -eq 0 ] && grep -qF "WARNING: widgets with an error: ['frigate=000 error', 'sonarr=401 error']" "$tmp/wlog" \
+   && grep -q AFTER-WIDGETS "$tmp/wlog"; then ok "widget errors warn and the play goes on"
+else bad_ "widget errors warn (rc $rc)"; tail -15 "$tmp/wlog"; fi
+widgets true; rc=$?
+if [ "$rc" -ne 0 ] && grep -qF "widgets with an error: ['frigate=000 error', 'sonarr=401 error']" "$tmp/wlog" \
+   && ! grep -q AFTER-WIDGETS "$tmp/wlog"; then ok "homepage_strict_widgets: widget errors fail"
+else bad_ "strict widget errors fail (rc $rc)"; fi
+
 reject() {
   run "$2"; rc=$?
   if [ "$rc" -ne 0 ] && grep -q 'site.services' "$tmp/log"; then ok "rejects $1"

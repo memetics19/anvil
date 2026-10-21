@@ -1,0 +1,12 @@
+# caddy_networks_present (Docker networks on the host) -> caddy_networks_joined (the
+# entries of caddy_container_networks that exist) and caddy_routes_unchecked (routes to a
+# container on a network that does not exist yet). Tested by tests/test_gateway.sh.
+- name: Networks to join, and container routes whose network is not there
+  ansible.builtin.set_fact:
+    caddy_networks_joined: "{{ caddy_container_networks | list | select('in', caddy_networks_present) | list }}"
+    caddy_routes_unchecked: >-
+      {{ caddy_routes | selectattr('container', 'defined')
+         | selectattr('container', 'in', caddy_container_networks | dict2items
+                      | rejectattr('key', 'in', caddy_networks_present)
+                      | map(attribute='value') | flatten | list)
+         | map(attribute='name') | list }}

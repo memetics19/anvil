@@ -59,6 +59,24 @@ run() {
         mode: "0600"
       vars:
         caddy_image: anvil/caddy:test
+    - name: Only Pi-hole's network exists (homepage and vaultwarden have not run)
+      ansible.builtin.include_role:
+        name: caddy
+        tasks_from: networks.yml
+      vars:
+        caddy_networks_present: [bridge, host, none, caddy_gateway, pihole_dns]
+    - name: Compose file with the networks that exist
+      ansible.builtin.template:
+        src: "$PWD/ansible/roles/caddy/templates/docker-compose.yaml.j2"
+        dest: "$tmp/compose-partial.yaml"
+        mode: "0600"
+      vars:
+        caddy_image: anvil/caddy:test
+    - name: Routes not checked
+      ansible.builtin.copy:
+        content: "{{ caddy_routes_unchecked | join(' ') }}\n"
+        dest: "$tmp/unchecked"
+        mode: "0600"
     - name: Records
       ansible.builtin.include_role:
         name: pihole
@@ -85,6 +103,7 @@ run '[
   {name: qbit, host: hosts.ragnarok.ip, port: 8080, scheme: http, host_header: upstream},
   {name: tv, host: hosts.ragnarok.ip, port: 34401, scheme: http, stream: true},
   {name: dns, container: pihole, port: 80, scheme: http, home: /admin/},
+  {name: home, container: homepage, port: 3000, scheme: http},
   {name: pass, container: vaultwarden, port: 80, scheme: http, enabled: false}]'
 if [ "$?" -eq 0 ] && [ -s "$tmp/Caddyfile" ]; then ok "good services render"
 else bad_ "good services render"; tail -20 "$tmp/log"; exit 1; fi
@@ -117,12 +136,23 @@ else bad_ "ports"; printf '%s\n' "$ports"; fi
 if printf '%s\n' "$ports" | grep -qvE '^(192\.0\.2\.121|198\.51\.100\.249):(80|443):(80|443)/tcp$'; then bad_ "ports: no unbound, 0.0.0.0 or UDP entry"
 else ok "ports: no unbound, 0.0.0.0 or UDP entry"; fi
 
+# Networks: all three by default; only the existing ones when some are missing, and the
+# routes to containers on a missing network are not checked.
+nets() { awk '/^    networks:/{on=1; next} on && /^      - /{print $2; next} on{on=0}' "$1" | tr '\n' ' '; }
+if [ "$(nets "$tmp/compose.yaml")" = "gateway pihole_dns homepage_web vaultwarden_web " ]; then ok "networks: all container networks by default"
+else bad_ "networks default: $(nets "$tmp/compose.yaml")"; fi
+if [ "$(nets "$tmp/compose-partial.yaml")" = "gateway pihole_dns " ] && ! grep -q "homepage_web" "$tmp/compose-partial.yaml"
+then ok "networks: a missing network is left out"; else bad_ "networks partial: $(nets "$tmp/compose-partial.yaml")"; fi
+if [ "$(cat "$tmp/unchecked")" = "home" ]; then ok "routes to a container on a missing network are not checked"
+else bad_ "unchecked routes: $(cat "$tmp/unchecked")"; fi
+
 if [ "$(cat "$tmp/records" 2>/dev/null)" = "192.0.2.120 vault.lan.example.com
 198.51.100.249 pve.internal.example.com
 198.51.100.249 vault.internal.example.com
 198.51.100.249 qbit.internal.example.com
 198.51.100.249 tv.internal.example.com
-198.51.100.249 dns.internal.example.com" ]; then ok "records: every enabled name at the gateway's home address, local records kept"
+198.51.100.249 dns.internal.example.com
+198.51.100.249 home.internal.example.com" ]; then ok "records: every enabled name at the gateway's home address, local records kept"
 else bad_ "records"; cat "$tmp/records" 2>/dev/null; fi
 
 # No subdomain (empty or absent): the names sit directly under site.domain.

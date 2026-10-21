@@ -23,7 +23,7 @@ services:
       - ./config:/config
     networks:
       - gateway
-{% for n in caddy_container_networks %}
+{% for n in caddy_networks_joined | default(caddy_container_networks | list) %}
       - {{ n }}
 {% endfor %}
     mem_limit: {{ caddy_mem_limit }}
@@ -31,7 +31,7 @@ services:
 
 networks:
   gateway: {}
-{% for n in caddy_container_networks %}
+{% for n in caddy_networks_joined | default(caddy_container_networks | list) %}
   {{ n }}:
     external: true
 {% endfor %}

@@ -1,0 +1,26 @@
+# homepage_widget_check (one "<code> ok|error" line per widget) -> homepage_widget_results
+# ("<name>=<code> ok|error"). A widget with an error is a warning: its app lives on another
+# VM (or behind its own login) and must not stop the rest of the apps play (the gateway and
+# the firewall run after this role, and this VM is the home's DNS). homepage_strict_widgets
+# makes it fail (verification runs). Tested by tests/test_homepage.sh.
+- name: Widget results
+  ansible.builtin.set_fact:
+    homepage_widget_results: >-
+      {{ homepage_widget_check.results | map(attribute='item.name')
+         | zip(homepage_widget_check.results | map(attribute='stdout', default='000 error')) | map('join', '=') | list }}
+    homepage_widget_errors: >-
+      {{ homepage_widget_check.results | map(attribute='item.name')
+         | zip(homepage_widget_check.results | map(attribute='stdout', default='000 error')) | map('join', '=')
+         | reject('match', '^[a-z0-9-]+=200 ok$') | list }}
+
+- name: Widgets with an error (warning; homepage_strict_widgets=true fails instead)
+  ansible.builtin.debug:
+    msg: "WARNING: widgets with an error: {{ homepage_widget_errors }}"
+  when: homepage_widget_errors | length > 0 and not homepage_strict_widgets | bool
+
+- name: Every widget has data (name=HTTP code and result)
+  ansible.builtin.assert:
+    that: homepage_widget_errors | length == 0
+    fail_msg: "widgets with an error: {{ homepage_widget_errors }}"
+    success_msg: "{{ homepage_widget_results }}"
+  when: homepage_widget_errors | length == 0 or homepage_strict_widgets | bool
