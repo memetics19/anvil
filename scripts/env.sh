@@ -59,11 +59,10 @@ _hl_main() {
   # back to the Keychain (site-bootstrap YAML), unless the operator sets
   # HOMELAB_SITE_SOURCE=keychain. On failure TF_VAR_site_json stays unset, so Terraform
   # stops. HOMELAB_SITE_USED (vault | keychain) names the source; it is not a site value.
-  # `security -w` prints multi-line values hex-encoded, so decode when the value is all hex.
+  # scripts/site-keychain-read.sh decodes the stored forms (compressed, hex or plain).
   unset HOMELAB_SITE_USED
   _hl_kc=
-  if _hl_v="$(_hl_get site-bootstrap)" && [ -n "$_hl_v" ]; then
-    case $_hl_v in *[!0-9a-f]*) ;; *) _hl_v="$(printf '%s' "$_hl_v" | xxd -r -p)" ;; esac
+  if _hl_v="$("$_hl_root/scripts/site-keychain-read.sh")" && [ -n "$_hl_v" ]; then
     _hl_kc="$(printf '%s' "$_hl_v" | _hl_site_json)" || _hl_kc=
     [ -n "$_hl_kc" ] || echo "env.sh: Keychain item site-bootstrap is not YAML with a top-level site dict" >&2
   fi

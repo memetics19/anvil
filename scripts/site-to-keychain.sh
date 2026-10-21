@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Refresh the Keychain bootstrap copy of the site dict from Vault (ruling: Vault is canonical).
-# Reads kv/homelab/site and writes Keychain item site-bootstrap (service homelab) as one-line
-# YAML in flow style ({"site": {...}}, which is also JSON), so `security -w` returns it as is.
+# Reads kv/homelab/site and writes Keychain item site-bootstrap (service homelab) as
+# {"site": {...}} JSON, gzip-compressed and base64-encoded behind a "gz64:" prefix:
+# `security -i` reads lines of under 4000 bytes, which the plain dict outgrew.
+# scripts/site-keychain-read.sh decodes it.
 # Values travel only through pipes and the `security -i` stdin: never argv, never printed.
 # Prints only "updated" or "unchanged". Run by the operator; refuses without --yes.
 #   usage: scripts/site-to-keychain.sh --yes
@@ -31,8 +33,7 @@ want_sum="$(printf '%s' "$want" | digest)"
 # The current Keychain copy, as canonical JSON (empty when missing or unreadable).
 # `security -w` prints multi-line values hex-encoded.
 have=
-if v="$(security find-generic-password -s "$kc_service" -a "$account" -w 2>/dev/null)"; then
-  case $v in *[!0-9a-f]*) ;; *) v="$(printf '%s' "$v" | xxd -r -p)" ;; esac
+if v="$("$root/scripts/site-keychain-read.sh")"; then
   have="$(printf '%s' "$v" |
     python3 -c 'import json,sys,yaml; print(json.dumps({"site": yaml.safe_load(sys.stdin)["site"]}))' 2>/dev/null |
     jq -S -c . 2>/dev/null)" || have=
@@ -43,11 +44,14 @@ if [ -n "$have" ] && [ "$(printf '%s' "$have" | digest)" = "$want_sum" ]; then
   exit 0
 fi
 
+packed="gz64:$(printf '%s' "$want" | gzip -9n | base64 | tr -d '\n')"
+[ "${#packed}" -lt 3800 ] || die "the compressed site dict is ${#packed} bytes; security -i takes under 4000"
 # -U updates the existing item in place.
 printf 'add-generic-password -U -s %s -a %s -w %s\n' \
-  "$kc_service" "$account" "$(kc_quote "$want")" | security -i >/dev/null 2>&1 ||
+  "$kc_service" "$account" "$(kc_quote "$packed")" | security -i >/dev/null 2>&1 ||
   die "Keychain write failed"
-back="$(security find-generic-password -s "$kc_service" -a "$account" -w 2>/dev/null)" ||
+unset packed
+back="$("$root/scripts/site-keychain-read.sh")" ||
   die "Keychain read-back failed"
 back="$(printf '%s' "$back" | jq -S -c . 2>/dev/null)" # capture first: jq's trailing newline must not reach digest
 [ "$(printf '%s' "$back" | digest)" = "$want_sum" ] ||

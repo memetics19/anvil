@@ -7,7 +7,7 @@
 # the run unless the operator sets HOMELAB_SITE_SOURCE=keychain, or the play sets
 # site_allow_keychain_fallback (vault.yml does, so a broken Vault can be repaired).
 # VAULT_ADDR / VAULT_CACERT / VAULT_TOKEN come from the environment (scripts/env.sh).
-# `security -w` prints multi-line values hex-encoded, so the Keychain lookup decodes hex.
+# scripts/site-keychain-read.sh decodes the stored forms (compressed, hex or plain).
 _site_source_cmd: >-
   {{ inventory_dir }}/../../scripts/site-source.sh --line{{ ' --allow-keychain-fallback'
      if (site_allow_keychain_fallback | default(false) | bool) else '' }}
@@ -19,10 +19,7 @@ _site_from_vault: >-
             url=lookup('env', 'VAULT_ADDR'),
             token=lookup('env', 'VAULT_TOKEN'),
             ca_cert=lookup('env', 'VAULT_CACERT')).secret.site }}
-_keychain_cmd: >-
-  v=$(security find-generic-password -s homelab -a site-bootstrap -w);
-  if printf %s "$v" | grep -qE "^[0-9a-f]+$"; then printf %s "$v" | xxd -r -p;
-  else printf %s "$v"; fi
+_keychain_cmd: "{{ inventory_dir }}/../../scripts/site-keychain-read.sh"
 _site_keychain_doc: >-
   {{ lookup('ansible.builtin.pipe', _keychain_cmd, errors='ignore') | from_yaml | default({}, true) }}
 _site_from_keychain: "{{ _site_keychain_doc.site }}"

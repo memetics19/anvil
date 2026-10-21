@@ -44,10 +44,8 @@ case $kv in
   *) die "kv/ is mounted but is not KV v2 ($kv)" ;;
 esac
 
-v="$(security find-generic-password -s homelab -a site-bootstrap -w 2>/dev/null)" ||
-  die "Keychain item site-bootstrap (service homelab) not found"
-# `security -w` prints multi-line values hex-encoded.
-case $v in *[!0-9a-f]*) ;; *) v="$(printf '%s' "$v" | xxd -r -p)" ;; esac
+v="$("$root/scripts/site-keychain-read.sh")" ||
+  die "Keychain item site-bootstrap (service homelab) not found or not decodable"
 want="$(printf '%s' "$v" | site_yaml_to_json)" || die "site-bootstrap is not YAML with a top-level site dict"
 unset v
 printf '%s' "$want" | jq -e '.site.hosts | type == "object"' >/dev/null ||
