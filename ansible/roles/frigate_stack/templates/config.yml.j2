@@ -1,0 +1,75 @@
+# Managed by anvil (ansible role frigate_stack, templates/config.yml.j2). Edit it in the
+# repo: changes made here or in the Frigate UI are overwritten on the next run.
+# Frigate Configuration
+auth:
+  enabled: true
+  reset_admin_password: false
+
+mqtt:
+  enabled: true
+  host: mqtt
+  port: 1883
+  topic_prefix: frigate
+
+cameras:
+  front_door:
+    ffmpeg:
+      inputs:
+        - path: {{ frigate_stack_rtsp_url }}
+          roles:
+            - detect
+            - record
+    detect:
+      width: 1280
+      height: 720
+      fps: 2
+    objects:
+      track:
+        - person
+        - car
+        - motorcycle
+        - dog
+        - cat
+        - bicycle
+    record:
+      enabled: true
+      expire_interval: 60
+    webui_url: https://frigate.{{ site.domain }}
+detectors:
+  cpu:
+    type: cpu
+    num_threads: 2
+record:
+  enabled: true
+  expire_interval: 60
+snapshots:
+  enabled: true
+  retain:
+    default: 3
+go2rtc:
+  streams:
+    front_door: {{ frigate_stack_rtsp_url }}
+detect:
+  enabled: true
+version: 0.17-0
+camera_groups:
+  {{ frigate_stack_camera_group }}:
+    order: 1
+    icon: LuAlignHorizontalJustifyEnd
+    cameras: front_door
+semantic_search:
+  enabled: false
+  model_size: small
+face_recognition:
+  enabled: true
+  model_size: small
+lpr:
+  enabled: true
+  model_size: small
+classification:
+  bird:
+    enabled: false
+genai:
+  provider: ollama
+  base_url: http://{{ site.frigate_stack.genai_ollama_ip }}:11434
+  model: gemma3:1b

@@ -2,7 +2,7 @@
 # static netplan on the adopted guests), docker, cloudflared (token from Vault) and
 # node_exporter (group node_exporter in the inventory).
 # Run: make vms ARGS="--check --diff"   or one VM: make vm HOST=frigate
-# Tags: base, docker, cloudflared, node_exporter.
+# Tags: base, docker, cloudflared, node_exporter, frigate.
 - name: Guest base
   hosts: guests:vault_servers
   pre_tasks:
@@ -26,3 +26,12 @@
   roles:
     - role: node_exporter
       tags: [node_exporter]
+
+# Workload: the Frigate NVR stack (compose project "home"), nginx in front of it.
+- name: Frigate stack
+  hosts: frigate
+  # A failed task must not drop a pending restart: the next run would not see the change.
+  force_handlers: true
+  roles:
+    - role: frigate_stack
+      tags: [frigate]

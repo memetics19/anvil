@@ -41,5 +41,5 @@
   ansible.builtin.debug:
     msg: >-
       site source: {{ site_source }}{{ ' (WARNING: ' ~ site_source_note ~ ')' if site_source_note else '' }}{{
-      ' (WARNING: the Keychain site-bootstrap copy differs from Vault)' if site_copies_differ | bool else '' }}
+      ' (WARNING: the Keychain bootstrap copy is stale; run scripts/site-to-keychain.sh --yes)' if site_copies_differ | bool else '' }}
   run_once: true

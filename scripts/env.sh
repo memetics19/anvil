@@ -74,7 +74,7 @@ _hl_main() {
       if [ -n "$_hl_v" ]; then
         export TF_VAR_site_json="$_hl_v" HOMELAB_SITE_USED=vault
         if [ -n "$_hl_kc" ] && [ "$(printf '%s' "$_hl_v" | jq -S -c . | shasum -a 256)" != "$(printf '%s' "$_hl_kc" | jq -S -c . | shasum -a 256)" ]; then
-          echo "env.sh: warning: Keychain site-bootstrap differs from Vault kv/homelab/site (Vault is used)" >&2
+          echo "env.sh: warning: the Keychain bootstrap copy (site-bootstrap) is stale; Vault is used. Refresh it: scripts/site-to-keychain.sh --yes" >&2
         fi
       else
         echo "env.sh: kv/homelab/site holds no site dict; TF_VAR_site_json not set" >&2

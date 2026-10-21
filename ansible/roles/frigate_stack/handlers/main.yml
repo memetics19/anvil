@@ -1,0 +1,39 @@
+# Handlers run in this order. Each touches only the service whose file changed.
+- name: Bring up the changed compose services
+  ansible.builtin.command:
+    argv: "{{ ['docker', 'compose', 'up', '-d', '--no-deps'] + frigate_stack_compose_changed }}"
+    chdir: "{{ frigate_stack_dir }}"
+  when: frigate_stack_compose_changed | length > 0
+  changed_when: true
+
+- name: Restart frigate
+  ansible.builtin.command:
+    cmd: docker compose restart frigate
+    chdir: "{{ frigate_stack_dir }}"
+  changed_when: true
+
+- name: Restart mqtt
+  ansible.builtin.command:
+    cmd: docker compose restart mqtt
+    chdir: "{{ frigate_stack_dir }}"
+  changed_when: true
+
+# The bind mount is a single file: a recreate picks up the new file (and the
+# directory-to-file change of the mount point). frigate-notify reads its config only at start.
+- name: Recreate frigate-notify
+  ansible.builtin.command:
+    cmd: docker compose up -d --no-deps --force-recreate frigate-notify
+    chdir: "{{ frigate_stack_dir }}"
+  changed_when: true
+  # A compose change to the service already recreated it.
+  when: "'frigate-notify' not in frigate_stack_compose_changed"
+
+- name: Check the nginx config
+  ansible.builtin.command:
+    cmd: nginx -t
+  changed_when: false
+
+- name: Reload nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    state: reloaded

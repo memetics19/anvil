@@ -18,3 +18,6 @@ site:
     netbird: {ip: 192.0.2.115, vmid: 9002, mac: "02:00:00:00:00:02"}
     ragnarok: {ip: 192.0.2.119, vmid: 9003, mac: "02:00:00:00:00:03"}
     vault: {ip: 192.0.2.120, vmid: 9004}
+  # Addresses the frigate stack's config refers to (frigate_stack role).
+  frigate_stack:
+    genai_ollama_ip: 192.0.2.127

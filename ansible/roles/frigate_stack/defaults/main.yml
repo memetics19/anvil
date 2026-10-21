@@ -1,0 +1,29 @@
+# Compose project "home": /home/docker-compose.yml (services mqtt, frigate, frigate-notify, gotify).
+frigate_stack_dir: /home
+frigate_stack_compose_file: "{{ frigate_stack_dir }}/docker-compose.yml"
+frigate_stack_config_file: "{{ frigate_stack_dir }}/config/config.yml"
+frigate_stack_mosquitto_conf: "{{ frigate_stack_dir }}/mosquitto/config/mosquitto.conf"
+frigate_stack_notify_config: "{{ frigate_stack_dir }}/frigate-notify/config.yml"
+frigate_stack_nginx_site: /etc/nginx/sites-available/default
+# The eclipse-mosquitto image runs as uid/gid 1883.
+frigate_stack_mosquitto_uid: 1883
+# Secrets: Vault KV v2, mount kv (docs/secrets.md).
+frigate_stack_vault_mount: kv
+frigate_stack_vault_frigate_path: "homelab/{{ inventory_hostname }}/frigate"
+frigate_stack_vault_notify_path: "homelab/{{ inventory_hostname }}/frigate-notify"
+# Timezone of the frigate-notify container (site.timezone when set).
+frigate_stack_timezone: "{{ site.timezone | default('Asia/Kolkata') }}"
+# Name of Frigate's camera group (site.frigate_stack.camera_group when set).
+frigate_stack_camera_group: "{{ site.frigate_stack.camera_group | default('Home') }}"
+# Frigate's config.yml comes from the template. Set false while editing it in the Frigate UI,
+# then copy the result into templates/config.yml.j2 (the run would otherwise overwrite it).
+frigate_stack_manage_frigate_config: true
+# Old configs nothing mounts or reads any more (they hold the camera URL or the Gotify token).
+frigate_stack_obsolete_files:
+  - "{{ frigate_stack_dir }}/config.yml"
+  - "{{ frigate_stack_dir }}/notify-config.yaml"
+  - "{{ frigate_stack_dir }}/frigate-notify/notify-config.yml"
+# Frigate's own config backups: kept, but readable by root only (they hold the camera URL).
+frigate_stack_private_files:
+  - "{{ frigate_stack_dir }}/config/config.yml.bak"
+  - "{{ frigate_stack_dir }}/config/backup_config.yaml"

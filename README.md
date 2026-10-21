@@ -80,7 +80,7 @@ make bootstrap-ssh                # once: install your SSH key on all hosts
 make host ARGS="--check --diff"   # dry run against the Proxmox host
 make host
 make ceph ARGS="--check --diff"   # see below before the first real run
-make vms ARGS="--check --diff"    # guest roles: base, docker, cloudflared, node_exporter
+make vms ARGS="--check --diff"    # guest roles: base, docker, cloudflared, node_exporter, frigate
 make vm HOST=frigate              # one VM at a time
 make lint
 make secrets-scan
@@ -97,6 +97,7 @@ scripts/vault-init.sh       # once, by the operator: keys go straight into the K
 make vault-unseal           # 3 of the 5 keys, read from the Keychain
 make vault-policies site-to-vault
 scripts/backup-key-init.sh  # once, by the operator: age key pair for backups
+scripts/site-to-keychain.sh --yes  # by the operator: refresh the Keychain bootstrap copy from Vault
 make backup                 # ~/homelab-backups: tfstate (age-encrypted) + Raft snapshot
 scripts/backup-restore-tfstate.sh | jq .serial   # decrypts to stdout only
 ```
@@ -106,6 +107,21 @@ Vault (config, systemd unit or package version change, including bumping
 `vault_server_version`). Rerun it with `ARGS="-e vault_server_allow_restart=true"`, then
 `make vault-unseal`; the play fails at the end if it left Vault sealed. A certificate change
 only reloads Vault and does not seal it.
+
+Vault's `kv/homelab/site` is the canonical site dict. The Keychain item `site-bootstrap` is
+only a bootstrap copy; when a run warns that it is stale, refresh it with
+`scripts/site-to-keychain.sh --yes`.
+
+## Frigate
+
+The `frigate_stack` role (`make vm HOST=frigate ARGS="--tags frigate"`) owns Frigate's
+`config.yml`: edits made in the Frigate UI are overwritten on the next run. Change
+`ansible/roles/frigate_stack/templates/config.yml.j2` instead. To try settings in the UI
+first, run with `-e frigate_stack_manage_frigate_config=false`, then copy the result into
+the template. A changed compose service is brought up on its own (`up -d --no-deps`); a
+changed Frigate, mosquitto or frigate-notify config restarts only that container.
+The public hostname reaches Frigate through nginx on the VM, and Frigate's own login
+(port 8971) is the access control; the admin password is in Vault (`docs/secrets.md`).
 
 ## Ceph and the Terraform state bucket
 
@@ -228,10 +244,10 @@ history. [`.gitleaks.toml`](.gitleaks.toml) adds rules for:
 
 ## Known issues
 
-- `frigate-notify` crash-loops
 - `dispatcharr` exits on start
 - `privoxy` reports unhealthy
-- nginx on `frigate` proxies to a stale upstream
+- Frigate's camera has not answered since 2026-01-13, so there are no new recordings.
+- Frigate's `genai` provider points at an Ollama address that does not answer.
 - `ragnarok` `/home` is 98% full
 
 ## License

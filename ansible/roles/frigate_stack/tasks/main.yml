@@ -1,0 +1,295 @@
+# Frigate NVR stack on the frigate VM, adopted as is. Secrets come from Vault and are never
+# logged or diffed. Containers are touched only by handlers, and only the service whose
+# file changed (never a project-wide `docker compose up`).
+
+# --- secrets -------------------------------------------------------------------------
+- name: Read the Frigate secrets from Vault
+  ansible.builtin.set_fact:
+    frigate_stack_secrets: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', frigate_stack_vault_frigate_path,
+                engine_mount_point=frigate_stack_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
+    frigate_stack_notify_secrets: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', frigate_stack_vault_notify_path,
+                engine_mount_point=frigate_stack_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
+  no_log: true
+
+- name: Pick the values the templates use
+  ansible.builtin.set_fact:
+    frigate_stack_rtsp_url: "{{ frigate_stack_secrets.front_door_rtsp_url | default('') }}"
+    frigate_stack_compose_rtsp_password: "{{ frigate_stack_secrets.compose_rtsp_password | default('') }}"
+    frigate_stack_gotify_token: "{{ frigate_stack_notify_secrets.gotify_token | default('') }}"
+  no_log: true
+
+- name: The secrets and site values are present
+  ansible.builtin.assert:
+    that:
+      - frigate_stack_rtsp_url | length > 0
+      - frigate_stack_compose_rtsp_password | length > 0
+      - frigate_stack_gotify_token | length > 0
+      - site.domain | default('') | length > 0
+      - site.frigate_stack.genai_ollama_ip | default('') | length > 0
+    fail_msg: >-
+      Missing a value: {{ frigate_stack_vault_frigate_path }} (front_door_rtsp_url, compose_rtsp_password),
+      {{ frigate_stack_vault_notify_path }} (gotify_token), or site domain / frigate_stack.*
+    quiet: true
+
+# --- compose file ----------------------------------------------------------------------
+- name: Render the compose file
+  ansible.builtin.set_fact:
+    frigate_stack_compose: "{{ lookup('ansible.builtin.template', 'docker-compose.yml.j2') }}"
+  no_log: true
+
+- name: Read the live compose file
+  ansible.builtin.slurp:
+    src: "{{ frigate_stack_compose_file }}"
+  register: frigate_stack_compose_live
+  failed_when: false
+  no_log: true
+
+# Services whose definition differs in the file, plus the services that use a top-level
+# network or volume whose definition differs.
+- name: Work out which compose services change in the file
+  ansible.builtin.set_fact:
+    frigate_stack_compose_file_changed: >-
+      {%- set new = frigate_stack_compose | from_yaml -%}
+      {%- set old = (frigate_stack_compose_live.content | default('') | b64decode | from_yaml) or {} -%}
+      {%- set out = [] -%}
+      {%- for name in new.services if (old.services | default({}))[name] | default(none) != new.services[name] -%}
+      {%- set _ = out.append(name) -%}
+      {%- endfor -%}
+      {%- for kind in ['networks', 'volumes'] -%}
+      {%- for res in (new[kind] | default({}, true)) | list + (old[kind] | default({}, true)) | list
+            if (new[kind] | default({}, true))[res] | default(none) != (old[kind] | default({}, true))[res] | default(none) -%}
+      {%- for name in new.services
+            if res in (new.services[name][kind] | default([]))
+            or (kind == 'volumes' and (new.services[name].volumes | default([]) | select('match', res ~ ':') | list)) -%}
+      {%- set _ = out.append(name) -%}
+      {%- endfor -%}
+      {%- endfor -%}
+      {%- endfor -%}
+      {{ out | unique }}
+    frigate_stack_compose_toplevel_changed: >-
+      {%- set new = frigate_stack_compose | from_yaml -%}
+      {%- set old = (frigate_stack_compose_live.content | default('') | b64decode | from_yaml) or {} -%}
+      {{ (new.networks | default({}, true)) != (old.networks | default({}, true))
+         or (new.volumes | default({}, true)) != (old.volumes | default({}, true)) }}
+  no_log: true
+
+- name: Warn about a top-level network or volume change
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: a top-level network or volume in the compose file changes. Compose does not
+      recreate an existing network or volume; the services using it are brought up again
+      ({{ frigate_stack_compose_file_changed | join(', ') }}), but a changed network may need
+      `docker network rm` by hand first.
+  when: frigate_stack_compose_toplevel_changed | bool
+
+- name: Compose file (secrets from Vault)
+  ansible.builtin.copy:
+    content: "{{ frigate_stack_compose }}"
+    dest: "{{ frigate_stack_compose_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+  notify: Bring up the changed compose services
+
+# Drift between the running containers and the file on disk: catches a service whose
+# handler never ran (an earlier run failed after writing the file). Compose stores each
+# service's config hash as a container label. Containers created by docker-compose v1 use
+# another hash scheme, so they are only reported, not recreated.
+- name: Config hash of each service in the file on disk
+  ansible.builtin.command:
+    cmd: docker compose config --hash "*"
+    chdir: "{{ frigate_stack_dir }}"
+  register: frigate_stack_hash_want
+  changed_when: false
+  check_mode: false
+
+- name: Config hash of each running container
+  ansible.builtin.command:
+    argv:
+      - docker
+      - ps
+      - --all
+      - --filter
+      - label=com.docker.compose.project={{ frigate_stack_dir | basename }}
+      - --format
+      - >-
+        {{ '{{' }}.Label "com.docker.compose.service"{{ '}}' }}
+        {{ '{{' }}.Label "com.docker.compose.config-hash"{{ '}}' }}
+        {{ '{{' }}.Label "com.docker.compose.version"{{ '}}' }}
+  register: frigate_stack_hash_have
+  changed_when: false
+  check_mode: false
+
+- name: Work out which services drifted from the file
+  ansible.builtin.set_fact:
+    frigate_stack_compose_drift: >-
+      {%- set want = {} -%}
+      {%- for l in frigate_stack_hash_want.stdout_lines if l.split() | length == 2 -%}
+      {%- set _ = want.update({l.split()[0]: l.split()[1]}) -%}
+      {%- endfor -%}
+      {%- set have = {} -%}
+      {%- for l in frigate_stack_hash_have.stdout_lines if l.split() | length == 3 -%}
+      {%- set _ = have.update({l.split()[0]: {'hash': l.split()[1], 'version': l.split()[2]}}) -%}
+      {%- endfor -%}
+      {%- set drift = [] -%}
+      {%- set legacy = [] -%}
+      {%- for name in want -%}
+      {%- if name not in have -%}{%- set _ = drift.append(name) -%}
+      {%- elif have[name].hash != want[name] and have[name].version is version('2', '<') -%}{%- set _ = legacy.append(name) -%}
+      {%- elif have[name].hash != want[name] -%}{%- set _ = drift.append(name) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ {'drift': drift, 'legacy': legacy} }}
+
+- name: Services to bring up
+  ansible.builtin.set_fact:
+    frigate_stack_compose_changed: >-
+      {{ (frigate_stack_compose_file_changed + frigate_stack_compose_drift.drift) | unique }}
+
+- name: Compose services that change
+  ansible.builtin.debug:
+    msg: >-
+      bring up: {{ frigate_stack_compose_changed | join(', ') if frigate_stack_compose_changed else 'none' }}{{
+      '; created by docker-compose v1, hash not comparable (not recreated): '
+      ~ frigate_stack_compose_drift.legacy | join(', ') if frigate_stack_compose_drift.legacy else '' }}
+  changed_when: frigate_stack_compose_drift.drift | length > 0
+  notify: Bring up the changed compose services
+
+# --- Frigate config ----------------------------------------------------------------------
+- name: Find Frigate's config backups
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: "{{ frigate_stack_private_files }}"
+  register: frigate_stack_private_stat
+
+- name: Frigate config (camera URL from Vault)
+  ansible.builtin.copy:
+    content: "{{ lookup('ansible.builtin.template', 'config.yml.j2') }}"
+    dest: "{{ frigate_stack_config_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when: frigate_stack_manage_frigate_config | bool
+  no_log: true
+  diff: false
+  notify: Restart frigate
+
+- name: Frigate config backups readable by root only
+  ansible.builtin.file:
+    path: "{{ item.item }}"
+    mode: "0600"
+  loop: "{{ frigate_stack_private_stat.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.stat.exists
+
+- name: Remove the old configs nothing uses
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ frigate_stack_obsolete_files }}"
+
+# --- mosquitto ----------------------------------------------------------------------------
+- name: Mosquitto config
+  ansible.builtin.template:
+    src: mosquitto.conf.j2
+    dest: "{{ frigate_stack_mosquitto_conf }}"
+    owner: "{{ frigate_stack_mosquitto_uid }}"
+    group: "{{ frigate_stack_mosquitto_uid }}"
+    mode: "0644"
+  notify: Restart mqtt
+
+# --- frigate-notify -----------------------------------------------------------------------
+# Docker created the bind-mount source as a directory because the file did not exist yet,
+# so the container crash-looped. Replace that (empty) directory with the real file.
+- name: Inspect the frigate-notify config path
+  ansible.builtin.stat:
+    path: "{{ frigate_stack_notify_config }}"
+  register: frigate_stack_notify_stat
+
+- name: Fix the frigate-notify config path left as a directory
+  when: frigate_stack_notify_stat.stat.isdir | default(false)
+  block:
+    - name: The directory is empty
+      ansible.builtin.find:
+        paths: "{{ frigate_stack_notify_config }}"
+        file_type: any
+        hidden: true
+      register: frigate_stack_notify_dir
+
+    - name: Refuse to remove a non-empty directory
+      ansible.builtin.assert:
+        that: frigate_stack_notify_dir.matched == 0
+        fail_msg: "{{ frigate_stack_notify_config }} is a non-empty directory; inspect it by hand"
+        quiet: true
+
+    - name: Stop frigate-notify
+      ansible.builtin.command:
+        cmd: docker compose stop frigate-notify
+        chdir: "{{ frigate_stack_dir }}"
+      changed_when: true
+
+    - name: Remove the directory
+      ansible.builtin.file:
+        path: "{{ frigate_stack_notify_config }}"
+        state: absent
+
+- name: Frigate-notify config (Gotify token from Vault)
+  ansible.builtin.copy:
+    content: "{{ lookup('ansible.builtin.template', 'notify-config.yaml.j2') }}"
+    dest: "{{ frigate_stack_notify_config }}"
+    owner: root
+    group: root
+    mode: "0600"
+  # In check mode the directory is still there (its removal above is only reported).
+  when: not (ansible_check_mode and frigate_stack_notify_stat.stat.isdir | default(false))
+  no_log: true
+  diff: false
+  notify: Recreate frigate-notify
+
+# --- nginx ------------------------------------------------------------------------------
+- name: Install nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+
+# Frigate's own login guards the UI (no separate auth service).
+- name: Nginx site
+  ansible.builtin.template:
+    src: nginx-default.j2
+    dest: "{{ frigate_stack_nginx_site }}"
+    owner: root
+    group: root
+    mode: "0644"
+    # nginx -t on a copy of nginx.conf that includes the candidate site instead of sites-enabled.
+    validate: >-
+      sh -c 'd=$(mktemp -d) && sed "s#include /etc/nginx/sites-enabled/\*;#include %s;#" /etc/nginx/nginx.conf
+      > "$d/nginx.conf" && nginx -t -q -c "$d/nginx.conf"; r=$?; rm -rf "$d"; exit $r'
+  notify:
+    - Check the nginx config
+    - Reload nginx
+
+- name: Nginx site enabled
+  ansible.builtin.file:
+    src: "{{ frigate_stack_nginx_site }}"
+    dest: /etc/nginx/sites-enabled/default
+    state: link
+  notify:
+    - Check the nginx config
+    - Reload nginx
+
+- name: Nginx running and enabled
+  ansible.builtin.systemd_service:
+    name: nginx
+    enabled: true
+    state: started

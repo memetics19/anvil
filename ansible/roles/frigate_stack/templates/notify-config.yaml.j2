@@ -1,0 +1,24 @@
+# frigate-notify v0.5 config (mounted at /config.yml). Managed by Ansible (frigate_stack).
+app:
+  mode: events
+
+frigate:
+  server: http://frigate:5000
+  startup_check:
+    attempts: 5
+    interval: 30
+  mqtt:
+    enabled: true
+    server: mqtt
+    port: 1883
+    topic_prefix: frigate
+
+alerts:
+  labels:
+    allow:
+      - person
+  gotify:
+    enabled: true
+    server: http://gotify
+    token: {{ frigate_stack_gotify_token }}
+    priority: 8
