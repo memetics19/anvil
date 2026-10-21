@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
-# Refresh the nftables set `inet enclave smtp_relay` (role pve_enclave): resolve the SMTP
-# relay's host name through Pi-hole (the resolver Vaultwarden uses) and add its A records,
-# each with a timeout, so an address the relay stops using drops out by itself. It never
+# Refresh one DNS-fed nftables set of the segments table (role pve_segments): resolve a
+# host name through the configured resolver (Pi-hole) and add its A records,
+# each with a timeout, so an address the name no longer resolves to drops out by itself. It never
 # removes an address early and never adds anything but public unicast IPv4 addresses the
 # name resolved to: a failed, empty or oversized answer leaves the set as it is (exit 1, so
 # the timer's unit shows the failure).
-# Usage: enclave-smtp-relay.sh [config]  (default /etc/enclave/smtp-relay.conf, sourced:
-#   SMTP_HOST, RESOLVER, KEEP (nft timeout, e.g. 24h), MAX)
+# Usage: segments-set-refresh.sh <config>  (sourced: TABLE, SET,
+#   LOOKUP_HOST, RESOLVER, KEEP (nft timeout, e.g. 24h), MAX)
 set -euo pipefail
-conf=${1:-/etc/enclave/smtp-relay.conf}
+conf=${1:?usage: segments-set-refresh.sh <config>}
 # shellcheck source=/dev/null
 . "$conf"
-: "${SMTP_HOST:?}" "${RESOLVER:?}" "${KEEP:?}" "${MAX:?}"
+: "${TABLE:?}" "${SET:?}" "${LOOKUP_HOST:?}" "${RESOLVER:?}" "${KEEP:?}" "${MAX:?}"
+[[ $TABLE =~ ^[a-z][a-z0-9_]*$ && $SET =~ ^[a-z][a-z0-9_]*$ ]] || { echo "segments-set-refresh: bad table or set name" >&2; exit 2; }
+[[ $KEEP =~ ^[0-9]+[smhd]$ && $MAX =~ ^[0-9]+$ ]] || { echo "segments-set-refresh: bad KEEP or MAX" >&2; exit 2; }
 NFT=${NFT:-nft}
 DIG=${DIG:-dig}
 
@@ -36,36 +38,36 @@ public_ipv4() {
   return 0
 }
 
-if ! answer=$("$DIG" +short +time=3 +tries=2 A "$SMTP_HOST" @"$RESOLVER" 2>/dev/null); then
-  echo "enclave-smtp-relay: lookup failed; set unchanged" >&2
+if ! answer=$("$DIG" +short +time=3 +tries=2 A "$LOOKUP_HOST" @"$RESOLVER" 2>/dev/null); then
+  echo "segments-set-refresh: lookup failed; set unchanged" >&2
   exit 1
 fi
 addrs=()
 while IFS= read -r line; do
   [[ $line =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue   # CNAME targets
   if public_ipv4 "$line"; then addrs+=("$line"); else
-    echo "enclave-smtp-relay: ignoring a non-public address in the answer" >&2
+    echo "segments-set-refresh: ignoring a non-public address in the answer" >&2
   fi
 done < <(printf '%s\n' "$answer" | sort -u)
 
 if [ ${#addrs[@]} -eq 0 ]; then
-  echo "enclave-smtp-relay: no usable address; set unchanged" >&2
+  echo "segments-set-refresh: no usable address; set unchanged" >&2
   exit 1
 fi
 if [ ${#addrs[@]} -gt "$MAX" ]; then
-  echo "enclave-smtp-relay: ${#addrs[@]} addresses (more than $MAX); set unchanged" >&2
+  echo "segments-set-refresh: ${#addrs[@]} addresses (more than $MAX); set unchanged" >&2
   exit 1
 fi
 
 # `add element` does not restart the timeout of an address already in the set: such an
 # address is deleted and added again, in the same transaction.
-present=$("$NFT" list set inet enclave smtp_relay | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || true)
+present=$("$NFT" list set inet "$TABLE" "$SET" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || true)
 {
   for a in "${addrs[@]}"; do
     if printf '%s\n' "$present" | grep -qxF "$a"; then
-      printf 'delete element inet enclave smtp_relay { %s }\n' "$a"
+      printf 'delete element inet %s %s { %s }\n' "$TABLE" "$SET" "$a"
     fi
-    printf 'add element inet enclave smtp_relay { %s timeout %s }\n' "$a" "$KEEP"
+    printf 'add element inet %s %s { %s timeout %s }\n' "$TABLE" "$SET" "$a" "$KEEP"
   done
 } | "$NFT" -f -
-echo "enclave-smtp-relay: ${#addrs[@]} address(es) refreshed"
+echo "segments-set-refresh: ${#addrs[@]} address(es) refreshed"

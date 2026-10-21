@@ -1,0 +1,106 @@
+#!/usr/sbin/nft -f
+# Managed by Ansible (role pve_segments): the routed segments' firewall. One table, replaced
+# as a whole in one transaction (the first two lines make that work when it does not exist
+# yet). Only traffic to, from or through a segment's interface is looked at; anything else
+# passes these chains (an accept here is not final: the host's other rules still apply).
+{% macro addr(v) -%}
+{%- if v is string -%}{{ v }}{%- else -%}{ {{ v | join(', ') }} }{%- endif -%}
+{%- endmacro %}
+{# One rule: saddr/daddr (address, list or @set; absent = any), proto (tcp|udp: dport;
+   icmp: echo requests), action (overrides the chain's verdict, e.g. drop). Left out when
+   saddr or daddr is empty (a host not in the site dict yet). #}
+{% macro rule(r, verdict) -%}
+{%- set s = r.saddr | default(none) -%}
+{%- set d = r.daddr | default(none) -%}
+{%- if s is not none and s is not string %}{% set s = s | select | list %}{% endif -%}
+{%- if d is not none and d is not string %}{% set d = d | select | list %}{% endif -%}
+{%- if (s is none or s | length > 0) and (d is none or d | length > 0) -%}
+{%- set parts = [] -%}
+{%- if s is not none %}{% set _ = parts.append('ip saddr ' ~ addr(s)) %}{% endif -%}
+{%- if d is not none %}{% set _ = parts.append('ip daddr ' ~ addr(d)) %}{% endif -%}
+{%- if r.proto | default('') == 'icmp' %}{% set _ = parts.append('icmp type echo-request') -%}
+{%- elif r.proto is defined -%}
+{%- set p = r.dport -%}
+{%- if p is not string and p is not number %}{% set p = '{ ' ~ (p | map('string') | join(', ')) ~ ' }' %}{% endif -%}
+{%- set _ = parts.append(r.proto ~ ' dport ' ~ p) -%}
+{%- endif -%}
+{%- if r.action | default(verdict) == 'drop' %}{% set _ = parts.append('counter') %}{% endif -%}
+{%- set _ = parts.append(r.action | default(verdict)) -%}
+{%- if r.comment is defined %}		# {{ r.comment }}
+{% endif %}		{{ parts | join(' ') }}
+{% endif -%}
+{%- endmacro %}
+table inet {{ pve_segments_table }}
+delete table inet {{ pve_segments_table }}
+table inet {{ pve_segments_table }} {
+{% for s in pve_segments_sets %}
+	set {{ s.name }} {
+		type ipv4_addr
+{% if s.interval | default(false) %}
+		flags interval
+		auto-merge
+{% elif s.refresh is defined %}
+		flags timeout
+{% endif %}
+{% if s.elements | default([]) | select | list %}
+		elements = { {{ s.elements | select | join(', ') }} }
+{% endif %}
+	}
+
+{% endfor %}
+	chain forward {
+		type filter hook forward priority filter; policy accept;
+		ct state established,related accept
+{% for g in pve_segments_list %}
+		iifname "{{ g.interface }}" jump {{ g.name }}_out
+{% endfor %}
+{% for g in pve_segments_list %}
+		oifname "{{ g.interface }}" jump {{ g.name }}_in
+{% endfor %}
+	}
+
+	chain input {
+		type filter hook input priority filter; policy accept;
+		ct state established,related accept
+{% for g in pve_segments_list %}
+		iifname "{{ g.interface }}" jump {{ g.name }}_host
+{% endfor %}
+{% for g in pve_segments_list %}
+		# {{ g.name }}: its gateway address answers on its own interface only.
+		ip daddr {{ g.gateway }} iifname != { "{{ g.interface }}", "lo" } counter drop
+{% endfor %}
+	}
+{% for g in pve_segments_list %}
+
+	# --- segment {{ g.name }} ({{ 'NAT' if g.nat | default(false) else 'no NAT' }}) ---
+	# New connections into it.
+	chain {{ g.name }}_in {
+{% for r in g.ingress | default([]) %}
+{{ rule(r, 'accept') }}{% endfor %}
+		counter drop
+	}
+
+	# New connections out of it: allowed ones go on (the destination's rules still apply).
+	chain {{ g.name }}_out {
+{% for r in g.egress | default([]) %}
+{{ rule(r, 'return') }}{% endfor %}
+		counter drop
+	}
+
+	# New connections from it to this host.
+	chain {{ g.name }}_host {
+{% for r in g.host | default([]) %}
+{{ rule(r, 'accept') }}{% endfor %}
+		counter drop
+	}
+{% endfor %}
+{% if pve_segments_list | selectattr('nat', 'defined') | selectattr('nat') | list %}
+
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+{% for g in pve_segments_list if g.nat | default(false) %}
+		ip saddr {{ g.subnet }} oifname != "{{ g.interface }}" masquerade
+{% endfor %}
+	}
+{% endif %}
+}

@@ -2,17 +2,45 @@
 # they are in place before the bridge exists), then the SDN config, then the host services
 # the enclave may use.
 - name: Site values for the enclave
-  ansible.builtin.include_tasks: checks.yml
+  ansible.builtin.include_tasks:
+    file: checks.yml
+    apply:
+      tags: [always]
   tags: [always]
 
 - name: Rollback target (the controller)
-  ansible.builtin.include_tasks: target.yml
+  ansible.builtin.include_tasks:
+    file: target.yml
+    apply:
+      tags: [firewall, sdn]
   tags: [firewall, sdn]
 
-- name: Firewall
-  ansible.builtin.include_tasks: firewall.yml
+- name: Mail hole settings (Vault)
+  ansible.builtin.include_tasks:
+    file: smtp.yml
+    apply:
+      tags: [firewall]
+  tags: [firewall]
+
+- name: Routed segments firewall (the enclave is a segment)
+  ansible.builtin.include_role:
+    name: pve_segments
+    apply:
+      tags: [firewall]
+  vars:
+    pve_segments_target: "{{ pve_enclave_target }}"
+  tags: [firewall]
+
+- name: Retire the first enclave-only firewall layout
+  ansible.builtin.include_tasks:
+    file: retire_v1.yml
+    apply:
+      tags: [firewall]
   tags: [firewall]
 
 - name: SDN (the vnet and its gateway address)
-  ansible.builtin.include_tasks: sdn.yml
+  ansible.builtin.include_tasks:
+    file: sdn.yml
+    apply:
+      tags: [sdn]
   tags: [sdn]

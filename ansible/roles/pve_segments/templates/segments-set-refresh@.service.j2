@@ -1,0 +1,11 @@
+# Managed by Ansible (role pve_segments). Adds the current A records of a DNS-fed set's host
+# name to the set (see /usr/local/sbin/segments-set-refresh); %i is the set's name.
+[Unit]
+Description=Refresh the segments firewall set %i
+After=segments-firewall.service network-online.target
+Requires=segments-firewall.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/segments-set-refresh {{ pve_segments_etc }}/sets/%i.conf

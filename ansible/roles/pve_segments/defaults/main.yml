@@ -1,0 +1,38 @@
+# Routed segments behind the Proxmox host: one nftables table (pve_segments_table) for every
+# network the host routes for, driven by data. The first segment is the secrets enclave
+# (role pve_enclave); the VLANs follow as more entries of the same list. The callers set:
+#
+# pve_segments_list: one entry per segment
+#   name       label (chain names: <name>_in, <name>_out, <name>_host)
+#   interface  the host's interface for it (an SDN vnet bridge, a VLAN interface)
+#   subnet     its CIDR, gateway the host's address on it (site values)
+#   nat        true: masquerade what it sends out of other interfaces (false for the enclave)
+#   ingress    rules for new connections forwarded INTO the segment (accept)
+#   egress     rules for new connections forwarded OUT of it (allowed; the destination
+#              segment's ingress still applies)
+#   host       rules for new connections from it to this host (input)
+#   Anything not allowed is dropped (counted). Established and related traffic passes.
+#
+# A rule: {comment, saddr, daddr, proto (tcp|udp|icmp), dport (port or list; icmp: none,
+# echo requests only)}. saddr/daddr: an address or CIDR, a list of them, or "@<set>"; absent
+# means any. A rule whose saddr or daddr is empty (a host not in the site dict yet) is left out.
+#
+# pve_segments_sets: named sets: {name, elements (addresses/CIDRs), interval (CIDRs),
+#   refresh: {host, resolver, keep, max}} -- a refreshed set starts empty and a timer
+#   (segments-set-refresh@<name>, every 10 min) adds the A records of `host` as resolved by `resolver`,
+#   each kept for `keep`; a failed, empty or oversized answer changes nothing, and only public
+#   unicast addresses are taken.
+#
+# Applied as a whole in one transaction, checked with `nft -c` first, shown with addresses
+# masked, and under a timed rollback (the previous table comes back when the controller stops
+# answering). Loaded at boot before the network and the guests (segments-firewall.service).
+# The host's other rules (the lab SNAT, the IPTV DNAT, NetBird's) are not touched: an accept
+# here is not final for them.
+pve_segments_table: segments
+pve_segments_list: []
+pve_segments_sets: []
+pve_segments_etc: /etc/segments
+pve_segments_rollback_after: 120
+pve_segments_backup_dir: /var/backups/pve-network
+# The controller's address (the caller resolves it from SSH_CLIENT).
+pve_segments_target: ""

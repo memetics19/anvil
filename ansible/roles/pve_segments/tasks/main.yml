@@ -1,0 +1,257 @@
+# The routed segments' nftables table (see defaults/main.yml). The ruleset is rendered into a
+# temporary directory and checked with `nft -c`; a change is shown with addresses masked,
+# then applied under a timed rollback (segments-fw-rollback.sh puts the previous table back
+# if the controller stops answering).
+- name: Segments and sets are well formed
+  ansible.builtin.assert:
+    that:
+      - pve_segments_list | length > 0
+      - pve_segments_list | map(attribute='name') | select('match', '^[a-z][a-z0-9]{0,15}$') | list | length == pve_segments_list | length
+      - pve_segments_list | map(attribute='name') | unique | list | length == pve_segments_list | length
+      - pve_segments_list | map(attribute='interface') | select('match', '^[A-Za-z0-9._-]{1,15}$') | list | length == pve_segments_list | length
+      - pve_segments_list | map(attribute='gateway') | select('match', '^([0-9]{1,3}\.){3}[0-9]{1,3}$') | list | length == pve_segments_list | length
+      - pve_segments_list | map(attribute='subnet') | select('match', '^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$') | list | length == pve_segments_list | length
+      - >-
+        (pve_segments_list | map(attribute='ingress', default=[]) | flatten
+         + pve_segments_list | map(attribute='egress', default=[]) | flatten
+         + pve_segments_list | map(attribute='host', default=[]) | flatten)
+        | map(attribute='proto', default='tcp') | reject('in', ['tcp', 'udp', 'icmp']) | list | length == 0
+      - >-
+        (pve_segments_list | map(attribute='ingress', default=[]) | flatten
+         + pve_segments_list | map(attribute='egress', default=[]) | flatten
+         + pve_segments_list | map(attribute='host', default=[]) | flatten)
+        | map(attribute='action', default='accept') | reject('in', ['accept', 'drop', 'return']) | list | length == 0
+      - pve_segments_sets | map(attribute='name') | select('match', '^[a-z][a-z0-9_]{0,30}$') | list | length == pve_segments_sets | length
+      - pve_segments_sets | selectattr('refresh', 'defined') | selectattr('interval', 'defined') | selectattr('interval') | list | length == 0
+      - pve_segments_target | length > 0
+    fail_msg: >-
+      pve_segments_list: each segment needs a lower-case name (unique), an interface, a gateway
+      (a.b.c.d) and a subnet (a.b.c.d/n), and rules with proto tcp, udp or icmp (or none) and action accept, drop or return; sets need a
+      lower-case name and cannot be both interval and refreshed; pve_segments_target (the
+      controller) must be set
+    quiet: true
+
+- name: Firewall scripts
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "/usr/local/sbin/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - {src: segments-fw-rollback.sh, dest: segments-fw-rollback.sh}
+    - {src: segments-set-refresh.sh, dest: segments-set-refresh}
+
+- name: Config directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ pve_segments_etc }}"
+    - "{{ pve_segments_etc }}/sets"
+
+- name: Stage, check and apply the ruleset
+  block:
+    - name: Staging directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: segments-nft.
+      register: pve_segments_stage
+      changed_when: false
+      check_mode: false
+
+    - name: Render the ruleset into the staging directory
+      ansible.builtin.template:
+        src: segments.nft.j2
+        dest: "{{ pve_segments_stage.path }}/segments.nft"
+        owner: root
+        group: root
+        mode: "0644"
+      changed_when: false
+      check_mode: false
+
+    - name: The ruleset parses (nft -c, nothing loaded)
+      ansible.builtin.command:
+        argv: [nft, -c, -f, "{{ pve_segments_stage.path }}/segments.nft"]
+      changed_when: false
+      check_mode: false
+
+    - name: Staged ruleset
+      ansible.builtin.stat:
+        path: "{{ pve_segments_stage.path }}/segments.nft"
+      register: pve_segments_new
+
+    - name: Live ruleset file
+      ansible.builtin.stat:
+        path: "{{ pve_segments_etc }}/segments.nft"
+      register: pve_segments_live
+
+    - name: Is the table loaded
+      ansible.builtin.command:
+        argv: [nft, list, table, inet, "{{ pve_segments_table }}"]
+      register: pve_segments_loaded
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Note whether the firewall would change
+      ansible.builtin.set_fact:
+        pve_segments_pending: >-
+          {{ not pve_segments_live.stat.exists
+             or pve_segments_live.stat.checksum != pve_segments_new.stat.checksum
+             or pve_segments_loaded.rc != 0 }}
+
+    - name: Ruleset change (addresses masked)
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          diff -u {{ (pve_segments_etc ~ '/segments.nft') | quote }} {{ (pve_segments_stage.path ~ '/segments.nft') | quote }}
+          | sed -E 's/[0-9]+(\.[0-9]+){3}(\/[0-9]+)?/<addr>/g' || true
+        executable: /bin/bash
+      register: pve_segments_diff
+      changed_when: false
+      check_mode: false
+      when: pve_segments_pending | bool and pve_segments_live.stat.exists
+
+    - name: Show the change
+      ansible.builtin.debug:
+        msg: >-
+          {{ pve_segments_diff.stdout_lines | default([]) if pve_segments_live.stat.exists
+             else 'new ruleset ' ~ pve_segments_etc ~ '/segments.nft (table inet ' ~ pve_segments_table ~ ')' }}
+      changed_when: ansible_check_mode
+      when: pve_segments_pending | bool
+
+    - name: Boot unit for the table
+      ansible.builtin.template:
+        src: segments-firewall.service.j2
+        dest: /etc/systemd/system/segments-firewall.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload systemd
+
+    - name: Apply a pending systemd reload
+      ansible.builtin.meta: flush_handlers
+
+    - name: Load the table at boot
+      ansible.builtin.systemd_service:
+        name: segments-firewall
+        enabled: true
+      # In check mode on a new host the unit is not there yet.
+      when: not ansible_check_mode or pve_segments_live.stat.exists
+
+    - name: Apply the ruleset with timed rollback
+      when: pve_segments_pending | bool and not ansible_check_mode
+      block:
+        - name: Backup directory
+          ansible.builtin.file:
+            path: "{{ pve_segments_backup_dir }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0700"
+
+        - name: Back up the loaded table (empty file when there is none)
+          ansible.builtin.shell:
+            cmd: >-
+              set -o pipefail; umask 077;
+              f={{ (pve_segments_backup_dir ~ '/segments.nft.' ~ ansible_date_time.epoch) | quote }};
+              if nft list table inet {{ pve_segments_table | quote }} >/dev/null 2>&1;
+              then nft list table inet {{ pve_segments_table | quote }} >"$f"; else : >"$f"; fi;
+              echo "$f"
+            executable: /bin/bash
+          register: pve_segments_backup
+          changed_when: true
+
+        - name: Stop a leftover rollback timer
+          ansible.builtin.systemd_service:
+            name: segments-fw-rollback.timer
+            state: stopped
+          failed_when: false
+
+        - name: Clear a stale rollback unit
+          ansible.builtin.command: systemctl reset-failed segments-fw-rollback.service segments-fw-rollback.timer
+          changed_when: false
+          failed_when: false
+
+        - name: Arm the timed rollback
+          ansible.builtin.command:
+            argv:
+              - systemd-run
+              - --unit=segments-fw-rollback
+              - --on-active={{ pve_segments_rollback_after }}
+              - /usr/local/sbin/segments-fw-rollback.sh
+              - "{{ pve_segments_backup.stdout | trim }}"
+              - --wait
+              - "0"
+              - --table
+              - "{{ pve_segments_table }}"
+              - --target
+              - "{{ pve_segments_target }}"
+          changed_when: true
+          no_log: true  # the command line holds the controller address
+
+        - name: Install the ruleset
+          ansible.builtin.copy:
+            src: "{{ pve_segments_stage.path }}/segments.nft"
+            dest: "{{ pve_segments_etc }}/segments.nft"
+            remote_src: true
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Load it (one transaction; DNS-fed sets start empty)
+          ansible.builtin.systemd_service:
+            name: segments-firewall
+            state: restarted
+
+        - name: Wait for the host to answer
+          ansible.builtin.wait_for_connection:
+            delay: 3
+            timeout: 30
+
+        - name: The table is loaded
+          ansible.builtin.command:
+            argv: [nft, list, table, inet, "{{ pve_segments_table }}"]
+          changed_when: false
+          no_log: true
+
+        - name: Disarm the rollback
+          ansible.builtin.systemd_service:
+            name: segments-fw-rollback.timer
+            state: stopped
+      rescue:
+        - name: Put the previous table back
+          ansible.builtin.shell:
+            cmd: >-
+              set -o pipefail;
+              { printf 'table inet %s\ndelete table inet %s\n' {{ pve_segments_table | quote }} {{ pve_segments_table | quote }};
+              cat {{ pve_segments_backup.stdout | trim | quote }}; } | nft -f -
+            executable: /bin/bash
+          changed_when: true
+          when: pve_segments_backup.stdout is defined
+
+        - name: Stop the rollback timer
+          ansible.builtin.systemd_service:
+            name: segments-fw-rollback.timer
+            state: stopped
+          failed_when: false
+
+        - name: Fail after rolling back
+          ansible.builtin.fail:
+            msg: The segments firewall change failed and the previous table was put back
+  always:
+    - name: Remove the staging directory
+      ansible.builtin.file:
+        path: "{{ pve_segments_stage.path }}"
+        state: absent
+      changed_when: false
+      check_mode: false
+      when: pve_segments_stage.path is defined
+
+- name: DNS-fed sets
+  ansible.builtin.include_tasks: sets.yml

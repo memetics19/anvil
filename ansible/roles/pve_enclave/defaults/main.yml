@@ -1,14 +1,14 @@
 # The secrets enclave on the Proxmox host (make enclave, playbooks/enclave.yml): Vault and
 # Vaultwarden on the SDN vnet `secrets` (simple zone `enclave`, Terraform sdn.tf), a bridge
 # with no physical port. The host is its only router and does no NAT for it. This role:
-#   - firewall (tag firewall): nftables table `inet enclave`, default drop for everything
-#     to, from and through the vnet except the allow-list below; applied under a timed
-#     rollback, loaded at boot before the guests start (enclave-firewall.service);
-#   - smtp_relay (tag firewall): the named set of the SMTP relay's addresses, refreshed by
-#     a timer (the one mail hole for Vaultwarden);
+#   - firewall (tag firewall): the enclave is the first segment of the routed segments'
+#     firewall (role pve_segments: one nftables table, default drop, timed rollback). Its
+#     data is pve_enclave_segment and pve_enclave_sets below; inventory group_vars/proxmox.yml
+#     lists the segments;
 #   - sdn (tag sdn): applies the pending SDN config (pvesh set /cluster/sdn) under the
 #     timed rollback of pve_network (net-rollback.sh on interfaces.d/sdn);
-#   - apt cache, NTP and the cloud-init vendor data (tags aptcache, ntp, cloudinit).
+#   - the apt cache, NTP and the cloud-init vendor data for the enclave's VMs (tags
+#     aptcache, ntp, cloudinit).
 # Addresses come from the site dict (Vault). A rule for a host that is not on the enclave
 # (yet) never matches: every rule is tied to the vnet's interface.
 
@@ -26,16 +26,14 @@ pve_enclave_sdn_file: /etc/network/interfaces.d/sdn
 # Installed by pve_network (make host-network).
 pve_enclave_net_rollback_script: /usr/local/sbin/net-rollback.sh
 
-# --- firewall ---------------------------------------------------------------------------------
-pve_enclave_etc: /etc/enclave
-pve_enclave_fw_rollback_script: /usr/local/sbin/enclave-fw-rollback.sh
-# Who may reach the enclave as an operator (SSH, Vault's API): site.admin_sources, CIDRs (the
-# lab network, the NetBird range, the operator's home Wi-Fi address). Lab VMs that run
-# workloads (some with public tunnels) are not operators: their lab addresses are excluded.
-# The netbird VM stays an admin source: NetBird clients reach the lab through it (masqueraded).
+# --- who talks to whom ------------------------------------------------------------------------
+# Operators (SSH, Vault's API): site.admin_sources, CIDRs (the lab network, the NetBird
+# range, the operator's home Wi-Fi address). Lab VMs that run workloads (some with public
+# tunnels) are not operators: their lab addresses are excluded. The netbird VM stays an admin
+# source: NetBird clients reach the lab through it (masqueraded).
 pve_enclave_admin_sources: "{{ site.admin_sources }}"
 pve_enclave_admin_exclude_hosts: [apps, frigate, ragnarok]
-# The enclave's VMs (site.hosts.<name>.ip) and the hosts it talks to.
+# The enclave's VMs (site.hosts.<name>.ip).
 pve_enclave_vault_host: vault
 pve_enclave_vaultwarden_host: vaultwarden
 # The service gateway (Caddy, published on its lab address; Docker masquerades its
@@ -48,23 +46,120 @@ pve_enclave_monitoring_host: monitoring
 pve_enclave_vault_port: 8200
 pve_enclave_vaultwarden_port: 8080
 pve_enclave_node_exporter_port: 9100
-pve_enclave_ssh_port: 22
 # Ceph RGW (Vaultwarden's backups), on the host's lab address.
 pve_enclave_rgw_port: 7480
 pve_enclave_aptcache_port: 3142
 
 # --- the mail hole ----------------------------------------------------------------------------
-# Vaultwarden's SMTP login lives in Vault (role vaultwarden). The relay's host name (and port)
-# is read from there at run time, with the same defaults as that role; the refresh timer
-# resolves it through Pi-hole (the resolver Vaultwarden uses) and adds the A records to the
-# set, each kept for pve_enclave_smtp_keep. A failed or empty lookup changes nothing; only
-# public unicast addresses are taken, at most pve_enclave_smtp_max per lookup. Without an
-# SMTP login in Vault the set stays empty and no mail leaves.
+# Vaultwarden's SMTP login lives in Vault (role vaultwarden). The relay's host name and port
+# are read from there at run time (tasks/smtp.yml), with the same defaults as that role. The
+# set enclave_smtp_relay is fed from DNS through Pi-hole (the resolver Vaultwarden uses) every
+# 10 minutes, each address kept for pve_enclave_smtp_keep; a failed or empty lookup changes
+# nothing. Without an SMTP login in Vault the set has no refresh and stays empty.
 pve_enclave_smtp_vault_mount: kv
 pve_enclave_smtp_vault_path: homelab/apps/vaultwarden
 pve_enclave_smtp_default_host: smtp.gmail.com
 pve_enclave_smtp_default_port: 587
-pve_enclave_smtp_refresh: 10min
 pve_enclave_smtp_keep: 24h
 pve_enclave_smtp_max: 16
 pve_enclave_repo_scripts: "{{ playbook_dir }}/../../scripts"
+
+# --- the segment (role pve_segments) ----------------------------------------------------------
+_pve_enclave_ip: >-
+  {{ dict(site.hosts | dict2items | map(attribute='key')
+          | zip(site.hosts | dict2items | map(attribute='value') | map(attribute='ip', default=''))) }}
+_pve_enclave_vault: "{{ _pve_enclave_ip[pve_enclave_vault_host] | default('') }}"
+_pve_enclave_vw: "{{ _pve_enclave_ip[pve_enclave_vaultwarden_host] | default('') }}"
+_pve_enclave_mon: "{{ _pve_enclave_ip[pve_enclave_monitoring_host] | default('') }}"
+_pve_enclave_members: "{{ [_pve_enclave_vault, _pve_enclave_vw] | select | list }}"
+
+# The SMTP relay set is DNS-fed only when Vault holds an SMTP login (tasks/smtp.yml).
+pve_enclave_sets: >-
+  {{ [{'name': 'admin', 'interval': true, 'elements': pve_enclave_admin_sources},
+      {'name': 'not_admin', 'elements': pve_enclave_admin_exclude_hosts | map('extract', _pve_enclave_ip) | list},
+      {'name': 'enclave_smtp_relay'} | combine(
+        {'refresh': {'host': pve_enclave_smtp_host | default(''), 'resolver': _pve_enclave_ip[pve_enclave_dns_host],
+                     'keep': pve_enclave_smtp_keep, 'max': pve_enclave_smtp_max}}
+        if pve_enclave_smtp_enabled | default(false) | bool else {})] }}
+
+pve_enclave_segment:
+  name: enclave
+  interface: "{{ pve_enclave_vnet }}"
+  subnet: "{{ pve_enclave_subnet }}"
+  gateway: "{{ pve_enclave_gateway }}"
+  nat: false
+  ingress:
+    - comment: the service gateway (Caddy) to Vault and Vaultwarden
+      saddr: "{{ _pve_enclave_ip[pve_enclave_gateway_host] }}"
+      daddr: "{{ _pve_enclave_vault }}"
+      proto: tcp
+      dport: "{{ pve_enclave_vault_port }}"
+    - saddr: "{{ _pve_enclave_ip[pve_enclave_gateway_host] }}"
+      daddr: "{{ _pve_enclave_vw }}"
+      proto: tcp
+      dport: "{{ pve_enclave_vaultwarden_port }}"
+    - comment: "operators: Vault's API, SSH and ping on both VMs (workload VMs excluded)"
+      saddr: "@not_admin"
+      action: drop
+    - saddr: "@admin"
+      daddr: "{{ _pve_enclave_vault }}"
+      proto: tcp
+      dport: "{{ pve_enclave_vault_port }}"
+    - saddr: "@admin"
+      daddr: "{{ _pve_enclave_members }}"
+      proto: tcp
+      dport: 22
+    - saddr: "@admin"
+      daddr: "{{ _pve_enclave_members }}"
+      proto: icmp
+    - comment: "monitoring: node_exporter on both VMs, Vault's metrics"
+      saddr: "{{ _pve_enclave_mon }}"
+      daddr: "{{ _pve_enclave_members }}"
+      proto: tcp
+      dport: "{{ pve_enclave_node_exporter_port }}"
+    - saddr: "{{ _pve_enclave_mon }}"
+      daddr: "{{ _pve_enclave_vault }}"
+      proto: tcp
+      dport: "{{ pve_enclave_vault_port }}"
+  egress:
+    - comment: "Vaultwarden: DNS to Pi-hole, SMTP to the relay (Vault: nothing)"
+      saddr: "{{ _pve_enclave_vw }}"
+      daddr: "{{ _pve_enclave_ip[pve_enclave_dns_host] }}"
+      proto: udp
+      dport: 53
+    - saddr: "{{ _pve_enclave_vw }}"
+      daddr: "{{ _pve_enclave_ip[pve_enclave_dns_host] }}"
+      proto: tcp
+      dport: 53
+    - saddr: "{{ _pve_enclave_vw }}"
+      daddr: "@enclave_smtp_relay"
+      proto: tcp
+      dport: "{{ pve_enclave_smtp_port | default(pve_enclave_smtp_default_port) }}"
+  host:
+    - comment: NTP and the apt cache on the gateway address, ping
+      daddr: "{{ pve_enclave_gateway }}"
+      proto: udp
+      dport: 123
+    - daddr: "{{ pve_enclave_gateway }}"
+      proto: tcp
+      dport: "{{ pve_enclave_aptcache_port }}"
+    - daddr: "{{ pve_enclave_gateway }}"
+      proto: icmp
+    - comment: "Vaultwarden: the Ceph S3 gateway (backups)"
+      saddr: "{{ _pve_enclave_vw }}"
+      daddr: "{{ site.pve.ip }}"
+      proto: tcp
+      dport: "{{ pve_enclave_rgw_port }}"
+
+# --- apt cache (apt-cacher-ng on the gateway address) ----------------------------------------
+# The enclave's one HTTP path out: Debian and Ubuntu archives only (ForceManaged with only
+# those remaps), plain HTTP, no CONNECT tunnels (PassThroughPattern matches nothing).
+pve_enclave_aptcache_conf: /etc/apt-cacher-ng/acng.conf
+
+# --- NTP (the host's chrony serves the enclave) ----------------------------------------------
+pve_enclave_chrony_conf: /etc/chrony/conf.d/enclave.conf
+
+# --- cloud-init vendor data for the enclave's VMs ---------------------------------------------
+# Proxmox snippet on storage `local` (snippets enabled), named in Terraform
+# (vendor_data_file_id): apt through the cache, time from the gateway, the guest agent.
+pve_enclave_vendor_data: /var/lib/vz/snippets/enclave-vendor.yaml

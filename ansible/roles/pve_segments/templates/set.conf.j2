@@ -1,0 +1,7 @@
+# Managed by Ansible (role pve_segments). Read by /usr/local/sbin/segments-set-refresh.
+TABLE={{ pve_segments_table | quote }}
+SET={{ item.name | quote }}
+LOOKUP_HOST={{ item.refresh.host | quote }}
+RESOLVER={{ item.refresh.resolver | quote }}
+KEEP={{ item.refresh.keep | default('24h') | quote }}
+MAX={{ item.refresh.max | default(16) | int }}

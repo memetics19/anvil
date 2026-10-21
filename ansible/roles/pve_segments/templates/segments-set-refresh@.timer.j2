@@ -1,0 +1,11 @@
+# Managed by Ansible (role pve_segments). Enabled per DNS-fed set as
+# segments-set-refresh@<set>.timer.
+[Unit]
+Description=Refresh the segments firewall set %i
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target

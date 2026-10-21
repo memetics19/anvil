@@ -53,3 +53,5 @@ jobs:
         run: tests/test_net_rollback.sh
       - name: Netplan rollback test
         run: tests/test_netplan_rollback.sh
+      - name: Routed segments firewall test
+        run: tests/test_segments.sh

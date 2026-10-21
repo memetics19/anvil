@@ -1,0 +1,53 @@
+# The first version of this role (f4ab7af) had its own table `inet enclave`, units and
+# scripts. Once the segments table is loaded (it holds the same rules), they are removed.
+# Nothing happens when they are gone.
+- name: Is the first layout's table loaded
+  ansible.builtin.command:
+    argv: [nft, list, table, inet, enclave]
+  register: pve_enclave_v1_table
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+
+- name: The segments table is loaded (it replaces the first layout)
+  ansible.builtin.command:
+    argv: [nft, list, table, inet, "{{ pve_segments_table | default('segments') }}"]
+  register: pve_enclave_v2_table
+  changed_when: false
+  failed_when: pve_enclave_v2_table.rc != 0 and not ansible_check_mode
+  check_mode: false
+  no_log: true
+
+- name: Stop and disable the first layout's units
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: [enclave-smtp-relay.timer, enclave-firewall.service]
+  register: pve_enclave_v1_units
+  failed_when: false
+
+- name: Remove the first layout's table
+  ansible.builtin.command:
+    argv: [nft, delete, table, inet, enclave]
+  changed_when: true
+  when: pve_enclave_v1_table.rc == 0 and pve_enclave_v2_table.rc == 0
+
+- name: Remove the first layout's files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/enclave-firewall.service
+    - /etc/systemd/system/enclave-smtp-relay.service
+    - /etc/systemd/system/enclave-smtp-relay.timer
+    - /usr/local/sbin/enclave-fw-rollback.sh
+    - /usr/local/sbin/enclave-smtp-relay
+    - /etc/enclave
+  register: pve_enclave_v1_files
+
+- name: Forget the removed units
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: pve_enclave_v1_files is changed and not ansible_check_mode

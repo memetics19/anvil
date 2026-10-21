@@ -1,1 +1,5 @@
 ansible_user: root
+# Routed segments behind the host (role pve_segments, run by make enclave): one firewall
+# table for all of them. The secrets enclave is the first; VLANs are added as entries here.
+pve_segments_list: "{{ [pve_enclave_segment] }}"
+pve_segments_sets: "{{ pve_enclave_sets }}"
