@@ -1,0 +1,95 @@
+# The Vault VM: Ubuntu 24.04 cloud image, cloud-init for user, key and static address.
+# Everything goes through the Proxmox API (no SSH): the image is downloaded into local's
+# import store (enabled by the pve_host role, tag storage). The guest agent is installed
+# afterwards by ansible/playbooks/guest-agent.yml, then the VM is restarted once. It will hold secrets, so it is never destroyed by Terraform.
+# Addresses and VMID are site values (var.site_json); the public key is read at plan
+# time from var.ssh_public_key_path and is not committed.
+
+resource "proxmox_virtual_environment_download_file" "noble_cloudimg" {
+  node_name           = var.node_name
+  datastore_id        = "local"
+  content_type        = "import"
+  file_name           = "ubuntu-24.04-server-cloudimg-amd64-20261017.qcow2"
+  url                 = "https://cloud-images.ubuntu.com/releases/noble/release-20261017/ubuntu-24.04-server-cloudimg-amd64.img"
+  checksum            = "04e8f2461a16a44e78a370284471f29616cdd9baf1893df25807b71f985b6c94"
+  checksum_algorithm  = "sha256"
+  overwrite           = false
+  overwrite_unmanaged = false
+}
+
+resource "proxmox_virtual_environment_vm" "vault" {
+  node_name     = var.node_name
+  vm_id         = nonsensitive(local.site.hosts.vault.vmid)
+  name          = "vault"
+  on_boot       = true
+  scsi_hardware = "virtio-scsi-single"
+  # Never let the provider reboot or power off a VM to apply a change.
+  reboot_after_update = false
+
+  agent {
+    enabled = true
+    wait_for_ip {
+      disabled = true
+    }
+  }
+
+  cpu {
+    sockets = 1
+    cores   = 1
+    type    = "host"
+  }
+
+  memory {
+    dedicated = 1024
+    floating  = 1024
+  }
+
+  disk {
+    datastore_id = "local-lvm"
+    interface    = "scsi0"
+    import_from  = proxmox_virtual_environment_download_file.noble_cloudimg.id
+    size         = 10
+    iothread     = true
+    discard      = "on"
+  }
+
+  network_device {
+    bridge   = "vmbr0"
+    model    = "virtio"
+    firewall = true
+  }
+
+  operating_system {
+    type = "l26"
+  }
+
+  initialization {
+    datastore_id = "local-lvm"
+
+    user_account {
+      username = "ubuntu"
+      keys     = [trimspace(file(pathexpand(var.ssh_public_key_path)))]
+    }
+
+    dns {
+      servers = local.site.guest_dns
+    }
+
+    ip_config {
+      ipv4 {
+        address = "${local.site.hosts.vault.ip}/${split("/", local.site.lan_cidr)[1]}"
+        gateway = local.site.pve.gateway_alias_ip
+      }
+    }
+  }
+
+  # Start before the other VMs.
+  startup {
+    order    = 1
+    up_delay = 15
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}

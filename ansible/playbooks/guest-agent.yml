@@ -4,7 +4,7 @@
 # To be folded into the guest_base role.
 # Run: cd ansible && ansible-playbook playbooks/guest-agent.yml
 - name: QEMU guest agent
-  hosts: guests
+  hosts: guests:vault_servers
   gather_facts: false
   pre_tasks:
     - name: Resolve the site dict once for this run

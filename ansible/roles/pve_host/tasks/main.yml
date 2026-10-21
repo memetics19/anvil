@@ -179,3 +179,24 @@
         - name: Stop after a failed token setup
           ansible.builtin.fail:
             msg: API token setup failed and the token was removed; rerun to retry.
+
+# Terraform downloads the Ubuntu cloud image through the API into local's import
+# directory; that needs the `import` content type on the storage.
+- name: Storage content types
+  tags: [storage]
+  block:
+    - name: Read the content types of storage local
+      ansible.builtin.command: pvesh get /storage/local --output-format json
+      register: pve_host_storage_local
+      changed_when: false
+      check_mode: false
+
+    - name: Work out the wanted content types
+      ansible.builtin.set_fact:
+        pve_host_content_now: "{{ (pve_host_storage_local.stdout | from_json).content.split(',') }}"
+
+    - name: Enable the import content type on local
+      ansible.builtin.command: >-
+        pvesm set local --content {{ (pve_host_content_now + ['import']) | join(',') }}
+      when: "'import' not in pve_host_content_now"
+      changed_when: true

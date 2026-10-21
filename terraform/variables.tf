@@ -25,10 +25,24 @@ variable "site_json" {
   }
 
   validation {
+    condition = (
+      can(regex("^[0-9.]+$", jsondecode(var.site_json).hosts.vault.ip)) &&
+      can(regex("^[0-9]+$", jsonencode(jsondecode(var.site_json).hosts.vault.vmid)))
+    )
+    error_message = "site.hosts.vault needs ip (a.b.c.d) and vmid (a number)."
+  }
+
+  validation {
     condition = alltrue([for v in ["servers", "cameras", "personal"] : (
       can(cidrhost(jsondecode(var.site_json).sdn.subnets[v].cidr, 0)) &&
       can(regex("^[0-9.]+$", jsondecode(var.site_json).sdn.subnets[v].gateway))
     )])
     error_message = "site.sdn.subnets.{servers,cameras,personal} need cidr (a.b.c.d/n) and gateway (a.b.c.d); add them to the site dict (Keychain site-bootstrap or Vault)."
   }
+}
+
+variable "ssh_public_key_path" {
+  description = "Public key installed for the ubuntu user on the vault VM (read at plan time, never committed)."
+  type        = string
+  default     = "~/.ssh/id_ed25519.pub"
 }

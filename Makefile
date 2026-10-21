@@ -25,21 +25,21 @@ secrets-scan:
 # One-time: install the operator SSH key on the Proxmox host and guests (Keychain passwords).
 bootstrap-ssh:
 	@set -eu -o pipefail; $(ENV); \
-	cd ansible && ansible-playbook playbooks/bootstrap-ssh.yml --limit '!vault_servers' $(ARGS)
+	cd ansible && ansible-playbook playbooks/bootstrap-ssh.yml $(ARGS)
 
 host:
 	@set -eu -o pipefail; $(ENV); \
-	cd ansible && ansible-playbook playbooks/host.yml --limit '!vault_servers' $(ARGS)
+	cd ansible && ansible-playbook playbooks/host.yml $(ARGS)
 
 # Host network change with timed rollback. Never combine with a netbird VM change.
 host-network:
 	@set -eu -o pipefail; $(ENV); \
-	cd ansible && ansible-playbook playbooks/host-network.yml --limit '!vault_servers' $(ARGS)
+	cd ansible && ansible-playbook playbooks/host-network.yml $(ARGS)
 
 # Single-node Ceph + S3 gateway. The first real run wipes the OSD disk: dry-run first.
 ceph:
 	@set -eu -o pipefail; $(ENV); \
-	cd ansible && ansible-playbook playbooks/ceph.yml --limit '!vault_servers' $(ARGS)
+	cd ansible && ansible-playbook playbooks/ceph.yml $(ARGS)
 
 # Terraform. The S3 backend endpoint is not committed: it is built from PVE_IP (Keychain).
 tf-init:
