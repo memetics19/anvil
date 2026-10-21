@@ -3,10 +3,13 @@
 # The grabber container has no mounts: it prints XMLTV, and this script replaces the
 # served file only with a complete, parseable result. A degraded guide (grabber exit 3:
 # the guide source failed for some channel) replaces nothing but a missing file, so an
-# outage never swaps a real guide for placeholders.
+# outage never swaps a real guide for placeholders. After {{ iptv_epg_max_degraded }} degraded runs
+# in a row the script fails, so the timer's unit shows the guide is going stale.
 # IPTV_EPG_SIGNIN_URL / IPTV_EPG_PROGRAMS_URL, when set, are passed on (to test an outage).
 set -eu
 out="{{ iptv_guide_dir }}/{{ iptv_guide_file }}"
+state=/var/lib/iptv-epg-grab/degraded-runs
+mkdir -p "${state%/*}"
 tmp=$(mktemp "$out.XXXXXX")
 trap 'rm -f "$tmp"' EXIT
 rc=0
@@ -18,10 +21,13 @@ docker run --rm --name iptv-epg-grab \
   ${IPTV_EPG_PROGRAMS_URL:+--env IPTV_EPG_PROGRAMS_URL="$IPTV_EPG_PROGRAMS_URL"} \
   {{ iptv_streams_image }} /app/epg.py >"$tmp" || rc=$?
 case $rc in
-  0) ;;
+  0) rm -f "$state" ;;
   3)
     if [ -s "$out" ]; then
-      echo "iptv-epg-grab: WARNING degraded guide (source outage?), keeping the existing $out" >&2
+      n=$(( $(cat "$state" 2>/dev/null || echo 0) + 1 ))
+      echo "$n" >"$state"
+      echo "iptv-epg-grab: WARNING degraded guide (source outage?), keeping the existing $out ($n in a row)" >&2
+      [ "$n" -lt {{ iptv_epg_max_degraded }} ] || { echo "iptv-epg-grab: guide not refreshed for $n runs" >&2; exit 1; }
       exit 0
     fi
     echo "iptv-epg-grab: WARNING degraded guide, using it because there is no guide yet" >&2 ;;

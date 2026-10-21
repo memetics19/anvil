@@ -45,6 +45,8 @@ iptv_guide_file: guide.xml
 iptv_guide_url: "http://{{ iptv_bind_ip }}:{{ iptv_epg_port }}/{{ iptv_guide_file }}"
 # Grabber runs (local time) and the Threadfin refreshes 30 minutes later (HHMM, local).
 iptv_epg_on_calendar: "*-*-* 03,15:30:00"
+# Consecutive degraded grabs (guide source down; old guide kept) before the unit fails.
+iptv_epg_max_degraded: 4
 iptv_threadfin_update: ["0400", "1600"]
 iptv_timezone: Asia/Kolkata
 

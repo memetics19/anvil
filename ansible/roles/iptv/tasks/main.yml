@@ -326,7 +326,7 @@
 
 # Threadfin keeps its settings in memory and saves them back on its own (scheduled
 # refreshes, web UI), so a file rewritten under a running Threadfin can be overwritten
-# again. Stop it first; it is started again after the compose step.
+# again. Stop it first; it is started again after the compose step (always, below).
 - name: Does Threadfin's config differ
   ansible.builtin.set_fact:
     iptv_threadfin_dirty: >-
@@ -334,65 +334,79 @@
          or (iptv_have_secrets | bool and iptv_auth_want != iptv_auth_now) }}
   no_log: true
 
-- name: Stop Threadfin before rewriting its config
-  ansible.builtin.command:
-    argv: [docker, stop, iptv-threadfin]
-  register: iptv_threadfin_stop
-  changed_when: iptv_threadfin_stop.rc == 0
-  failed_when: iptv_threadfin_stop.rc != 0 and 'No such container' not in iptv_threadfin_stop.stderr
-  when: iptv_threadfin_dirty | bool and not ansible_check_mode
+# Stop, rewrite, compose: if anything in between fails, the always: section still
+# starts a Threadfin this run stopped.
+- name: Threadfin config and compose project
+  block:
+    - name: Stop Threadfin before rewriting its config
+      ansible.builtin.command:
+        argv: [docker, stop, iptv-threadfin]
+      register: iptv_threadfin_stop
+      changed_when: iptv_threadfin_stop.rc == 0
+      failed_when: iptv_threadfin_stop.rc != 0 and 'No such container' not in iptv_threadfin_stop.stderr
+      when: iptv_threadfin_dirty | bool and not ansible_check_mode
 
-- name: Threadfin settings
-  ansible.builtin.copy:
-    content: "{{ iptv_settings_want | to_nice_json(indent=2) }}\n"
-    dest: "{{ iptv_dir }}/threadfin/settings.json"
-    owner: "{{ iptv_uid }}"
-    group: "{{ iptv_uid }}"
-    mode: "0600"
-  when: iptv_settings_want != iptv_settings_now
+    - name: Threadfin settings
+      ansible.builtin.copy:
+        content: "{{ iptv_settings_want | to_nice_json(indent=2) }}\n"
+        dest: "{{ iptv_dir }}/threadfin/settings.json"
+        owner: "{{ iptv_uid }}"
+        group: "{{ iptv_uid }}"
+        mode: "0600"
+      when: iptv_settings_want != iptv_settings_now
 
-- name: Threadfin login database
-  ansible.builtin.copy:
-    content: "{{ iptv_auth_want | to_nice_json(indent=2) }}\n"
-    dest: "{{ iptv_dir }}/threadfin/authentication.json"
-    owner: "{{ iptv_uid }}"
-    group: "{{ iptv_uid }}"
-    mode: "0600"
-  no_log: true
-  diff: false
-  when: iptv_have_secrets | bool and iptv_auth_want != iptv_auth_now
+    - name: Threadfin login database
+      ansible.builtin.copy:
+        content: "{{ iptv_auth_want | to_nice_json(indent=2) }}\n"
+        dest: "{{ iptv_dir }}/threadfin/authentication.json"
+        owner: "{{ iptv_uid }}"
+        group: "{{ iptv_uid }}"
+        mode: "0600"
+      no_log: true
+      diff: false
+      when: iptv_have_secrets | bool and iptv_auth_want != iptv_auth_now
 
-- name: Source playlist (stream links on the forwarded address)
-  ansible.builtin.copy:
-    content: "{{ iptv_m3u_want }}"
-    dest: "{{ iptv_dir }}/sources/kannada.m3u"
-    owner: root
-    group: root
-    mode: "0644"
+    - name: Source playlist (stream links on the forwarded address)
+      ansible.builtin.copy:
+        content: "{{ iptv_m3u_want }}"
+        dest: "{{ iptv_dir }}/sources/kannada.m3u"
+        owner: root
+        group: root
+        mode: "0644"
 
-# Into the compose file: a change to any of the three recreates Threadfin.
-- name: Digest of Threadfin's managed config
-  ansible.builtin.set_fact:
-    iptv_threadfin_config_digest: >-
-      {{ ((iptv_settings_managed | combine({'files': iptv_files_managed}) | to_json(sort_keys=true))
-          ~ (iptv_auth_want | default('check mode: no password yet') | to_json(sort_keys=true))
-          ~ iptv_m3u_want) | hash('sha256') }}
-  no_log: true
+    # Into the compose file: a change to any of the three recreates Threadfin.
+    - name: Digest of Threadfin's managed config
+      ansible.builtin.set_fact:
+        iptv_threadfin_config_digest: >-
+          {{ ((iptv_settings_managed | combine({'files': iptv_files_managed}) | to_json(sort_keys=true))
+              ~ (iptv_auth_want | default('check mode: no password yet') | to_json(sort_keys=true))
+              ~ iptv_m3u_want) | hash('sha256') }}
+      no_log: true
 
-# --- compose -----------------------------------------------------------------------------------
-- name: IPTV compose project
-  ansible.builtin.include_role:
-    name: compose_project
-  vars:
-    compose_project_dir: "{{ iptv_dir }}"
-    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+    # --- compose -----------------------------------------------------------------------------------
+    - name: IPTV compose project
+      ansible.builtin.include_role:
+        name: compose_project
+      vars:
+        compose_project_dir: "{{ iptv_dir }}"
+        compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
 
-# Not needed when the compose step just (re)created it.
-- name: Start Threadfin again
-  ansible.builtin.command:
-    argv: [docker, start, iptv-threadfin]
-  changed_when: true
-  when: iptv_threadfin_stop.rc | default(1) == 0 and 'threadfin' not in compose_project_plan.up
+  always:
+    - name: State of a Threadfin this run stopped
+      ansible.builtin.command:
+        argv: [docker, inspect, --format, "{{ '{{' }}.State.Running{{ '}}' }}", iptv-threadfin]
+      register: iptv_threadfin_state
+      changed_when: false
+      failed_when: false
+      when: iptv_threadfin_stop.rc | default(1) == 0
+
+    # Idempotent: only a container that is not running (the compose step may already
+    # have recreated and started it).
+    - name: Start Threadfin again
+      ansible.builtin.command:
+        argv: [docker, start, iptv-threadfin]
+      changed_when: true
+      when: iptv_threadfin_stop.rc | default(1) == 0 and iptv_threadfin_state.stdout | default('') != 'true'
 
 - name: The stream helper answers
   ansible.builtin.uri:
