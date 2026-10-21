@@ -1,32 +1,40 @@
 # The three VMs that existed before this repo, adopted with import blocks (imports.tf).
-# Every value mirrors `qm config` on the live box so the plan shows no changes.
+# Adopted to mirror `qm config`, then right-sized (Task 6b: CPU, memory, guest agent,
+# discard, ISO detached, start on boot).
 # VMIDs and MACs are site values (var.site_json); sizes are literals. They are not
 # secrets, only kept out of the repo, so they are unwrapped with nonsensitive(): marked
 # sensitive, every adopted VM would plan a sensitivity-only in-place update.
-
-locals {
-  iso_ubuntu = "local:iso/ubuntu-24.04.3-live-server-amd64.iso"
-}
 
 resource "proxmox_virtual_environment_vm" "frigate" {
   node_name     = var.node_name
   vm_id         = nonsensitive(local.site.hosts.frigate.vmid)
   name          = "frigate"
-  on_boot       = false
+  on_boot       = true
   scsi_hardware = "virtio-scsi-single"
   # Never let the provider reboot or power off a VM to apply a change; restarts are
   # done by hand, one VM at a time.
   reboot_after_update = false
   boot_order          = ["scsi0", "ide2", "net0"]
 
-  cpu {
-    sockets = 2
-    cores   = 2
-    type    = "x86-64-v2-AES"
+  # qemu-guest-agent runs in the guest (ansible/playbooks/guest-agent.yml). The IPs are
+  # site values, so the provider never waits on the agent to report them.
+  agent {
+    enabled = true
+    wait_for_ip {
+      disabled = true
+    }
   }
 
+  cpu {
+    sockets = 1
+    cores   = 2
+    type    = "host"
+  }
+
+  # floating = dedicated keeps the balloon device without ballooning, as on ragnarok.
   memory {
-    dedicated = 4098
+    dedicated = 6144
+    floating  = 6144
   }
 
   disk {
@@ -34,11 +42,13 @@ resource "proxmox_virtual_environment_vm" "frigate" {
     interface    = "scsi0"
     size         = 500
     iothread     = true
+    discard      = "on"
   }
 
+  # The install ISO is detached; the empty drive stays so the boot order is unchanged.
   cdrom {
     interface = "ide2"
-    file_id   = local.iso_ubuntu
+    file_id   = "none"
   }
 
   network_device {
@@ -59,10 +69,6 @@ resource "proxmox_virtual_environment_vm" "frigate" {
 
   lifecycle {
     prevent_destroy = true
-    # The provider reads the CD-ROM back only from the interface already in state
-    # (default ide3), so after an import the ide2 ISO never appears in state and the
-    # block would plan an update forever. Remove this when the ISO is detached (Task 6b).
-    ignore_changes = [cdrom]
   }
 }
 
@@ -70,12 +76,21 @@ resource "proxmox_virtual_environment_vm" "netbird" {
   node_name     = var.node_name
   vm_id         = nonsensitive(local.site.hosts.netbird.vmid)
   name          = "netbird"
-  on_boot       = false
+  on_boot       = true
   scsi_hardware = "virtio-scsi-single"
   # Never let the provider reboot or power off a VM to apply a change; restarts are
   # done by hand, one VM at a time.
   reboot_after_update = false
   boot_order          = ["scsi0", "ide2", "net0"]
+
+  # qemu-guest-agent runs in the guest (ansible/playbooks/guest-agent.yml). The IPs are
+  # site values, so the provider never waits on the agent to report them.
+  agent {
+    enabled = true
+    wait_for_ip {
+      disabled = true
+    }
+  }
 
   cpu {
     sockets = 1
@@ -92,11 +107,13 @@ resource "proxmox_virtual_environment_vm" "netbird" {
     interface    = "scsi0"
     size         = 42
     iothread     = true
+    discard      = "on"
   }
 
+  # The install ISO is detached; the empty drive stays so the boot order is unchanged.
   cdrom {
     interface = "ide2"
-    file_id   = local.iso_ubuntu
+    file_id   = "none"
   }
 
   network_device {
@@ -117,10 +134,6 @@ resource "proxmox_virtual_environment_vm" "netbird" {
 
   lifecycle {
     prevent_destroy = true
-    # The provider reads the CD-ROM back only from the interface already in state
-    # (default ide3), so after an import the ide2 ISO never appears in state and the
-    # block would plan an update forever. Remove this when the ISO is detached (Task 6b).
-    ignore_changes = [cdrom]
   }
 }
 
@@ -129,19 +142,27 @@ resource "proxmox_virtual_environment_vm" "ragnarok" {
   node_name     = var.node_name
   vm_id         = nonsensitive(local.site.hosts.ragnarok.vmid)
   name          = "ragnarok"
-  on_boot       = false
+  on_boot       = true
   scsi_hardware = "virtio-scsi-single"
   # Never let the provider reboot or power off a VM to apply a change; restarts are
   # done by hand, one VM at a time.
   reboot_after_update = false
   boot_order          = ["scsi0", "ide2", "net0"]
 
+  # qemu-guest-agent runs in the guest (ansible/playbooks/guest-agent.yml). The IPs are
+  # site values, so the provider never waits on the agent to report them.
+  agent {
+    enabled = true
+    wait_for_ip {
+      disabled = true
+    }
+  }
+
   cpu {
     sockets = 1
-    cores   = 4
+    cores   = 2
     type    = "host"
-    limit   = 2
-    units   = 50
+    units   = 100
   }
 
   memory {
@@ -154,11 +175,13 @@ resource "proxmox_virtual_environment_vm" "ragnarok" {
     interface    = "scsi0"
     size         = 1024
     iothread     = true
+    discard      = "on"
   }
 
+  # The install ISO is detached; the empty drive stays so the boot order is unchanged.
   cdrom {
     interface = "ide2"
-    file_id   = local.iso_ubuntu
+    file_id   = "none"
   }
 
   network_device {
@@ -179,9 +202,5 @@ resource "proxmox_virtual_environment_vm" "ragnarok" {
 
   lifecycle {
     prevent_destroy = true
-    # The provider reads the CD-ROM back only from the interface already in state
-    # (default ide3), so after an import the ide2 ISO never appears in state and the
-    # block would plan an update forever. Remove this when the ISO is detached (Task 6b).
-    ignore_changes = [cdrom]
   }
 }

@@ -1,0 +1,27 @@
+# Install and enable the QEMU guest agent in the guests. Run this before Terraform
+# enables `agent` on a VM. The service only starts once the VM has restarted with the
+# agent's virtio-serial device, so a stopped service here is expected the first time.
+# To be folded into the guest_base role.
+# Run: cd ansible && ansible-playbook playbooks/guest-agent.yml
+- name: QEMU guest agent
+  hosts: guests
+  gather_facts: false
+  pre_tasks:
+    - name: Resolve the site dict once for this run
+      ansible.builtin.set_fact:
+        site: "{{ site_src }}"
+      run_once: true
+      no_log: true
+      tags: [always]
+  tasks:
+    - name: Install qemu-guest-agent
+      ansible.builtin.apt:
+        name: qemu-guest-agent
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Enable qemu-guest-agent at boot
+      ansible.builtin.systemd_service:
+        name: qemu-guest-agent
+        enabled: true
