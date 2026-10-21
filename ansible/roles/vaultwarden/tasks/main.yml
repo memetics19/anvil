@@ -1,5 +1,6 @@
-# Vaultwarden on this host (see defaults/main.yml): no published port, its own uid,
-# read-only root filesystem, admin token hash from Vault, nightly encrypted backups.
+# Vaultwarden on this host (see defaults/main.yml): published on the VM's address only (or
+# not at all, behind a Caddy on the same host), its own uid, read-only root filesystem,
+# admin token hash from Vault, nightly encrypted backups.
 
 - name: Gateway route and public URL
   ansible.builtin.include_tasks: route.yml
@@ -70,6 +71,31 @@
   no_log: true
   diff: false
   when: vaultwarden_admin_token_hash is defined
+
+# --- image and data ----------------------------------------------------------------------------
+- name: The image (no registry access here)
+  ansible.builtin.include_tasks:
+    file: image.yml
+    apply:
+      tags: [vaultwarden, vaultwarden_image]
+  when: vaultwarden_image_transfer | bool
+  tags: [vaultwarden, vaultwarden_image]
+
+- name: Is there a database
+  ansible.builtin.stat:
+    path: "{{ vaultwarden_dir }}/data/db.sqlite3"
+  register: vaultwarden_db
+
+# A new VM must not start an empty Vaultwarden (it would make its own signing key and an
+# empty database where the migrated or restored data goes).
+- name: The data is in place (or a fresh install is wanted)
+  ansible.builtin.assert:
+    that: vaultwarden_db.stat.exists or vaultwarden_allow_empty_start | bool
+    fail_msg: >-
+      {{ vaultwarden_dir }}/data has no db.sqlite3: copy the data here first (migration or
+      restore, README), or run with -e vaultwarden_allow_empty_start=true for a new, empty
+      Vaultwarden
+    quiet: true
 
 # --- compose ---------------------------------------------------------------------------------
 - name: Is the env file there

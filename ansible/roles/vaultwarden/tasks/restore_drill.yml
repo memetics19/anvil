@@ -157,7 +157,9 @@
           - DISABLE_ADMIN_TOKEN=false
           - --volume
           - "{{ vaultwarden_drill_dir.path }}/vaultwarden:/data"
-          - "{{ vaultwarden_image }}"
+          - --pull
+          - never
+          - "{{ vaultwarden_image_ref }}"
       register: vaultwarden_drill_run
       changed_when: true
 

@@ -1,0 +1,9 @@
+# A VM in the secrets enclave (inventory group enclave): no internet. apt goes through the
+# Proxmox host's apt cache (Debian and Ubuntu archives only, plain HTTP) and time comes from
+# the host's chrony, both on the enclave gateway address (role pve_enclave). Cloud-init's
+# vendor data sets the same on a new VM; this keeps it so (and sets it on the vault VM, which
+# was created before the enclave).
+enclave_guest_gateway: ""
+enclave_guest_aptcache_port: 3142
+enclave_guest_apt_proxy_file: /etc/apt/apt.conf.d/01enclave-proxy
+enclave_guest_timesyncd_file: /etc/systemd/timesyncd.conf.d/enclave.conf

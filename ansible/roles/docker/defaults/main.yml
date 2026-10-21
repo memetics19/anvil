@@ -1,3 +1,10 @@
+# Where Docker comes from: docker_ce (Docker's apt repository, below) or ubuntu (Ubuntu's own
+# docker.io and docker-compose-v2, for VMs without internet that reach only the archive
+# through the apt cache, inventory group_vars/vaultwarden_servers.yml).
+docker_source: docker_ce
+docker_ubuntu_packages:
+  - docker.io
+  - docker-compose-v2
 docker_apt_key_url: https://download.docker.com/linux/ubuntu/gpg
 docker_apt_keyring: /etc/apt/keyrings/docker.asc
 # Pinned so a changed key is refused instead of trusted; update it when Docker rotates the key.

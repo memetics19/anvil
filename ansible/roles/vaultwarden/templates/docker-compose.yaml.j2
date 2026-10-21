@@ -1,10 +1,15 @@
-# Managed by Ansible (role vaultwarden). No published port: Caddy reaches Vaultwarden on
-# the network "web" (vaultwarden_web) and serves it as https://pass.<gateway domain>
-# (websockets, /notifications/hub, on the same port). Runs as its own uid with a read-only
-# root filesystem; everything it writes is under ./data.
+# Managed by Ansible (role vaultwarden). Caddy serves it as https://pass.<gateway domain>
+# (websockets, /notifications/hub, on the same port): published on this VM's address only
+# (the enclave firewall lets only Caddy in), or, with no address, not published and reached
+# on the network "web" (vaultwarden_web) by a Caddy on the same host. Runs as its own uid
+# with a read-only root filesystem; everything it writes is under ./data.
 services:
   vaultwarden:
-    image: {{ vaultwarden_image }}
+    image: {{ vaultwarden_image_ref }}
+{% if vaultwarden_image_transfer | bool %}
+    # Loaded from an export (no registry access here): never pulled.
+    pull_policy: never
+{% endif %}
     container_name: vaultwarden
     restart: unless-stopped
     user: "{{ vaultwarden_uid }}:{{ vaultwarden_uid }}"
@@ -20,6 +25,10 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=16m,uid={{ vaultwarden_uid }},gid={{ vaultwarden_uid }},mode=0700
+{% if vaultwarden_publish_ip | length > 0 %}
+    ports:
+      - "{{ vaultwarden_publish_ip }}:{{ vaultwarden_port }}:{{ vaultwarden_port }}/tcp"
+{% endif %}
     networks:
       - web
     cap_drop:

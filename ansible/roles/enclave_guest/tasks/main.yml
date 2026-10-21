@@ -1,0 +1,43 @@
+- name: The enclave gateway is known
+  ansible.builtin.assert:
+    that: enclave_guest_gateway is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
+    fail_msg: enclave_guest_gateway (site.sdn.enclave.gateway) is not set
+    quiet: true
+
+- name: Apt through the host's apt cache
+  ansible.builtin.copy:
+    content: |
+      // Managed by Ansible (role enclave_guest). No internet: the host's apt cache.
+      Acquire::http::Proxy "http://{{ enclave_guest_gateway }}:{{ enclave_guest_aptcache_port }}";
+    dest: "{{ enclave_guest_apt_proxy_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Timesyncd drop-in directory
+  ansible.builtin.file:
+    path: "{{ enclave_guest_timesyncd_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Time from the host's chrony only (no fallback servers)
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible (role enclave_guest).
+      [Time]
+      NTP={{ enclave_guest_gateway }}
+      FallbackNTP=
+    dest: "{{ enclave_guest_timesyncd_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: enclave_guest_timesyncd
+
+- name: Timesyncd running (restarted for a new server)
+  ansible.builtin.systemd_service:
+    name: systemd-timesyncd
+    enabled: true
+    state: "{{ 'restarted' if enclave_guest_timesyncd is changed else 'started' }}"
+  changed_when: enclave_guest_timesyncd is changed

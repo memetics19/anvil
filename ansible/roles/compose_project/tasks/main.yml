@@ -99,7 +99,47 @@
       {%- elif have[name].hash != want[name] -%}{%- set _ = up.append(name) -%}
       {%- endif -%}
       {%- endfor -%}
-      {{ {'up': up, 'legacy': legacy, 'unknown': unknown, 'orphans': orphans} }}
+      {{ {'up': up, 'legacy': legacy, 'unknown': unknown, 'orphans': orphans, 'existing': have | list} }}
+
+# Some compose versions (Ubuntu's 2.40) label a container with a hash that `config --hash`
+# never reproduces, so a container that matches its file still looks changed. For a
+# running container whose hash differs, compose itself decides (a dry-run up of that
+# service): when it would leave the container running as it is, it is not brought up.
+- name: Ask compose about existing containers whose hash label differs
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-name
+      - "{{ compose_project_name }}"
+      - --project-directory
+      - "{{ compose_project_dir }}"
+      - --file
+      - "{{ '-' if compose_project_write_file | bool else compose_project_file }}"
+      - up
+      - --dry-run
+      - --detach
+      - --no-deps
+      - "{{ item }}"
+    stdin: "{{ compose_project_content if compose_project_write_file | bool else omit }}"
+  loop: "{{ compose_project_plan.up | select('in', compose_project_plan.existing) | list }}"
+  register: compose_project_dryrun
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Leave alone what compose would leave running
+  ansible.builtin.set_fact:
+    compose_project_plan: >-
+      {%- set same = [] -%}
+      {%- for r in compose_project_dryrun.results | default([]) -%}
+      {%- set o = (r.stdout | default('')) ~ '\n' ~ (r.stderr | default('')) -%}
+      {%- if r.rc | default(1) == 0 and o is search('Container \\S+\\s+Running')
+            and o is not search('Recreat|Creat|Start') -%}
+      {%- set _ = same.append(r.item) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ compose_project_plan | combine({'up': compose_project_plan.up | reject('in', same) | list}) }}
 
 - name: Compose services to bring up
   ansible.builtin.debug:

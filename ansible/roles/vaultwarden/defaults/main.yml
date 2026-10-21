@@ -1,13 +1,34 @@
-# Vaultwarden (Bitwarden-compatible password manager) on the apps VM, compose project
-# "vaultwarden" in /opt/vaultwarden, served by the service gateway as
-# https://<vaultwarden_route>.<gateway domain> (the site.services entry named pass). Nothing
-# is published on a host address: Caddy reaches it over the project's network
-# vaultwarden_web (role caddy, caddy_container_networks).
+# Vaultwarden (Bitwarden-compatible password manager), compose project "vaultwarden" in
+# /opt/vaultwarden, served by the service gateway (Caddy on apps) as
+# https://<vaultwarden_route>.<gateway domain> (the site.services entry named pass). It runs
+# on the vaultwarden VM in the secrets enclave (no internet): published on the VM's address
+# only (vaultwarden_publish_ip), where the enclave firewall lets only Caddy in, and its
+# image comes through ragnarok (vaultwarden_image_transfer). On the apps VM, where it ran
+# first, it was served over a Docker network Caddy shares (vaultwarden_publish_ip empty);
+# that copy is retired (tasks/retired.yml).
 # Accounts: sign-ups are closed; the admin page (/admin, token from Vault) invites an email,
 # which can then register directly (no SMTP: an invited email needs no mail to sign up).
 vaultwarden_dir: /opt/vaultwarden
 # Pinned by tag and digest (2026-10-21; 1.37.4 was released 2026-10-05).
 vaultwarden_image: vaultwarden/server:1.37.4@sha256:efb3cde962015fcc036b2ea625242248611943b27212ebf4392841fb30fad055
+
+# The image is pulled by digest on vaultwarden_image_host (it has internet), exported,
+# copied through the controller and loaded here (the caddy image pattern). Loaded images
+# carry no registry digest, so it is used here by tag (vaultwarden_image_local, never
+# pulled) and checked against the pulled image's layer list.
+vaultwarden_image_transfer: false
+vaultwarden_image_host: ragnarok
+vaultwarden_image_local: "{{ vaultwarden_image.split('@')[0] }}"
+vaultwarden_image_ref: "{{ vaultwarden_image_local if vaultwarden_image_transfer | bool else vaultwarden_image }}"
+
+# Empty: no published port (Caddy on the same host reaches it over the network "web").
+# An address: published as <address>:<vaultwarden_port>, and the gateway entry is
+# {host: hosts.<this host>.ip} instead of {container: vaultwarden}.
+vaultwarden_publish_ip: ""
+
+# A new host with no database refuses to start an empty Vaultwarden (the data is migrated
+# or restored first); set true for a deliberate fresh install.
+vaultwarden_allow_empty_start: false
 
 # Its uid/gid (the container runs as this user, and so does the backup job); not 1000 (the
 # VM's first user), Pi-hole's or Homepage's.
@@ -41,7 +62,8 @@ vaultwarden_settings:
 # The hash is checked against the token on every run (recomputed with its own salt) and
 # made again when they do not match (a token changed in Vault).
 vaultwarden_vault_mount: kv
-vaultwarden_vault_path: "homelab/{{ inventory_hostname }}/vaultwarden"
+# The path keeps the name of the VM it was first set up on.
+vaultwarden_vault_path: homelab/apps/vaultwarden
 # Argon2id cost of the hash (the OWASP preset of `vaultwarden hash`: 19 MiB, 2 passes, 1 lane).
 vaultwarden_argon2: {m: 19456, t: 2, p: 1}
 
@@ -79,11 +101,11 @@ vaultwarden_backup_calendar: "*-*-* 03:30:00"
 vaultwarden_backup_etc: /etc/vaultwarden-backup
 vaultwarden_backup_packages: [sqlite3, age, rclone, argon2]
 # The RGW user's keys (made by `make ceph`, ceph_single tasks/vaultwarden.yml).
-vaultwarden_backup_vault_path: "homelab/{{ inventory_hostname }}/vaultwarden-backup"
+vaultwarden_backup_vault_path: homelab/apps/vaultwarden-backup
 vaultwarden_backup_endpoint: "http://{{ site.pve.ip }}:7480"
 # The public key the tfstate backups use (Keychain backup-age-recipient on the controller,
 # scripts/backup-key-init.sh): only the operator's identity can read a backup, and the
-# apps VM holds nothing that can decrypt one.
+# VM holds nothing that can decrypt one.
 vaultwarden_backup_age_recipient: >-
   {{ lookup('ansible.builtin.pipe',
             'security find-generic-password -s homelab -a backup-age-recipient -w 2>/dev/null || true') }}

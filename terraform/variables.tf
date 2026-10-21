@@ -59,10 +59,18 @@ variable "site_json" {
     )
     error_message = "site.sdn.enclave needs subnet (a.b.c.d/n) and gateway (a.b.c.d): the secrets enclave's network (pve_enclave role)."
   }
+
+  validation {
+    condition = (
+      can(regex("^[0-9.]+$", jsondecode(var.site_json).hosts.vaultwarden.ip)) &&
+      can(regex("^[0-9]+$", jsonencode(jsondecode(var.site_json).hosts.vaultwarden.vmid)))
+    )
+    error_message = "site.hosts.vaultwarden needs ip (a.b.c.d, in site.sdn.enclave.subnet) and vmid (a number)."
+  }
 }
 
 variable "ssh_public_key_path" {
-  description = "Public key installed for the ubuntu user on the cloud-init VMs (vault, apps; read at plan time, never committed)."
+  description = "Public key installed for the ubuntu user on the cloud-init VMs (vault, apps, vaultwarden; read at plan time, never committed)."
   type        = string
   default     = "~/.ssh/id_ed25519.pub"
 }

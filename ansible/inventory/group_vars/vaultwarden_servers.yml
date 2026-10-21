@@ -1,0 +1,12 @@
+ansible_user: ubuntu
+ansible_become: true
+ansible_become_password: "{{ lookup('env', 'ANSIBLE_BECOME_PASSWORD') }}"
+# cloud-init wrote this VM's netplan; guest_base leaves it alone.
+guest_base_manage_netplan: false
+# No internet: Docker from Ubuntu's archive (through the apt cache), not Docker's own
+# repository (HTTPS, which the cache does not pass).
+docker_source: ubuntu
+# Role vaultwarden: published on this VM's enclave address (only Caddy may connect), the
+# image copied in through ragnarok.
+vaultwarden_publish_ip: "{{ site.hosts[inventory_hostname].ip }}"
+vaultwarden_image_transfer: true

@@ -39,7 +39,7 @@ run() {
   vars_files:
     - $PWD/ansible/inventory/group_vars/all/gateway.yml
   vars:
-    inventory_hostname: apps
+    inventory_hostname: ${VW_HOST:-apps}
     site:
       domain: example.com
       gateway: {subdomain: internal}
@@ -47,6 +47,7 @@ run() {
       pve: {ip: 192.0.2.10}
       hosts:
         apps: {ip: 192.0.2.121, home_ip: 198.51.100.249}
+        vaultwarden: {ip: 198.51.100.21}
       dns: {acme_resolvers: [198.51.100.53]}
       services: $1
     caddy_upstream_cas: {vault: /nonexistent/vault-ca.pem}
@@ -56,6 +57,7 @@ run() {
     vaultwarden_secrets: $sec
     vaultwarden_vault_keys: "{{ vaultwarden_secrets.keys() | list }}"
     $dirvar
+    ${VW_EXTRA:-}
   tasks:
     - name: Gateway routes
       ansible.builtin.include_role:
@@ -97,6 +99,8 @@ run() {
         - {role: caddy, src: Caddyfile}
         - {role: caddy, src: docker-compose.yaml, dest: caddy-compose.yaml}
         - {role: homepage, src: services.yaml}
+      # Caddy's compose file is the apps VM's (its two addresses).
+      when: item.dest | default('') != 'caddy-compose.yaml' or inventory_hostname == 'apps'
 PLAY
   rm -f "$out"/*
   ANSIBLE_ROLES_PATH=ansible/roles ANSIBLE_LOCALHOST_WARNING=false ANSIBLE_INVENTORY_UNPARSED_WARNING=false \
@@ -164,6 +168,28 @@ reject "pass on the root port"   '[{name: pass, container: vaultwarden, port: 80
 reject "pass without websocket"  '[{name: pass, container: vaultwarden, port: 8080, scheme: http}]'
 reject "pass disabled"           '[{name: pass, container: vaultwarden, port: 8080, scheme: http, websocket: true, enabled: false}]'
 reject "pass on a host address"  '[{name: pass, host: hosts.apps.ip, port: 8080, scheme: http, websocket: true}]'
+
+# On its own VM in the secrets enclave: published on the VM's address only, the image
+# loaded by tag (never pulled), the gateway entry a host address.
+encl='[
+  {name: dns, container: pihole, port: 80, scheme: http, home: /admin/},
+  {name: pass, host: hosts.vaultwarden.ip, port: 8080, scheme: http, websocket: true}]'
+xv='vaultwarden_publish_ip: 198.51.100.21
+    vaultwarden_image_transfer: true'
+VW_HOST=vaultwarden VW_EXTRA=$xv run "$encl"
+if [ "$?" -eq 0 ]; then ok "enclave: renders"; else bad_ "enclave: renders"; tail -20 "$tmp/log"; fi
+c="$out/docker-compose.yaml"
+check "enclave: published on the VM's address only" '[ "$(grep -A1 "^    ports:" "$c" | tail -1)" = "      - \"198.51.100.21:8080:8080/tcp\"" ] && [ "$(grep -c ":8080/tcp" "$c")" = 1 ]'
+check "enclave: image by tag, never pulled"   'grep -qx "    image: vaultwarden/server:1.37.4" "$c" && grep -qx "    pull_policy: never" "$c"'
+check "enclave: Caddy proxies to the VM"      'grep -q "reverse_proxy http://198.51.100.21:8080" "$out/Caddyfile"'
+s=$(grep -v '^#' "$out/services.yaml" | jq -c .) || s='[]'
+check "enclave: dashboard entry without container status" '[ "$(jq -c ".[] | select(has(\"Security\")) | .Security[0].Vaultwarden | has(\"container\")" <<<"$s")" = "false" ]'
+VW_HOST=vaultwarden VW_EXTRA=$xv run "$good"; rc=$?
+if [ "$rc" -ne 0 ] && grep -q 'site.services needs the enabled entry' "$tmp/log"; then ok "enclave: rejects a container entry"
+else bad_ "enclave: rejects a container entry"; fi
+VW_HOST=vaultwarden VW_EXTRA=$xv run '[{name: pass, host: hosts.apps.ip, port: 8080, scheme: http, websocket: true}]'; rc=$?
+if [ "$rc" -ne 0 ] && grep -q 'site.services needs the enabled entry' "$tmp/log"; then ok "enclave: rejects another host's address"
+else bad_ "enclave: rejects another host's address"; fi
 
 # SMTP from Vault: Gmail defaults with only the pair; every setting overridable (Resend).
 tfa="EMAIL_2FA_ENFORCE_ON_VERIFIED_INVITE='true' EMAIL_ATTEMPTS_LIMIT='3' EMAIL_EXPIRATION_TIME='600'"

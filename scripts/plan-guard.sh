@@ -8,7 +8,7 @@
 #   - changes which storage backs a protected VM's disks (interface, datastore, size,
 #     path, format or source image), or makes them unknown. Protected: any
 #     proxmox_virtual_environment_vm named ragnarok (its disk holds
-#     the media library), vault (it holds secrets) or apps (Vaultwarden's data), at any
+#     the media library), vault (it holds secrets), apps or vaultwarden (Vaultwarden's data), at any
 #     module path. Tuning options (discard, iothread, cache, ...)
 #     may change. A pure create (new box, rebuild) is allowed; delete/replace never are.
 # Prints the offending resource addresses only (no attribute values).
@@ -16,7 +16,7 @@ set -euo pipefail
 
 plan=${1:?usage: plan-guard.sh <plan.json>}
 protected_type=proxmox_virtual_environment_vm
-protected_names='["ragnarok", "vault", "apps"]'
+protected_names='["ragnarok", "vault", "apps", "vaultwarden"]'
 
 # Read once: the argument may be a pipe, e.g. <(terraform show -json plan).
 json=$(cat "$plan" 2>/dev/null) || { echo "plan-guard: cannot read $plan" >&2; exit 1; }

@@ -6,16 +6,23 @@
     name: caddy
     tasks_from: services.yml
 
-- name: The password manager has its gateway entry (a container upstream)
+# Published on an address (its own VM): {host: hosts.<this host>.ip}. Not published (on the
+# gateway's VM): {container: vaultwarden}.
+- name: The password manager has its gateway entry
   ansible.builtin.assert:
     that:
       - vaultwarden_self_route | length == 1
-      - vaultwarden_self_route[0].container | default('') == 'vaultwarden'
+      - >-
+        (vaultwarden_self_route[0].host | default('') == 'hosts.' ~ inventory_hostname ~ '.ip'
+         and vaultwarden_self_route[0].container is not defined)
+        if vaultwarden_publish_ip | length > 0
+        else vaultwarden_self_route[0].container | default('') == 'vaultwarden'
       - vaultwarden_self_route[0].port | int == vaultwarden_port | int
       - vaultwarden_self_route[0].scheme == 'http'
       - vaultwarden_self_route[0].websocket | default(false) | bool
     fail_msg: >-
-      site.services needs the enabled entry {name: {{ vaultwarden_route }}, container: vaultwarden,
+      site.services needs the enabled entry {name: {{ vaultwarden_route }},
+      {{ ('host: hosts.' ~ inventory_hostname ~ '.ip') if vaultwarden_publish_ip | length > 0 else 'container: vaultwarden' }},
       port: {{ vaultwarden_port }}, scheme: http, websocket: true}
     quiet: true
   vars:

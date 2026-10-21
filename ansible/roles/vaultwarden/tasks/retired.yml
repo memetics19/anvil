@@ -1,0 +1,29 @@
+# On a host Vaultwarden has moved away from (the apps VM: it now runs on the vaultwarden VM
+# in the secrets enclave). Its nightly backup is switched off, so a stopped copy is never
+# backed up over the live one's objects (both keep only the newest in one bucket). The container and its
+# data are left as they are until the operator removes them (README, Vaultwarden).
+- name: Is the old backup timer here
+  ansible.builtin.stat:
+    path: /etc/systemd/system/vaultwarden-backup.timer
+  register: vaultwarden_retired_timer
+
+- name: The old copy's backup timer is off
+  ansible.builtin.systemd_service:
+    name: vaultwarden-backup.timer
+    enabled: false
+    state: stopped
+  when: vaultwarden_retired_timer.stat.exists
+
+- name: State of the old container (left alone)
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{' }}.State.Status{{ '}}' }}", vaultwarden]
+  register: vaultwarden_retired_state
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: The old copy
+  ansible.builtin.debug:
+    msg: >-
+      old Vaultwarden container here: {{ vaultwarden_retired_state.stdout | trim | default('absent', true) }}
+      (moved to the vaultwarden VM; remove /opt/vaultwarden here only after checking the new one)

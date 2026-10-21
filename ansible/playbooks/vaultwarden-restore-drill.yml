@@ -1,9 +1,9 @@
 # Vaultwarden restore drill: the newest backup (copied to ~/homelab-backups by make backup)
-# is restored into a temporary container on the apps VM (no network, no gateway route, no
+# is restored into a temporary container on the vaultwarden VM (no network, no gateway route, no
 # admin page), checked (/alive 200, users equal to the live database) and removed again.
 # Run: make vaultwarden-drill
 - name: Vaultwarden restore drill
-  hosts: apps_servers
+  hosts: vaultwarden_servers
   pre_tasks:
     - name: Resolve the site dict once for this run
       ansible.builtin.import_tasks: tasks/site.yml

@@ -6,8 +6,19 @@
 # netbird_peer, redis, ntfy, pulse, pihole, homepage, vaultwarden, caddy, firewall. The tag homepage alone
 # also runs the pieces other roles keep for the dashboard (ARR API keys into Vault on
 # ragnarok, the Frigate viewer login, Pi-hole's app password).
+# The secrets enclave's VMs have no internet: apt and time through the Proxmox host first.
+- name: Enclave guests (apt cache, time)
+  hosts: enclave
+  pre_tasks:
+    - name: Resolve the site dict once for this run
+      ansible.builtin.import_tasks: tasks/site.yml
+      tags: [always]
+  roles:
+    - role: enclave_guest
+      tags: [base, enclave]
+
 - name: Guest base
-  hosts: guests:vault_servers:apps_servers
+  hosts: guests:vault_servers:apps_servers:vaultwarden_servers
   pre_tasks:
     - name: Resolve the site dict once for this run
       ansible.builtin.import_tasks: tasks/site.yml
@@ -82,8 +93,7 @@
       tags: [always]
 
 # Workloads on the apps VM (shared, small always-on services): Pi-hole with Unbound, DNS
-# for the home and lab networks, the Homepage dashboard, Vaultwarden (with its nightly
-# backup to the Ceph S3 gateway) and the service gateway (Caddy:
+# for the home and lab networks, the Homepage dashboard and the service gateway (Caddy:
 # https://<name>.<gateway domain> for every entry of site.services; its image is built on
 # ragnarok). No Cloudflare tunnel here.
 - name: Apps workloads
@@ -115,12 +125,32 @@
     # After pihole (its network and app password); before caddy, which joins its network.
     - role: homepage
       tags: [homepage]
-    # Before caddy, which joins its network.
-    - role: vaultwarden
-      tags: [vaultwarden]
     # After pihole: it joins Pi-hole's network and takes port 80 from its web UI.
     - role: caddy
       tags: [caddy]
     # After the services it lets in, so its checks can reach them.
     - role: host_firewall
       tags: [firewall]
+  post_tasks:
+    # Vaultwarden moved to its own VM in the secrets enclave (play below): the copy here is
+    # stopped and kept until the operator removes it; its backup timer is off.
+    - name: Retired Vaultwarden copy
+      ansible.builtin.include_role:
+        name: vaultwarden
+        tasks_from: retired.yml
+        apply:
+          tags: [vaultwarden]
+      tags: [vaultwarden]
+
+# Vaultwarden on its own VM in the secrets enclave (no internet): Docker from Ubuntu's
+# archive through the apt cache, the image through ragnarok, published on the VM's address
+# where the enclave firewall lets only Caddy (apps) in; nightly encrypted backups to the
+# Ceph S3 gateway.
+- name: Vaultwarden
+  hosts: vaultwarden_servers
+  force_handlers: true
+  roles:
+    - role: docker
+      tags: [docker]
+    - role: vaultwarden
+      tags: [vaultwarden]

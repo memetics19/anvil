@@ -1,0 +1,127 @@
+# The image on a host without internet (vaultwarden_image_transfer): pulled by digest on
+# vaultwarden_image_host, exported, copied through the controller and loaded here as
+# vaultwarden_image_local. Nothing happens when that tag is here with the pulled image's
+# layers. The image host keeps its copy; the exports are removed.
+- name: Is the pinned image on the image host
+  ansible.builtin.command:
+    argv: [docker, image, inspect, --format, "{{ '{{' }}.Id{{ '}}' }}", "{{ vaultwarden_image }}"]
+  delegate_to: "{{ vaultwarden_image_host }}"
+  register: vaultwarden_image_there
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Pull the pinned image on the image host (by digest)
+  ansible.builtin.command:
+    argv: [docker, image, pull, --quiet, "{{ vaultwarden_image }}"]
+  delegate_to: "{{ vaultwarden_image_host }}"
+  changed_when: true
+  check_mode: false
+  when: vaultwarden_image_there.rc != 0
+
+# The layer list (uncompressed layer digests) is the same in every image store and is
+# checked by docker load against the image's config: equal lists mean the same image.
+- name: Layers of the pinned image
+  ansible.builtin.command:
+    argv: [docker, image, inspect, --format, "{{ '{{' }}json .RootFS.Layers{{ '}}' }}", "{{ vaultwarden_image }}"]
+  delegate_to: "{{ vaultwarden_image_host }}"
+  register: vaultwarden_image_layers
+  changed_when: false
+  check_mode: false
+
+- name: Layers of the image loaded here
+  ansible.builtin.command:
+    argv: [docker, image, inspect, --format, "{{ '{{' }}json .RootFS.Layers{{ '}}' }}", "{{ vaultwarden_image_local }}"]
+  register: vaultwarden_image_here
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Image to copy and load
+  ansible.builtin.debug:
+    msg: "copy {{ vaultwarden_image }} from {{ vaultwarden_image_host }} and load it as {{ vaultwarden_image_local }}"
+  changed_when: true
+  when: vaultwarden_image_here.stdout | trim != vaultwarden_image_layers.stdout | trim and ansible_check_mode
+
+- name: Copy and load the image
+  when: vaultwarden_image_here.stdout | trim != vaultwarden_image_layers.stdout | trim and not ansible_check_mode
+  block:
+    - name: Export directory on the image host
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: vaultwarden-image.
+      delegate_to: "{{ vaultwarden_image_host }}"
+      register: vaultwarden_image_src
+
+    - name: Export the image under its tag
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          docker image tag {{ vaultwarden_image | quote }} {{ vaultwarden_image_local | quote }} &&
+          docker image save {{ vaultwarden_image_local | quote }} | gzip -1 > {{ (vaultwarden_image_src.path ~ '/image.tar.gz') | quote }}
+        executable: /bin/bash
+      delegate_to: "{{ vaultwarden_image_host }}"
+      changed_when: true
+
+    - name: Controller scratch directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: vaultwarden-image.
+      delegate_to: localhost
+      become: false
+      register: vaultwarden_image_tmp
+
+    - name: Fetch the image to the controller
+      ansible.builtin.fetch:
+        src: "{{ vaultwarden_image_src.path }}/image.tar.gz"
+        dest: "{{ vaultwarden_image_tmp.path }}/image.tar.gz"
+        flat: true
+      delegate_to: "{{ vaultwarden_image_host }}"
+
+    - name: Project directory (the export lands here)
+      ansible.builtin.file:
+        path: "{{ vaultwarden_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Copy the image to this host
+      ansible.builtin.copy:
+        src: "{{ vaultwarden_image_tmp.path }}/image.tar.gz"
+        dest: "{{ vaultwarden_dir }}/image.tar.gz"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Load the image
+      ansible.builtin.command:
+        argv: [docker, image, load, --input, "{{ vaultwarden_dir }}/image.tar.gz"]
+      changed_when: true
+
+    - name: The loaded image is the pinned one (same layers)
+      ansible.builtin.command:
+        argv: [docker, image, inspect, --format, "{{ '{{' }}json .RootFS.Layers{{ '}}' }}", "{{ vaultwarden_image_local }}"]
+      register: vaultwarden_image_loaded
+      changed_when: false
+      failed_when: vaultwarden_image_loaded.stdout | trim != vaultwarden_image_layers.stdout | trim
+  always:
+    - name: Remove the export on this host
+      ansible.builtin.file:
+        path: "{{ vaultwarden_dir }}/image.tar.gz"
+        state: absent
+
+    - name: Remove the export on the image host
+      ansible.builtin.file:
+        path: "{{ vaultwarden_image_src.path }}"
+        state: absent
+      delegate_to: "{{ vaultwarden_image_host }}"
+      when: vaultwarden_image_src.path is defined
+
+    - name: Remove the controller copy
+      ansible.builtin.file:
+        path: "{{ vaultwarden_image_tmp.path }}"
+        state: absent
+      delegate_to: localhost
+      become: false
+      when: vaultwarden_image_tmp.path is defined

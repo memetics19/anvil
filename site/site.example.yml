@@ -20,6 +20,8 @@ site:
     netbird: {ip: 192.0.2.115, vmid: 9002, mac: "02:00:00:00:00:02"}
     ragnarok: {ip: 192.0.2.119, vmid: 9003, mac: "02:00:00:00:00:03"}
     vault: {ip: 192.0.2.120, vmid: 9004}
+    # In the secrets enclave (sdn.enclave.subnet, Terraform vm_vaultwarden.tf).
+    vaultwarden: {ip: 203.0.113.21, vmid: 9006}
     # Two NICs: ip/mac on the lab network (default route), home_ip/home_mac on the home
     # network (pve.uplink_ip's /uplink_prefix, no gateway). Reserve home_ip for home_mac in
     # the router's DHCP. dns_subnet: the Pi-hole compose network, RFC 1918, /16../28, not
@@ -34,6 +36,14 @@ site:
       home_mac: "02:00:00:00:00:06"
       dns_subnet: 172.31.255.0/24
       dns_unbound_ip: 172.31.255.53
+  # The secrets enclave (Terraform sdn.tf, roles pve_enclave and pve_segments): a vnet with
+  # no physical port; the Proxmox host is its gateway and does no NAT for it.
+  sdn:
+    enclave: {subnet: 203.0.113.0/24, gateway: 203.0.113.1}
+  # Operators (SSH and Vault's API into the enclave): the lab network, the VPN range and the
+  # operator's home Wi-Fi address (reserve it in the router's DHCP). Lab VMs that run
+  # workloads are excluded by the pve_enclave role.
+  admin_sources: [192.0.2.0/24, 198.51.100.192/26, 198.51.100.51/32]
   # Addresses the frigate stack's config refers to (frigate_stack role).
   frigate_stack:
     genai_ollama_ip: 192.0.2.127
@@ -65,4 +75,4 @@ site:
     - {name: qbit, host: hosts.ragnarok.ip, port: 8080, scheme: http, host_header: upstream}
     - {name: dns, container: pihole, port: 80, scheme: http, home: /admin/}
     - {name: home, container: homepage, port: 3000, scheme: http}
-    - {name: pass, container: vaultwarden, port: 8080, scheme: http, websocket: true}
+    - {name: pass, host: hosts.vaultwarden.ip, port: 8080, scheme: http, websocket: true}
