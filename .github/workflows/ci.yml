@@ -42,6 +42,8 @@ jobs:
         run: tests/test_pihole_records.sh
       - name: Service gateway test
         run: tests/test_gateway.sh
+      - name: Homepage dashboard test
+        run: tests/test_homepage.sh
       - name: Network rollback test
         run: tests/test_net_rollback.sh
       - name: Netplan rollback test

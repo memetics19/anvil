@@ -293,3 +293,8 @@
     name: nginx
     enabled: true
     state: started
+
+# --- dashboard login -------------------------------------------------------------------------
+- name: Viewer login for the Homepage widget
+  ansible.builtin.import_tasks: homepage_user.yml
+  tags: [homepage]

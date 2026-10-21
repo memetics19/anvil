@@ -24,7 +24,7 @@ Work in progress. See [Roadmap](#roadmap).
 | `netbird`  | NetBird routing peer, Redis, ntfy, pulse, cloudflared         |
 | `ragnarok` | ARR stack, IPTV, Filestash (S3 browser), cloudflared          |
 | `vault`    | HashiCorp Vault (planned)                                     |
-| `apps`     | Pi-hole with Unbound (home and lab DNS), service gateway (Caddy) |
+| `apps`     | Pi-hole with Unbound (home and lab DNS), service gateway (Caddy), Homepage dashboard |
 
 ## Requirements
 
@@ -302,6 +302,46 @@ network now, and the self-hosted one once it exists.
    filtering too), or set match domains `lan.<domain>` and `<domain>` for local names and
    the gateway's names only. Leave
    "Enabled" on and save. Peers pick it up within a minute; check with `netbird status -d`.
+
+### Homepage dashboard (private)
+
+`https://home.<domain>` (the `home` entry of `site.services`) is a
+[Homepage](https://gethomepage.dev) dashboard on `apps` (`homepage` role, compose project
+`/opt/homepage`) with a link and, where it has one, a live widget for every enabled
+gateway service.
+
+- **Generated from `site.services`.** Groups: Infrastructure (pve, ceph, vault, dns,
+  idrac), Media (sonarr, radarr, prowlarr, jackett, qbit, files, tv, threadfin), Home
+  (frigate, gotify, ntfy, pulse), later Monitoring (grafana) and Security (pass, netbird);
+  disabled entries are left out. Title, group, icon, description and widget per name come
+  from `homepage_catalog` in the role defaults; an entry in `site.services` may override
+  them with the same optional fields (`widget: none` turns a widget off). The files hold
+  no secret: widget keys are `{{HOMEPAGE_VAR_*}}` placeholders that Homepage fills from
+  `/opt/homepage/homepage.env` (mode 600, values from Vault). `tests/test_homepage.sh`
+  covers the rules.
+- **Widgets:** Proxmox (read-only token), Ceph (health, OSDs, space, from the Proxmox
+  API with the same token: Homepage has no Ceph widget and the Ceph dashboard API needs a
+  session login), Pi-hole (an application password, not the web password), Sonarr, Radarr,
+  Prowlarr (their API keys), qBittorrent (no login), Frigate (a viewer login) and the
+  container status of `apps` services that are containers (Pi-hole). Each run checks
+  every widget through Homepage's own API and fails on an error.
+- **Credentials** (docs/secrets.md), each made by the role that owns the app and checked on
+  every run: `make host ARGS="--tags homepage"` (Proxmox user `homepage@pve`, no password,
+  and its privilege-separated token, both PVEAuditor), `make vm HOST=ragnarok ARGS="--tags
+  homepage"` (API keys read from the apps' `config.xml`; nothing on ragnarok changes),
+  `make vm HOST=frigate ARGS="--tags homepage"` (Frigate user `homepage`, role viewer) and
+  `make vm HOST=apps` (Pi-hole application password, set live). On a new site run those
+  before `make vm HOST=apps`.
+- **Hardening:** pinned image (tag and digest); no published port (Caddy reaches it on
+  the project network `homepage_web`); only `home.<domain>` is an allowed Host; runs as its
+  own uid with a read-only config directory; memory cap 192 MB. Container status goes
+  through a Docker socket proxy (pinned) on an internal network only Homepage shares,
+  whose rules allow only `GET /containers/json` and `GET /containers/<id>/stats`: no
+  inspect (container environments hold secrets), logs, exec or writes. Containers on
+  other VMs show no status: a socket proxy there would listen on the lab network, where
+  Docker-published ports bypass ufw.
+- Homepage has no login of its own here; like the other gateway names it is reachable
+  only from the home and lab networks and the VPN.
 
 ## IPTV
 

@@ -3,7 +3,9 @@
 # node_exporter (group node_exporter in the inventory).
 # Run: make vms ARGS="--check --diff"   or one VM: make vm HOST=frigate
 # Tags: base, docker, cloudflared, node_exporter, frigate, arr, iptv_epg, filestash, iptv,
-# netbird_peer, redis, ntfy, pulse, pihole, caddy, firewall.
+# netbird_peer, redis, ntfy, pulse, pihole, homepage, caddy, firewall. The tag homepage alone
+# also runs the pieces other roles keep for the dashboard (ARR API keys into Vault on
+# ragnarok, the Frigate viewer login, Pi-hole's app password).
 - name: Guest base
   hosts: guests:vault_servers:apps_servers
   pre_tasks:
@@ -80,9 +82,9 @@
       tags: [always]
 
 # Workloads on the apps VM (shared, small always-on services): Pi-hole with Unbound, DNS
-# for the home and lab networks, and the service gateway (Caddy: https://<name>.<domain>
-# for every entry of site.services; its image is built on ragnarok). No Cloudflare tunnel
-# here.
+# for the home and lab networks, the Homepage dashboard and the service gateway (Caddy:
+# https://<name>.<domain> for every entry of site.services; its image is built on
+# ragnarok). No Cloudflare tunnel here.
 - name: Apps workloads
   hosts: apps_servers
   force_handlers: true
@@ -96,11 +98,22 @@
         apply:
           tags: [always]
       tags: [always]
+
+    - name: Check the dashboard fields of site.services
+      ansible.builtin.include_role:
+        name: homepage
+        tasks_from: entries.yml
+        apply:
+          tags: [always]
+      tags: [always]
   roles:
     - role: docker
       tags: [docker]
     - role: pihole
       tags: [pihole]
+    # After pihole (its network and app password); before caddy, which joins its network.
+    - role: homepage
+      tags: [homepage]
     # After pihole: it joins Pi-hole's network and takes port 80 from its web UI.
     - role: caddy
       tags: [caddy]

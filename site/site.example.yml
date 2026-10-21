@@ -51,10 +51,14 @@ site:
   # https://<name>.<domain> by Caddy on the apps VM, and Pi-hole answers <name>.<domain>
   # with the apps home address. `host` is a dotted path into this dict (or `container`, a
   # container on a network Caddy shares). Field reference: ansible/roles/caddy/defaults/main.yml.
+  # The Homepage dashboard (role homepage) lists every enabled entry except its own (home);
+  # optional fields title, group, icon, description and widget override its catalog
+  # (ansible/roles/homepage/defaults/main.yml; `widget: none` turns a widget off).
   services:
     - {name: pve, host: pve.ip, port: 8006, scheme: https, insecure_upstream: true, websocket: true}
     - {name: vault, host: hosts.vault.ip, port: 8200, scheme: https, upstream_ca: vault}
-    - {name: tv, host: hosts.ragnarok.ip, port: 34401, scheme: http, stream: true}
+    - {name: tv, host: hosts.ragnarok.ip, port: 34401, scheme: http, stream: true, description: Live TV}
     - {name: qbit, host: hosts.ragnarok.ip, port: 8080, scheme: http, host_header: upstream}
     - {name: dns, container: pihole, port: 80, scheme: http, home: /admin/}
+    - {name: home, container: homepage, port: 3000, scheme: http}
     - {name: pass, container: vaultwarden, port: 80, scheme: http, websocket: true, enabled: false}

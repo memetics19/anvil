@@ -38,6 +38,10 @@ a file). Each write is checked by reading the SHA-256 digests back (`scripts/vau
 | `kv/homelab/ragnarok/filestash` | `admin_password` | `make vm HOST=ragnarok` (filestash role, `openssl rand`) | Filestash login (user `admin`) and admin console; stored as a bcrypt hash in Filestash's config |
 | `kv/homelab/ragnarok/threadfin` | `admin_password` | `make vm HOST=ragnarok` (iptv role, `openssl rand`) | Threadfin web UI login (user `admin`); stored as Threadfin's HMAC hash in its `authentication.json` |
 | `kv/homelab/apps/pihole` | `web_password` | `make vm HOST=apps` (pihole role, `openssl rand`) | Pi-hole web UI and API login; passed to the container in `/opt/pihole/pihole.env` (mode 600) |
+| `kv/homelab/apps/pihole` | `app_password` | `make vm HOST=apps` (pihole role: Pi-hole's `/api/auth/app`, hash set live) | Pi-hole application password for the Homepage widget |
+| `kv/homelab/pve/homepage` | `token_secret` | `make host ARGS="--tags homepage"` (pve_host role, `pveum user token add`) | Read-only Proxmox API token `homepage@pve!homepage` (PVEAuditor, privilege-separated) for the Homepage widgets |
+| `kv/homelab/ragnarok/arr` | `sonarr_api_key`, `radarr_api_key`, `prowlarr_api_key` | `make vm HOST=ragnarok ARGS="--tags homepage"` (arr_stack role: read from each app's `config.xml`, compared by SHA-256) | Homepage widgets; the apps keep their own copy |
+| `kv/homelab/frigate/frigate` | `homepage_password` | `make vm HOST=frigate ARGS="--tags homepage"` (frigate_stack role, `openssl rand`, set through Frigate's API) | Frigate login `homepage` (role viewer) for the Homepage widget |
 
 ## Pending (user)
 
@@ -52,6 +56,7 @@ Setup keys cannot be read back from an enrolled client, so these are new keys, w
 ## Not imported
 
 - No secret in config: frigate (mosquitto, gotify, nginx, homeassistant), netbird (ntfy,
-  redis), ragnarok (ARR stack, qbittorrent, jackett, flaresolverr, iptv-epg).
+  redis), ragnarok (qbittorrent, jackett, flaresolverr, iptv-epg). The ARR API keys are
+  copied for the dashboard only (above).
 - App data (user databases, app config directories) stays with each app.
 - NetBird client state: a rebuilt host enrols again with a setup key.

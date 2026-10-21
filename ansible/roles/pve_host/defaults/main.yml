@@ -33,3 +33,13 @@ pve_host_api_privs:
   - VM.Migrate
   - VM.Monitor
   - VM.PowerMgmt
+
+# Read-only API token for the Homepage dashboard (role homepage): user homepage@pve (no
+# password, so no login) and a privilege-separated token, each with PVEAuditor on /. The
+# token's secret goes from pveum straight into Vault (stdin), key token_secret. Tag homepage.
+pve_host_homepage_user: homepage@pve
+pve_host_homepage_token_id: homepage
+pve_host_homepage_role: PVEAuditor
+pve_host_homepage_vault_mount: kv
+pve_host_homepage_vault_path: homelab/pve/homepage
+pve_host_repo_scripts: "{{ playbook_dir }}/../../scripts"

@@ -1,4 +1,5 @@
-# The compose file is the whole role: no app config, and nothing under the media library.
+# The compose file is the whole role (plus reading the API keys): no app config written,
+# and nothing under the media library.
 - name: ARR compose project
   ansible.builtin.include_role:
     name: compose_project
@@ -6,3 +7,13 @@
     compose_project_dir: "{{ arr_stack_dir }}"
     compose_project_file: "{{ arr_stack_compose_file }}"
     compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+
+# Read only: the apps' API keys into Vault for the Homepage widgets.
+# The files are named here: home-directory paths stay in this file (tests/test_media_untouched.sh).
+- name: API keys for the dashboard
+  ansible.builtin.import_tasks: api_keys.yml
+  vars:
+    arr_stack_config_xml_files: >-
+      {{ dict(arr_stack_api_key_apps | zip(arr_stack_api_key_apps | map('regex_replace', '^', arr_stack_dir ~ '/')
+         | map('regex_replace', '$', '/config/config.xml'))) }}
+  tags: [homepage]

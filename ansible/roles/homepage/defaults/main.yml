@@ -1,0 +1,120 @@
+# Homepage dashboard on the apps VM (compose project "homepage" in /opt/homepage), served by
+# the service gateway as https://home.<gateway domain> (the site.services entry named
+# homepage_self). Nothing is published on a host address: Caddy reaches it over the
+# project's network homepage_web (role caddy, caddy_container_networks).
+# Its config (services, widgets, settings, bookmarks, docker) is generated from
+# site.services: one entry per enabled service, grouped and decorated by homepage_catalog.
+# The config holds no secret: widget keys are {{HOMEPAGE_VAR_*}} placeholders that Homepage
+# fills from its 0600 env file (values from Vault, homepage_secrets).
+homepage_dir: /opt/homepage
+# Pinned by tag and digest (2026-10-21).
+homepage_image: ghcr.io/gethomepage/homepage:v2.6.0@sha256:3e38fe788223cb46a3ce1f046ef11667b40f7707fdca0dcbfa3f86c5c42bf1e8
+homepage_socket_proxy_image: ghcr.io/tecnativa/docker-socket-proxy:v0.5.0@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459
+
+# Homepage's uid/gid (it drops root at start, PUID/PGID) and so the group that may read its
+# config; not 1000 (the VM's first user) and not Pi-hole's.
+homepage_uid: 10003
+
+# Hard caps, swap included. Node's heap stays below the cap.
+homepage_mem_limit: 192m
+homepage_node_heap_mb: 128
+homepage_socket_proxy_mem_limit: 32m
+
+# The site.services entry the dashboard itself is served as; it is not listed on the page.
+homepage_self: home
+homepage_title: Home
+
+# Groups in page order. An entry with no group (catalog or site hint) goes to Other.
+homepage_groups: [Infrastructure, Media, Home, Monitoring, Security, Other]
+
+# Per service name: title, group, icon (dashboard-icons name.png, mdi-*, si-*),
+# description and widget (a key of homepage_widgets). A site.services entry may override
+# any of them with the same optional fields (`widget: none` turns a widget off).
+homepage_catalog:
+  pve: {title: Proxmox, group: Infrastructure, icon: proxmox.png, description: Virtualization host, widget: proxmox}
+  ceph: {title: Ceph, group: Infrastructure, icon: ceph.png, description: Storage cluster, widget: ceph}
+  vault: {title: Vault, group: Infrastructure, icon: hashicorp-vault.png, description: Secrets}
+  dns: {title: Pi-hole, group: Infrastructure, icon: pi-hole.png, description: DNS and ad blocking, widget: pihole}
+  idrac: {title: iDRAC, group: Infrastructure, icon: idrac.png, description: Server management}
+  sonarr: {title: Sonarr, group: Media, icon: sonarr.png, description: TV series, widget: sonarr}
+  radarr: {title: Radarr, group: Media, icon: radarr.png, description: Movies, widget: radarr}
+  prowlarr: {title: Prowlarr, group: Media, icon: prowlarr.png, description: Indexers, widget: prowlarr}
+  jackett: {title: Jackett, group: Media, icon: jackett.png, description: Indexers}
+  qbit: {title: qBittorrent, group: Media, icon: qbittorrent.png, description: Downloads, widget: qbittorrent}
+  files: {title: Files, group: Media, icon: filestash.png, description: File browser}
+  tv: {title: TV, group: Media, icon: mdi-television-classic, description: Live TV}
+  threadfin: {title: Threadfin, group: Media, icon: threadfin.png, description: IPTV playlist and guide}
+  frigate: {title: Frigate, group: Home, icon: frigate.png, description: Cameras, widget: frigate}
+  gotify: {title: Gotify, group: Home, icon: gotify.png, description: Notifications}
+  ntfy: {title: ntfy, group: Home, icon: ntfy.png, description: Notifications}
+  pulse: {title: Pulse, group: Home, icon: pulse.png, description: Proxmox monitoring}
+  grafana: {title: Grafana, group: Monitoring, icon: grafana.png, description: Dashboards}
+  pass: {title: Vaultwarden, group: Security, icon: vaultwarden.png, description: Passwords}
+  netbird: {title: NetBird, group: Security, icon: netbird.png, description: VPN}
+
+# Read-only Proxmox API token (role pve_host, tag homepage: user with PVEAuditor, privilege-
+# separated token with PVEAuditor). Not secret; the token's secret is HOMEPAGE_VAR_PVE_TOKEN.
+homepage_pve_token_id: homepage@pve!homepage
+# Frigate login with the viewer role (role frigate_stack, tag homepage).
+homepage_frigate_user: homepage
+
+# Widgets. The URL is the service's own upstream (as Caddy proxies it), or with `service`
+# another entry's upstream, plus `path`. ${NAME} becomes {{HOMEPAGE_VAR_NAME}}, a value of
+# homepage_secrets. `check` is the endpoint the role calls through Homepage's proxy at the
+# end of a run (every widget must answer without an error): the key of the widget's API
+# mapping in Homepage (its proxy refuses other endpoints).
+homepage_widgets:
+  proxmox:
+    type: proxmox
+    username: "{{ homepage_pve_token_id }}"
+    password: ${PVE_TOKEN}
+    check: cluster/resources
+  # No Homepage widget for Ceph, and the Ceph dashboard API needs a session login that a
+  # custom widget cannot do: the Ceph status comes from the Proxmox API (pveceph), with the
+  # same read-only token.
+  ceph:
+    type: customapi
+    service: pve
+    path: /api2/json/cluster/ceph/status
+    headers:
+      Authorization: PVEAPIToken={{ homepage_pve_token_id }}=${PVE_TOKEN}
+    mappings:
+      - {field: data.health.status, label: Health}
+      - {field: data.osdmap.num_up_osds, label: OSDs up, format: number}
+      - {field: data.pgmap.bytes_used, label: Used, format: bytes}
+      - {field: data.pgmap.bytes_avail, label: Free, format: bytes}
+    check: ""
+  pihole:
+    type: pihole
+    version: 6
+    key: ${PIHOLE_KEY}
+    check: ""
+  sonarr: {type: sonarr, key: "${SONARR_KEY}", check: series}
+  radarr: {type: radarr, key: "${RADARR_KEY}", check: movie}
+  prowlarr: {type: prowlarr, key: "${PROWLARR_KEY}", check: indexerstats}
+  # qBittorrent has no login (its whitelist bypass): no credentials.
+  qbittorrent: {type: qbittorrent, check: torrents}
+  frigate:
+    type: frigate
+    username: "{{ homepage_frigate_user }}"
+    password: ${FRIGATE_PASSWORD}
+    check: stats
+
+# Widget secrets: placeholder name -> Vault KV v2 (mount homepage_vault_mount) path and key.
+# Only those used by an enabled widget are read.
+homepage_vault_mount: kv
+homepage_secrets:
+  PVE_TOKEN: {path: homelab/pve/homepage, key: token_secret, made_by: 'make host ARGS="--tags homepage"'}
+  PIHOLE_KEY: {path: "homelab/{{ inventory_hostname }}/pihole", key: app_password, made_by: "make vm HOST={{ inventory_hostname }}"}
+  SONARR_KEY: {path: homelab/ragnarok/arr, key: sonarr_api_key, made_by: 'make vm HOST=ragnarok ARGS="--tags homepage"'}
+  RADARR_KEY: {path: homelab/ragnarok/arr, key: radarr_api_key, made_by: 'make vm HOST=ragnarok ARGS="--tags homepage"'}
+  PROWLARR_KEY: {path: homelab/ragnarok/arr, key: prowlarr_api_key, made_by: 'make vm HOST=ragnarok ARGS="--tags homepage"'}
+  FRIGATE_PASSWORD: {path: homelab/frigate/frigate, key: homepage_password, made_by: 'make vm HOST=frigate ARGS="--tags homepage"'}
+
+# Container status (docker.yaml): entries whose upstream is a container on this host show
+# its state through a socket proxy that allows only GET /containers/json and
+# GET /containers/<id>/stats (templates/haproxy.cfg.template.j2): no inspect (container
+# environments hold secrets), logs, exec or writes. It sits on an internal network that only
+# Homepage shares. Containers on other VMs have no status: a proxy there would have to
+# listen on the lab network, where Docker-published ports bypass ufw.
+homepage_docker_server: "{{ inventory_hostname }}"

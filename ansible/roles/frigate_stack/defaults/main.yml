@@ -27,3 +27,11 @@ frigate_stack_obsolete_files:
 frigate_stack_private_files:
   - "{{ frigate_stack_dir }}/config/config.yml.bak"
   - "{{ frigate_stack_dir }}/config/backup_config.yaml"
+
+# Frigate login for the Homepage dashboard's widget: user homepage_user with the viewer
+# role. Its password is generated straight into Vault (kv/<frigate_stack_vault_frigate_path>,
+# key homepage_password) and set through Frigate's internal API (port 5000 on the VM itself,
+# which acts as admin); checked by logging in each run. Tag homepage.
+frigate_stack_homepage_user: homepage
+frigate_stack_api: http://127.0.0.1:5000/api
+frigate_stack_repo_scripts: "{{ playbook_dir }}/../../scripts"

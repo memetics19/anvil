@@ -180,6 +180,11 @@
           ansible.builtin.fail:
             msg: API token setup failed and the token was removed; rerun to retry.
 
+# Read-only token for the Homepage dashboard (make host ARGS="--tags homepage").
+- name: Homepage API token
+  ansible.builtin.import_tasks: homepage_token.yml
+  tags: [homepage]
+
 # Terraform downloads the Ubuntu cloud image through the API into local's import
 # directory; that needs the `import` content type on the storage.
 - name: Storage content types

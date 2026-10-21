@@ -1,0 +1,56 @@
+# caddy_routes (the enabled site.services entries, resolved by caddy/tasks/services.yml)
+# -> homepage_entries: one dashboard entry per route except the dashboard itself, with the
+# catalog's title/group/icon/description/widget overridden by the entry's own optional
+# fields. Links are the gateway names (route fqdn, built from caddy_domain). Values are not
+# logged. Tested by tests/test_homepage.sh.
+- name: Dashboard entries from the gateway's services
+  ansible.builtin.set_fact:
+    homepage_entries: >-
+      {%- set urls = dict(caddy_routes | map(attribute='name') | zip(caddy_routes | map(attribute='url'))) -%}
+      {%- set out = [] -%}
+      {%- for r in caddy_routes if r.name != homepage_self -%}
+      {%- set hint = r | dict2items | selectattr('key', 'in', ['title', 'group', 'icon', 'description', 'widget']) | items2dict -%}
+      {%- set c = (homepage_catalog[r.name] | default({})) | combine(hint) -%}
+      {%- set w = c.widget | default('none') -%}
+      {%- set spec = homepage_widgets[w] | default({}) if w != 'none' else {} -%}
+      {%- set base = urls[spec.service] | default('') if spec.service is defined else r.url -%}
+      {%- set e = {'name': r.name, 'title': c.title | default(r.name) | string,
+                   'group': c.group | default('Other') | string, 'icon': c.icon | default('') | string,
+                   'description': c.description | default('') | string,
+                   'href': 'https://' ~ r.fqdn, 'widget': w | string,
+                   'widget_url': base ~ (spec.path | default(''))} -%}
+      {%- if r.container is defined -%}{%- set _ = e.update({'container': r.container | string}) -%}{%- endif -%}
+      {%- set _ = out.append(e) -%}
+      {%- endfor -%}
+      {{ out }}
+    homepage_self_route: "{{ caddy_routes | selectattr('name', 'equalto', homepage_self) | list }}"
+  no_log: true
+
+- name: Every dashboard entry has a known group and widget, a safe title, icon and description
+  ansible.builtin.assert:
+    that:
+      - homepage_entries | map(attribute='group') | reject('in', homepage_groups) | list | length == 0
+      - homepage_entries | map(attribute='widget') | reject('in', homepage_widgets.keys() | list + ['none']) | list | length == 0
+      - homepage_entries | map(attribute='title') | reject('match', '^[A-Za-z0-9][A-Za-z0-9 .()&+-]{0,39}$') | list | length == 0
+      - homepage_entries | map(attribute='title') | unique | list | length == homepage_entries | length
+      - homepage_entries | map(attribute='description') | reject('match', '^[A-Za-z0-9 .,()&+/-]{0,60}$') | list | length == 0
+      - >-
+        homepage_entries | map(attribute='icon')
+        | reject('match', '^([a-z0-9][a-z0-9-]*\.(png|svg|webp)|(mdi|si)-[a-z0-9-]+)?$') | list | length == 0
+      # A widget that borrows another service's upstream needs that service enabled.
+      - homepage_entries | selectattr('widget', 'ne', 'none') | map(attribute='widget_url')
+        | reject('match', '^https?://') | list | length == 0
+    fail_msg: >-
+      site.services: the optional dashboard fields need group one of {{ homepage_groups }},
+      widget one of {{ homepage_widgets.keys() | list + ['none'] }} (with the service it reads
+      enabled), title (unique, up to 40 of A-Z a-z 0-9 space . ( ) & + -), description (up to
+      60 of those and , /) and icon (name.png|svg|webp, mdi-*, si-*)
+    quiet: true
+
+# Placeholders (${NAME}) the enabled widgets use: the env file holds exactly these.
+- name: Widget secrets the entries use
+  ansible.builtin.set_fact:
+    homepage_secret_names: >-
+      {{ homepage_entries | selectattr('widget', 'ne', 'none') | map(attribute='widget')
+         | map('extract', homepage_widgets) | map('to_json') | join(' ')
+         | regex_findall('\$\{([A-Z0-9_]+)\}') | unique | sort }}

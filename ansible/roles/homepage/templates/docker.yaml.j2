@@ -1,0 +1,3 @@
+# Managed by Ansible (role homepage): this host's containers, through the read-only socket
+# proxy on the project's internal network.
+{{ {homepage_docker_server: {'host': 'dockerproxy', 'port': 2375}} | to_nice_json(indent=2) }}

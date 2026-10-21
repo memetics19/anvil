@@ -1,0 +1,286 @@
+# Homepage dashboard on this host (see defaults/main.yml): config from site.services,
+# widget keys from Vault, a read-only Docker socket proxy, no published port.
+
+- name: Gateway routes
+  ansible.builtin.include_role:
+    name: caddy
+    tasks_from: services.yml
+
+- name: Dashboard entries
+  ansible.builtin.include_tasks: entries.yml
+
+- name: The dashboard has its own gateway entry (a container upstream on port 3000)
+  ansible.builtin.assert:
+    that:
+      - homepage_self_route | length == 1
+      - homepage_self_route[0].container | default('') == 'homepage'
+      - homepage_self_route[0].port | int == 3000
+      - homepage_self_route[0].scheme == 'http'
+    fail_msg: >-
+      site.services needs the entry {name: {{ homepage_self }}, container: homepage, port: 3000,
+      scheme: http} (the dashboard's gateway name)
+    quiet: true
+
+# The gateway name (built by the caddy role from caddy_domain) is the only allowed Host.
+- name: The dashboard's host name
+  ansible.builtin.set_fact:
+    homepage_allowed_host: "{{ homepage_self_route[0].fqdn }}"
+  no_log: true
+
+# --- secrets ---------------------------------------------------------------------------------
+- name: Every widget secret has a Vault location
+  ansible.builtin.assert:
+    that: homepage_secret_names | reject('in', homepage_secrets) | list | length == 0
+    fail_msg: "homepage_secrets has no entry for {{ homepage_secret_names | reject('in', homepage_secrets) | list }}"
+    quiet: true
+
+- name: Read the widget secrets from Vault
+  ansible.builtin.set_fact:
+    homepage_vault_docs: >-
+      {%- set out = {} -%}
+      {%- for p in homepage_secret_names | map('extract', homepage_secrets) | map(attribute='path') | unique -%}
+      {%- set _ = out.update({p: lookup('community.hashi_vault.vault_kv2_get', p,
+            engine_mount_point=homepage_vault_mount,
+            url=lookup('env', 'VAULT_ADDR'),
+            token=lookup('env', 'VAULT_TOKEN'),
+            ca_cert=lookup('env', 'VAULT_CACERT'), errors='ignore') | default({}, true)}) -%}
+      {%- endfor -%}
+      {{ out }}
+  no_log: true
+
+- name: Pick the widget secrets
+  ansible.builtin.set_fact:
+    homepage_secret_values: >-
+      {%- set out = {} -%}
+      {%- for k in homepage_secret_names -%}
+      {%- set s = homepage_secrets[k] -%}
+      {%- set _ = out.update({k: (homepage_vault_docs[s.path].secret | default({}))[s.key] | default('') | string}) -%}
+      {%- endfor -%}
+      {{ out }}
+  no_log: true
+
+# Restricted to characters that are safe unquoted in the env file and inside a JSON string.
+- name: Every widget secret is in Vault
+  ansible.builtin.assert:
+    that: homepage_secret_values[item] is match('^[A-Za-z0-9+/=._-]{16,}$')
+    fail_msg: >-
+      kv/{{ homepage_secrets[item].path }}: {{ homepage_secrets[item].key }} is missing or not
+      a plain token; it is made by: {{ homepage_secrets[item].made_by }}
+    quiet: true
+  loop: "{{ homepage_secret_names }}"
+  # In check mode a secret another role would make in this run (Pi-hole's app password) is
+  # not there yet.
+  when: not ansible_check_mode
+
+- name: Widget secrets not in Vault yet (check mode)
+  ansible.builtin.debug:
+    msg: >-
+      not in Vault yet: {{ homepage_secret_names | reject('in', homepage_secret_values | dict2items
+      | selectattr('value', 'match', '^[A-Za-z0-9+/=._-]{16,}$') | map(attribute='key') | list) | list }}
+  when: ansible_check_mode
+
+# --- files -----------------------------------------------------------------------------------
+- name: Homepage group on the host
+  ansible.builtin.group:
+    name: homepage
+    gid: "{{ homepage_uid }}"
+    system: true
+
+- name: Homepage user on the host (no login, no home)
+  ansible.builtin.user:
+    name: homepage
+    uid: "{{ homepage_uid }}"
+    group: homepage
+    system: true
+    create_home: false
+    home: /nonexistent
+    shell: /usr/sbin/nologin
+
+- name: Project directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ homepage_dir }}", owner: root, group: root, mode: "0755"}
+    - {path: "{{ homepage_dir }}/socket-proxy", owner: root, group: root, mode: "0755"}
+    # Owned by Homepage's uid, so its start script finds it right and changes nothing; the
+    # mount is read-only and the files below are root's.
+    - {path: "{{ homepage_dir }}/config", owner: homepage, group: homepage, mode: "0750"}
+
+# Hold the gateway names and upstream addresses, no secret: no --diff output anyway.
+- name: Homepage config (generated)
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ homepage_dir }}/config/{{ item }}"
+    owner: root
+    group: homepage
+    mode: "0640"
+  loop: [services.yaml, settings.yaml, widgets.yaml, bookmarks.yaml, docker.yaml]
+  diff: false
+  notify: Restart homepage
+
+# The rest of Homepage's config files, so it never writes its samples into the directory.
+- name: Homepage config (fixed)
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ homepage_dir }}/config/{{ item }}"
+    owner: root
+    group: homepage
+    mode: "0640"
+  loop: [custom.css, custom.js, kubernetes.yaml, proxmox.yaml]
+  notify: Restart homepage
+
+- name: Socket proxy rules
+  ansible.builtin.copy:
+    src: haproxy.cfg.template
+    dest: "{{ homepage_dir }}/socket-proxy/haproxy.cfg.template"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart homepage-dockerproxy
+
+- name: Render the env file
+  ansible.builtin.set_fact:
+    homepage_env_content: "{{ lookup('ansible.builtin.template', 'homepage.env.j2') }}"
+  no_log: true
+
+# The compose config hash includes the env file, so a new key recreates Homepage.
+- name: Homepage env file (widget keys from Vault)
+  ansible.builtin.copy:
+    content: "{{ homepage_env_content }}"
+    dest: "{{ homepage_dir }}/homepage.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+
+# --- compose ---------------------------------------------------------------------------------
+- name: Is the env file there
+  ansible.builtin.stat:
+    path: "{{ homepage_dir }}/homepage.env"
+  register: homepage_env_stat
+
+- name: Homepage compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ homepage_dir }}"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+    # Holds the gateway name: keep it out of --diff output.
+    compose_project_diff: false
+  # In check mode on a new host the env file the compose file names does not exist yet.
+  when: homepage_env_stat.stat.exists or not ansible_check_mode
+
+- name: Services this run brought up
+  ansible.builtin.set_fact:
+    homepage_compose_up: "{{ compose_project_plan.up | default([]) }}"
+
+- name: Apply config changes before the checks
+  ansible.builtin.meta: flush_handlers
+
+# --- checks ----------------------------------------------------------------------------------
+- name: Homepage is healthy
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{' }}.State.Health.Status{{ '}}' }}", homepage]
+  register: homepage_health
+  changed_when: false
+  retries: 30
+  delay: 3
+  until: homepage_health.stdout == 'healthy'
+  when: not ansible_check_mode
+
+# From inside the container (localhost is always an allowed host): "<code> ok|error" only.
+- name: Homepage answers only its own host name
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - homepage
+      - node
+      - -e
+      - >-
+        const [path, host] = process.argv.slice(1);
+        require('http').get({host: '127.0.0.1', port: 3000, path, headers: {Host: host}},
+        r => { console.log(r.statusCode); r.resume(); }).on('error', () => console.log('000'))
+      - "{{ item.path }}"
+      - "{{ item.host }}"
+  loop:
+    - {path: /api/services, host: "{{ homepage_allowed_host }}", want: "200"}
+    - {path: /api/services, host: other.invalid, want: "400"}
+  loop_control:
+    label: "{{ item.want }}"
+  register: homepage_host_check
+  changed_when: false
+  failed_when: homepage_host_check.stdout | trim != item.want
+  when: not ansible_check_mode
+
+- name: Every widget answers through Homepage without an error
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - homepage
+      - node
+      - -e
+      - >-
+        const [group, service, endpoint] = process.argv.slice(1);
+        const u = new URL('http://127.0.0.1:3000/api/services/proxy');
+        u.searchParams.set('group', group); u.searchParams.set('service', service);
+        u.searchParams.set('index', '0'); if (endpoint) u.searchParams.set('endpoint', endpoint);
+        fetch(u).then(async r => { const t = await r.text(); let bad = r.status !== 200;
+        try { const j = JSON.parse(t); if (j && !Array.isArray(j) && j.error) bad = true; } catch (e) { bad = true; }
+        console.log(r.status + ' ' + (bad ? 'error' : 'ok')); }).catch(() => console.log('000 error'))
+      - "{{ item.group }}"
+      - "{{ item.title }}"
+      - "{{ homepage_widgets[item.widget].check | default('') }}"
+  loop: "{{ homepage_entries | selectattr('widget', 'ne', 'none') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: homepage_widget_check
+  changed_when: false
+  failed_when: false
+  retries: 5
+  delay: 6
+  until: homepage_widget_check.stdout is match('^200 ok$')
+  when: not ansible_check_mode
+
+- name: Widget results
+  ansible.builtin.set_fact:
+    homepage_widget_results: >-
+      {{ homepage_widget_check.results | map(attribute='item.name')
+         | zip(homepage_widget_check.results | map(attribute='stdout')) | map('join', '=') | list }}
+  when: not ansible_check_mode
+
+- name: Every widget has data (name=HTTP code and result)
+  ansible.builtin.assert:
+    that: homepage_widget_results | reject('match', '^[a-z0-9-]+=200 ok$') | list | length == 0
+    fail_msg: "widgets with an error: {{ homepage_widget_results | reject('match', '^[a-z0-9-]+=200 ok$') | list }}"
+    success_msg: "{{ homepage_widget_results }}"
+  when: not ansible_check_mode
+
+# The proxy allows the container list and stats, and nothing else (inspect would show the
+# containers' environments).
+- name: The socket proxy allows only the list and stats
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - homepage
+      - node
+      - -e
+      - >-
+        const b = 'http://dockerproxy:2375';
+        const t = [['GET', '/containers/json'], ['GET', '/v1.43/containers/json'],
+                   ['GET', '/containers/homepage/stats?stream=false'],
+                   ['GET', '/containers/homepage/json'], ['GET', '/containers/homepage/logs'],
+                   ['GET', '/info'], ['GET', '/version'], ['GET', '/events'], ['POST', '/containers/json']];
+        Promise.all(t.map(([m, p]) => fetch(b + p, {method: m}).then(r => r.status).catch(() => 0)))
+        .then(s => console.log(s.join(' ')))
+  register: homepage_proxy_check
+  changed_when: false
+  failed_when: homepage_proxy_check.stdout | trim != '200 200 200 403 403 403 403 403 403'
+  when: not ansible_check_mode

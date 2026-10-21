@@ -1,0 +1,90 @@
+# The apps' API keys (<ApiKey> in <app>/config/config.xml) into Vault for the Homepage
+# widgets: read on the VM, compared by SHA-256 with what Vault holds, and written (stdin,
+# kv/<arr_stack_vault_path>) only when they differ. Values never reach argv, the log or the
+# screen. Read-only on the VM.
+- name: API keys | read each app's config.xml
+  ansible.builtin.slurp:
+    src: "{{ arr_stack_config_xml_files[item] }}"
+  loop: "{{ arr_stack_api_key_apps }}"
+  register: arr_stack_config_xml
+  no_log: true
+
+- name: API keys | pick them out
+  ansible.builtin.set_fact:
+    arr_stack_api_keys: >-
+      {%- set out = {} -%}
+      {%- for r in arr_stack_config_xml.results -%}
+      {%- set m = r.content | b64decode | regex_search('<ApiKey>([0-9a-f]{32})</ApiKey>', '\\1') -%}
+      {%- set _ = out.update({r.item ~ '_api_key': (m | first) if m else ''}) -%}
+      {%- endfor -%}
+      {{ out }}
+  no_log: true
+
+- name: API keys | every app has one
+  ansible.builtin.assert:
+    that: arr_stack_api_keys[item ~ '_api_key'] | length == 32
+    fail_msg: "{{ item }}: no 32-hex <ApiKey> in its config.xml"
+    quiet: true
+  loop: "{{ arr_stack_api_key_apps }}"
+
+- name: API keys | digests in Vault
+  ansible.builtin.command:
+    argv: ["{{ arr_stack_repo_scripts }}/vault-kv-digests.sh", "{{ arr_stack_vault_path }}"]
+  delegate_to: localhost
+  become: false
+  register: arr_stack_vault
+  changed_when: false
+  check_mode: false
+
+- name: API keys | what Vault should hold
+  ansible.builtin.set_fact:
+    arr_stack_vault_have: "{{ dict(arr_stack_vault.stdout_lines | map('split', ' ')) }}"
+    arr_stack_vault_want: >-
+      {{ dict(arr_stack_api_keys.keys() | zip(arr_stack_api_keys.values() | map('hash', 'sha256'))) }}
+  no_log: true
+
+- name: API keys | to write
+  ansible.builtin.debug:
+    msg: "kv/{{ arr_stack_vault_path }}: the API keys differ from Vault; they would be written"
+  changed_when: true
+  when:
+    - ansible_check_mode
+    - >-
+      arr_stack_vault_have | dict2items | selectattr('key', 'in', arr_stack_vault_want.keys() | list)
+      | items2dict != arr_stack_vault_want
+
+- name: API keys | into Vault (stdin)
+  ansible.builtin.command:
+    argv:
+      - vault
+      - kv
+      - "{{ 'patch' if arr_stack_vault_have else 'put' }}"
+      - "-mount={{ arr_stack_vault_mount }}"
+      - "{{ arr_stack_vault_path }}"
+      - "-"
+    stdin: "{{ arr_stack_api_keys | to_json }}"
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  no_log: true
+  when: >-
+    arr_stack_vault_have | dict2items | selectattr('key', 'in', arr_stack_vault_want.keys() | list)
+    | items2dict != arr_stack_vault_want
+
+- name: API keys | read the digests back
+  ansible.builtin.command:
+    argv: ["{{ arr_stack_repo_scripts }}/vault-kv-digests.sh", "{{ arr_stack_vault_path }}"]
+  delegate_to: localhost
+  become: false
+  register: arr_stack_vault_after
+  changed_when: false
+  check_mode: false
+
+- name: API keys | Vault holds them
+  ansible.builtin.assert:
+    that: >-
+      dict(arr_stack_vault_after.stdout_lines | map('split', ' ')) | dict2items
+      | selectattr('key', 'in', arr_stack_vault_want.keys() | list) | items2dict == arr_stack_vault_want
+    fail_msg: "kv/{{ arr_stack_vault_path }}: the API keys read back differ (digest check)"
+    quiet: true
+  when: not ansible_check_mode

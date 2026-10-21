@@ -1,0 +1,16 @@
+# Skipped for a service this run already brought up. The play sets force_handlers.
+- name: Restart homepage
+  ansible.builtin.command:
+    argv: [docker, compose, --project-name, homepage, --file, "{{ homepage_dir }}/docker-compose.yaml", restart, homepage]
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - "'homepage' not in homepage_compose_up | default([])"
+
+- name: Restart homepage-dockerproxy
+  ansible.builtin.command:
+    argv: [docker, compose, --project-name, homepage, --file, "{{ homepage_dir }}/docker-compose.yaml", restart, dockerproxy]
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - "'dockerproxy' not in homepage_compose_up | default([])"

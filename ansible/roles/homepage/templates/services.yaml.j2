@@ -1,0 +1,20 @@
+# Managed by Ansible (role homepage) from site.services. JSON is YAML; every string is
+# quoted, so a substituted key cannot change the structure. {{ '{{' }}HOMEPAGE_VAR_*{{ '}}' }} are filled by
+# Homepage from its env file (no secret in this file).
+{% set groups = [] %}
+{% for g in homepage_groups %}
+{%   set items = [] %}
+{%   for e in homepage_entries if e.group == g %}
+{%     set s = {'href': e.href} %}
+{%     if e.icon %}{% set _ = s.update({'icon': e.icon}) %}{% endif %}
+{%     if e.description %}{% set _ = s.update({'description': e.description}) %}{% endif %}
+{%     if e.container is defined %}{% set _ = s.update({'server': homepage_docker_server, 'container': e.container}) %}{% endif %}
+{%     if e.widget != 'none' %}
+{%       set w = homepage_widgets[e.widget] | dict2items | rejectattr('key', 'in', ['service', 'path', 'check']) | items2dict %}
+{%       set _ = s.update({'widget': w | combine({'url': e.widget_url})}) %}
+{%     endif %}
+{%     set _ = items.append({e.title: s}) %}
+{%   endfor %}
+{%   if items %}{% set _ = groups.append({g: items}) %}{% endif %}
+{% endfor %}
+{{ groups | to_nice_json(indent=2) | regex_replace('\$\{([A-Z0-9_]+)\}', '{{HOMEPAGE_VAR_\\1}}') }}

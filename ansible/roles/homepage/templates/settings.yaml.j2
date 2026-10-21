@@ -1,0 +1,13 @@
+# Managed by Ansible (role homepage). Groups in homepage_groups order.
+{% set used = homepage_groups | select('in', homepage_entries | map(attribute='group') | list) | list %}
+{{ {
+  'title': homepage_title,
+  'theme': 'dark',
+  'color': 'slate',
+  'headerStyle': 'clean',
+  'statusStyle': 'dot',
+  'hideVersion': true,
+  'disableUpdateCheck': true,
+  'disableIndexing': true,
+  'layout': dict(used | zip([{'style': 'row', 'columns': 4}] * (used | length)))
+} | to_nice_json(indent=2, sort_keys=false) }}

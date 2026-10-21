@@ -1,0 +1,66 @@
+# Managed by Ansible (role homepage). No published port: Caddy reaches Homepage on the
+# network "web" (homepage_web). The socket proxy is on an internal network only Homepage
+# shares; Homepage also joins Pi-hole's network for the Pi-hole widget.
+services:
+  homepage:
+    image: {{ homepage_image }}
+    container_name: homepage
+    restart: unless-stopped
+    depends_on:
+      - dockerproxy
+    environment:
+      # Requests with any other Host are refused (localhost:3000 is always allowed).
+      HOMEPAGE_ALLOWED_HOSTS: {{ homepage_allowed_host | to_json }}
+      # Drops root at start.
+      PUID: "{{ homepage_uid }}"
+      PGID: "{{ homepage_uid }}"
+      # The config directory is read-only: log to stdout only.
+      LOG_TARGETS: stdout
+      NODE_OPTIONS: "--max-old-space-size={{ homepage_node_heap_mb }}"
+    # HOMEPAGE_VAR_* widget keys (from Vault).
+    env_file: homepage.env
+    volumes:
+      - ./config:/app/config:ro
+    networks:
+      - web
+      - docker_api
+      - pihole_dns
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: {{ homepage_mem_limit }}
+    memswap_limit: {{ homepage_mem_limit }}
+
+  dockerproxy:
+    image: {{ homepage_socket_proxy_image }}
+    container_name: homepage-dockerproxy
+    restart: unless-stopped
+    environment:
+      # Documentation only: the mounted template below replaces the image's rules.
+      CONTAINERS: "1"
+      POST: "0"
+      EVENTS: "0"
+      PING: "0"
+      VERSION: "0"
+      DISABLE_IPV6: "1"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./socket-proxy/haproxy.cfg.template:/usr/local/etc/haproxy/haproxy.cfg.template:ro
+    networks:
+      - docker_api
+    read_only: true
+    tmpfs:
+      - /tmp:size=1m
+      - /run:size=1m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: {{ homepage_socket_proxy_mem_limit }}
+    memswap_limit: {{ homepage_socket_proxy_mem_limit }}
+
+networks:
+  web: {}
+  docker_api:
+    internal: true
+  pihole_dns:
+    external: true

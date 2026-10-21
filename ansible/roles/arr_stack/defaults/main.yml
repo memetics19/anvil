@@ -10,3 +10,11 @@ arr_stack_compose_file: "{{ arr_stack_dir }}/docker-compose.yaml"
 arr_stack_uid: 1000
 arr_stack_gid: 1000
 arr_stack_timezone: "{{ site.timezone | default('Asia/Kolkata') }}"
+
+# API keys of sonarr, radarr and prowlarr (read from each app's config.xml, never changed)
+# copied into Vault for the Homepage dashboard's widgets: kv/<arr_stack_vault_path>, keys
+# <app>_api_key. Tag homepage. Only read and compared: no container is touched.
+arr_stack_api_key_apps: [sonarr, radarr, prowlarr]
+arr_stack_vault_mount: kv
+arr_stack_vault_path: "homelab/{{ inventory_hostname }}/arr"
+arr_stack_repo_scripts: "{{ playbook_dir }}/../../scripts"

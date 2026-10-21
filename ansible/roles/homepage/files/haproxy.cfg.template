@@ -1,0 +1,33 @@
+# Managed by Ansible (role homepage). Replaces the docker-socket-proxy image's template
+# (its entrypoint fills in ${BIND_CONFIG}). Narrower than its CONTAINERS=1: only the two
+# read-only calls Homepage makes for container status and stats. Container inspect
+# (environments hold secrets), logs, archive, exec, events and every write are refused.
+global
+    log stdout format raw daemon info
+    pidfile /run/haproxy.pid
+    maxconn 200
+
+defaults
+    mode http
+    log global
+    option httplog
+    option dontlognull
+    option http-server-close
+    timeout http-request 10s
+    timeout queue 1m
+    timeout connect 10s
+    timeout client 1m
+    timeout server 1m
+    timeout http-keep-alive 10s
+    maxconn 100
+
+backend dockerbackend
+    server dockersocket /var/run/docker.sock
+
+frontend dockerfrontend
+    bind ${BIND_CONFIG}
+    http-request deny unless METH_GET
+    http-request allow if { path,url_dec -m reg ^(/v[0-9.]+)?/containers/json$ }
+    http-request allow if { path,url_dec -m reg ^(/v[0-9.]+)?/containers/[a-zA-Z0-9_.-]+/stats$ }
+    http-request deny
+    default_backend dockerbackend

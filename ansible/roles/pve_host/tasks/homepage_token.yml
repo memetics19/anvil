@@ -1,0 +1,162 @@
+# Read-only API token for the Homepage dashboard (defaults: pve_host_homepage_*). The user
+# and its privilege-separated token each get PVEAuditor on / (a privsep token holds the
+# intersection of both). The secret exists only in memory between pveum and Vault (stdin,
+# kv/<pve_host_homepage_vault_path> key token_secret). A token whose secret Vault lacks, or
+# whose stored secret no longer authenticates, is replaced.
+- name: Homepage token | users, tokens and ACLs
+  ansible.builtin.command:
+    argv: "{{ item }}"
+  loop:
+    - [pveum, user, list, --output-format, json]
+    - [pveum, user, token, list, "{{ pve_host_homepage_user }}", --output-format, json]
+    - [pveum, acl, list, --output-format, json]
+  loop_control:
+    label: "{{ item[1:3] | join(' ') }}"
+  register: pve_host_hp_lists
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Homepage token | key digests in Vault
+  ansible.builtin.command:
+    argv: ["{{ pve_host_repo_scripts }}/vault-kv-digests.sh", "{{ pve_host_homepage_vault_path }}"]
+  delegate_to: localhost
+  become: false
+  register: pve_host_hp_vault
+  changed_when: false
+  check_mode: false
+
+- name: Homepage token | work out what is missing
+  ansible.builtin.set_fact:
+    pve_host_hp_full_id: "{{ pve_host_homepage_user }}!{{ pve_host_homepage_token_id }}"
+    pve_host_hp_user_exists: >-
+      {{ pve_host_hp_lists.results[0].stdout | from_json | selectattr('userid', 'equalto', pve_host_homepage_user) | list | length > 0 }}
+    pve_host_hp_token_exists: >-
+      {{ pve_host_hp_lists.results[1].rc == 0 and
+         (pve_host_hp_lists.results[1].stdout | from_json | selectattr('tokenid', 'equalto', pve_host_homepage_token_id) | list | length > 0) }}
+    pve_host_hp_acls: "{{ pve_host_hp_lists.results[2].stdout | from_json | selectattr('path', 'equalto', '/') | list }}"
+    pve_host_hp_in_vault: "{{ 'token_secret' in pve_host_hp_vault.stdout_lines | map('split', ' ') | map('first') | list }}"
+
+- name: Homepage token | create the user
+  ansible.builtin.command:
+    argv: [pveum, user, add, "{{ pve_host_homepage_user }}", --comment, Homepage dashboard (read-only)]
+  changed_when: true
+  when: not pve_host_hp_user_exists | bool
+
+- name: Homepage token | read-only role for the user on /
+  ansible.builtin.command:
+    argv: [pveum, acl, modify, /, --users, "{{ pve_host_homepage_user }}", --roles, "{{ pve_host_homepage_role }}"]
+  changed_when: true
+  when: >-
+    pve_host_hp_acls | selectattr('type', 'equalto', 'user') | selectattr('ugid', 'equalto', pve_host_homepage_user)
+    | selectattr('roleid', 'equalto', pve_host_homepage_role) | list | length == 0
+
+# The stored secret must still authenticate (only checked when both exist).
+- name: Homepage token | does the stored secret work
+  ansible.builtin.command:
+    argv: [curl, --silent, --insecure, --output, /dev/null, --write-out, "%{http_code}", --header, "@-", "https://127.0.0.1:8006/api2/json/version"]
+    stdin: >-
+      Authorization: PVEAPIToken={{ pve_host_hp_full_id }}={{ lookup('community.hashi_vault.vault_kv2_get',
+      pve_host_homepage_vault_path, engine_mount_point=pve_host_homepage_vault_mount,
+      url=lookup('env', 'VAULT_ADDR'), token=lookup('env', 'VAULT_TOKEN'),
+      ca_cert=lookup('env', 'VAULT_CACERT')).secret.token_secret }}
+  register: pve_host_hp_works
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when: pve_host_hp_token_exists | bool and pve_host_hp_in_vault | bool
+
+- name: Homepage token | the stored secret's check
+  ansible.builtin.debug:
+    msg: "token check: HTTP {{ pve_host_hp_works.stdout | default('skipped') }}"
+  when: pve_host_hp_works is not skipped
+
+- name: Homepage token | (re)make it
+  ansible.builtin.set_fact:
+    pve_host_hp_make: >-
+      {{ not (pve_host_hp_token_exists | bool and pve_host_hp_in_vault | bool
+              and pve_host_hp_works.stdout | default('') == '200') }}
+
+- name: Homepage token | to make
+  ansible.builtin.debug:
+    msg: "make the token {{ pve_host_hp_full_id }} and store its secret in Vault"
+  changed_when: true
+  when: pve_host_hp_make | bool and ansible_check_mode
+
+- name: Homepage token | remove the token whose secret is lost or wrong
+  ansible.builtin.command:
+    argv: [pveum, user, token, remove, "{{ pve_host_homepage_user }}", "{{ pve_host_homepage_token_id }}"]
+  changed_when: true
+  when: pve_host_hp_make | bool and pve_host_hp_token_exists | bool
+
+- name: Homepage token | create it and store its secret
+  when: pve_host_hp_make | bool and not ansible_check_mode
+  block:
+    - name: Homepage token | create the privilege-separated token
+      ansible.builtin.command:
+        argv:
+          - pveum
+          - user
+          - token
+          - add
+          - "{{ pve_host_homepage_user }}"
+          - "{{ pve_host_homepage_token_id }}"
+          - --privsep
+          - "1"
+          - --comment
+          - Homepage dashboard (read-only)
+          - --output-format
+          - json
+      register: pve_host_hp_new
+      changed_when: true
+      no_log: true
+
+    - name: Homepage token | secret into Vault (stdin)
+      ansible.builtin.command:
+        argv:
+          - vault
+          - kv
+          - "{{ 'patch' if pve_host_hp_vault.stdout_lines else 'put' }}"
+          - "-mount={{ pve_host_homepage_vault_mount }}"
+          - "{{ pve_host_homepage_vault_path }}"
+          - "-"
+        stdin: "{{ {'token_secret': (pve_host_hp_new.stdout | from_json).value} | to_json }}"
+      delegate_to: localhost
+      become: false
+      changed_when: true
+      no_log: true
+
+    - name: Homepage token | read the digest back
+      ansible.builtin.command:
+        argv: ["{{ pve_host_repo_scripts }}/vault-kv-digests.sh", "{{ pve_host_homepage_vault_path }}"]
+      delegate_to: localhost
+      become: false
+      register: pve_host_hp_vault_after
+      changed_when: false
+
+    - name: Homepage token | Vault holds it
+      ansible.builtin.assert:
+        that: >-
+          (dict(pve_host_hp_vault_after.stdout_lines | map('split', ' '))).token_secret | default('')
+          == (pve_host_hp_new.stdout | from_json).value | hash('sha256')
+        fail_msg: "kv/{{ pve_host_homepage_vault_path }}: token_secret read back differs (digest check)"
+        quiet: true
+  rescue:
+    - name: Homepage token | remove the token so the next run makes it again
+      ansible.builtin.command:
+        argv: [pveum, user, token, remove, "{{ pve_host_homepage_user }}", "{{ pve_host_homepage_token_id }}"]
+      failed_when: false
+      changed_when: true
+
+    - name: Homepage token | stop
+      ansible.builtin.fail:
+        msg: Homepage token setup failed and the token was removed; rerun to retry.
+
+- name: Homepage token | read-only role for the token on /
+  ansible.builtin.command:
+    argv: [pveum, acl, modify, /, --tokens, "{{ pve_host_hp_full_id }}", --roles, "{{ pve_host_homepage_role }}"]
+  changed_when: true
+  when: >-
+    pve_host_hp_make | bool
+    or pve_host_hp_acls | selectattr('type', 'equalto', 'token') | selectattr('ugid', 'equalto', pve_host_hp_full_id)
+       | selectattr('roleid', 'equalto', pve_host_homepage_role) | list | length == 0

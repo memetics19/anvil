@@ -1,0 +1,131 @@
+# Viewer login for the Homepage widget (defaults: frigate_stack_homepage_user). The password
+# goes openssl -> Vault (stdin) and Vault -> Frigate's API (stdin of curl on the VM), never
+# argv, the log or the screen. Nothing is restarted: Frigate stores users in its database.
+- name: Homepage user | key digests in Vault
+  ansible.builtin.command:
+    argv: ["{{ frigate_stack_repo_scripts }}/vault-kv-digests.sh", "{{ frigate_stack_vault_frigate_path }}"]
+  delegate_to: localhost
+  become: false
+  register: frigate_stack_hp_vault
+  changed_when: false
+  check_mode: false
+
+- name: Homepage user | keys in Vault
+  ansible.builtin.set_fact:
+    frigate_stack_hp_keys: "{{ frigate_stack_hp_vault.stdout_lines | map('split', ' ') | map('first') | list }}"
+
+- name: Homepage user | generate its password into Vault
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      openssl rand -hex 24 | tr -d '\n' |
+      vault kv {{ 'patch' if frigate_stack_hp_keys else 'put' }} -mount={{ frigate_stack_vault_mount }}
+      {{ frigate_stack_vault_frigate_path }} homepage_password=- >/dev/null
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  when: "'homepage_password' not in frigate_stack_hp_keys"
+
+- name: Homepage user | the password is readable
+  ansible.builtin.set_fact:
+    frigate_stack_hp_have: "{{ not (ansible_check_mode and 'homepage_password' not in frigate_stack_hp_keys) }}"
+
+- name: Homepage user | read the password from Vault
+  ansible.builtin.set_fact:
+    frigate_stack_hp_password: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', frigate_stack_vault_frigate_path,
+                engine_mount_point=frigate_stack_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret.homepage_password | default('') }}
+  no_log: true
+  when: frigate_stack_hp_have | bool
+
+- name: Homepage user | request bodies
+  ansible.builtin.set_fact:
+    frigate_stack_hp_login_body:
+      user: "{{ frigate_stack_homepage_user }}"
+      password: "{{ frigate_stack_hp_password | default('') }}"
+    frigate_stack_hp_create_body:
+      username: "{{ frigate_stack_homepage_user }}"
+      password: "{{ frigate_stack_hp_password | default('') }}"
+      role: viewer
+    frigate_stack_hp_password_body:
+      password: "{{ frigate_stack_hp_password | default('') }}"
+  no_log: true
+
+- name: Homepage user | Frigate's users
+  ansible.builtin.command:
+    argv: [curl, --silent, --fail, --max-time, "10", "{{ frigate_stack_api }}/users"]
+  register: frigate_stack_hp_users
+  changed_when: false
+  check_mode: false
+
+- name: Homepage user | state
+  ansible.builtin.set_fact:
+    frigate_stack_hp_user: >-
+      {{ frigate_stack_hp_users.stdout | from_json | selectattr('username', 'equalto', frigate_stack_homepage_user) | list }}
+
+# 200: the stored password logs in.
+- name: Homepage user | does the stored password log in
+  ansible.builtin.command:
+    argv: [curl, --silent, --output, /dev/null, --write-out, "%{http_code}", --max-time, "10",
+           --header, "Content-Type: application/json", --data-binary, "@-", "{{ frigate_stack_api }}/login"]
+    stdin: "{{ frigate_stack_hp_login_body | to_json }}"
+  register: frigate_stack_hp_login
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when: frigate_stack_hp_have | bool and frigate_stack_hp_user | length > 0
+
+- name: Homepage user | what to do
+  ansible.builtin.set_fact:
+    frigate_stack_hp_action: >-
+      {{ 'create' if frigate_stack_hp_user | length == 0
+         else 'role' if frigate_stack_hp_user[0].role != 'viewer'
+         else 'password' if frigate_stack_hp_login.stdout | default('') != '200'
+         else 'none' }}
+
+- name: Homepage user | to change
+  ansible.builtin.debug:
+    msg: "frigate user {{ frigate_stack_homepage_user }}: {{ frigate_stack_hp_action }}"
+  changed_when: frigate_stack_hp_action != 'none'
+
+- name: Homepage user | another role than viewer is not changed here
+  ansible.builtin.assert:
+    that: frigate_stack_hp_action != 'role'
+    fail_msg: >-
+      Frigate user {{ frigate_stack_homepage_user }} exists with role {{ frigate_stack_hp_user | map(attribute='role') | join(',') }};
+      set it to viewer in the Frigate UI (or delete it) and rerun
+    quiet: true
+
+- name: Homepage user | create it (viewer)
+  ansible.builtin.command:
+    argv: [curl, --silent, --fail, --max-time, "30", --output, /dev/null,
+           --header, "Content-Type: application/json", --data-binary, "@-", "{{ frigate_stack_api }}/users"]
+    stdin: "{{ frigate_stack_hp_create_body | to_json }}"
+  changed_when: true
+  no_log: true
+  when: frigate_stack_hp_action == 'create' and not ansible_check_mode
+
+- name: Homepage user | set its password
+  ansible.builtin.command:
+    argv: [curl, --silent, --fail, --max-time, "30", --output, /dev/null, --request, PUT,
+           --header, "Content-Type: application/json", --data-binary, "@-",
+           "{{ frigate_stack_api }}/users/{{ frigate_stack_homepage_user }}/password"]
+    stdin: "{{ frigate_stack_hp_password_body | to_json }}"
+  changed_when: true
+  no_log: true
+  when: frigate_stack_hp_action == 'password' and not ansible_check_mode
+
+- name: Homepage user | it logs in now
+  ansible.builtin.command:
+    argv: [curl, --silent, --output, /dev/null, --write-out, "%{http_code}", --max-time, "10",
+           --header, "Content-Type: application/json", --data-binary, "@-", "{{ frigate_stack_api }}/login"]
+    stdin: "{{ frigate_stack_hp_login_body | to_json }}"
+  register: frigate_stack_hp_login_after
+  changed_when: false
+  failed_when: frigate_stack_hp_login_after.stdout != '200'
+  no_log: true
+  when: frigate_stack_hp_action != 'none' and not ansible_check_mode
