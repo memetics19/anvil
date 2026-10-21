@@ -16,6 +16,45 @@
   ansible.builtin.set_fact:
     pve_network_changed: "{{ (pve_network_live.content | b64decode) != lookup('ansible.builtin.template', 'interfaces.j2') }}"
 
+- name: Read the controller address as the host sees it
+  ansible.builtin.command: printenv SSH_CLIENT
+  register: pve_network_ssh_client
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Pick the rollback ping target
+  ansible.builtin.set_fact:
+    pve_network_target: >-
+      {{ pve_network_rollback_target
+         or (pve_network_ssh_client.stdout | default('') | trim).split(' ')[0] }}
+  no_log: true
+
+- name: The rollback ping target is known
+  ansible.builtin.assert:
+    that: pve_network_target | length > 0
+    fail_msg: >-
+      Could not read the controller address (SSH_CLIENT) on {{ inventory_hostname }}; set
+      pve_network_rollback_target explicitly. No fallback to the uplink gateway.
+    quiet: true
+
+- name: Report the rollback ping target (address not shown)
+  ansible.builtin.debug:
+    msg: >-
+      network rollback target resolved: yes ({{ 'override' if pve_network_rollback_target else 'SSH_CLIENT' }});
+      in the lab network: {{ 'yes' if pve_network_target_in_lan | bool else 'no' }}
+  vars:
+    pve_network_t: "{{ (pve_network_target ~ '.x.x.x.x').split('.')[:4] | map('int') | list }}"
+    pve_network_n: "{{ site.lan_cidr.split('/')[0].split('.') | map('int') | list }}"
+    pve_network_div: "{{ 2 ** (32 - (site.lan_cidr.split('/')[1] | int)) }}"
+    pve_network_target_in_lan: >-
+      {{ pve_network_target is match('^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$')
+         and ((pve_network_t[0] * 16777216 + pve_network_t[1] * 65536
+               + pve_network_t[2] * 256 + pve_network_t[3]) // (pve_network_div | int))
+          == ((pve_network_n[0] * 16777216 + pve_network_n[1] * 65536
+               + pve_network_n[2] * 256 + pve_network_n[3]) // (pve_network_div | int)) }}
+
 - name: Apply interfaces change with timed rollback
   when: pve_network_changed | bool
   block:
@@ -37,6 +76,19 @@
         group: root
       register: pve_network_backup
 
+    # A unit left over from an earlier run (still armed, failed or finished) would make
+    # systemd-run refuse the name.
+    - name: Stop a leftover rollback timer
+      ansible.builtin.systemd_service:
+        name: net-rollback.timer
+        state: stopped
+      failed_when: false
+
+    - name: Clear a stale rollback unit
+      ansible.builtin.command: systemctl reset-failed net-rollback.service net-rollback.timer
+      changed_when: false
+      failed_when: false
+
     - name: Arm the timed rollback
       ansible.builtin.command:
         argv:
@@ -48,8 +100,9 @@
           - --wait
           - "0"
           - --target
-          - "{{ pve_network_rollback_target }}"
+          - "{{ pve_network_target }}"
       changed_when: true
+      no_log: true  # the command line holds the controller address
 
     - name: Write, reload and confirm
       block:
