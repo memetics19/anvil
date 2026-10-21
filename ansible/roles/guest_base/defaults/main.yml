@@ -29,3 +29,13 @@ guest_base_netplan_rollback_after: 120
 # SSH_CLIENT). There is no fallback to the gateway: a change that keeps the gateway
 # reachable but cuts off the controller must still roll back.
 guest_base_netplan_rollback_target: ""
+
+# single: the static netplan above (one NIC, ens18). enclave: a VM in the secrets enclave
+# (templates/netplan-enclave.yaml.j2): guest_base_enclave_nic {mac, ip, prefix, gateway}
+# carries the default route; guest_base_lab_nic {mac, name, ip, prefix} (or none) keeps an
+# address on the lab network during a move. Cloud-init's network config is switched off then
+# (the managed file owns the network).
+guest_base_netplan_mode: single
+guest_base_enclave_nic: {}
+guest_base_lab_nic: null
+guest_base_cloudinit_network_off: /etc/cloud/cloud.cfg.d/99-anvil-network.cfg

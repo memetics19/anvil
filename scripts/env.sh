@@ -38,8 +38,12 @@ _hl_main() {
 
   export PROXMOX_VE_ENDPOINT="https://${PVE_IP}:8006/"
   export PROXMOX_VE_INSECURE=true
-  export VAULT_ADDR="https://${VAULT_IP}:8200"
-  export VAULT_CACERT="$HOME/.config/homelab/vault-ca.pem"
+  # Vault is in the secrets enclave: vault-ip is its enclave address, which the Mac reaches
+  # through the route via the Proxmox host (README, Vault). HOMELAB_VAULT_ADDR overrides the
+  # whole URL for another path (the gateway name, or an SSH tunnel through the Proxmox host
+  # with VAULT_TLS_SERVER_NAME set to the enclave address); HOMELAB_VAULT_CACERT the CA file.
+  export VAULT_ADDR="${HOMELAB_VAULT_ADDR:-https://${VAULT_IP}:8200}"
+  export VAULT_CACERT="${HOMELAB_VAULT_CACERT:-$HOME/.config/homelab/vault-ca.pem}"
   # Ansible's hashi_vault lookup (hvac -> requests) asks macOS for system proxies inside a
   # forked worker, which crashes it ("A worker was found in a dead state"). Listing the
   # lab hosts in no_proxy makes requests skip that lookup for them.

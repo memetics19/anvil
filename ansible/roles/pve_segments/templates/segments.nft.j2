@@ -52,6 +52,11 @@ table inet {{ pve_segments_table }} {
 		type filter hook forward priority filter; policy accept;
 		ct state established,related accept
 {% for g in pve_segments_list %}
+		# {{ g.name }}: its addresses only ever arrive on its own interface (no spoofing,
+		# no detour through another NIC of a host that has one there too).
+		ip saddr {{ g.subnet }} iifname != "{{ g.interface }}" counter drop
+{% endfor %}
+{% for g in pve_segments_list %}
 		iifname "{{ g.interface }}" jump {{ g.name }}_out
 {% endfor %}
 {% for g in pve_segments_list %}
@@ -62,6 +67,9 @@ table inet {{ pve_segments_table }} {
 	chain input {
 		type filter hook input priority filter; policy accept;
 		ct state established,related accept
+{% for g in pve_segments_list %}
+		ip saddr {{ g.subnet }} iifname != { "{{ g.interface }}", "lo" } counter drop
+{% endfor %}
 {% for g in pve_segments_list %}
 		iifname "{{ g.interface }}" jump {{ g.name }}_host
 {% endfor %}

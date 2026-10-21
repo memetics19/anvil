@@ -1,0 +1,26 @@
+# Managed by Ansible (role guest_base, guest_base_netplan_mode: enclave). A VM moving into
+# the secrets enclave: its enclave NIC carries the default route (the Proxmox host, which
+# forwards nothing to the internet for it); no DNS. While the old lab NIC is kept it has its
+# address on the lab network only (no route through it), so lab clients still reach it.
+# Both NICs are matched by MAC (the names the kernel gives them stay).
+network:
+  version: 2
+  ethernets:
+{% if guest_base_lab_nic is not none %}
+    lab:
+      match:
+        macaddress: "{{ guest_base_lab_nic.mac | lower }}"
+      set-name: {{ guest_base_lab_nic.name }}
+      dhcp4: false
+      addresses:
+        - {{ guest_base_lab_nic.ip }}/{{ guest_base_lab_nic.prefix }}
+{% endif %}
+    enclave:
+      match:
+        macaddress: "{{ guest_base_enclave_nic.mac | lower }}"
+      dhcp4: false
+      addresses:
+        - {{ guest_base_enclave_nic.ip }}/{{ guest_base_enclave_nic.prefix }}
+      routes:
+        - to: default
+          via: {{ guest_base_enclave_nic.gateway }}

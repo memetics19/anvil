@@ -1,5 +1,25 @@
 ansible_user: ubuntu
 ansible_become: true
 ansible_become_password: "{{ lookup('env', 'ANSIBLE_BECOME_PASSWORD') }}"
-# cloud-init wrote this VM's netplan; guest_base leaves it alone.
-guest_base_manage_netplan: false
+# The vault VM lives in the secrets enclave (site.hosts.vault: ip on the enclave, enclave_mac).
+# While it keeps its first NIC on the lab network (site.hosts.vault.lab_ip and mac, until
+# site.hosts.vault.lab_nic_retired is true: README, Vault), guest_base owns its netplan in
+# enclave mode: the default route is on the enclave NIC, the lab NIC has its address only.
+guest_base_manage_netplan: true
+guest_base_netplan_mode: enclave
+guest_base_netplan_file: 60-anvil.yaml
+_vault_site: "{{ site.hosts[inventory_hostname] }}"
+_vault_lab_kept: "{{ _vault_site.lab_ip is defined and not (_vault_site.lab_nic_retired | default(false) | bool) }}"
+guest_base_enclave_nic:
+  mac: "{{ _vault_site.enclave_mac | default('') }}"
+  ip: "{{ _vault_site.ip }}"
+  prefix: "{{ site.sdn.enclave.subnet.split('/')[1] }}"
+  gateway: "{{ site.sdn.enclave.gateway }}"
+guest_base_lab_nic: >-
+  {{ {'mac': _vault_site.mac, 'name': 'eth0', 'ip': _vault_site.lab_ip,
+      'prefix': site.lan_cidr.split('/')[1]} if _vault_lab_kept | bool else none }}
+# Vault listens on both addresses while the lab NIC is kept (api and cluster addresses on the
+# enclave one). No HashiCorp apt repository in the enclave (the apt cache passes Debian and
+# Ubuntu archives only): the pinned package stays installed and held.
+vault_server_extra_ips: "{{ [_vault_site.lab_ip] if _vault_lab_kept | bool else [] }}"
+vault_server_apt_repo: false

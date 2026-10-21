@@ -52,7 +52,7 @@ bootstrap. Only `pve-ip` is required.
 | Account | Holds | Created by | Read by |
 |---|---|---|---|
 | `pve-ip` | Proxmox host lab address | you | `env.sh` (`PVE_IP`, `PROXMOX_VE_ENDPOINT`, the S3 backend) |
-| `vault-ip` | Vault VM address | you | `env.sh` (`VAULT_ADDR`) |
+| `vault-ip` | Vault VM address (its enclave address, `site.hosts.vault.ip`; the Mac needs the enclave route) | you | `env.sh` (`VAULT_ADDR`) |
 | `site-bootstrap` | Bootstrap copy of the site dict | you, later `scripts/site-to-keychain.sh` | `env.sh`, the Ansible inventory, `scripts/site-to-vault.sh` |
 | `pve-root-password` | Proxmox root password | you | `make bootstrap-ssh` |
 | `vm-sudo-password` | Password of the `ubuntu` user on the guests | you | `make bootstrap-ssh`, `env.sh` (`ANSIBLE_BECOME_PASSWORD`) |
@@ -375,6 +375,36 @@ exists:
    filtering too, or set `lan.<domain>` and `<gateway-domain>` for local and gateway names
    only. Leave it enabled and save. Peers pick it up within a minute; check with
    `netbird status -d`.
+
+### The Mac's route to the secrets enclave
+
+Vault and Vaultwarden are on the enclave network, which only the Proxmox host routes. The
+Mac reaches it through the host's home address, on the Wi-Fi service (this replaces the
+service's additional routes; it had none, so add any you use to the same command):
+
+```sh
+networksetup -getadditionalroutes "Wi-Fi"        # note the existing ones first
+sudo networksetup -setadditionalroutes "Wi-Fi" <enclave-network> <enclave-netmask> <proxmox-home-address>
+netstat -rn -f inet | grep <enclave-network-prefix>
+```
+
+The enclave firewall lets the Mac in only from an address in `site.admin_sources` (its home
+Wi-Fi address: reserve it in the router's DHCP). Then point the Keychain at Vault's enclave
+address and check:
+
+```sh
+security add-generic-password -U -s homelab -a vault-ip -w <vault-enclave-address>
+source scripts/env.sh && vault status && make tf-plan
+```
+
+Without the route, Ansible still works (it goes through the Proxmox host), and
+`HOMELAB_VAULT_ADDR=https://vault.<gateway-domain>` with `HOMELAB_VAULT_CACERT` set to a
+public CA bundle reaches Vault through the gateway.
+
+NetBird: the host is the routing peer for the lab's /16, which contains the enclave
+network, so peers that use that route reach the enclave already (as operators, from the
+NetBird range). If the enclave network is ever outside a routed range, add it as a network
+route on the host's peer in the dashboard.
 
 ### Switch
 

@@ -55,3 +55,5 @@ jobs:
         run: tests/test_netplan_rollback.sh
       - name: Routed segments firewall test
         run: tests/test_segments.sh
+      - name: Vault in the secrets enclave test
+        run: tests/test_enclave_vault.sh

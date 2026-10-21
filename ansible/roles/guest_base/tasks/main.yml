@@ -1,3 +1,9 @@
+# The network first: on a VM moving into the secrets enclave, apt works only once the
+# enclave NIC carries the default route (through the host's apt cache).
+- name: Static netplan
+  ansible.builtin.include_tasks: netplan.yml
+  when: guest_base_manage_netplan | bool
+
 - name: Timezone
   community.general.timezone:
     name: "{{ guest_base_timezone }}"
@@ -30,7 +36,3 @@
     autoremove: false
   when: guest_base_absent_packages | length > 0
   tags: [packages_absent]
-
-- name: Static netplan
-  ansible.builtin.include_tasks: netplan.yml
-  when: guest_base_manage_netplan | bool

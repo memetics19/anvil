@@ -2,6 +2,7 @@
 # Nothing under /etc/netplan is touched. Leaves guest_base_netplan_stage (the temp root);
 # the caller removes it. Also used by tests/netplan-validate.yml.
 - name: Netplan inputs are complete
+  when: guest_base_netplan_mode == 'single'
   ansible.builtin.assert:
     that:
       - guest_base_ip | default('', true) | string | length > 0
@@ -15,6 +16,31 @@
       file name, and the templated interface ({{ guest_base_netplan_interface }}) must be the
       default-route interface ({{ ansible_facts.default_ipv4.interface | default('none') }})
     quiet: true
+
+- name: Netplan inputs are complete (enclave)
+  when: guest_base_netplan_mode == 'enclave'
+  ansible.builtin.assert:
+    that:
+      - guest_base_enclave_nic.ip | default('') is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
+      - guest_base_enclave_nic.gateway | default('') is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
+      - guest_base_enclave_nic.prefix | default('') | string is match('^[0-9]{1,2}$')
+      - guest_base_enclave_nic.mac | default('') | lower in guest_base_host_macs
+      - >-
+        guest_base_lab_nic is none
+        or (guest_base_lab_nic.ip | default('') is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
+            and guest_base_lab_nic.mac | default('') | lower in guest_base_host_macs
+            and guest_base_lab_nic.name | default('') is match('^[a-z][a-z0-9]{0,14}$'))
+      - guest_base_netplan_file is match('^[A-Za-z0-9._-]+\.yaml$')
+    fail_msg: >-
+      enclave netplan inputs: need the enclave NIC's address, prefix, gateway and a MAC this VM
+      has (is the NIC attached? Terraform), and for the lab NIC (when kept) its address, name
+      and a MAC this VM has
+    quiet: true
+  vars:
+    guest_base_host_macs: >-
+      {{ ansible_facts.interfaces | map('regex_replace', '-', '_')
+         | map('extract', ansible_facts) | map(attribute='macaddress', default='')
+         | map('lower') | list }}
 
 - name: Temporary root for netplan validation
   ansible.builtin.tempfile:
@@ -34,7 +60,7 @@
 
 - name: Render netplan into the temporary root
   ansible.builtin.template:
-    src: netplan.yaml.j2
+    src: "{{ 'netplan-enclave.yaml.j2' if guest_base_netplan_mode == 'enclave' else 'netplan.yaml.j2' }}"
     dest: "{{ guest_base_netplan_stage.path }}/etc/netplan/{{ guest_base_netplan_file }}"
     owner: root
     group: root

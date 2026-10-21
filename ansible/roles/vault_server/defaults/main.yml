@@ -10,8 +10,14 @@ vault_server_apt_key_url: https://apt.releases.hashicorp.com/gpg
 vault_server_apt_key_fingerprint: "D55C 0D1A C78A 8D81 26CB  631C FC9C A96A CA02 6560"
 vault_server_apt_keyring: /usr/share/keyrings/hashicorp-archive-keyring.asc
 
-# Address comes from the site dict (never a literal in the repo).
+# Address comes from the site dict (never a literal in the repo): api_addr, cluster_addr and
+# the first listener. vault_server_extra_ips: more listener addresses (also in the
+# certificate), e.g. the old lab address while the VM moves into the secrets enclave.
 vault_server_ip: "{{ site.hosts.vault.ip }}"
+vault_server_extra_ips: []
+# HashiCorp's apt repository. false (the secrets enclave, no internet): no repository; the
+# pinned package must already be installed (an upgrade there is a hand step, README).
+vault_server_apt_repo: true
 vault_server_port: 8200
 vault_server_cluster_port: 8201
 vault_server_data_dir: /opt/vault/data

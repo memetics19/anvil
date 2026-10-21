@@ -27,7 +27,7 @@ Placeholders: `<apps-address>` (the `apps` VM's lab address), `<apps-home-addres
 | `make tf-plan` | Saves `terraform/homelab.tfplan` (mode 600) and runs the plan guard on it. |
 | `make tf-apply` | Applies only the saved plan, after running the guard again, then deletes the plan. |
 | `make backup` | Encrypted Terraform state, a Vault Raft snapshot and the newest Vaultwarden backup, into `~/homelab-backups`. |
-| `make vaultwarden-drill` | Restores the newest Vaultwarden backup into a temporary container on `apps`, checks it, then removes it. |
+| `make vaultwarden-drill` | Restores the newest Vaultwarden backup into a temporary container on the `vaultwarden` VM, checks it, then removes it. |
 
 ## Daily commands
 
@@ -151,11 +151,11 @@ of each kind:
 - `vaultwarden-YYYYMMDD-HHMMSS.tar.age`: the newest nightly Vaultwarden backup, copied
   from the Ceph bucket `vaultwarden-backups`
 
-The Vaultwarden job runs on `apps` every night at about 03:30
+The Vaultwarden job runs on the `vaultwarden` VM every night at about 03:30
 ([details](services.md#backups)). To run it by hand and fetch the result:
 
 ```sh
-ssh ubuntu@<apps-address> 'sudo systemctl start vaultwarden-backup && journalctl -u vaultwarden-backup -n 20'
+ssh -J root@<proxmox-address> ubuntu@<vaultwarden-address> 'sudo systemctl start vaultwarden-backup && journalctl -u vaultwarden-backup -n 20'
 make backup
 ```
 
@@ -192,11 +192,11 @@ Restoring Vault and Vaultwarden on a new box is in
 refuses a plan that:
 
 - deletes or replaces anything
-- changes the storage behind the disks of `ragnarok` (the media library), `vault` or
-  `apps` (Vaultwarden's data)
+- changes the storage behind the disks of `ragnarok` (the media library), `vault`, `apps`
+  or `vaultwarden` (Vaultwarden's data)
 - errored, or is incomplete, for example because it was made with `-target`
 
-Don't pass `-target` in `ARGS`. All five VMs, and the VLAN zone with its VNets and
+Don't pass `-target` in `ARGS`. All six VMs, and the VLAN zone with its VNets and
 subnets, also carry `prevent_destroy`.
 
 The saved plan holds site values, so it is mode 600. It is removed at the next `tf-plan`,

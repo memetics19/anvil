@@ -19,7 +19,10 @@ site:
     frigate: {ip: 192.0.2.114, vmid: 9001, mac: "02:00:00:00:00:01"}
     netbird: {ip: 192.0.2.115, vmid: 9002, mac: "02:00:00:00:00:02"}
     ragnarok: {ip: 192.0.2.119, vmid: 9003, mac: "02:00:00:00:00:03"}
-    vault: {ip: 192.0.2.120, vmid: 9004}
+    # In the secrets enclave: ip is its enclave address, enclave_mac its enclave NIC. While it
+    # keeps its first NIC on the lab network: lab_ip and mac (that NIC); lab_nic_retired: true
+    # takes it out (docs/services.md, Vault on the enclave).
+    vault: {ip: 203.0.113.20, lab_ip: 192.0.2.120, vmid: 9004, mac: "02:00:00:00:00:07", enclave_mac: "02:00:00:00:00:08"}
     # In the secrets enclave (sdn.enclave.subnet, Terraform vm_vaultwarden.tf).
     vaultwarden: {ip: 203.0.113.21, vmid: 9006}
     # Two NICs: ip/mac on the lab network (default route), home_ip/home_mac on the home

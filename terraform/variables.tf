@@ -33,6 +33,12 @@ variable "site_json" {
   }
 
   validation {
+    condition = alltrue([for k in ["mac", "enclave_mac"] :
+    can(regex("^\"([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\"$", jsonencode(jsondecode(var.site_json).hosts.vault[k])))])
+    error_message = "site.hosts.vault needs mac (its lab NIC) and enclave_mac (its enclave NIC), quoted aa:bb:cc:dd:ee:ff."
+  }
+
+  validation {
     condition = (
       can(regex("^[0-9.]+$", jsondecode(var.site_json).hosts.apps.ip)) &&
       can(regex("^[0-9.]+$", jsondecode(var.site_json).hosts.apps.home_ip)) &&

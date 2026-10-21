@@ -20,3 +20,12 @@ listener "tcp" {
   tls_key_file    = "{{ vault_server_tls_dir }}/vault.key"
   tls_min_version = "tls12"
 }
+{% for ip in vault_server_extra_ips %}
+
+listener "tcp" {
+  address         = "{{ ip }}:{{ vault_server_port }}"
+  tls_cert_file   = "{{ vault_server_tls_dir }}/vault.crt"
+  tls_key_file    = "{{ vault_server_tls_dir }}/vault.key"
+  tls_min_version = "tls12"
+}
+{% endfor %}

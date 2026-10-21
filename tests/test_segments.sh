@@ -70,6 +70,8 @@ has "Vaultwarden: SMTP to the relay set" "ip saddr 198.51.100.21 ip daddr @encla
 has "host: NTP on the gateway" "ip daddr 198.51.100.1 udp dport 123 accept" "$f"
 has "host: apt cache on the gateway" "ip daddr 198.51.100.1 tcp dport 3142 accept" "$f"
 has "host: RGW for Vaultwarden only" "ip saddr 198.51.100.21 ip daddr 192.0.2.10 tcp dport 7480 accept" "$f"
+has "forward: enclave addresses only from the vnet" 'ip saddr 198.51.100.0/24 iifname != "secrets" counter drop' "$f"
+has "input: enclave addresses only from the vnet" 'ip saddr 198.51.100.0/24 iifname != { "secrets", "lo" } counter drop' "$f"
 has "gateway address only on its vnet" 'ip daddr 198.51.100.1 iifname != { "secrets", "lo" } counter drop' "$f"
 check "every segment chain ends in drop" "$(grep -c '^		counter drop$' "$f")" "3"
 hasnt "no NAT for the enclave as a whole" "masquerade" "$f"

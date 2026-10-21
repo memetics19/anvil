@@ -34,8 +34,9 @@ It is a work in progress. See the [Roadmap](#roadmap).
 | `frigate`  | Frigate, Mosquitto, Gotify, nginx, cloudflared |
 | `netbird`  | NetBird routing peer, Redis, ntfy, Pulse, cloudflared |
 | `ragnarok` | ARR stack, IPTV, Filestash, cloudflared |
-| `vault`    | HashiCorp Vault |
-| `apps`     | Pi-hole and Unbound, the Caddy service gateway, Homepage, Vaultwarden |
+| `vault`    | HashiCorp Vault, in the secrets enclave (no internet) |
+| `vaultwarden` | Vaultwarden, in the secrets enclave (no internet, one mail hole) |
+| `apps`     | Pi-hole and Unbound, the Caddy service gateway, Homepage |
 
 [docs/services.md](docs/services.md) describes what runs on each one.
 
@@ -111,7 +112,8 @@ vault/policies/
 - [x] Pi-hole and Unbound for the home network
 - [x] Homepage dashboard
 - [x] Vaultwarden with encrypted backups and a restore drill
-- [ ] Secrets enclave: Vault and Vaultwarden on an isolated network (in progress)
+- [x] Secrets enclave: Vault and Vaultwarden on an isolated network, firewalled by
+  data-driven routed segments (retiring Vault's old lab NIC is a separate step)
 - [ ] VLANs 10/20/30 with an inter-VLAN firewall
 - [ ] Monitoring: VictoriaMetrics, Grafana, exporters, alerts to ntfy
 - [ ] Single sign-on (Authelia) in front of the gateway

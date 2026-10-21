@@ -150,7 +150,9 @@ The list is `guest_base_absent_packages` in `inventory/host_vars/netbird.yml`, t
 ## apps
 
 `apps` is one small VM (1 vCPU, 1.5 GB) for the always-on services: Pi-hole, the service
-gateway, Homepage and Vaultwarden.
+gateway and Homepage. Vaultwarden ran here first; it now runs on its own VM in the
+[secrets enclave](#secrets-enclave). The old copy here is stopped and kept until you
+remove it (see [Vaultwarden](#vaultwarden)).
 
 It has two NICs on `vmbr0`, both set by cloud-init in `terraform/vm_apps.tf`. One has a lab
 address and the default route. The other has a home-network address
@@ -307,10 +309,49 @@ manager (the `pass` entry of `site.services`, `vaultwarden` role, compose projec
 `/opt/vaultwarden`, data in `/opt/vaultwarden/data`). Bitwarden apps and browser
 extensions use it as a self-hosted server URL.
 
-The container is `vaultwarden/server`, pinned by tag and digest. No port is published;
-Caddy reaches it on the project network `vaultwarden_web`. It runs as uid 10004 on port
-8080, with a read-only root file system, no capabilities and a 128 MB memory cap. Websocket
-notifications (`/notifications/hub`) go through the gateway on the same name.
+It runs on the `vaultwarden` VM in the [secrets enclave](#secrets-enclave)
+(`make vm HOST=vaultwarden`). The container is `vaultwarden/server`, pinned by tag and
+digest. The VM has no registry access, so the image is pulled by digest on `ragnarok`,
+exported, copied through the Mac and loaded by tag (never pulled there); the run checks
+that its layer list equals the pulled image's. Docker comes from Ubuntu's archive
+(`docker.io`, `docker-compose-v2`) through the apt cache. The port is published on the VM's
+enclave address only, where the enclave firewall lets only Caddy (`apps`) in. It runs as
+uid 10004 on port 8080, with a read-only root file system, no capabilities and a 128 MB
+memory cap. Websocket notifications (`/notifications/hub`) go through the gateway on the
+same name. On a VM with no database the role refuses to start an empty Vaultwarden;
+`-e vaultwarden_allow_empty_start=true` is for a deliberate fresh install.
+
+The Vault paths keep the name of the VM it was first set up on: `kv/homelab/apps/vaultwarden`
+and `kv/homelab/apps/vaultwarden-backup`.
+
+#### The move from `apps` (2026-10-21) and the old copy
+
+The `apps` copy's backup job ran one last time and was checked. Then its container was
+stopped, the database was copied with `sqlite3 .backup` (plus `rsa_key.pem`), the new VM
+started on that copy, and the `pass` entry was switched to `host: hosts.vaultwarden.ip`.
+The users and ciphers rows, and digests of both tables, were equal on both sides. On `apps`
+the old container is stopped, its backup timer is off (`vaultwarden` tag of the apps play,
+`tasks/retired.yml`) and `/opt/vaultwarden` is kept. Caddy stays on the network
+`vaultwarden_web` while that project exists.
+
+Rollback while the old copy is there: stop the new container (`docker stop vaultwarden` on
+`vaultwarden`), start the old one (`docker start vaultwarden` on `apps`), set the `pass`
+entry back to `container: vaultwarden` in `kv/homelab/site`, and run
+`make vm HOST=apps ARGS="--tags caddy"`. Data written on the new VM since the move would be
+lost; copy it back first with the same `.backup` steps.
+
+Removing the old copy, once you have used the new one for a while:
+
+```sh
+ssh ubuntu@<apps-address> 'cd /opt/vaultwarden && sudo docker compose rm -f vaultwarden \
+  && sudo docker network rm vaultwarden_web && sudo rm -rf /opt/vaultwarden \
+  && sudo rm -f /etc/systemd/system/vaultwarden-backup.* /usr/local/sbin/vaultwarden-backup \
+  && sudo rm -rf /etc/vaultwarden-backup && sudo systemctl daemon-reload'
+```
+
+Then drop `vaultwarden_web` from `caddy_container_networks`
+(`ansible/roles/caddy/defaults/main.yml`) and run `make vm HOST=apps`: Caddy leaves that
+network, which recreates it once, and Homepage picks up the new `pass` entry (one restart).
 
 `DOMAIN` is the gateway name. Sign-ups are closed (`SIGNUPS_ALLOWED=false`), invitations
 are on, and password hints are never shown.
@@ -395,18 +436,134 @@ The bucket belongs to the S3 user `vaultwarden-backup`, made by `make ceph`. It 
 other bucket and cannot read any other. Its keys are in
 `kv/homelab/apps/vaultwarden-backup`. `make backup` copies the newest object to the Mac.
 
-Not done yet: object versioning or object lock on the bucket. `apps` owns the bucket, so a
-compromised `apps` could delete the backups. Today the copies on the Mac are the second
+Not done yet: object versioning or object lock on the bucket. The backup user owns the
+bucket, so a compromised `vaultwarden` VM could delete the backups. Today the copies on the Mac are the second
 copy.
 
 `make vaultwarden-drill` tests a restore. It takes the newest backup, which must be the
 copy `make backup` pulled, and decrypts it on the Mac straight into a one-time key made on
-`apps`, so no plaintext touches the Mac's disk and the identity never leaves it. It
+the `vaultwarden` VM, so no plaintext touches the Mac's disk and the identity never leaves it. It
 restores into a temporary container `vaultwarden-restore-drill` with no network, no
 gateway route and no admin page, and moves any restored `config.json` aside. It checks
 that `/alive` answers, that the user count equals the live one and that every restored
 user is live, then removes the container and its directory. The real restore is in
 [setup.md](setup.md#rebuilding-on-a-new-box).
+
+## Secrets enclave
+
+Vault and Vaultwarden live on their own network, the SDN vnet `secrets` (simple zone
+`enclave`, `terraform/sdn.tf`). It is a bridge on the Proxmox host with no physical port, so
+none of its frames reach the switch or the home network. The host is its only router
+(`site.sdn.enclave.gateway` is the host's address on it) and does no NAT for it, except
+the one mail flow below. The vnet isolates its ports: the two VMs reach the gateway, not
+each other. `make enclave` (role `pve_enclave`) sets up the host side.
+
+### Firewall: routed segments
+
+The host's nftables table `inet segments` (role `pve_segments`) is built from data: a list
+of segments in `inventory/group_vars/proxmox.yml` (`pve_segments_list`) and named sets.
+Each segment has:
+
+- a name, its interface, subnet and gateway;
+- a `nat` flag (masquerade the whole segment);
+- three rule lists: `ingress` (new connections into it), `egress` (out of it) and `host`
+  (to the Proxmox host);
+- `nat_out`, for single flows of a segment without NAT that leave source-NATed.
+
+A rule is saddr/daddr (an address, a list or `@set`), proto and dport. A rule whose address
+is empty (a host not in the site dict yet) is left out.
+
+The forward chain:
+
+1. accepts established traffic;
+2. drops a segment's addresses arriving on any other interface;
+3. jumps to `<name>_out`, where allowed connections go on;
+4. jumps to `<name>_in`, which accepts.
+
+So a connection between two segments passes both. The input chain works the same way with
+`<name>_host`, and each gateway address answers only on its own interface. Every segment
+chain ends in a counted drop.
+
+Sets are static, CIDR intervals, or fed from DNS by a timer (`segments-set-refresh@<set>`).
+A DNS-fed set takes only public unicast A records, keeps each for a while, and a failed,
+empty or oversized lookup changes nothing.
+
+The ruleset is checked with `nft -c`, shown with addresses masked, and applied under a
+120 s rollback. It loads at boot before the network and the guests
+(`segments-firewall.service`). The lab SNAT, the IPTV DNAT and NetBird's rules are separate
+and unchanged. The enclave is the first segment; the VLANs are added as more entries.
+
+The enclave's rules (`pve_enclave_segment` in `ansible/roles/pve_enclave/defaults/main.yml`):
+
+| Direction | Allowed |
+|---|---|
+| Into the enclave | Caddy (the `apps` lab address) to Vault 8200 and Vaultwarden 8080. Operators to Vault 8200, and SSH and ping on both VMs. Operators are `site.admin_sources` (the lab network, the NetBird range, the Mac's home Wi-Fi address) minus the workload VMs `apps`, `frigate` and `ragnarok`. Monitoring (`site.hosts.monitoring`, once it exists) to node_exporter on both and Vault 8200. |
+| Out of the enclave | Vaultwarden only: DNS to Pi-hole, and the SMTP port to the set `enclave_smtp_relay`, source-NATed to the host's home address. That is the only translated flow. Vault: nothing. |
+| To the host | NTP and the apt cache on the gateway address, and ping. Vaultwarden also reaches the Ceph S3 gateway (backups). |
+
+The mail hole: `smtp_host` and `smtp_port` come from `kv/homelab/apps/vaultwarden`. The
+timer resolves the host through Pi-hole, the resolver Vaultwarden uses, every 10 minutes,
+and keeps each address for 24 h. Without an SMTP login in Vault the set stays empty.
+
+The lab SNAT rule on the host also matches lab-to-enclave traffic, so the enclave VMs see
+lab clients (Caddy included) as the host's home address. The firewall decides on the real
+source, before that translation.
+
+### Apt cache and time
+
+`apt-cacher-ng` on the host listens on the gateway address only. It serves the Debian and
+Ubuntu archives and nothing else: `ForceManaged`, only those remaps, port 80 upstreams, no
+CONNECT tunnels, IPv4 only. The enclave VMs use it as their apt proxy, set by the role
+`enclave_guest` and by the cloud-init vendor data `local:snippets/enclave-vendor.yaml` from
+the first boot. HTTPS repositories are not reachable, so Docker comes from Ubuntu's archive
+and Vault's HashiCorp repository is removed.
+
+The host's chrony answers NTP on the gateway address for the enclave subnet. The VMs use
+systemd-timesyncd with that server only.
+
+### Vault on the enclave
+
+- **NIC.** The vault VM got a second NIC on `secrets` (hot-plugged, no reboot), with its MAC
+  from `site.hosts.vault.enclave_mac`.
+- **Addresses.** `site.hosts.vault.ip` is now its enclave address, and `lab_ip` is its
+  first, lab address.
+- **Netplan.** `guest_base` owns it in enclave mode, under a timed rollback:
+  - the enclave NIC has the default route and no DNS;
+  - the lab NIC keeps its address, with no route through it;
+  - cloud-init no longer writes the network.
+- **Listeners.** Vault listens on both addresses. `api_addr` and `cluster_addr` are the
+  enclave one, and the certificate has both.
+- **Ansible** reaches it through the Proxmox host (`group_vars/enclave.yml`), on the lab
+  address while that NIC is kept.
+
+While the lab NIC is kept, Vault can still reach hosts on the lab network directly, because
+that traffic never passes the host's firewall: Pi-hole, and the host's lab address. The
+internet is already out of reach (no default route through the lab NIC, and nothing is
+forwarded from the enclave).
+
+Retiring that NIC closes the rest:
+
+1. Set the Mac's enclave route and the Keychain `vault-ip` ([setup.md](setup.md#not-managed-here)).
+   Check `vault status` and `make tf-plan` over the enclave address.
+2. Add `lab_nic_retired: true` to `site.hosts.vault` (CAS write).
+3. `make vm HOST=vault ARGS="--tags base -e guest_base_netplan_apply=true"`. The lab NIC
+   loses its address, and Ansible then connects to the enclave address.
+4. `make vault ARGS="-e vault_server_allow_restart=true"`, then `make vault-unseal`. The lab
+   listener goes, and the certificate keeps only the enclave address.
+5. `make tf-plan` and `make tf-apply`. These set net0 link down (`disconnected`). Removing
+   it from the VM is a later, separate change.
+
+The Raft configuration still names the node by its first cluster address. On a single node
+that is only a label, because the node elects itself by ID. A second node would need it
+fixed first, with a `peers.json` recovery.
+
+**Vault upgrades in the enclave.** There is no HashiCorp repository, so the run stops when
+`vault_server_version` is not installed. To upgrade:
+
+1. On the Mac, download the `.deb` from `apt.releases.hashicorp.com` and check it against
+   the signed repository index.
+2. Copy it to the VM and run `sudo apt install ./vault_<version>_amd64.deb`.
+3. Run `make vault` with `vault_server_allow_restart=true`, then unseal.
 
 ## Ceph
 

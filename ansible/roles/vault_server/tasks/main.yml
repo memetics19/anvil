@@ -14,8 +14,34 @@
         fail_msg: Swap is active on the Vault VM; disable it (disable_mlock = true relies on that).
         quiet: true
 
+- name: No HashiCorp apt repository here (no internet)
+  tags: [repos]
+  when: not vault_server_apt_repo | bool
+  block:
+    - name: The repository is not listed
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/hashicorp.list
+        state: absent
+
+    - name: Installed Vault version
+      ansible.builtin.command: dpkg-query -W -f=${Version} vault
+      register: vault_server_offline_version
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: The pinned Vault version is installed (no repository to install it from)
+      ansible.builtin.assert:
+        that: vault_server_offline_version.stdout | default('') == vault_server_version
+        fail_msg: >-
+          Vault {{ vault_server_version }} is not installed and this VM has no HashiCorp apt
+          repository (secrets enclave). Install the package by hand first (README, Vault upgrades in
+          the enclave), then rerun.
+        quiet: true
+
 - name: HashiCorp apt repository
   tags: [repos]
+  when: vault_server_apt_repo | bool
   block:
     - name: HashiCorp signing key
       ansible.builtin.get_url:
@@ -208,9 +234,7 @@
       community.crypto.openssl_csr_pipe:
         privatekey_path: "{{ vault_server_tls_dir }}/vault.key"
         common_name: "{{ inventory_hostname }}"
-        subject_alt_name:
-          - "IP:{{ vault_server_ip }}"
-          - "DNS:{{ inventory_hostname }}"
+        subject_alt_name: "{{ ([vault_server_ip] + vault_server_extra_ips) | map('regex_replace', '^', 'IP:') | list + ['DNS:' ~ inventory_hostname] }}"
         basic_constraints: ["CA:FALSE"]
         key_usage: [digitalSignature]
         extended_key_usage: [serverAuth]

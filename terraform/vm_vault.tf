@@ -58,10 +58,23 @@ resource "proxmox_virtual_environment_vm" "vault" {
     discard      = "on"
   }
 
+  # net0: the first NIC, on the lab network. Kept while the VM moves into the secrets
+  # enclave; site.hosts.vault.lab_nic_retired = true takes its link down (README, Vault).
   network_device {
-    bridge   = "vmbr0"
-    model    = "virtio"
-    firewall = true
+    bridge       = "vmbr0"
+    model        = "virtio"
+    mac_address  = nonsensitive(local.site.hosts.vault.mac)
+    firewall     = true
+    disconnected = try(local.site.hosts.vault.lab_nic_retired, false)
+  }
+
+  # net1: the secrets enclave (sdn.tf). Its address and the default route are set in the
+  # guest by Ansible (guest_base, enclave mode), not by cloud-init.
+  network_device {
+    bridge      = proxmox_sdn_vnet.secrets.id
+    model       = "virtio"
+    mac_address = nonsensitive(local.site.hosts.vault.enclave_mac)
+    firewall    = true
   }
 
   operating_system {
@@ -82,7 +95,8 @@ resource "proxmox_virtual_environment_vm" "vault" {
 
     ip_config {
       ipv4 {
-        address = "${local.site.hosts.vault.ip}/${split("/", local.site.lan_cidr)[1]}"
+        # The lab address it was created with (site.hosts.vault.ip is its enclave address).
+        address = "${try(local.site.hosts.vault.lab_ip, local.site.hosts.vault.ip)}/${split("/", local.site.lan_cidr)[1]}"
         gateway = local.site.pve.gateway_alias_ip
       }
     }

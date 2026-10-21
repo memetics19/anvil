@@ -52,6 +52,17 @@
 
 - name: Write, apply and confirm
   block:
+    - name: Keep cloud-init from writing the network again (the managed file owns it)
+      ansible.builtin.copy:
+        content: |
+          # Managed by Ansible (role guest_base): /etc/netplan/{{ guest_base_netplan_file }} owns the network.
+          network: {config: disabled}
+        dest: "{{ guest_base_cloudinit_network_off }}"
+        owner: root
+        group: root
+        mode: "0644"
+      when: guest_base_netplan_mode == 'enclave'
+
     - name: Write the netplan file
       ansible.builtin.copy:
         src: "{{ guest_base_netplan_stage.path }}/etc/netplan/{{ guest_base_netplan_file }}"
@@ -96,6 +107,16 @@
         delay: 0
         timeout: 20
       when: not ansible_check_mode
+
+    - name: The enclave gateway answers on the enclave NIC
+      ansible.builtin.command:
+        argv: [ping, -c, "1", -W, "3", -I, "{{ guest_base_enclave_nic.ip }}", "{{ guest_base_enclave_nic.gateway }}"]
+      changed_when: false
+      retries: 5
+      delay: 2
+      register: guest_base_enclave_ping
+      until: guest_base_enclave_ping.rc == 0
+      when: guest_base_netplan_mode == 'enclave' and not ansible_check_mode
 
     - name: Disarm the rollback
       ansible.builtin.systemd_service:
