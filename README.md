@@ -72,6 +72,9 @@ structure. Secrets are in Vault under `kv/homelab/<host>/<app>`, listed in
 
 ## Documentation
 
+The docs are also published as a site: <https://memetics19.github.io/anvil/>. Build it
+locally with `make docs`.
+
 - [docs/setup.md](docs/setup.md): the operator Mac, Keychain items, the site dict, the
   first build, rebuilding on a new box, and the hand steps
 - [docs/usage.md](docs/usage.md): make targets, adding a service, secrets, backups, safety
