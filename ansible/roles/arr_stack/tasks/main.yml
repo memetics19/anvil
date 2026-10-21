@@ -1,0 +1,8 @@
+# The compose file is the whole role: no app config, and nothing under the media library.
+- name: ARR compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ arr_stack_dir }}"
+    compose_project_file: "{{ arr_stack_compose_file }}"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"

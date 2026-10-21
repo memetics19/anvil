@@ -1,0 +1,16 @@
+# The compose file was missing on the VM (the container still ran from it); this restores
+# it, rendered so its config hash matches the running container (no recreation).
+- name: Directory nginx serves
+  ansible.builtin.file:
+    path: "{{ iptv_epg_dir }}/output"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: IPTV EPG compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ iptv_epg_dir }}"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"

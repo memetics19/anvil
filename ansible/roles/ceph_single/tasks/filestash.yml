@@ -1,0 +1,201 @@
+# Read-only S3 user for Filestash on ragnarok. It owns no bucket and may not create one
+# (--max-buckets=-1); a bucket policy on each listed bucket grants it s3:ListBucket and
+# s3:GetObject, nothing else. Its keys go from radosgw-admin straight into Vault
+# (kv/<ceph_single_filestash_vault_path>, keys s3_access_key/s3_secret_key) on stdin:
+# never to a file, the log or the screen. Created only when absent.
+
+- name: Filestash | look up the read-only S3 user
+  ansible.builtin.command:
+    argv: [radosgw-admin, user, info, --uid, "{{ ceph_single_filestash_user }}"]
+  register: ceph_single_fs_user_info
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+  when: ceph_single_live | bool
+
+- name: Filestash | create the read-only S3 user
+  ansible.builtin.command:
+    argv:
+      - radosgw-admin
+      - user
+      - create
+      - --uid
+      - "{{ ceph_single_filestash_user }}"
+      - --display-name
+      - Filestash (read-only)
+      - --max-buckets=-1
+  register: ceph_single_fs_user_new
+  changed_when: true
+  no_log: true
+  when: ceph_single_fs_user_info is skipped or ceph_single_fs_user_info.rc != 0
+
+- name: Filestash | S3 user to create
+  ansible.builtin.debug:
+    msg: "create the read-only S3 user {{ ceph_single_filestash_user }}"
+  changed_when: true
+  when: ansible_check_mode and (ceph_single_fs_user_info.rc | default(1)) != 0
+
+- name: Filestash | pick the user's S3 keys
+  ansible.builtin.set_fact:
+    ceph_single_fs_keys: >-
+      {{ ((ceph_single_fs_user_info.stdout if ceph_single_fs_user_info.rc == 0
+           else ceph_single_fs_user_new.stdout) | from_json)['keys']
+         | selectattr('user', 'equalto', ceph_single_filestash_user) | first }}
+  no_log: true
+  when: >-
+    (ceph_single_fs_user_info.rc | default(1)) == 0
+    or (ceph_single_fs_user_new.stdout | default('')) | length > 0
+
+# --- keys into Vault ---------------------------------------------------------------------
+- name: Filestash | key digests stored in Vault
+  ansible.builtin.command:
+    argv: ["{{ ceph_single_repo_scripts }}/vault-kv-digests.sh", "{{ ceph_single_filestash_vault_path }}"]
+  delegate_to: localhost
+  become: false
+  register: ceph_single_fs_vault
+  changed_when: false
+  check_mode: false
+  when: ceph_single_fs_keys is defined
+
+- name: Filestash | what Vault should hold
+  ansible.builtin.set_fact:
+    ceph_single_fs_vault_have: "{{ dict(ceph_single_fs_vault.stdout_lines | map('split', ' ')) }}"
+    ceph_single_fs_vault_want:
+      s3_access_key: "{{ ceph_single_fs_keys.access_key | hash('sha256') }}"
+      s3_secret_key: "{{ ceph_single_fs_keys.secret_key | hash('sha256') }}"
+  when: ceph_single_fs_keys is defined
+
+- name: Filestash | write the keys straight into Vault
+  ansible.builtin.command:
+    argv:
+      - vault
+      - kv
+      - "{{ 'patch' if ceph_single_fs_vault_have else 'put' }}"
+      - -mount=kv
+      - "{{ ceph_single_filestash_vault_path }}"
+      - "-"
+    stdin: >-
+      {{ {'s3_access_key': ceph_single_fs_keys.access_key,
+          's3_secret_key': ceph_single_fs_keys.secret_key} | to_json }}
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  no_log: true
+  when:
+    - ceph_single_fs_keys is defined
+    - ceph_single_fs_vault_have | dict2items | selectattr('key', 'in', ['s3_access_key', 's3_secret_key'])
+      | items2dict != ceph_single_fs_vault_want
+
+- name: Filestash | read the digests back from Vault
+  ansible.builtin.command:
+    argv: ["{{ ceph_single_repo_scripts }}/vault-kv-digests.sh", "{{ ceph_single_filestash_vault_path }}"]
+  delegate_to: localhost
+  become: false
+  register: ceph_single_fs_vault_after
+  changed_when: false
+  when: ceph_single_fs_keys is defined and not ansible_check_mode
+
+- name: Filestash | Vault holds the user's keys
+  ansible.builtin.assert:
+    that:
+      - (dict(ceph_single_fs_vault_after.stdout_lines | map('split', ' '))).s3_access_key == ceph_single_fs_vault_want.s3_access_key
+      - (dict(ceph_single_fs_vault_after.stdout_lines | map('split', ' '))).s3_secret_key == ceph_single_fs_vault_want.s3_secret_key
+    fail_msg: "the keys read back from kv/{{ ceph_single_filestash_vault_path }} differ (digest check)"
+    quiet: true
+  when: ceph_single_fs_keys is defined and not ansible_check_mode
+
+# --- bucket policies (set by the bucket owner, the Terraform user) -------------------------
+- name: Filestash | read-only bucket policies
+  when: ceph_single_s3_keys is defined and ceph_single_live | bool
+  delegate_to: localhost
+  become: false
+  block:
+    - name: Filestash | temporary AWS credentials file
+      ansible.builtin.tempfile:
+        state: file
+        suffix: .aws
+      register: ceph_single_fs_aws_creds
+      changed_when: false
+      check_mode: false
+
+    - name: Filestash | write the credentials
+      ansible.builtin.copy:
+        content: |
+          [default]
+          aws_access_key_id = {{ ceph_single_s3_keys.access_key }}
+          aws_secret_access_key = {{ ceph_single_s3_keys.secret_key }}
+        dest: "{{ ceph_single_fs_aws_creds.path }}"
+        mode: "0600"
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Filestash | current bucket policy
+      ansible.builtin.command:
+        argv: [aws, --endpoint-url, "{{ ceph_single_rgw_endpoint }}", s3api, get-bucket-policy, --bucket, "{{ item }}"]
+      environment: &ceph_single_fs_aws_env
+        AWS_SHARED_CREDENTIALS_FILE: "{{ ceph_single_fs_aws_creds.path }}"
+        AWS_CONFIG_FILE: /dev/null
+        AWS_PROFILE: default
+        AWS_REGION: us-east-1
+        AWS_ACCESS_KEY_ID: ""
+        AWS_SECRET_ACCESS_KEY: ""
+        AWS_EC2_METADATA_DISABLED: "true"
+      loop: "{{ ceph_single_filestash_buckets }}"
+      register: ceph_single_fs_policy
+      changed_when: false
+      failed_when: ceph_single_fs_policy.rc != 0 and 'NoSuchBucketPolicy' not in ceph_single_fs_policy.stderr
+      check_mode: false
+
+    # Keeps any other statements; only the one with Sid filestash-read is managed.
+    - name: Filestash | wanted bucket policies
+      ansible.builtin.set_fact:
+        ceph_single_fs_policy_plan: >-
+          {%- set out = {} -%}
+          {%- for r in ceph_single_fs_policy.results -%}
+          {%- set b = r.item -%}
+          {%- set cur = (r.stdout | from_json).Policy | from_json if r.rc == 0 else {} -%}
+          {%- set mine = {'Sid': 'filestash-read', 'Effect': 'Allow',
+                          'Principal': {'AWS': ['arn:aws:iam:::user/' ~ ceph_single_filestash_user]},
+                          'Action': ['s3:ListBucket', 's3:GetObject'],
+                          'Resource': ['arn:aws:s3:::' ~ b, 'arn:aws:s3:::' ~ b ~ '/*']} -%}
+          {%- set others = cur.Statement | default([]) | rejectattr('Sid', 'defined') | list
+                           + cur.Statement | default([]) | selectattr('Sid', 'defined') | rejectattr('Sid', 'equalto', 'filestash-read') | list -%}
+          {%- if mine not in cur.Statement | default([]) or cur.Version | default('') != '2012-10-17' -%}
+          {%- set _ = out.update({b: {'Version': '2012-10-17', 'Statement': others + [mine]}}) -%}
+          {%- endif -%}
+          {%- endfor -%}
+          {{ out }}
+
+    - name: Filestash | bucket policies to set
+      ansible.builtin.debug:
+        msg: "set the read-only policy on: {{ ceph_single_fs_policy_plan.keys() | join(', ') if ceph_single_fs_policy_plan else 'none' }}"
+      changed_when: ansible_check_mode and ceph_single_fs_policy_plan | length > 0
+
+    - name: Filestash | set the bucket policy
+      ansible.builtin.command:
+        argv:
+          - aws
+          - --endpoint-url
+          - "{{ ceph_single_rgw_endpoint }}"
+          - s3api
+          - put-bucket-policy
+          - --bucket
+          - "{{ item.key }}"
+          - --policy
+          - "{{ item.value | to_json }}"
+      environment: *ceph_single_fs_aws_env
+      loop: "{{ ceph_single_fs_policy_plan | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      changed_when: true
+  always:
+    - name: Filestash | remove the temporary credentials file
+      ansible.builtin.file:
+        path: "{{ ceph_single_fs_aws_creds.path }}"
+        state: absent
+      changed_when: false
+      diff: false
+      check_mode: false
+      when: ceph_single_fs_aws_creds.path is defined

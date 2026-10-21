@@ -10,6 +10,10 @@
   ansible.builtin.import_tasks: rgw.yml
   tags: [rgw]
 
+- name: Read-only S3 user and bucket policies for Filestash
+  ansible.builtin.import_tasks: filestash.yml
+  tags: [rgw]
+
 - name: Ceph dashboard
   ansible.builtin.import_tasks: dashboard.yml
   tags: [dashboard]

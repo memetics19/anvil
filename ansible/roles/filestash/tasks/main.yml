@@ -1,0 +1,225 @@
+# Filestash on ragnarok, a read-only browser for the Ceph S3 gateway. Login: user "admin"
+# with the admin password (the htpasswd identity provider; the image has no "admin" one).
+# The S3 keys stay server side in the attribute mapping, so they never reach the browser,
+# and logging in with other S3 keys is refused. The same password opens the admin console.
+# Filestash owns config.json and rewrites it at start, so the role manages only its own keys
+# in it (compared as JSON, not as text).
+
+# --- secrets -------------------------------------------------------------------------------
+- name: Key digests stored in Vault
+  ansible.builtin.command:
+    argv: ["{{ filestash_repo_scripts }}/vault-kv-digests.sh", "{{ filestash_vault_path }}"]
+  delegate_to: localhost
+  become: false
+  register: filestash_vault_digests
+  changed_when: false
+  check_mode: false
+
+- name: Keys stored in Vault
+  ansible.builtin.set_fact:
+    filestash_vault_keys: "{{ filestash_vault_digests.stdout_lines | map('split', ' ') | map('first') | list }}"
+
+# The password goes from openssl straight into Vault; it is never displayed or logged.
+- name: Generate the admin password into Vault
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      openssl rand -hex 24 | tr -d '\n' |
+      vault kv {{ 'patch' if filestash_vault_keys else 'put' }} -mount={{ filestash_vault_mount }}
+      {{ filestash_vault_path }} admin_password=- >/dev/null
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  when: "'admin_password' not in filestash_vault_keys"
+
+- name: The S3 keys are in Vault (written by make ceph)
+  ansible.builtin.assert:
+    that:
+      - "'s3_access_key' in filestash_vault_keys"
+      - "'s3_secret_key' in filestash_vault_keys"
+    fail_msg: "kv/{{ filestash_vault_path }} has no s3_access_key/s3_secret_key: run make ceph first"
+    quiet: true
+
+# In check mode a password that would be generated above does not exist yet.
+- name: Filestash secrets are readable
+  ansible.builtin.set_fact:
+    filestash_have_secrets: "{{ not (ansible_check_mode and 'admin_password' not in filestash_vault_keys) }}"
+
+- name: Read the Filestash secrets from Vault
+  ansible.builtin.set_fact:
+    filestash_secrets: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', filestash_vault_path,
+                engine_mount_point=filestash_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
+  no_log: true
+  when: filestash_have_secrets | bool
+
+- name: The secrets are present
+  ansible.builtin.assert:
+    that:
+      - filestash_secrets.admin_password | default('') | length >= 32
+      - filestash_secrets.s3_access_key | default('') | length > 0
+      - filestash_secrets.s3_secret_key | default('') | length > 0
+    fail_msg: "kv/{{ filestash_vault_path }}: admin_password, s3_access_key or s3_secret_key is missing or empty"
+    quiet: true
+  when: filestash_have_secrets | bool
+
+# --- directories ---------------------------------------------------------------------------
+- name: Project directory
+  ansible.builtin.file:
+    path: "{{ filestash_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Filestash sets its config directory to 0770 and config.json to 0660 at every start, so
+# the role uses the same modes; the state directory (0700, Filestash's uid) keeps others out.
+- name: State directories (Filestash's uid)
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ filestash_uid }}"
+    group: "{{ filestash_uid }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ filestash_dir }}/state", mode: "0700"}
+    - {path: "{{ filestash_dir }}/state/config", mode: "0770"}
+  loop_control:
+    label: "{{ item.path }}"
+
+# --- config.json (before the first start, so there is never an unconfigured instance) ------
+- name: Bcrypt for the admin password hash
+  ansible.builtin.apt:
+    name: python3-bcrypt
+    state: present
+
+- name: Read Filestash's config
+  ansible.builtin.slurp:
+    src: "{{ filestash_dir }}/state/config/config.json"
+  register: filestash_config_live
+  failed_when: false
+  no_log: true
+
+- name: Parse it
+  ansible.builtin.set_fact:
+    filestash_config_now: >-
+      {{ (filestash_config_live.content | b64decode | from_json)
+         if filestash_config_live.content is defined else {} }}
+  no_log: true
+
+- name: Check the admin password against the stored hash (on the VM)
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import bcrypt, json, sys
+        d = json.load(sys.stdin)
+        try:
+            # Filestash's htpasswd check accepts bcrypt only as $2a$.
+            ok = d["h"].startswith("$2a$") and bcrypt.checkpw(d["p"].encode(), d["h"].encode())
+        except ValueError:
+            ok = False
+        print("match" if ok else "differ")
+    stdin: "{{ {'p': filestash_secrets.admin_password, 'h': filestash_config_now.auth.admin | default('')} | to_json }}"
+  register: filestash_admin_check
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when: filestash_have_secrets | bool
+
+- name: Hash the admin password (bcrypt, on the VM)
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - import bcrypt, sys; print(bcrypt.hashpw(sys.stdin.buffer.read(), bcrypt.gensalt(10, b"2a")).decode())
+    stdin: "{{ filestash_secrets.admin_password }}"
+    stdin_add_newline: false
+  register: filestash_admin_hash
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when: filestash_have_secrets | bool and filestash_admin_check.stdout != 'match'
+
+- name: The admin password hash to keep
+  ansible.builtin.set_fact:
+    filestash_admin_bcrypt: >-
+      {{ filestash_config_now.auth.admin if filestash_admin_check.stdout == 'match'
+         else filestash_admin_hash.stdout }}
+  no_log: true
+  when: filestash_have_secrets | bool
+
+- name: Settings the role owns
+  ansible.builtin.set_fact:
+    filestash_config_want: >-
+      {{ filestash_config_now | combine({
+           'auth': {'admin': filestash_admin_bcrypt},
+           'features': {'share': {'enable': false}},
+           'connections': [{'type': 's3', 'label': filestash_label}],
+           'middleware': {
+             'identity_provider': {
+               'type': 'htpasswd',
+               'params': {'type': 'htpasswd', 'users': filestash_admin_user ~ ':' ~ filestash_admin_bcrypt} | to_json},
+             'attribute_mapping': {
+               'related_backend': filestash_label,
+               'params': {filestash_label: {
+                 'type': 's3',
+                 'access_key_id': filestash_secrets.s3_access_key,
+                 'secret_access_key': filestash_secrets.s3_secret_key,
+                 'endpoint': filestash_s3_endpoint,
+                 'region': filestash_s3_region,
+                 'path': filestash_s3_path}} | to_json}}
+         }, recursive=true) }}
+  no_log: true
+  when: filestash_have_secrets | bool
+
+- name: Filestash config (admin hash and S3 keys from Vault)
+  ansible.builtin.copy:
+    content: "{{ filestash_config_want | to_nice_json }}\n"
+    dest: "{{ filestash_dir }}/state/config/config.json"
+    owner: "{{ filestash_uid }}"
+    group: "{{ filestash_uid }}"
+    mode: "0660"
+  register: filestash_config_write
+  no_log: true
+  diff: false
+  when: filestash_have_secrets | bool and filestash_config_want != filestash_config_now
+
+- name: Config file owner and mode (it holds the S3 keys)
+  ansible.builtin.file:
+    path: "{{ filestash_dir }}/state/config/config.json"
+    owner: "{{ filestash_uid }}"
+    group: "{{ filestash_uid }}"
+    mode: "0660"
+  when: filestash_config_live.content is defined
+
+# --- compose -------------------------------------------------------------------------------
+- name: Filestash compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ filestash_dir }}"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+
+# Filestash reads config.json only at start. A container brought up just now already has it.
+- name: Restart Filestash to load the new config
+  ansible.builtin.command:
+    argv: [docker, compose, --project-name, filestash, --file, "{{ filestash_dir }}/docker-compose.yaml", restart, filestash]
+    chdir: "{{ filestash_dir }}"
+  changed_when: true
+  when: not ansible_check_mode and filestash_config_write is changed and 'filestash' not in compose_project_plan.up
+
+- name: Filestash answers
+  ansible.builtin.uri:
+    url: "http://{{ filestash_bind_ip }}:{{ filestash_port }}/healthz"
+    status_code: 200
+  register: filestash_health
+  retries: 20
+  delay: 3
+  until: filestash_health.status == 200
+  when: not ansible_check_mode

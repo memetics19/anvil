@@ -33,6 +33,15 @@ ceph_single_s3_bucket: tfstate
 # the Keychain (README: "Ceph S3 keys").
 ceph_single_s3_keys_file: /root/.ceph-rgw-terraform.json
 
+# Read-only S3 user for Filestash on ragnarok (tasks/filestash.yml): read access to these
+# buckets through bucket policies; its keys go straight into Vault at this kv path.
+ceph_single_filestash_user: filestash
+ceph_single_filestash_buckets:
+  - "{{ ceph_single_s3_bucket }}"
+ceph_single_filestash_vault_path: homelab/ragnarok/filestash
+# Repo scripts run on the controller (vault-kv-digests.sh).
+ceph_single_repo_scripts: "{{ playbook_dir }}/../../scripts"
+
 ceph_single_dash_address: "{{ site.pve.ip }}"
 ceph_single_dash_port: 8443
 ceph_single_dash_user: admin

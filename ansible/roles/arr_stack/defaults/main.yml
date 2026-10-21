@@ -1,0 +1,12 @@
+# ARR stack on ragnarok: compose project "ubuntu" (/home/ubuntu/docker-compose.yaml) with
+# qbittorrent, prowlarr, jackett, flaresolverr, radarr and sonarr. Jellyfin, dispatcharr and
+# privoxy were removed on 2026-10-21 and must not come back.
+# The apps keep their own config (API keys, indexers, users) in ./<app>/config; it is not
+# templated and is set up again by hand on a rebuild. The media library is only ever a
+# bind-mount source in the template (tests/test_media_untouched.sh).
+arr_stack_dir: /home/ubuntu
+arr_stack_compose_file: "{{ arr_stack_dir }}/docker-compose.yaml"
+# linuxserver.io images run the apps as this uid/gid (the VM's first user).
+arr_stack_uid: 1000
+arr_stack_gid: 1000
+arr_stack_timezone: "{{ site.timezone | default('Asia/Kolkata') }}"

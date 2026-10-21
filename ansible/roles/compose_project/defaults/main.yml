@@ -1,0 +1,9 @@
+# One docker compose project, adopted as is. Callers use include_role and pass:
+#   compose_project_dir      directory of the project (also the default project name)
+#   compose_project_content  the rendered compose file
+compose_project_file: "{{ compose_project_dir }}/docker-compose.yaml"
+# Compose names a project after its directory (lower case).
+compose_project_name: "{{ compose_project_dir | basename | lower }}"
+compose_project_owner: root
+compose_project_group: root
+compose_project_mode: "0644"

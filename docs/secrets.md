@@ -27,6 +27,16 @@ Ansible reads these paths with the `ansible-read` policy (`kv/data/homelab/*`).
 
 The three cloudflared units currently run the same tunnel token.
 
+## Created by the roles
+
+Generated or created by Ansible and piped straight into Vault (never displayed or written to
+a file). Each write is checked by reading the SHA-256 digests back (`scripts/vault-kv-digests.sh`).
+
+| Vault path | Key | Created by | What it is for |
+|---|---|---|---|
+| `kv/homelab/ragnarok/filestash` | `s3_access_key`, `s3_secret_key` | `make ceph` (ceph_single: RGW user `filestash`) | Read-only S3 user Filestash browses the gateway with |
+| `kv/homelab/ragnarok/filestash` | `admin_password` | `make vm HOST=ragnarok` (filestash role, `openssl rand`) | Filestash login (user `admin`) and admin console; stored as a bcrypt hash in Filestash's config |
+
 ## Pending (user)
 
 | Vault path | Key | What it is for | Who creates it |
@@ -40,7 +50,6 @@ Setup keys cannot be read back from an enrolled client, so these are new keys, w
 ## Not imported
 
 - No secret in config: frigate (mosquitto, gotify, nginx, homeassistant), netbird (ntfy,
-  redis), ragnarok (ARR stack, qbittorrent, privoxy, jackett, dispatcharr, flaresolverr,
-  iptv-epg).
+  redis), ragnarok (ARR stack, qbittorrent, jackett, flaresolverr, iptv-epg).
 - App data (user databases, app config directories) stays with each app.
 - NetBird client state: a rebuilt host enrols again with a setup key.

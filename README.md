@@ -22,7 +22,7 @@ Work in progress. See [Roadmap](#roadmap).
 | `pve`      | Proxmox VE 8.4, LAN gateway/NAT, NetBird, Ceph                |
 | `frigate`  | Frigate, Mosquitto, Gotify, nginx, cloudflared                |
 | `netbird`  | NetBird routing peer, Redis, ntfy, pulse, cloudflared         |
-| `ragnarok` | qBittorrent, Prowlarr, Jackett, Radarr, Sonarr, cloudflared   |
+| `ragnarok` | ARR stack, IPTV EPG web, Filestash (S3 browser), cloudflared  |
 | `vault`    | HashiCorp Vault (planned)                                     |
 
 ## Requirements
@@ -80,7 +80,8 @@ make bootstrap-ssh                # once: install your SSH key on all hosts
 make host ARGS="--check --diff"   # dry run against the Proxmox host
 make host
 make ceph ARGS="--check --diff"   # see below before the first real run
-make vms ARGS="--check --diff"    # guest roles: base, docker, cloudflared, node_exporter, frigate
+make vms ARGS="--check --diff"    # guest roles and workloads (tags: base, docker, cloudflared,
+                                  #   node_exporter, frigate, arr, iptv_epg, filestash)
 make vm HOST=frigate              # one VM at a time
 make lint
 make secrets-scan
@@ -123,6 +124,31 @@ changed Frigate, mosquitto or frigate-notify config restarts only that container
 The public hostname reaches Frigate through nginx on the VM, and Frigate's own login
 (port 8971) is the access control; the admin password is in Vault (`docs/secrets.md`).
 
+## ragnarok
+
+`make vm HOST=ragnarok` runs three compose projects, each through the `compose_project`
+role. It compares the config hash compose stores on each container with the hash of the
+rendered file and brings up only the services that differ (`up -d --no-deps`). Check mode
+names them.
+
+- `arr_stack`: `/home/ubuntu/docker-compose.yaml` (qBittorrent, Prowlarr, Jackett,
+  FlareSolverr, Radarr, Sonarr). The apps keep their own settings and API keys in
+  `./<app>/config`, which is not templated. The media library appears only as bind-mount
+  sources in the template, and `tests/test_media_untouched.sh` keeps it that way.
+- `iptv_epg`: nginx on port 8899 serving `/home/ubuntu/iptv-epg/output`. Nothing fills
+  that directory, so the site returns 403.
+- `filestash`: a read-only browser for the S3 gateway at `http://<ragnarok>:8334/`, bound
+  to the VM's LAN address, with a 256 MB memory cap and no swap.
+  - Log in with user `admin` and `admin_password` from Vault `kv/homelab/ragnarok/filestash`.
+    The same password opens `/admin`.
+  - The role generates the password straight into Vault on the first run.
+  - `make ceph` creates the S3 user `filestash`. It owns no buckets and cannot create
+    them; bucket policies let it list and read `tfstate`. Its keys go straight into the
+    same Vault path, and Filestash keeps them on the server side.
+  - Filestash rewrites its `config.json` at start, so the role manages only its own keys
+    in it. Changes made in the admin console to the login, connections or sharing are
+    overwritten.
+
 ## Ceph and the Terraform state bucket
 
 `make ceph` builds a one-disk Ceph cluster on `pve` (monitor, manager, one OSD, pool
@@ -164,7 +190,7 @@ source scripts/env.sh && security add-generic-password -U -s homelab -a ceph-das
 
 Known issue: Object Gateway zone and multisite pages return 500 on Proxmox. The mgr drops
 supplementary groups and cannot read /etc/ceph/ceph.conf (a link into pmxcfs). Buckets and
-users pages work; use Filestash (Task 12b) or the aws CLI to browse objects.
+users pages work; use Filestash on `ragnarok` or the aws CLI to browse objects.
 
 ## Terraform
 
@@ -244,11 +270,10 @@ history. [`.gitleaks.toml`](.gitleaks.toml) adds rules for:
 
 ## Known issues
 
-- `dispatcharr` exits on start
-- `privoxy` reports unhealthy
 - Frigate's camera has not answered since 2026-01-13, so there are no new recordings.
 - Frigate's `genai` provider points at an Ollama address that does not answer.
 - `ragnarok` `/home` is 98% full
+- `ragnarok`'s IPTV EPG web serves an empty directory (403): no grabber fills it.
 
 ## License
 

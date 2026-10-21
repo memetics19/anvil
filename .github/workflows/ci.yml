@@ -30,6 +30,8 @@ jobs:
         run: make lint secrets-scan
       - name: Guardrail test
         run: tests/test_secrets_scan.sh
+      - name: Media library test
+        run: tests/test_media_untouched.sh
       - name: Plan guard test
         run: tests/test_plan_guard.sh
       - name: Network rollback test

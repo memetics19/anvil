@@ -1,0 +1,16 @@
+# Managed by anvil (ansible/roles/filestash); changes here are overwritten on the next run.
+services:
+  filestash:
+    image: {{ filestash_image }}
+    container_name: filestash
+    restart: unless-stopped
+    ports:
+      - "{{ filestash_bind_ip }}:{{ filestash_port }}:8334"
+    environment:
+      # Keep config.json in plain JSON (the S3 keys included) so the role can compare it.
+      # Filestash would encrypt them with a key kept in the same file; only its uid can read it.
+      CONFIG_ENCRYPT: "false"
+    volumes:
+      - ./state:/app/data/state
+    mem_limit: {{ filestash_mem_limit }}
+    memswap_limit: {{ filestash_mem_limit }}

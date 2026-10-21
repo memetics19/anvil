@@ -1,0 +1,90 @@
+# Writes one compose file and brings up only the services whose container does not match
+# it (never a project-wide `docker compose up`). Compose stores each service's config hash
+# as a container label. The wanted hashes come from the rendered file on stdin, so check
+# mode names exactly the services a run would recreate, and a bring-up that failed after
+# the file was written is retried by the next run (the hashes still differ).
+# Result for the caller: compose_project_plan.up (the services brought up).
+
+- name: Config hash of each service in the rendered file
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-name
+      - "{{ compose_project_name }}"
+      - --project-directory
+      - "{{ compose_project_dir }}"
+      - --file
+      - "-"
+      - config
+      - --hash
+      - "*"
+    stdin: "{{ compose_project_content }}"
+  register: compose_project_hash_want
+  changed_when: false
+  check_mode: false
+
+- name: Config hash of each container of the project
+  ansible.builtin.command:
+    argv:
+      - docker
+      - ps
+      - --all
+      - --filter
+      - label=com.docker.compose.project={{ compose_project_name }}
+      - --format
+      - >-
+        {{ '{{' }}.Label "com.docker.compose.service"{{ '}}' }}
+        {{ '{{' }}.Label "com.docker.compose.config-hash"{{ '}}' }}
+        {{ '{{' }}.Label "com.docker.compose.version"{{ '}}' }}
+  register: compose_project_hash_have
+  changed_when: false
+  check_mode: false
+
+# Containers made by docker-compose v1 use another hash scheme: reported, not recreated.
+- name: Work out which services differ from the file
+  ansible.builtin.set_fact:
+    compose_project_plan: >-
+      {%- set want = {} -%}
+      {%- for l in compose_project_hash_want.stdout_lines if l.split() | length == 2 -%}
+      {%- set _ = want.update({l.split()[0]: l.split()[1]}) -%}
+      {%- endfor -%}
+      {%- set have = {} -%}
+      {%- for l in compose_project_hash_have.stdout_lines if l.split() | length == 3 -%}
+      {%- set _ = have.update({l.split()[0]: {'hash': l.split()[1], 'version': l.split()[2]}}) -%}
+      {%- endfor -%}
+      {%- set up = [] -%}
+      {%- set legacy = [] -%}
+      {%- for name in want | sort -%}
+      {%- if name not in have -%}{%- set _ = up.append(name) -%}
+      {%- elif have[name].hash != want[name] and have[name].version is version('2', '<') -%}{%- set _ = legacy.append(name) -%}
+      {%- elif have[name].hash != want[name] -%}{%- set _ = up.append(name) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ {'up': up, 'legacy': legacy} }}
+
+- name: Compose services to bring up
+  ansible.builtin.debug:
+    msg: >-
+      {{ compose_project_name }}: bring up {{ compose_project_plan.up | join(', ') if compose_project_plan.up else 'none' }}{{
+      '; created by docker-compose v1, hash not comparable (not recreated): '
+      ~ compose_project_plan.legacy | join(', ') if compose_project_plan.legacy else '' }}
+  # The bring-up below does not run in check mode; count it here instead.
+  changed_when: ansible_check_mode and compose_project_plan.up | length > 0
+
+- name: Compose file
+  ansible.builtin.copy:
+    content: "{{ compose_project_content }}"
+    dest: "{{ compose_project_file }}"
+    owner: "{{ compose_project_owner }}"
+    group: "{{ compose_project_group }}"
+    mode: "{{ compose_project_mode }}"
+
+- name: Bring up the services that differ
+  ansible.builtin.command:
+    argv: >-
+      {{ ['docker', 'compose', '--project-name', compose_project_name, '--file', compose_project_file,
+          'up', '--detach', '--no-deps'] + compose_project_plan.up }}
+    chdir: "{{ compose_project_dir }}"
+  when: not ansible_check_mode and compose_project_plan.up | length > 0
+  changed_when: true

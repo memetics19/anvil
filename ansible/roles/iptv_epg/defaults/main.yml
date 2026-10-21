@@ -1,0 +1,7 @@
+# IPTV EPG web on ragnarok: compose project "iptv-epg", nginx serving ./output on port 8899.
+# Nothing fills ./output: there is no cron job, timer or service for it, and the
+# iptv-org/epg checkout in /home/ubuntu/epg was run by hand once (2025-12) and is not wired
+# to this directory. So the site answers 403 (empty directory). The service is kept as it
+# runs today; a grabber is a separate decision.
+iptv_epg_dir: /home/ubuntu/iptv-epg
+iptv_epg_port: 8899

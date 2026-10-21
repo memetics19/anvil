@@ -2,7 +2,7 @@
 # static netplan on the adopted guests), docker, cloudflared (token from Vault) and
 # node_exporter (group node_exporter in the inventory).
 # Run: make vms ARGS="--check --diff"   or one VM: make vm HOST=frigate
-# Tags: base, docker, cloudflared, node_exporter, frigate.
+# Tags: base, docker, cloudflared, node_exporter, frigate, arr, iptv_epg, filestash.
 - name: Guest base
   hosts: guests:vault_servers
   pre_tasks:
@@ -35,3 +35,17 @@
   roles:
     - role: frigate_stack
       tags: [frigate]
+
+# Workloads on ragnarok, one compose project each: the ARR stack, the IPTV EPG web and
+# Filestash. Only services whose container differs from the file are brought up. Nothing
+# touches the media library (tests/test_media_untouched.sh).
+- name: Ragnarok workloads
+  hosts: ragnarok
+  force_handlers: true
+  roles:
+    - role: arr_stack
+      tags: [arr]
+    - role: iptv_epg
+      tags: [iptv_epg]
+    - role: filestash
+      tags: [filestash]
