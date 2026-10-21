@@ -32,6 +32,8 @@ exceptions=(
   'scripts/backup.sh|prune'
   # apt cache cleanup inside the IPTV image build, not on the host
   'ansible/roles/iptv/templates/Dockerfile.j2|rm -rf /var/lib/apt/lists/*'
+  # the Vaultwarden backup job's mktemp work directory (apps VM), removed on exit
+  'ansible/roles/vaultwarden/templates/vaultwarden-backup.sh.j2|rm -rf "$work"'
 )
 
 destructive_re='recurse:|(^|[^A-Za-z_-])prune([^A-Za-z_-]|$)|compose[^#]*[[:space:]]down([[:space:]]|$)|^[[:space:]]*-[[:space:]]*["'"'"']?down["'"'"']?[[:space:]]*$|["'"'"']down["'"'"']|down[^#]*[[:space:]]-v([[:space:]]|$)|--volumes|remove-orphans|(^|[^A-Za-z_])rm[[:space:]]+(-[A-Za-z]*[rR]|--recursive)'

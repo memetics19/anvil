@@ -1,0 +1,93 @@
+# Vaultwarden (Bitwarden-compatible password manager) on the apps VM, compose project
+# "vaultwarden" in /opt/vaultwarden, served by the service gateway as
+# https://<vaultwarden_route>.<gateway domain> (the site.services entry named pass). Nothing
+# is published on a host address: Caddy reaches it over the project's network
+# vaultwarden_web (role caddy, caddy_container_networks).
+# Accounts: sign-ups are closed; the admin page (/admin, token from Vault) invites an email,
+# which can then register directly (no SMTP: an invited email needs no mail to sign up).
+vaultwarden_dir: /opt/vaultwarden
+# Pinned by tag and digest (2026-10-21; 1.37.4 was released 2026-10-05).
+vaultwarden_image: vaultwarden/server:1.37.4@sha256:efb3cde962015fcc036b2ea625242248611943b27212ebf4392841fb30fad055
+
+# Its uid/gid (the container runs as this user, and so does the backup job); not 1000 (the
+# VM's first user), Pi-hole's or Homepage's.
+vaultwarden_uid: 10004
+# Unprivileged port inside the container (the image's default, 80, needs root).
+vaultwarden_port: 8080
+
+# Hard cap, swap included. Idle use is about 20 MB.
+vaultwarden_mem_limit: 128m
+
+# The site.services entry it is served as (container vaultwarden, port vaultwarden_port).
+vaultwarden_route: pass
+
+# Settings (environment). DOMAIN is https://<route fqdn>. config.json in the data
+# directory (written when settings are saved on the admin page) overrides these.
+vaultwarden_settings:
+  SIGNUPS_ALLOWED: "false"
+  INVITATIONS_ALLOWED: "true"
+  SHOW_PASSWORD_HINT: "false"
+  # The default for new accounts (PBKDF2 iterations the server applies to the client hash).
+  PASSWORD_ITERATIONS: "600000"
+  # Caddy sets X-Forwarded-For to the client address (it drops a client-sent one).
+  IP_HEADER: X-Forwarded-For
+  ROCKET_PORT: "{{ vaultwarden_port }}"
+  # Files it creates (database, keys, attachments) are readable by its own uid only.
+  UMASK: "077"
+
+# Secrets: Vault KV v2, mount kv, at vaultwarden_vault_path.
+#   admin_token       the admin page token (generated here, straight into Vault)
+#   admin_token_hash  its Argon2id PHC string, the only form Vaultwarden is given
+# The hash is checked against the token on every run (recomputed with its own salt) and
+# made again when they do not match (a token changed in Vault).
+vaultwarden_vault_mount: kv
+vaultwarden_vault_path: "homelab/{{ inventory_hostname }}/vaultwarden"
+# Argon2id cost of the hash (the OWASP preset of `vaultwarden hash`: 19 MiB, 2 passes, 1 lane).
+vaultwarden_argon2: {m: 19456, t: 2, p: 1}
+
+# Outgoing mail (tasks/smtp.yml): optional. At vaultwarden_vault_path the pair
+# smtp_username + smtp_password turns it on; smtp_host, smtp_port, smtp_security and
+# smtp_from may override these defaults (smtp_from defaults to smtp_username). Without the
+# pair there is no SMTP. With it, invitations are mailed and SIGNUPS_VERIFY is on.
+vaultwarden_smtp_defaults:
+  host: smtp.gmail.com
+  port: 587
+  security: starttls
+  from_name: Vaultwarden
+
+# With SMTP: email two-step login is on and set up automatically on every account that
+# registers from an invitation (EMAIL_2FA_ENFORCE_ON_VERIFIED_INVITE). Codes expire after
+# expiration_seconds and are reset after attempts_limit wrong tries (Vaultwarden's
+# defaults). REQUIRE_DEVICE_EMAIL stays off: with it every login fails while mail cannot be
+# sent, which would lock the owner out of the vault.
+vaultwarden_email_2fa:
+  expiration_seconds: 600
+  attempts_limit: 3
+
+# Repo scripts run on the controller (vault-kv-digests.sh).
+vaultwarden_repo_scripts: "{{ playbook_dir }}/../../scripts"
+
+# --- backups ---------------------------------------------------------------------------------
+# A systemd timer runs vaultwarden-backup nightly as the Vaultwarden user: an online SQLite
+# backup of the database plus attachments/, sends/, rsa_key* and config.json, tarred and
+# encrypted with age to the operator's backup recipient, uploaded to the Ceph S3 bucket
+# below, keeping the newest vaultwarden_backup_keep of the objects it wrote. `make backup`
+# copies the newest to ~/homelab-backups; `make vaultwarden-drill` restores it.
+vaultwarden_backup_bucket: vaultwarden-backups
+vaultwarden_backup_keep: 14
+vaultwarden_backup_calendar: "*-*-* 03:30:00"
+vaultwarden_backup_etc: /etc/vaultwarden-backup
+vaultwarden_backup_packages: [sqlite3, age, rclone, argon2]
+# The RGW user's keys (made by `make ceph`, ceph_single tasks/vaultwarden.yml).
+vaultwarden_backup_vault_path: "homelab/{{ inventory_hostname }}/vaultwarden-backup"
+vaultwarden_backup_endpoint: "http://{{ site.pve.ip }}:7480"
+# The public key the tfstate backups use (Keychain backup-age-recipient on the controller,
+# scripts/backup-key-init.sh): only the operator's identity can read a backup, and the
+# apps VM holds nothing that can decrypt one.
+vaultwarden_backup_age_recipient: >-
+  {{ lookup('ansible.builtin.pipe',
+            'security find-generic-password -s homelab -a backup-age-recipient -w 2>/dev/null || true') }}
+
+# --- restore drill (playbooks/vaultwarden-restore-drill.yml) ---------------------------------
+vaultwarden_drill_container: vaultwarden-restore-drill
+vaultwarden_drill_local_dir: "{{ lookup('env', 'HOME') }}/homelab-backups"

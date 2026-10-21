@@ -1,0 +1,28 @@
+# The gateway entry Vaultwarden is served as (site.services) and its public URL, which
+# Vaultwarden needs as DOMAIN. Tested by tests/test_vaultwarden.sh.
+
+- name: Gateway routes
+  ansible.builtin.include_role:
+    name: caddy
+    tasks_from: services.yml
+
+- name: The password manager has its gateway entry (a container upstream)
+  ansible.builtin.assert:
+    that:
+      - vaultwarden_self_route | length == 1
+      - vaultwarden_self_route[0].container | default('') == 'vaultwarden'
+      - vaultwarden_self_route[0].port | int == vaultwarden_port | int
+      - vaultwarden_self_route[0].scheme == 'http'
+      - vaultwarden_self_route[0].websocket | default(false) | bool
+    fail_msg: >-
+      site.services needs the enabled entry {name: {{ vaultwarden_route }}, container: vaultwarden,
+      port: {{ vaultwarden_port }}, scheme: http, websocket: true}
+    quiet: true
+  vars:
+    vaultwarden_self_route: "{{ caddy_routes | selectattr('name', 'equalto', vaultwarden_route) | list }}"
+
+# The gateway name (built by the caddy role from caddy_domain, so from gateway_domain).
+- name: The public URL
+  ansible.builtin.set_fact:
+    vaultwarden_domain_url: "https://{{ (caddy_routes | selectattr('name', 'equalto', vaultwarden_route) | first).fqdn }}"
+  no_log: true

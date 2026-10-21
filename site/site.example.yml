@@ -65,4 +65,4 @@ site:
     - {name: qbit, host: hosts.ragnarok.ip, port: 8080, scheme: http, host_header: upstream}
     - {name: dns, container: pihole, port: 80, scheme: http, home: /admin/}
     - {name: home, container: homepage, port: 3000, scheme: http}
-    - {name: pass, container: vaultwarden, port: 80, scheme: http, websocket: true, enabled: false}
+    - {name: pass, container: vaultwarden, port: 8080, scheme: http, websocket: true}

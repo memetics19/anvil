@@ -3,7 +3,7 @@
 # node_exporter (group node_exporter in the inventory).
 # Run: make vms ARGS="--check --diff"   or one VM: make vm HOST=frigate
 # Tags: base, docker, cloudflared, node_exporter, frigate, arr, iptv_epg, filestash, iptv,
-# netbird_peer, redis, ntfy, pulse, pihole, homepage, caddy, firewall. The tag homepage alone
+# netbird_peer, redis, ntfy, pulse, pihole, homepage, vaultwarden, caddy, firewall. The tag homepage alone
 # also runs the pieces other roles keep for the dashboard (ARR API keys into Vault on
 # ragnarok, the Frigate viewer login, Pi-hole's app password).
 - name: Guest base
@@ -82,7 +82,8 @@
       tags: [always]
 
 # Workloads on the apps VM (shared, small always-on services): Pi-hole with Unbound, DNS
-# for the home and lab networks, the Homepage dashboard and the service gateway (Caddy:
+# for the home and lab networks, the Homepage dashboard, Vaultwarden (with its nightly
+# backup to the Ceph S3 gateway) and the service gateway (Caddy:
 # https://<name>.<gateway domain> for every entry of site.services; its image is built on
 # ragnarok). No Cloudflare tunnel here.
 - name: Apps workloads
@@ -114,6 +115,9 @@
     # After pihole (its network and app password); before caddy, which joins its network.
     - role: homepage
       tags: [homepage]
+    # Before caddy, which joins its network.
+    - role: vaultwarden
+      tags: [vaultwarden]
     # After pihole: it joins Pi-hole's network and takes port 80 from its web UI.
     - role: caddy
       tags: [caddy]

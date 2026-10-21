@@ -1,0 +1,41 @@
+# Managed by Ansible (role vaultwarden). No published port: Caddy reaches Vaultwarden on
+# the network "web" (vaultwarden_web) and serves it as https://pass.<gateway domain>
+# (websockets, /notifications/hub, on the same port). Runs as its own uid with a read-only
+# root filesystem; everything it writes is under ./data.
+services:
+  vaultwarden:
+    image: {{ vaultwarden_image }}
+    container_name: vaultwarden
+    restart: unless-stopped
+    user: "{{ vaultwarden_uid }}:{{ vaultwarden_uid }}"
+    environment:
+      DOMAIN: {{ vaultwarden_domain_url | to_json }}
+{% for k, v in vaultwarden_settings | dictsort %}
+      {{ k }}: {{ v | string | to_json }}
+{% endfor %}
+    # ADMIN_TOKEN: the Argon2id hash (from Vault).
+    env_file: vaultwarden.env
+    volumes:
+      - ./data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,uid={{ vaultwarden_uid }},gid={{ vaultwarden_uid }},mode=0700
+    networks:
+      - web
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: {{ vaultwarden_mem_limit }}
+    memswap_limit: {{ vaultwarden_mem_limit }}
+    # The image's own script: GET /alive on ROCKET_PORT (it also opens the database).
+    healthcheck:
+      test: ["CMD", "/healthcheck.sh"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+      start_interval: 3s
+
+networks:
+  web: {}

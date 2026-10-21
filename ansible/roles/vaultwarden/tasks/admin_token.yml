@@ -1,0 +1,180 @@
+# The admin page token. The token itself goes from openssl straight into Vault (never
+# displayed, logged or written to a file); Vaultwarden gets only its Argon2id PHC hash,
+# which is kept in Vault next to it. Each run recomputes the hash from the token with the
+# stored salt and cost (argon2 on this host, token on stdin) and makes a new one when they
+# differ, so a token changed in Vault takes effect on the next run.
+
+- name: Key digests stored in Vault
+  ansible.builtin.command:
+    argv: ["{{ vaultwarden_repo_scripts }}/vault-kv-digests.sh", "{{ vaultwarden_vault_path }}"]
+  delegate_to: localhost
+  become: false
+  register: vaultwarden_vault_digests
+  changed_when: false
+  check_mode: false
+
+- name: Keys stored in Vault
+  ansible.builtin.set_fact:
+    vaultwarden_vault_keys: "{{ vaultwarden_vault_digests.stdout_lines | map('split', ' ') | map('first') | list }}"
+
+- name: Generate the admin token into Vault
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      openssl rand -base64 48 | tr -d '\n' |
+      vault kv {{ 'patch' if vaultwarden_vault_keys else 'put' }} -mount={{ vaultwarden_vault_mount }}
+      {{ vaultwarden_vault_path }} admin_token=- >/dev/null
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  when: "'admin_token' not in vaultwarden_vault_keys"
+
+# In check mode a token that would be generated above does not exist yet.
+- name: The admin token is readable
+  ansible.builtin.set_fact:
+    vaultwarden_have_token: "{{ not (ansible_check_mode and 'admin_token' not in vaultwarden_vault_keys) }}"
+
+- name: Read the admin token and hash from Vault
+  ansible.builtin.set_fact:
+    vaultwarden_secrets: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', vaultwarden_vault_path,
+                engine_mount_point=vaultwarden_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
+  no_log: true
+  when: vaultwarden_have_token | bool
+
+- name: The admin token is present
+  ansible.builtin.assert:
+    that: vaultwarden_secrets.admin_token | default('') | length >= 32
+    fail_msg: "kv/{{ vaultwarden_vault_path }}: admin_token is missing or shorter than 32 characters"
+    quiet: true
+  when: vaultwarden_have_token | bool
+
+- name: The token, and the salt and cost of the stored hash
+  ansible.builtin.set_fact:
+    vaultwarden_admin_token: "{{ vaultwarden_secrets.admin_token }}"
+    vaultwarden_hash_parts: >-
+      {{ vaultwarden_secrets.admin_token_hash | default('')
+         | regex_search('^\$argon2id\$v=19\$m=([0-9]+),t=([0-9]+),p=([0-9]+)\$([A-Za-z0-9+/]+)\$[A-Za-z0-9+/]+$',
+                        '\1', '\2', '\3', '\4') | default([], true) }}
+  no_log: true
+  when: vaultwarden_have_token | bool
+
+# A salt this role made is printable (base64 of letters and digits); any other (a hash made
+# elsewhere) cannot be given to the argon2 command, so the hash is made again.
+- name: The stored salt
+  ansible.builtin.set_fact:
+    vaultwarden_hash_salt: >-
+      {{ (vaultwarden_hash_parts[3] ~ '=' * ((4 - vaultwarden_hash_parts[3] | length % 4) % 4)) | b64decode
+         if vaultwarden_hash_parts | length == 4 else '' }}
+  no_log: true
+  when: vaultwarden_have_token | bool
+
+- name: Recompute the stored hash from the token
+  ansible.builtin.command:
+    argv:
+      - argon2
+      - "{{ vaultwarden_hash_salt }}"
+      - -id
+      - -v
+      - "13"
+      - -k
+      - "{{ vaultwarden_hash_parts[0] }}"
+      - -t
+      - "{{ vaultwarden_hash_parts[1] }}"
+      - -p
+      - "{{ vaultwarden_hash_parts[2] }}"
+      - -e
+    stdin: "{{ vaultwarden_admin_token }}"
+    stdin_add_newline: false
+  register: vaultwarden_hash_recomputed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+  when:
+    - vaultwarden_have_token | bool
+    - vaultwarden_hash_salt | default('') is match('^[A-Za-z0-9]{16,64}$')
+
+- name: Does the stored hash belong to the token
+  ansible.builtin.set_fact:
+    vaultwarden_hash_ok: >-
+      {{ vaultwarden_hash_recomputed.rc | default(1) == 0
+         and vaultwarden_hash_recomputed.stdout | default('') | trim == vaultwarden_secrets.admin_token_hash | default('') }}
+  no_log: true
+  when: vaultwarden_have_token | bool
+
+- name: Hash to make
+  ansible.builtin.debug:
+    msg: "the admin token hash is missing or does not match the token: a new one is made"
+  changed_when: ansible_check_mode
+  when: vaultwarden_have_token | bool and not vaultwarden_hash_ok | bool
+
+- name: Make a new hash and store it in Vault
+  when: vaultwarden_have_token | bool and not vaultwarden_hash_ok | bool and not ansible_check_mode
+  block:
+    - name: Hash the token (argon2id, new random salt)
+      ansible.builtin.command:
+        argv:
+          - argon2
+          - "{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=24) }}"
+          - -id
+          - -v
+          - "13"
+          - -k
+          - "{{ vaultwarden_argon2.m }}"
+          - -t
+          - "{{ vaultwarden_argon2.t }}"
+          - -p
+          - "{{ vaultwarden_argon2.p }}"
+          - -e
+        stdin: "{{ vaultwarden_admin_token }}"
+        stdin_add_newline: false
+      register: vaultwarden_hash_new
+      changed_when: true
+      no_log: true
+
+    - name: The new hash is an Argon2id PHC string
+      ansible.builtin.assert:
+        that: vaultwarden_hash_new.stdout | trim is match('^\$argon2id\$v=19\$m=[0-9]+,t=[0-9]+,p=[0-9]+\$[A-Za-z0-9+/]+\$[A-Za-z0-9+/]+$')
+        fail_msg: "argon2 did not print a PHC string"
+        quiet: true
+
+    - name: Store the hash in Vault
+      ansible.builtin.command:
+        argv: [vault, kv, patch, "-mount={{ vaultwarden_vault_mount }}", "{{ vaultwarden_vault_path }}", "-"]
+        stdin: "{{ {'admin_token_hash': vaultwarden_hash_new.stdout | trim} | to_json }}"
+      delegate_to: localhost
+      become: false
+      changed_when: true
+      no_log: true
+
+    - name: Read the digests back from Vault
+      ansible.builtin.command:
+        argv: ["{{ vaultwarden_repo_scripts }}/vault-kv-digests.sh", "{{ vaultwarden_vault_path }}"]
+      delegate_to: localhost
+      become: false
+      register: vaultwarden_vault_after
+      changed_when: false
+
+    - name: Vault holds the new hash
+      ansible.builtin.assert:
+        that: >-
+          (dict(vaultwarden_vault_after.stdout_lines | map('split', ' '))).admin_token_hash | default('')
+          == vaultwarden_hash_new.stdout | trim | hash('sha256')
+        fail_msg: "the hash read back from kv/{{ vaultwarden_vault_path }} differs (digest check)"
+        quiet: true
+
+    - name: Use the new hash
+      ansible.builtin.set_fact:
+        vaultwarden_secrets: "{{ vaultwarden_secrets | combine({'admin_token_hash': vaultwarden_hash_new.stdout | trim}) }}"
+      no_log: true
+
+- name: The hash Vaultwarden gets
+  ansible.builtin.set_fact:
+    vaultwarden_admin_token_hash: "{{ vaultwarden_secrets.admin_token_hash }}"
+  no_log: true
+  when: (vaultwarden_secrets | default({})).admin_token_hash is defined

@@ -14,6 +14,10 @@
   ansible.builtin.import_tasks: filestash.yml
   tags: [rgw]
 
+- name: S3 user and bucket for the Vaultwarden backups
+  ansible.builtin.import_tasks: vaultwarden.yml
+  tags: [rgw]
+
 - name: Ceph dashboard
   ansible.builtin.import_tasks: dashboard.yml
   tags: [dashboard]

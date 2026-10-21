@@ -44,6 +44,11 @@ jobs:
         run: tests/test_gateway.sh
       - name: Homepage dashboard test
         run: tests/test_homepage.sh
+      - name: Vaultwarden test
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age sqlite3
+          tests/test_vaultwarden.sh
       - name: Network rollback test
         run: tests/test_net_rollback.sh
       - name: Netplan rollback test

@@ -39,6 +39,13 @@ ceph_single_filestash_user: filestash
 ceph_single_filestash_buckets:
   - "{{ ceph_single_s3_bucket }}"
 ceph_single_filestash_vault_path: homelab/ragnarok/filestash
+
+# S3 user for the Vaultwarden backups on the apps VM (tasks/vaultwarden.yml): owns this one
+# bucket and may own no other; its keys go straight into Vault at this kv path (read by the
+# vaultwarden role).
+ceph_single_vaultwarden_user: vaultwarden-backup
+ceph_single_vaultwarden_bucket: vaultwarden-backups
+ceph_single_vaultwarden_vault_path: homelab/apps/vaultwarden-backup
 # Repo scripts run on the controller (vault-kv-digests.sh).
 ceph_single_repo_scripts: "{{ playbook_dir }}/../../scripts"
 

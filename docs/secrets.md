@@ -41,6 +41,10 @@ a file). Each write is checked by reading the SHA-256 digests back (`scripts/vau
 | `kv/homelab/apps/pihole` | `app_password` | `make vm HOST=apps` (pihole role: Pi-hole's `/api/auth/app`, hash set live) | Pi-hole application password for the Homepage widget |
 | `kv/homelab/pve/homepage` | `token_secret` | `make host ARGS="--tags homepage"` (pve_host role, `pveum user token add`) | Read-only Proxmox API token `homepage@pve!homepage` (PVEAuditor, privilege-separated) for the Homepage widgets |
 | `kv/homelab/ragnarok/arr` | `sonarr_api_key`, `radarr_api_key`, `prowlarr_api_key` | `make vm HOST=ragnarok ARGS="--tags homepage"` (arr_stack role: read from each app's `config.xml`, compared by SHA-256) | Homepage widgets; the apps keep their own copy |
+| `kv/homelab/apps/vaultwarden` | `admin_token` | `make vm HOST=apps` (vaultwarden role, `openssl rand`) | Vaultwarden admin page (`/admin`) token |
+| `kv/homelab/apps/vaultwarden` | `admin_token_hash` | `make vm HOST=apps` (vaultwarden role: `argon2` on the VM, token on stdin) | Argon2id PHC hash of that token, the only form Vaultwarden gets (`/opt/vaultwarden/vaultwarden.env`, mode 600) |
+| `kv/homelab/apps/vaultwarden` | `smtp_username`, `smtp_password`; optional `smtp_host`, `smtp_port`, `smtp_security`, `smtp_from` | operator (`vault kv patch ... <key>=-`) | Vaultwarden outgoing mail (Gmail App Password or Resend API key); rendered into `/opt/vaultwarden/vaultwarden.env` (mode 600) |
+| `kv/homelab/apps/vaultwarden-backup` | `s3_access_key`, `s3_secret_key` | `make ceph` (ceph_single: RGW user `vaultwarden-backup`) | Nightly Vaultwarden backup upload (owner of bucket `vaultwarden-backups` only); also used by `make backup` |
 | `kv/homelab/frigate/frigate` | `homepage_password` | `make vm HOST=frigate ARGS="--tags homepage"` (frigate_stack role, `openssl rand`, set through Frigate's API) | Frigate login `homepage` (role viewer) for the Homepage widget |
 
 ## Pending (user)

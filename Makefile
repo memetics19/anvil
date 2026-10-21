@@ -6,7 +6,7 @@ HVAC_CHECK := py=$$(ansible-playbook --version | sed -n 's/^  python version = .
 	"$${py:-python3}" -c 'import hvac' 2>/dev/null || { \
 	  echo "hvac is missing in the Python that runs Ansible; fix: \"$$py\" -m pip install hvac" >&2; exit 1; }
 
-.PHONY: lint secrets-scan bootstrap-ssh host host-network ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup tf-init tf-plan tf-apply
+.PHONY: lint secrets-scan bootstrap-ssh host host-network ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply
 
 lint:
 	@set -eu -o pipefail; \
@@ -88,10 +88,17 @@ site-to-vault:
 	@set -eu -o pipefail; $(ENV); \
 	scripts/site-to-vault.sh $(ARGS)
 
-# Terraform state + Vault Raft snapshot into ~/homelab-backups (keeps the newest 30 of each).
+# Terraform state + Vault Raft snapshot into ~/homelab-backups, plus a copy of the newest
+# Vaultwarden backup from the Ceph S3 bucket (keeps the newest 30 of each).
 backup:
 	@set -eu -o pipefail; $(ENV); \
 	scripts/backup.sh
+
+# Restore the newest Vaultwarden backup (as make backup copied it) into a temporary container
+# on the apps VM, check it (/alive, users equal to the live database), then remove it.
+vaultwarden-drill:
+	@set -eu -o pipefail; $(ENV); $(HVAC_CHECK); \
+	cd ansible && ansible-playbook playbooks/vaultwarden-restore-drill.yml $(ARGS)
 
 # Terraform. The S3 backend endpoint is not committed: it is built from PVE_IP (Keychain).
 tf-init:

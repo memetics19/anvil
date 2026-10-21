@@ -1,0 +1,12 @@
+# Managed by Ansible (role vaultwarden).
+[Unit]
+Description=Nightly Vaultwarden backup
+
+[Timer]
+OnCalendar={{ vaultwarden_backup_calendar }}
+RandomizedDelaySec=20m
+# A run missed while the VM was off happens at the next boot.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

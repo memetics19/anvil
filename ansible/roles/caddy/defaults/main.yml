@@ -60,10 +60,12 @@ caddy_upstream_cas:
   vault: "{{ lookup('env', 'VAULT_CACERT') }}"
 
 # Docker networks of other projects Caddy joins, for `container` upstreams: Pi-hole's
-# (web UI) and Homepage's (role homepage, which runs before this one).
+# (web UI), Homepage's and Vaultwarden's (roles homepage and vaultwarden, which run before
+# this one). A new network here recreates Caddy once.
 caddy_container_networks:
   - pihole_dns
   - homepage_web
+  - vaultwarden_web
 
 # DNS servers for the DNS-01 propagation check (public resolvers, so Pi-hole's split
 # horizon does not interfere): site.dns.acme_resolvers.

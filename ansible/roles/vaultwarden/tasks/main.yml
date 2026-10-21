@@ -1,0 +1,136 @@
+# Vaultwarden on this host (see defaults/main.yml): no published port, its own uid,
+# read-only root filesystem, admin token hash from Vault, nightly encrypted backups.
+
+- name: Gateway route and public URL
+  ansible.builtin.include_tasks: route.yml
+
+- name: Host packages (backup job and admin token hash)
+  ansible.builtin.apt:
+    name: "{{ vaultwarden_backup_packages }}"
+    state: present
+    install_recommends: false
+    update_cache: true
+    cache_valid_time: 3600
+
+# --- user and files --------------------------------------------------------------------------
+- name: Vaultwarden group on the host
+  ansible.builtin.group:
+    name: vaultwarden
+    gid: "{{ vaultwarden_uid }}"
+    system: true
+
+- name: Vaultwarden user on the host (no login, no home)
+  ansible.builtin.user:
+    name: vaultwarden
+    uid: "{{ vaultwarden_uid }}"
+    group: vaultwarden
+    system: true
+    create_home: false
+    home: /nonexistent
+    shell: /usr/sbin/nologin
+
+- name: Project directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ vaultwarden_dir }}", owner: root, mode: "0755"}
+    # The database, attachments, sends and the server's signing key.
+    - {path: "{{ vaultwarden_dir }}/data", owner: vaultwarden, mode: "0700"}
+
+# --- admin token -----------------------------------------------------------------------------
+- name: Admin token
+  ansible.builtin.include_tasks: admin_token.yml
+
+- name: Outgoing mail (optional)
+  ansible.builtin.include_tasks: smtp.yml
+
+- name: Render the env file
+  ansible.builtin.set_fact:
+    vaultwarden_env_content: "{{ lookup('ansible.builtin.template', 'vaultwarden.env.j2') }}"
+  no_log: true
+  when: vaultwarden_admin_token_hash is defined
+
+# The compose config hash includes the env file, so a new hash recreates Vaultwarden.
+- name: Vaultwarden env file (admin token hash)
+  ansible.builtin.copy:
+    content: "{{ vaultwarden_env_content }}"
+    dest: "{{ vaultwarden_dir }}/vaultwarden.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+  when: vaultwarden_admin_token_hash is defined
+
+# --- compose ---------------------------------------------------------------------------------
+- name: Is the env file there
+  ansible.builtin.stat:
+    path: "{{ vaultwarden_dir }}/vaultwarden.env"
+  register: vaultwarden_env_stat
+
+- name: Vaultwarden compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ vaultwarden_dir }}"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+    # Holds the gateway name: keep it out of --diff output.
+    compose_project_diff: false
+  # In check mode on a new host the env file the compose file names does not exist yet.
+  when: vaultwarden_env_stat.stat.exists or not ansible_check_mode
+
+# --- checks ----------------------------------------------------------------------------------
+- name: Vaultwarden is healthy
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{' }}.State.Health.Status{{ '}}' }}", vaultwarden]
+  register: vaultwarden_health
+  changed_when: false
+  retries: 30
+  delay: 3
+  until: vaultwarden_health.stdout == 'healthy'
+  when: not ansible_check_mode
+
+# Inside the container (curl is in the image): only status codes are printed.
+#   /alive                         200 (it also opens the database)
+#   /admin with the token          200 (the hash in the env file matches the Vault token)
+#   sign-up for an uninvited email 400 (sign-ups are closed)
+- name: Health, admin token and closed sign-ups
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - --interactive
+      - vaultwarden
+      - sh
+      - -c
+      - >-
+        u=http://127.0.0.1:{{ vaultwarden_port }};
+        a=$(curl -s -o /dev/null -w '%{http_code}' "$u/alive");
+        t=$(curl -s -o /dev/null -w '%{http_code}' --data-urlencode token@- "$u/admin");
+        s=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json'
+        -d '{"email":"not-invited@example.invalid","name":"x"}'
+        "$u/identity/accounts/register/send-verification-email");
+        echo "alive=$a admin=$t signup=$s"
+    stdin: "{{ vaultwarden_admin_token }}"
+    stdin_add_newline: false
+  register: vaultwarden_check
+  changed_when: false
+  failed_when: false
+  # The task holds the token (stdin); its output is status codes only, shown below.
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Health, admin token and closed sign-ups (HTTP codes)
+  ansible.builtin.assert:
+    that: vaultwarden_check.stdout | default('') | trim == 'alive=200 admin=200 signup=400'
+    fail_msg: "want alive=200 admin=200 signup=400, got: {{ vaultwarden_check.stdout | default('') | trim }} (rc {{ vaultwarden_check.rc | default('') }})"
+    success_msg: "{{ vaultwarden_check.stdout | default('') | trim }}"
+  when: not ansible_check_mode
+
+# --- backups ---------------------------------------------------------------------------------
+- name: Nightly backups
+  ansible.builtin.include_tasks: backup.yml

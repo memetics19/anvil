@@ -1,0 +1,122 @@
+# Nightly backup job (templates/vaultwarden-backup.sh.j2) and its timer. The S3 keys are
+# made by `make ceph` (RGW user with the backup bucket only) and read from Vault here.
+
+- name: Backup S3 key digests in Vault
+  ansible.builtin.command:
+    argv: ["{{ vaultwarden_repo_scripts }}/vault-kv-digests.sh", "{{ vaultwarden_backup_vault_path }}"]
+  delegate_to: localhost
+  become: false
+  register: vaultwarden_backup_digests
+  changed_when: false
+  check_mode: false
+
+- name: The backup S3 keys are in Vault (written by make ceph)
+  ansible.builtin.assert:
+    that:
+      - vaultwarden_backup_digests.stdout is search('(^|\n)s3_access_key ')
+      - vaultwarden_backup_digests.stdout is search('(^|\n)s3_secret_key ')
+    fail_msg: "kv/{{ vaultwarden_backup_vault_path }} has no s3_access_key/s3_secret_key: run make ceph first"
+    quiet: true
+
+- name: Read the backup S3 keys from Vault
+  ansible.builtin.set_fact:
+    vaultwarden_backup_keys: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', vaultwarden_backup_vault_path,
+                engine_mount_point=vaultwarden_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
+  no_log: true
+
+# Plain tokens only: they are written unquoted into a systemd environment file.
+- name: The backup S3 keys are plain tokens
+  ansible.builtin.assert:
+    that:
+      - vaultwarden_backup_keys.s3_access_key | default('') is match('^[A-Za-z0-9]{16,128}$')
+      - vaultwarden_backup_keys.s3_secret_key | default('') is match('^[A-Za-z0-9+/]{30,128}$')
+    fail_msg: "kv/{{ vaultwarden_backup_vault_path }}: the S3 keys are not plain RGW keys"
+    quiet: true
+
+- name: The backup recipient is an age public key (Keychain backup-age-recipient)
+  ansible.builtin.assert:
+    that: vaultwarden_backup_age_recipient | trim is match('^age1[02-9ac-hj-np-z]{58}$')
+    fail_msg: >-
+      no age recipient: the controller's Keychain item backup-age-recipient (service homelab) is
+      missing; run scripts/backup-key-init.sh once (or set vaultwarden_backup_age_recipient)
+    quiet: true
+
+- name: Backup config directory
+  ansible.builtin.file:
+    path: "{{ vaultwarden_backup_etc }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Backup recipient (public key)
+  ansible.builtin.copy:
+    content: "{{ vaultwarden_backup_age_recipient | trim }}\n"
+    dest: "{{ vaultwarden_backup_etc }}/age-recipients"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Render the S3 remote
+  ansible.builtin.set_fact:
+    vaultwarden_rclone_env: "{{ lookup('ansible.builtin.template', 'rclone.env.j2') }}"
+  no_log: true
+
+- name: S3 remote for the job (keys from Vault)
+  ansible.builtin.copy:
+    content: "{{ vaultwarden_rclone_env }}"
+    dest: "{{ vaultwarden_backup_etc }}/rclone.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+
+- name: Backup script
+  ansible.builtin.template:
+    src: vaultwarden-backup.sh.j2
+    dest: /usr/local/sbin/vaultwarden-backup
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Backup service and timer
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: /etc/systemd/system/{{ item }}
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [vaultwarden-backup.service, vaultwarden-backup.timer]
+  register: vaultwarden_backup_units
+
+- name: Backup timer enabled
+  ansible.builtin.systemd_service:
+    name: vaultwarden-backup.timer
+    enabled: true
+    state: started
+    daemon_reload: "{{ vaultwarden_backup_units is changed }}"
+  # In check mode on a new host the unit is not there yet.
+  when: not (ansible_check_mode and vaultwarden_backup_units is changed)
+
+# The job's credentials reach the bucket (a listing; nothing is written).
+- name: The backup bucket answers with the job's keys
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail; set -a; . {{ vaultwarden_backup_etc }}/rclone.env; set +a;
+      rclone lsf --files-only vwb:{{ vaultwarden_backup_bucket }}
+      | { grep -cE '^vaultwarden-[0-9]{8}-[0-9]{6}\.tar\.age$' || true; }
+    executable: /bin/bash
+  register: vaultwarden_backup_list
+  changed_when: false
+  failed_when: vaultwarden_backup_list.rc != 0 or vaultwarden_backup_list.stdout | trim is not match('^[0-9]+$')
+  when: not ansible_check_mode
+
+- name: Backups in the bucket
+  ansible.builtin.debug:
+    msg: "{{ vaultwarden_backup_bucket }}: {{ vaultwarden_backup_list.stdout | default('') | trim }} backup(s)"
+  when: not ansible_check_mode

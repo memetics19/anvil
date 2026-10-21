@@ -24,7 +24,7 @@ Work in progress. See [Roadmap](#roadmap).
 | `netbird`  | NetBird routing peer, Redis, ntfy, pulse, cloudflared         |
 | `ragnarok` | ARR stack, IPTV, Filestash (S3 browser), cloudflared          |
 | `vault`    | HashiCorp Vault (planned)                                     |
-| `apps`     | Pi-hole with Unbound (home and lab DNS), service gateway (Caddy), Homepage dashboard |
+| `apps`     | Pi-hole with Unbound (home and lab DNS), service gateway (Caddy), Homepage dashboard, Vaultwarden |
 
 ## Requirements
 
@@ -85,6 +85,8 @@ make vms ARGS="--check --diff"    # guest roles and workloads (tags: base, docke
                                   #   node_exporter, frigate, arr, iptv_epg, filestash, iptv,
                                   #   pihole)
 make vm HOST=frigate              # one VM at a time
+make backup                       # Terraform state, Vault snapshot, newest Vaultwarden backup
+make vaultwarden-drill            # restore the newest Vaultwarden backup into a temporary container
 make lint
 make secrets-scan
 ```
@@ -199,8 +201,8 @@ never run it in the same Ansible run as `make host-network`.
 
 ## apps (Pi-hole)
 
-`apps` is one small VM (1 vCPU, 1.5 GB) for always-on services; Pi-hole runs there now,
-Vaultwarden will later. It has two NICs on `vmbr0`, both set by cloud-init
+`apps` is one small VM (1 vCPU, 1.5 GB) for always-on services: Pi-hole, the service
+gateway, Homepage and Vaultwarden. It has two NICs on `vmbr0`, both set by cloud-init
 (`terraform/vm_apps.tf`): a lab address with the default route, and a home-network address
 (`site.hosts.apps.home_ip`) with no gateway, so home devices reach Pi-hole on their own
 subnet. Each NIC answers ARP only for its own address.
@@ -318,7 +320,7 @@ gateway service.
 
 - **Generated from `site.services`.** Groups: Infrastructure (pve, ceph, vault, dns,
   idrac), Media (sonarr, radarr, prowlarr, jackett, qbit, files, tv, threadfin), Home
-  (frigate, gotify, ntfy, pulse), later Monitoring (grafana) and Security (pass, netbird);
+  (frigate, gotify, ntfy, pulse), Security (pass; later netbird), later Monitoring (grafana);
   disabled entries are left out. Title, group, icon, description and widget per name come
   from `homepage_catalog` in the role defaults; an entry in `site.services` may override
   them with the same optional fields (`widget: none` turns a widget off). The files hold
@@ -348,6 +350,87 @@ gateway service.
   Docker-published ports bypass ufw.
 - Homepage has no login of its own here; like the other gateway names it is reachable
   only from the home and lab networks and the VPN.
+
+### Vaultwarden (private)
+
+`https://pass.<gateway domain>` (the `pass` entry of `site.services`) is
+[Vaultwarden](https://github.com/dani-garcia/vaultwarden), a Bitwarden-compatible password
+manager, on `apps` (`vaultwarden` role, compose project `/opt/vaultwarden`, data in
+`/opt/vaultwarden/data`). Like the other gateway names it exists only in Pi-hole and is
+reachable only from the home and lab networks and the VPN. Bitwarden apps and browser
+extensions use it as a self-hosted server URL.
+
+- **Container:** `vaultwarden/server` pinned by tag and digest; no published port (Caddy
+  reaches it on the project network `vaultwarden_web`); runs as its own uid (10004) on
+  port 8080 with a read-only root filesystem, no capabilities and a 128 MB memory cap.
+  Websocket notifications (`/notifications/hub`) go through the gateway on the same name.
+- **Settings:** `DOMAIN` is the gateway name; sign-ups are closed (`SIGNUPS_ALLOWED=false`),
+  invitations are on, password hints are never shown. Settings saved on the admin page go
+  to `data/config.json`, which overrides the role's environment: leave SMTP and the other
+  role settings alone there (each run warns when `config.json` sets SMTP).
+- **Mail (SMTP) is managed by code**, from `kv/homelab/apps/vaultwarden`: the pair
+  `smtp_username` + `smtp_password` turns it on (with it, invitations are mailed and
+  `SIGNUPS_VERIFY` is on); `smtp_host`, `smtp_port`, `smtp_security` (starttls, force_tls,
+  off) and `smtp_from` are optional (defaults: `smtp.gmail.com`, 587, starttls, the
+  username). Without the pair there is no SMTP; only one of the two stops the run.
+  - Gmail: `smtp_username` = the Gmail address, `smtp_password` = a Google App Password
+    (account with 2-step verification); nothing else needed.
+  - Resend: `smtp_host=smtp.resend.com`, `smtp_username=resend`, `smtp_password` = the API
+    key, `smtp_from` = an address on the verified domain.
+  Store each value from stdin, e.g. `vault kv patch -mount=kv homelab/apps/vaultwarden
+  smtp_password=-`, then `make vm HOST=apps`.
+- **Two-step login.** With SMTP, every account registered from an invitation gets email
+  two-step login automatically (`EMAIL_2FA_ENFORCE_ON_VERIFIED_INVITE`; codes valid 10
+  minutes, 3 tries). That is the only factor the server enforces. Add an authenticator app
+  (TOTP) or a passkey as your main second factor and save the recovery code (Settings →
+  Security → Two-step login). If you create an organization, turn on its "Require
+  two-step login" policy. `REQUIRE_DEVICE_EMAIL=true` (a mail on every new-device login)
+  is left off on purpose: with it every login fails while mail cannot be sent, which can
+  lock you out of your passwords; add it to `vaultwarden_settings` if you want it.
+- **Admin token:** generated into Vault (`kv/homelab/apps/vaultwarden` `admin_token`).
+  Vaultwarden gets only its Argon2id hash (`admin_token_hash`, in `/opt/vaultwarden/
+  vaultwarden.env`, mode 600). Each run checks that the hash belongs to the token, the
+  admin page accepts the token, `/alive` answers and an uninvited email cannot sign up.
+  To change the token, write a new `admin_token` to Vault and rerun `make vm HOST=apps`.
+
+**Creating your account** (once):
+
+1. Copy the admin token to the clipboard:
+   `source scripts/env.sh && vault kv get -field=admin_token -mount=kv homelab/apps/vaultwarden | pbcopy`
+2. Open `https://pass.<gateway domain>/admin`, paste the token, then **Users → Invite
+   User** with your email address.
+3. With SMTP: open the invitation mail and follow its link, then create the account with
+   that address. Without SMTP: open `https://pass.<gateway domain>/`, choose **Create
+   account** with that address (an invited address registers directly).
+4. Set a strong master password: it cannot be recovered (Vaultwarden only stores a hash).
+5. On the admin page, **Log out**; clear the clipboard.
+
+**Backups.** A systemd timer on `apps` (`vaultwarden-backup.timer`, nightly around 03:30)
+runs `/usr/local/sbin/vaultwarden-backup` as the Vaultwarden user:
+
+1. an online SQLite backup of the database (checked with `integrity_check`), plus
+   `attachments/`, `sends/`, `rsa_key*` and `config.json`;
+2. a tar, encrypted with `age` to the same public key as the Terraform state backups
+   (Keychain `backup-age-recipient`): only the operator's identity can read it, and the VM
+   holds nothing that can decrypt one;
+3. uploaded to the Ceph S3 bucket `vaultwarden-backups` as
+   `vaultwarden-YYYYMMDD-HHMMSS.tar.age` (UTC) and checked by size;
+4. the newest 14 of those objects are kept; nothing else in the bucket is touched.
+
+The bucket belongs to the RGW user `vaultwarden-backup` (`make ceph`), which may own no
+other bucket and cannot read any other; its keys are in Vault
+(`kv/homelab/apps/vaultwarden-backup`). `make backup` copies the newest object to
+`~/homelab-backups/` (keeps 30). Run a backup by hand with
+`sudo systemctl start vaultwarden-backup` on `apps`; see the result with
+`journalctl -u vaultwarden-backup`.
+
+**Restore drill:** `make vaultwarden-drill` takes the newest backup (it must be the copy
+`make backup` pulled), decrypts it on the Mac straight into a one-time key made on `apps`
+(no plaintext on the Mac's disk, the identity never leaves it), restores it into a
+temporary container `vaultwarden-restore-drill` (no network, no gateway route, no admin
+page), checks that `/alive` answers and that the users table equals the live one, then
+removes that container and its directory. A real restore is the same steps into
+`/opt/vaultwarden/data` with the `vaultwarden` container stopped.
 
 ## IPTV
 
@@ -407,6 +490,10 @@ those signals disagree the play stops.
 make ceph ARGS="--check --diff"   # safety checks plus a list of what would run
 make ceph
 ```
+
+It also makes the S3 users `filestash` (read-only, see ragnarok) and `vaultwarden-backup`
+(owner of the bucket `vaultwarden-backups` and of no other; its keys go straight into Vault,
+see [Vaultwarden](#vaultwarden-private)).
 
 The S3 keys are written to `/root/.ceph-rgw-terraform.json` (mode 600) on the host. Copy
 them into the Keychain once:

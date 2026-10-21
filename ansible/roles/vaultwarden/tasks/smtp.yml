@@ -1,0 +1,96 @@
+# Outgoing mail (SMTP), managed here, not on the admin page. The operator stores at
+# vaultwarden_vault_path the required pair smtp_username and smtp_password, and optionally
+# smtp_host, smtp_port, smtp_security and smtp_from (defaults: vaultwarden_smtp_defaults,
+# Gmail with STARTTLS; the sender defaults to smtp_username). Gmail: the address and a
+# Google App Password. Resend: smtp_host smtp.resend.com, smtp_username resend, the API
+# key as smtp_password and an address on the verified domain as smtp_from.
+# Pair absent: no SMTP (an invited email registers directly, without a mail). Only one of
+# the pair: the run stops.
+
+- name: SMTP keys stored in Vault
+  ansible.builtin.set_fact:
+    vaultwarden_smtp_keys: "{{ ['smtp_username', 'smtp_password'] | select('in', vaultwarden_vault_keys) | list }}"
+
+- name: SMTP needs both keys or neither
+  ansible.builtin.assert:
+    that: vaultwarden_smtp_keys | length != 1
+    fail_msg: >-
+      kv/homelab/<host>/vaultwarden holds only one of smtp_username and smtp_password: store
+      both or neither
+    quiet: true
+
+- name: No SMTP
+  ansible.builtin.debug:
+    msg: "no smtp_username/smtp_password in kv/{{ vaultwarden_vault_path }}: Vaultwarden runs without SMTP (invited emails register directly)"
+  when: vaultwarden_smtp_keys | length == 0
+
+- name: Pick the SMTP settings
+  ansible.builtin.set_fact:
+    vaultwarden_smtp:
+      host: "{{ vaultwarden_secrets.smtp_host | default(vaultwarden_smtp_defaults.host, true) | string | trim }}"
+      port: "{{ vaultwarden_secrets.smtp_port | default(vaultwarden_smtp_defaults.port, true) | string | trim }}"
+      security: "{{ vaultwarden_secrets.smtp_security | default(vaultwarden_smtp_defaults.security, true) | string | trim }}"
+      username: "{{ vaultwarden_secrets.smtp_username | default('') | string | trim }}"
+      password: "{{ vaultwarden_secrets.smtp_password | default('') | string }}"
+      from: "{{ vaultwarden_secrets.smtp_from | default(vaultwarden_secrets.smtp_username, true) | string | trim }}"
+  no_log: true
+  when: vaultwarden_smtp_keys | length == 2 and vaultwarden_secrets is defined
+
+# Values go single-quoted into the env file: no quote, backslash or line break anywhere.
+- name: The SMTP port is a number
+  ansible.builtin.assert:
+    that: vaultwarden_smtp.port is match('^[0-9]{1,5}$') and vaultwarden_smtp.port | int is ge(1) and vaultwarden_smtp.port | int is le(65535)
+    fail_msg: "kv/homelab/<host>/vaultwarden: smtp_port must be a port number (default 587)"
+    quiet: true
+  when: vaultwarden_smtp is defined
+
+- name: The SMTP security is starttls, force_tls or off
+  ansible.builtin.assert:
+    that: vaultwarden_smtp.security in ['starttls', 'force_tls', 'off']
+    fail_msg: "kv/homelab/<host>/vaultwarden: smtp_security must be starttls, force_tls or off (default starttls)"
+    quiet: true
+  when: vaultwarden_smtp is defined
+
+- name: The SMTP host, login and sender are well formed
+  ansible.builtin.assert:
+    that:
+      - vaultwarden_smtp.host is match('^([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$')
+      - vaultwarden_smtp.username is match('^[A-Za-z0-9._%+@-]+$')
+      - vaultwarden_smtp.password | length >= 8
+      - vaultwarden_smtp.password is not search("['\r\n\\\\]")
+      - vaultwarden_smtp.from is match('^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
+    fail_msg: >-
+      kv/homelab/<host>/vaultwarden: smtp_host must be a host name, smtp_username a plain login,
+      smtp_password 8 or more characters without quotes, backslashes or line breaks, and
+      smtp_from (default smtp_username) an email address
+    quiet: true
+  when: vaultwarden_smtp is defined
+
+# Settings saved on the admin page land in data/config.json and override the environment.
+# Reported only (the file is the operator's): the names of any SMTP settings it holds.
+- name: Is there an admin-page config file
+  ansible.builtin.stat:
+    path: "{{ vaultwarden_dir }}/data/config.json"
+  register: vaultwarden_config_json
+
+- name: Read the admin-page config file
+  ansible.builtin.slurp:
+    src: "{{ vaultwarden_dir }}/data/config.json"
+  register: vaultwarden_config_json_raw
+  no_log: true
+  when: vaultwarden_config_json.stat.exists
+
+- name: SMTP settings in the admin-page config file
+  ansible.builtin.set_fact:
+    vaultwarden_config_json_smtp: >-
+      {{ (vaultwarden_config_json_raw.content | b64decode | from_json).keys()
+         | select('match', '^(smtp_|use_sendmail|sendmail_)') | list }}
+  when: vaultwarden_config_json.stat.exists
+
+- name: The admin-page config file overrides SMTP
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: {{ vaultwarden_dir }}/data/config.json (saved on the admin page) sets
+      {{ vaultwarden_config_json_smtp | join(', ') }}, which override the SMTP settings from Vault.
+      SMTP is managed by code: remove those settings on the admin page (or the file) by hand.
+  when: vaultwarden_config_json_smtp | default([]) | length > 0

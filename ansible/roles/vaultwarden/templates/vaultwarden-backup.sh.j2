@@ -1,0 +1,53 @@
+#!/bin/bash
+# Managed by Ansible (role vaultwarden). Backs up Vaultwarden to the Ceph S3 gateway; run
+# nightly by vaultwarden-backup.timer, as the Vaultwarden user (vaultwarden-backup.service,
+# which also supplies the S3 remote "vwb" through rclone's environment).
+#   1. an online SQLite backup of the database (consistent while Vaultwarden writes), checked
+#      with PRAGMA integrity_check, plus attachments/, sends/, rsa_key* and config.json;
+#   2. tar, encrypted with age to the recipients file (the operator's public key: nothing on
+#      this host can decrypt a backup);
+#   3. uploaded as vaultwarden-YYYYMMDD-HHMMSS.tar.age, then checked by size;
+#   4. of the objects named like that, all but the newest KEEP are deleted (nothing else in
+#      the bucket is touched).
+# Settings come from the environment (the unit), with these defaults.
+set -euo pipefail
+
+data=${VW_BACKUP_DATA:-{{ vaultwarden_dir }}/data}
+recipients=${VW_BACKUP_RECIPIENTS:-{{ vaultwarden_backup_etc }}/age-recipients}
+remote=${VW_BACKUP_REMOTE:-vwb:{{ vaultwarden_backup_bucket }}}
+keep=${VW_BACKUP_KEEP:-{{ vaultwarden_backup_keep }}}
+pattern='^vaultwarden-[0-9]{8}-[0-9]{6}\.tar\.age$'
+
+die() { echo "vaultwarden-backup: $*" >&2; exit 1; }
+[ -f "$data/db.sqlite3" ] || die "no database at $data/db.sqlite3"
+[ -s "$recipients" ] || die "no age recipients file $recipients"
+case $keep in '' | *[!0-9]* | 0) die "KEEP must be a positive number" ;; esac
+
+umask 077
+name="vaultwarden-$(date -u +%Y%m%d-%H%M%S).tar.age"
+work=$(mktemp -d "${TMPDIR:-/var/tmp}/vaultwarden-backup.XXXXXX")
+trap 'rm -rf "$work"' EXIT
+mkdir "$work/vaultwarden"
+
+sqlite3 "$data/db.sqlite3" ".timeout 30000" ".backup '$work/vaultwarden/db.sqlite3'"
+# One self-contained file (no -wal/-shm next to it); Vaultwarden turns WAL on again at start.
+[ "$(sqlite3 "$work/vaultwarden/db.sqlite3" 'PRAGMA journal_mode=DELETE;')" = delete ] ||
+  die "the database copy cannot leave WAL mode"
+[ "$(sqlite3 "$work/vaultwarden/db.sqlite3" 'PRAGMA integrity_check;')" = ok ] ||
+  die "the database copy fails integrity_check"
+# Leftovers of the WAL-mode copy, unused now (some SQLite builds keep an empty -shm).
+rm -f "$work/vaultwarden/db.sqlite3-wal" "$work/vaultwarden/db.sqlite3-shm"
+for f in "$data/attachments" "$data/sends" "$data/config.json" "$data"/rsa_key*; do
+  if [ -e "$f" ]; then cp -a "$f" "$work/vaultwarden/"; fi
+done
+
+tar -C "$work" -cf - vaultwarden | age -R "$recipients" -o "$work/$name"
+size=$(wc -c <"$work/$name" | tr -d ' ')
+
+rclone copyto --s3-no-check-bucket "$work/$name" "$remote/$name"
+[ "$(rclone lsf --format s "$remote/$name")" = "$size" ] || die "$name: the uploaded size differs"
+
+rclone lsf --files-only "$remote" | { grep -E "$pattern" || true; } | sort -r | tail -n "+$((keep + 1))" |
+  while IFS= read -r old; do rclone deletefile "$remote/$old"; echo "vaultwarden-backup: deleted $old"; done
+
+echo "vaultwarden-backup: uploaded $name ($size bytes); keeping the newest $keep"
