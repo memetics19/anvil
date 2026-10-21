@@ -204,6 +204,10 @@
 
   function setState(s) {
     state = s;
+    var mediaSession = window.navigator && window.navigator.mediaSession;
+    if (mediaSession) {
+      try { mediaSession.playbackState = s === 'playing' || s === 'muted' || s === 'buffering' ? 'playing' : 'paused'; } catch (x) {}
+    }
     paintBanner();
     if (s === 'playing') hideLater();
     else if (STATUS[s] && STATUS[s][1]) banner.hidden = false;
@@ -459,9 +463,9 @@
 
   function remote(e) {
     var key = e.key;
-    if (NEXT_KEYS[key]) return 'next';
-    if (PREV_KEYS[key]) return 'prev';
-    if (PLAY_KEYS[key]) return 'play';
+    if (NEXT_KEYS[key] || NEXT_KEYS[e.code]) return 'next';
+    if (PREV_KEYS[key] || PREV_KEYS[e.code]) return 'prev';
+    if (PLAY_KEYS[key] || PLAY_KEYS[e.code]) return 'play';
     if (key && key.length === 1) return '';
     if (NEXT_CODES[e.keyCode]) return 'next';
     if (PREV_CODES[e.keyCode]) return 'prev';
@@ -473,6 +477,22 @@
     if (banner.hidden || !(state === 'playing' || state === 'buffering')) showBanner();
     else { clearTimeout(timers.banner); banner.hidden = true; }
   }
+
+  function setMediaAction(name, step) {
+    var mediaSession = window.navigator && window.navigator.mediaSession;
+    if (!mediaSession || !mediaSession.setActionHandler) return;
+    try {
+      mediaSession.setActionHandler(name, function () {
+        if (!list.hidden) closeList();
+        zap(step);
+      });
+    } catch (x) {}
+  }
+
+  setMediaAction('seekforward', 1);
+  setMediaAction('nexttrack', 1);
+  setMediaAction('seekbackward', -1);
+  setMediaAction('previoustrack', -1);
 
   document.addEventListener('keydown', function (e) {
     var key = e.key;
@@ -493,7 +513,7 @@
     else if (key === 'ArrowUp' || key === 'ArrowDown') { e.preventDefault(); openList(); }
     else if (key === 'Enter' || key === ' ') { e.preventDefault(); ok(); }
     else if (isBack) { e.preventDefault(); showBanner(); }
-  });
+  }, true);
 
   function onButton(id, fn) {
     $(id).addEventListener('click', function (e) { e.stopPropagation(); this.blur(); fn(); });
