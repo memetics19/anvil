@@ -62,16 +62,19 @@ caddy_upstream_cas:
 caddy_container_networks:
   - pihole_dns
 
-# DNS servers for the DNS-01 propagation check (public, so Pi-hole's split horizon
-# does not interfere).
-caddy_dns_resolvers: [1.1.1.1, 1.0.0.1]
+# DNS servers for the DNS-01 propagation check (public resolvers, so Pi-hole's split
+# horizon does not interfere): site.dns.acme_resolvers.
+caddy_dns_resolvers: "{{ site.dns.acme_resolvers }}"
 
 # Hard cap, swap included; the Go runtime is told to stay below it.
 caddy_mem_limit: 128m
 caddy_gomemlimit: 100MiB
 # Go's TLS client no longer offers RSA key exchange by default; old BMC firmware (iDRAC8)
-# offers nothing else (no ECDHE). Affects only connections Caddy makes to upstreams (its
-# own server side has an explicit ECDHE-only cipher list). Needs Go <= 1.26 (above).
+# offers nothing else (no ECDHE). This re-enables it for every TLS client connection the
+# process makes (upstreams, but also ACME and the Cloudflare API, whose servers pick
+# ECDHE anyway). The server side is not affected: Caddy sets its own cipher list
+# (ECDHE only), which the role checks (an RSA-key-exchange handshake to :443 must fail).
+# Needs Go <= 1.26 (above).
 caddy_godebug: tlsrsakex=1
 
 # Secret: Vault KV v2, mount kv. cloudflare_dns_token: a Cloudflare API token limited to

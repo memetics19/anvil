@@ -86,6 +86,14 @@
 - name: Apps workloads
   hosts: apps_servers
   force_handlers: true
+  # The gateway's service list feeds both Pi-hole and Caddy: a bad entry stops the run
+  # before Pi-hole is touched.
+  pre_tasks:
+    - name: Check site.services
+      ansible.builtin.include_role:
+        name: caddy
+        tasks_from: services.yml
+      tags: [always]
   roles:
     - role: docker
       tags: [docker]

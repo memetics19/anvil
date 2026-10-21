@@ -180,3 +180,26 @@
       | reject('match', '^[a-z0-9-]+=(2[0-9][0-9]|30[1-8]|401|403)$') | list }}
     success_msg: "{{ caddy_route_codes }}"
   when: not ansible_check_mode
+
+# The server side offers no RSA key exchange (caddy_godebug re-enables it for clients only).
+# Control: a plain TLS 1.2 handshake to the same address gets an ECDHE suite.
+- name: TLS 1.2 with RSA key exchange only is refused, ECDHE is accepted
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      hs() { openssl s_client -connect {{ caddy_listen_ips[0] }}:443 -servername {{ caddy_routes[0].fqdn | quote }}
+      -tls1_2 "$@" </dev/null 2>&1 | grep -cE 'Cipher is [A-Z0-9][A-Z0-9-]*$' || true; };
+      hse() { openssl s_client -connect {{ caddy_listen_ips[0] }}:443 -servername {{ caddy_routes[0].fqdn | quote }}
+      -tls1_2 </dev/null 2>&1 | grep -cE 'Cipher is ECDHE-' || true; };
+      echo "rsa=$(hs -cipher AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA:AES256-SHA) ecdhe=$(hse)"
+    executable: /bin/bash
+  register: caddy_rsa_kex
+  changed_when: false
+  failed_when: caddy_rsa_kex.stdout | trim != 'rsa=0 ecdhe=1'
+  when: not ansible_check_mode and caddy_routes | length > 0
+  no_log: true
+
+- name: TLS handshake result
+  ansible.builtin.debug:
+    msg: "{{ caddy_rsa_kex.stdout | default('skipped') }}"
+  when: not ansible_check_mode and caddy_routes | length > 0

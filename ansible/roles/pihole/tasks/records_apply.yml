@@ -1,0 +1,49 @@
+# Local DNS records (pihole_hosts, records.yml) applied to the running Pi-hole, live: FTL
+# rewrites pihole.toml and reloads its records without a restart, so DNS never stops
+# (unlike a compose env value, whose change recreates the container). Read first; written
+# only when they differ. Values are not logged.
+- name: Local DNS records in Pi-hole now
+  ansible.builtin.command:
+    argv: [docker, exec, pihole, pihole-FTL, --config, dns.hosts]
+  register: pihole_hosts_have
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+# FTL prints the array as "[ a, b ]" ("[]" when empty); an entry ("<ip> <name>") holds no comma.
+- name: Compare them with the wanted records
+  ansible.builtin.set_fact:
+    pihole_hosts_now: >-
+      {{ pihole_hosts_have.stdout | trim | regex_replace('^\[\s*', '') | regex_replace('\s*\]$', '')
+         | split(',') | map('trim') | reject('equalto', '') | list }}
+  no_log: true
+
+- name: Records to write
+  ansible.builtin.debug:
+    msg: "dns.hosts: {{ pihole_hosts_now | length }} -> {{ pihole_hosts | length }} records"
+  changed_when: ansible_check_mode
+  when: pihole_hosts_now != pihole_hosts
+
+- name: Write the records (live, no restart)
+  ansible.builtin.command:
+    argv: [docker, exec, pihole, pihole-FTL, --config, dns.hosts, "{{ pihole_hosts | to_json }}"]
+  changed_when: true
+  when: pihole_hosts_now != pihole_hosts
+  no_log: true
+
+- name: Read the records back
+  ansible.builtin.command:
+    argv: [docker, exec, pihole, pihole-FTL, --config, dns.hosts]
+  register: pihole_hosts_after
+  changed_when: false
+  when: pihole_hosts_now != pihole_hosts and not ansible_check_mode
+  no_log: true
+
+- name: Pi-hole holds exactly the wanted records
+  ansible.builtin.assert:
+    that: >-
+      pihole_hosts_after.stdout | trim | regex_replace('^\[\s*', '') | regex_replace('\s*\]$', '')
+      | split(',') | map('trim') | reject('equalto', '') | list == pihole_hosts
+    fail_msg: "dns.hosts in Pi-hole differs from the {{ pihole_hosts | length }} wanted records after the write"
+    quiet: true
+  when: pihole_hosts_now != pihole_hosts and not ansible_check_mode

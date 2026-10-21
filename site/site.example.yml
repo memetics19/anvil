@@ -45,6 +45,8 @@ site:
       - {name: vault, ref: hosts.vault.ip}
       - {name: apps, ref: hosts.apps.home_ip}
       - {name: printer, ip: 198.51.100.40}
+    # Public resolvers Caddy uses to see its DNS-01 challenge record (role caddy).
+    acme_resolvers: [198.51.100.53, 198.51.100.54]
   # The service gateway (roles caddy and pihole): each enabled entry is served as
   # https://<name>.<domain> by Caddy on the apps VM, and Pi-hole answers <name>.<domain>
   # with the apps home address. `host` is a dotted path into this dict (or `container`, a

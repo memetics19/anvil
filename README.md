@@ -221,7 +221,9 @@ subnet. Each NIC answers ARP only for its own address.
   hostname. An entry with `fqdn` is served under exactly that name, for split horizon: a
   public hostname (Vaultwarden's, the self-hosted NetBird server's) answered at home with
   a home-reachable address. The address is `ref` (a path into the site dict) or `ip`.
-  `tests/test_pihole_records.sh` covers the rules.
+  `tests/test_pihole_records.sh` covers the rules. The records (these and the gateway's
+  names) are applied to the running Pi-hole live (`pihole-FTL --config dns.hosts`), only
+  when they differ, so a change never restarts Pi-hole or interrupts DNS.
 - Block lists (`pihole_blocklists`): StevenBlack plus a few lists from firebog and
   URLhaus. A change runs a gravity update. Lists added in the web UI are left alone.
 - Web UI: `https://dns.<domain>/admin/`, password `web_password` from Vault

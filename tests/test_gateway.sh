@@ -30,6 +30,7 @@ run() {
         apps: {ip: 192.0.2.121, home_ip: 198.51.100.249}
       dns:
         local_records: [{name: vault, ref: hosts.vault.ip}]
+        acme_resolvers: [198.51.100.53, 198.51.100.54]
       services: $1
     caddy_upstream_cas: {vault: /nonexistent/vault-ca.pem}
   tasks:
@@ -43,6 +44,13 @@ run() {
         src: "$PWD/ansible/roles/caddy/templates/Caddyfile.j2"
         dest: "$tmp/Caddyfile"
         mode: "0600"
+    - name: Compose file
+      ansible.builtin.template:
+        src: "$PWD/ansible/roles/caddy/templates/docker-compose.yaml.j2"
+        dest: "$tmp/compose.yaml"
+        mode: "0600"
+      vars:
+        caddy_image: anvil/caddy:test
     - name: Records
       ansible.builtin.include_role:
         name: pihole
@@ -90,6 +98,16 @@ block dns | grep -q 'redir / /admin/' && ok "dns: / redirects to /admin/" || bad
 hasnt "disabled entry has no route"        "@pass"
 has   "unknown names are refused"          "abort"
 hasnt "no HTTP/3 (only TCP is published)"  "h3"
+
+has   "propagation check resolvers from site" "resolvers 198.51.100.53 198.51.100.54"
+
+# Published ports: each bound to one of the VM's two addresses, TCP only, 80 and 443.
+ports=$(awk '/^    ports:/{on=1; next} on && /^      - /{print; next} on{on=0}' "$tmp/compose.yaml" | sed -E 's/^ *- *"?//; s/"$//')
+if [ "$(printf '%s\n' "$ports" | sort)" = "$(printf '%s\n' 192.0.2.121:443:443/tcp 192.0.2.121:80:80/tcp 198.51.100.249:443:443/tcp 198.51.100.249:80:80/tcp | sort)" ]
+then ok "ports: only the lab and home addresses, 80 and 443, TCP"
+else bad_ "ports"; printf '%s\n' "$ports"; fi
+if printf '%s\n' "$ports" | grep -qvE '^(192\.0\.2\.121|198\.51\.100\.249):(80|443):(80|443)/tcp$'; then bad_ "ports: no unbound, 0.0.0.0 or UDP entry"
+else ok "ports: no unbound, 0.0.0.0 or UDP entry"; fi
 
 if [ "$(cat "$tmp/records" 2>/dev/null)" = "192.0.2.120 vault.lan.example.com
 198.51.100.249 pve.example.com

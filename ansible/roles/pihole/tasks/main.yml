@@ -182,6 +182,11 @@
   until: pihole_web.stdout == '200'
   when: not ansible_check_mode
 
+# --- local DNS records (live) ----------------------------------------------------------------
+- name: Apply the local DNS records
+  ansible.builtin.include_tasks: records_apply.yml
+  when: not (ansible_check_mode and 'pihole' in compose_project_plan.up | default(['pihole']))
+
 # --- blocklists ------------------------------------------------------------------------------
 - name: Blocklists in gravity
   ansible.builtin.include_tasks: blocklists.yml
