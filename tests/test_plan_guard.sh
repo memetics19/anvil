@@ -25,6 +25,8 @@ plan disk-tune.json    '.resource_changes[0].change.actions = ["update"] | .reso
 plan cpu-only.json     '.resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.cores = 2'
 plan frigate-disk.json '.resource_changes[0].address = "proxmox_virtual_environment_vm.frigate" | .resource_changes[0].name = "frigate" | .resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0].size = 2048'
 plan vault-disk.json   '.resource_changes[0].address = "proxmox_virtual_environment_vm.vault" | .resource_changes[0].name = "vault" | .resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0].size = 2048'
+plan apps-disk.json    '.resource_changes[0].address = "proxmox_virtual_environment_vm.apps" | .resource_changes[0].name = "apps" | .resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0].size = 2048'
+plan create-apps.json  '.resource_changes[0].address = "proxmox_virtual_environment_vm.apps" | .resource_changes[0].name = "apps" | .resource_changes[0].change.actions = ["create"] | .resource_changes[0].change.before = null'
 plan create-rag.json   '.resource_changes[0].change.actions = ["create"] | .resource_changes[0].change.before = null'
 plan create-vault.json '.resource_changes[0].address = "proxmox_virtual_environment_vm.vault" | .resource_changes[0].name = "vault" | .resource_changes[0].change.actions = ["create"] | .resource_changes[0].change.before = null'
 plan errored.json      '.resource_changes[0].change.actions = ["no-op"] | .errored = true'
@@ -59,6 +61,8 @@ expect "$tmp/disk-tune.json"    0
 expect "$tmp/cpu-only.json"     0
 expect "$tmp/frigate-disk.json" 0
 expect "$tmp/vault-disk.json"   1
+expect "$tmp/apps-disk.json"    1
+expect "$tmp/create-apps.json"  0
 expect "$tmp/create-rag.json"   0
 expect "$tmp/create-vault.json" 0
 expect "$tmp/errored.json"      1

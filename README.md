@@ -24,6 +24,7 @@ Work in progress. See [Roadmap](#roadmap).
 | `netbird`  | NetBird routing peer, Redis, ntfy, pulse, cloudflared         |
 | `ragnarok` | ARR stack, IPTV, Filestash (S3 browser), cloudflared          |
 | `vault`    | HashiCorp Vault (planned)                                     |
+| `apps`     | Pi-hole with Unbound (DNS for the home and lab networks)      |
 
 ## Requirements
 
@@ -81,7 +82,8 @@ make host ARGS="--check --diff"   # dry run against the Proxmox host
 make host
 make ceph ARGS="--check --diff"   # see below before the first real run
 make vms ARGS="--check --diff"    # guest roles and workloads (tags: base, docker, cloudflared,
-                                  #   node_exporter, frigate, arr, iptv_epg, filestash, iptv)
+                                  #   node_exporter, frigate, arr, iptv_epg, filestash, iptv,
+                                  #   pihole)
 make vm HOST=frigate              # one VM at a time
 make lint
 make secrets-scan
@@ -195,6 +197,37 @@ never run it in the same Ansible run as `make host-network`.
   - Don't run a plain `docker compose up` for this project: compose recreates the
     locally built Pulse container every time.
 
+## apps (Pi-hole)
+
+`apps` is one small VM (1 vCPU, 1.5 GB) for always-on services; Pi-hole runs there now,
+Vaultwarden will later. It has two NICs on `vmbr0`, both set by cloud-init
+(`terraform/vm_apps.tf`): a lab address with the default route, and a home-network address
+(`site.hosts.apps.home_ip`) with no gateway, so home devices reach Pi-hole on their own
+subnet. Each NIC answers ARP only for its own address.
+
+`make vm HOST=apps` runs the `pihole` role, compose project `/opt/pihole`:
+
+- Pi-hole (pinned tag and digest) publishes DNS (53) and its web UI (80) on those two
+  addresses only. It is not a DHCP server.
+- Its only upstream is Unbound, which runs in Pi-hole's network namespace on port 5335
+  (never published), resolves from the root servers and validates DNSSEC.
+- Per-client rate limit: 1000 queries per 60 seconds.
+- Local records come from `site.dns.local_records` in Vault, each as
+  `<name>.lan.<domain>`. The `lan` sub-zone keeps them from shadowing a public hostname
+  of the domain.
+- Block lists (`pihole_blocklists`): StevenBlack plus a few lists from firebog and
+  URLhaus. A change runs a gravity update. Lists added in the web UI are left alone.
+- Web UI: `http://<apps home address>/admin`, password `web_password` from Vault
+  `kv/homelab/apps/pihole`. Settings passed by the role are read-only in the UI.
+
+Hand steps on the home router (not managed here):
+
+1. Reserve `site.hosts.apps.home_ip` for the `apps` VM's home NIC (its MAC is on the
+   Proxmox VM's `net1`) in the router's DHCP, or exclude it from the DHCP pool.
+2. In the router's DHCP settings, hand out that address as the primary DNS server and the
+   router itself as the secondary. Devices pick it up when they renew their lease (or
+   reconnect to Wi-Fi). On a Mac, `scutil --dns` then lists Pi-hole first.
+
 ## IPTV
 
 IPTV setup. The lineup is [`iptv/channels.yml`](iptv/channels.yml), checked by
@@ -295,7 +328,8 @@ at the start of the next `tf-plan`, when the guard rejects it, and after `tf-app
 never written to disk.
 
 `scripts/plan-guard.sh` refuses a plan that destroys or replaces anything, changes which
-storage backs `ragnarok`'s disk (the media library), errored, or was made with `-target`.
+storage backs the disks of `ragnarok` (the media library), `vault` or `apps` (Vaultwarden's
+data), errored, or was made with `-target`.
 Don't pass `-target` in `ARGS`. All three adopted VMs also carry `prevent_destroy`.
 `tests/test_plan_guard.sh` tests the guard.
 
@@ -335,6 +369,8 @@ history. [`.gitleaks.toml`](.gitleaks.toml) adds rules for:
 - Cloudflare tunnels and public hostnames
 - NetBird routes, ACLs and setup keys
 - DHCP reservation for the Proxmox uplink on the home router
+- The home router's DHCP: the `apps` home address reservation and the DNS servers it hands
+  out (see [apps (Pi-hole)](#apps-pi-hole))
 - App state kept in databases (indexers, API keys, Frigate recordings), which is
   reconfigured by hand after a rebuild
 

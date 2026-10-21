@@ -3,9 +3,9 @@
 # node_exporter (group node_exporter in the inventory).
 # Run: make vms ARGS="--check --diff"   or one VM: make vm HOST=frigate
 # Tags: base, docker, cloudflared, node_exporter, frigate, arr, iptv_epg, filestash, iptv,
-# netbird_peer, redis, ntfy, pulse.
+# netbird_peer, redis, ntfy, pulse, pihole.
 - name: Guest base
-  hosts: guests:vault_servers
+  hosts: guests:vault_servers:apps_servers
   pre_tasks:
     - name: Resolve the site dict once for this run
       ansible.builtin.import_tasks: tasks/site.yml
@@ -78,3 +78,14 @@
           tags: [always]
       when: netbird_peer_state_start | default('') == 'connected'
       tags: [always]
+
+# Workloads on the apps VM (shared, small always-on services): Pi-hole with Unbound, DNS
+# for the home and lab networks. No Cloudflare tunnel here.
+- name: Apps workloads
+  hosts: apps_servers
+  force_handlers: true
+  roles:
+    - role: docker
+      tags: [docker]
+    - role: pihole
+      tags: [pihole]

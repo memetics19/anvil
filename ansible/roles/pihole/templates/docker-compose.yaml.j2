@@ -1,0 +1,46 @@
+# Managed by Ansible (role pihole). Pi-hole answers DNS on the published addresses and
+# forwards only to Unbound, which runs inside Pi-hole's network namespace.
+services:
+  pihole:
+    image: {{ pihole_image }}
+    container_name: pihole
+    hostname: pihole
+    restart: unless-stopped
+    ports:
+{% for ip in pihole_listen_ips %}
+      - "{{ ip }}:53:53/tcp"
+      - "{{ ip }}:53:53/udp"
+      - "{{ ip }}:{{ pihole_web_port }}:80/tcp"
+{% endfor %}
+    environment:
+      TZ: {{ pihole_tz | to_json }}
+      # Its own uid, not the image default 1000 (the VM's first user).
+      PIHOLE_UID: "{{ pihole_uid }}"
+      PIHOLE_GID: "{{ pihole_uid }}"
+      FTLCONF_dns_upstreams: "127.0.0.1#{{ pihole_unbound_port }}"
+      # Bridge networking: queries arrive from the clients' own subnets.
+      FTLCONF_dns_listeningMode: ALL
+      # Unbound validates DNSSEC.
+      FTLCONF_dns_dnssec: "false"
+      FTLCONF_dns_rateLimit_count: "{{ pihole_rate_limit_count }}"
+      FTLCONF_dns_rateLimit_interval: "{{ pihole_rate_limit_interval }}"
+      FTLCONF_dns_hosts: {{ pihole_hosts | join(';') | to_json }}
+      FTLCONF_dhcp_active: "false"
+    # FTLCONF_webserver_api_password (from Vault).
+    env_file: pihole.env
+    volumes:
+      - ./etc-pihole:/etc/pihole
+    mem_limit: {{ pihole_mem_limit }}
+    memswap_limit: {{ pihole_mem_limit }}
+
+  unbound:
+    image: {{ pihole_unbound_image }}
+    container_name: unbound
+    network_mode: "service:pihole"
+    depends_on:
+      - pihole
+    restart: unless-stopped
+    volumes:
+      - ./unbound:/etc/unbound/custom.conf.d:ro
+    mem_limit: {{ pihole_unbound_mem_limit }}
+    memswap_limit: {{ pihole_unbound_mem_limit }}

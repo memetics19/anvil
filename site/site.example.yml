@@ -18,6 +18,17 @@ site:
     netbird: {ip: 192.0.2.115, vmid: 9002, mac: "02:00:00:00:00:02"}
     ragnarok: {ip: 192.0.2.119, vmid: 9003, mac: "02:00:00:00:00:03"}
     vault: {ip: 192.0.2.120, vmid: 9004}
+    # Two NICs: ip on the lab network (default route), home_ip on the home network
+    # (pve.uplink_ip's /uplink_prefix, no gateway). Reserve home_ip in the router's DHCP.
+    apps: {ip: 192.0.2.121, home_ip: 198.51.100.249, vmid: 9005}
   # Addresses the frigate stack's config refers to (frigate_stack role).
   frigate_stack:
     genai_ollama_ip: 192.0.2.127
+  # Pi-hole's local DNS records (pihole role), each <name>.lan.<domain>. `ref` is a dotted
+  # path into this dict, so an address is written once; `ip` gives one directly.
+  dns:
+    local_records:
+      - {name: pve, ref: pve.uplink_ip}
+      - {name: vault, ref: hosts.vault.ip}
+      - {name: apps, ref: hosts.apps.home_ip}
+      - {name: printer, ip: 198.51.100.40}

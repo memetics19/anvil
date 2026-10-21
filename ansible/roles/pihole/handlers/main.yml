@@ -1,0 +1,9 @@
+# Unbound reads its settings only at start. Skipped when this run already brought it up.
+# The play sets force_handlers, so a failed task later in the run does not drop it.
+- name: Restart unbound
+  ansible.builtin.command:
+    argv: [docker, compose, --project-name, pihole, --file, "{{ pihole_dir }}/docker-compose.yaml", restart, unbound]
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - not pihole_unbound_up | default(false) | bool

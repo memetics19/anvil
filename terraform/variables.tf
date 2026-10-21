@@ -33,6 +33,16 @@ variable "site_json" {
   }
 
   validation {
+    condition = (
+      can(regex("^[0-9.]+$", jsondecode(var.site_json).hosts.apps.ip)) &&
+      can(regex("^[0-9.]+$", jsondecode(var.site_json).hosts.apps.home_ip)) &&
+      can(regex("^[0-9]+$", jsonencode(jsondecode(var.site_json).hosts.apps.vmid))) &&
+      can(regex("^[0-9]+$", jsonencode(jsondecode(var.site_json).pve.uplink_prefix)))
+    )
+    error_message = "site.hosts.apps needs ip (lab, a.b.c.d), home_ip (home network, a.b.c.d) and vmid (a number), and site.pve.uplink_prefix (a number)."
+  }
+
+  validation {
     condition = alltrue([for v in ["servers", "cameras", "personal"] : (
       can(cidrhost(jsondecode(var.site_json).sdn.subnets[v].cidr, 0)) &&
       can(regex("^[0-9.]+$", jsondecode(var.site_json).sdn.subnets[v].gateway))
@@ -42,7 +52,7 @@ variable "site_json" {
 }
 
 variable "ssh_public_key_path" {
-  description = "Public key installed for the ubuntu user on the vault VM (read at plan time, never committed)."
+  description = "Public key installed for the ubuntu user on the cloud-init VMs (vault, apps; read at plan time, never committed)."
   type        = string
   default     = "~/.ssh/id_ed25519.pub"
 }

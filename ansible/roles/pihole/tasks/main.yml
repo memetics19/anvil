@@ -1,0 +1,283 @@
+# Pi-hole on the apps VM: DNS for the home and lab networks, Unbound as the only upstream.
+# Web UI login: the password web_password from Vault. No DHCP server.
+
+# --- secret ----------------------------------------------------------------------------------
+- name: Key digests stored in Vault
+  ansible.builtin.command:
+    argv: ["{{ pihole_repo_scripts }}/vault-kv-digests.sh", "{{ pihole_vault_path }}"]
+  delegate_to: localhost
+  become: false
+  register: pihole_vault_digests
+  changed_when: false
+  check_mode: false
+
+- name: Keys stored in Vault
+  ansible.builtin.set_fact:
+    pihole_vault_keys: "{{ pihole_vault_digests.stdout_lines | map('split', ' ') | map('first') | list }}"
+
+# The password goes from openssl straight into Vault; it is never displayed or logged.
+- name: Generate the web password into Vault
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      openssl rand -hex 24 | tr -d '\n' |
+      vault kv {{ 'patch' if pihole_vault_keys else 'put' }} -mount={{ pihole_vault_mount }}
+      {{ pihole_vault_path }} web_password=- >/dev/null
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  when: "'web_password' not in pihole_vault_keys"
+
+# In check mode a password that would be generated above does not exist yet.
+- name: The web password is readable
+  ansible.builtin.set_fact:
+    pihole_have_secrets: "{{ not (ansible_check_mode and 'web_password' not in pihole_vault_keys) }}"
+
+- name: Read the web password from Vault
+  ansible.builtin.set_fact:
+    pihole_secrets: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', pihole_vault_path,
+                engine_mount_point=pihole_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
+  no_log: true
+  when: pihole_have_secrets | bool
+
+- name: The web password is present
+  ansible.builtin.assert:
+    that: pihole_secrets.web_password | default('') | length >= 32
+    fail_msg: "kv/{{ pihole_vault_path }}: web_password is missing or too short"
+    quiet: true
+  when: pihole_have_secrets | bool
+
+# --- local DNS records -----------------------------------------------------------------------
+# "<address> <name>.<zone>" per record; a ref is looked up in the site dict.
+- name: Local DNS records from the site dict
+  ansible.builtin.set_fact:
+    pihole_hosts: >-
+      {%- set out = [] -%}
+      {%- for r in pihole_local_records -%}
+      {%- set ns = namespace(v=site) -%}
+      {%- if r.ip is defined -%}{%- set ns.v = r.ip -%}
+      {%- else -%}{%- for k in r.ref.split('.') -%}{%- set ns.v = ns.v[k] | default('') if ns.v is mapping else '' -%}{%- endfor -%}
+      {%- endif -%}
+      {%- set _ = out.append(ns.v ~ ' ' ~ r.name ~ '.' ~ pihole_local_zone) -%}
+      {%- endfor -%}
+      {{ out }}
+  no_log: true
+
+- name: Every local record has a name and an IPv4 address
+  ansible.builtin.assert:
+    that:
+      - pihole_hosts | length == pihole_local_records | length
+      - pihole_hosts | reject('match', '^[0-9]{1,3}(\.[0-9]{1,3}){3} [a-z0-9][a-z0-9-]*\.[a-z0-9.-]+$') | list | length == 0
+    fail_msg: >-
+      site.dns.local_records: each entry needs a lower-case `name` and an `ip` or a `ref` to an
+      address in the site dict (records: {{ pihole_local_records | map(attribute='name') | join(', ') }})
+    quiet: true
+
+# --- ARP on two NICs in one L2 segment ---------------------------------------------------------
+# The VM has a lab and a home address on two NICs of the same bridge. By default Linux
+# answers ARP for any of its addresses on every NIC; these make each NIC answer only for
+# its own address and announce from it.
+- name: ARP replies only from the NIC that owns the address
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/60-multihomed-arp.conf
+    state: present
+    reload: true
+  loop:
+    - {name: net.ipv4.conf.all.arp_ignore, value: "1"}
+    - {name: net.ipv4.conf.all.arp_announce, value: "2"}
+
+# --- files -----------------------------------------------------------------------------------
+# A host user for Pi-hole's uid, so its files have a name and the uid stays reserved.
+- name: Pi-hole group on the host
+  ansible.builtin.group:
+    name: pihole
+    gid: "{{ pihole_uid }}"
+    system: true
+
+- name: Pi-hole user on the host (no login, no home)
+  ansible.builtin.user:
+    name: pihole
+    uid: "{{ pihole_uid }}"
+    group: pihole
+    system: true
+    create_home: false
+    home: /nonexistent
+    shell: /usr/sbin/nologin
+
+- name: Project directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ pihole_dir }}"
+    - "{{ pihole_dir }}/unbound"
+
+# Pi-hole's state (/etc/pihole), owned by Pi-hole's uid as the container sets it at start;
+# the container owns what is inside.
+- name: Pi-hole state directory
+  ansible.builtin.file:
+    path: "{{ pihole_dir }}/etc-pihole"
+    state: directory
+    owner: "{{ pihole_uid }}"
+    group: "{{ pihole_uid }}"
+    mode: "0755"
+
+# Read by Unbound (uid 101) inside the container, so world-readable; it holds no secret.
+- name: Unbound settings
+  ansible.builtin.template:
+    src: unbound.conf.j2
+    dest: "{{ pihole_dir }}/unbound/pihole.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart unbound
+
+- name: Render the env file
+  ansible.builtin.set_fact:
+    pihole_env_content: "{{ lookup('ansible.builtin.template', 'pihole.env.j2') }}"
+  no_log: true
+  when: pihole_have_secrets | bool
+
+# The compose config hash includes the env file, so a new password recreates Pi-hole
+# (compose_project below).
+- name: Pi-hole env file (web password from Vault)
+  ansible.builtin.copy:
+    content: "{{ pihole_env_content }}"
+    dest: "{{ pihole_dir }}/pihole.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+  when: pihole_have_secrets | bool
+
+# --- compose ---------------------------------------------------------------------------------
+- name: Render the compose file
+  ansible.builtin.set_fact:
+    pihole_compose_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+
+# Unbound is left out here: it joins Pi-hole's network namespace, and compose stores its
+# config hash with that resolved to Pi-hole's container ID, so the plain file hash never
+# matches. It is compared below instead.
+- name: Pi-hole compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ pihole_dir }}"
+    compose_project_content: "{{ pihole_compose_content }}"
+    compose_project_skip_services: [unbound]
+  # In check mode on a new host the env file the compose file names does not exist yet.
+  when: pihole_have_secrets | bool
+
+- name: Services this run brought up
+  ansible.builtin.set_fact:
+    pihole_compose_up: "{{ compose_project_plan.up | default([]) }}"
+
+# "<name> <container ID> <config hash>" for each container that exists.
+- name: Pi-hole's container ID and Unbound's config hash
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{' }}.Name{{ '}}' }} {{ '{{' }}.Id{{ '}}' }} {{ '{{' }}index .Config.Labels \"com.docker.compose.config-hash\"{{ '}}' }}"
+      - pihole
+      - unbound
+  register: pihole_containers
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Index the containers
+  ansible.builtin.set_fact:
+    pihole_containers_by_name: >-
+      {%- set m = {} -%}
+      {%- for l in pihole_containers.stdout_lines if l.split() | length == 3 -%}
+      {%- set _ = m.update({l.split()[0] | regex_replace('^/', ''): {'id': l.split()[1], 'hash': l.split()[2]}}) -%}
+      {%- endfor -%}
+      {{ m }}
+
+# The same file, with network_mode as compose resolves it when it creates the container.
+- name: Unbound's wanted config hash
+  ansible.builtin.command:
+    argv: [docker, compose, --project-name, pihole, --project-directory, "{{ pihole_dir }}", --file, "-", config, --hash, unbound]
+    stdin: >-
+      {{ pihole_compose_content | replace('network_mode: "service:pihole"',
+         'network_mode: "container:' ~ pihole_containers_by_name.pihole.id ~ '"') }}
+  register: pihole_unbound_want
+  changed_when: false
+  check_mode: false
+  when: "'pihole' in pihole_containers_by_name"
+
+# Also after Pi-hole was recreated (by this run or by hand): Unbound would be left in the
+# old namespace, and the new container ID changes the wanted hash.
+- name: Note whether Unbound must be brought up
+  ansible.builtin.set_fact:
+    pihole_unbound_up: >-
+      {{ 'pihole' not in pihole_containers_by_name
+         or 'unbound' not in pihole_containers_by_name
+         or 'pihole' in pihole_compose_up
+         or (pihole_unbound_want.stdout | default('')).split() | last | default('')
+            != pihole_containers_by_name.unbound.hash }}
+
+- name: Bring up Unbound in Pi-hole's namespace
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-name
+      - pihole
+      - --project-directory
+      - "{{ pihole_dir }}"
+      - --file
+      - "{{ pihole_dir }}/docker-compose.yaml"
+      - up
+      - --detach
+      - --no-deps
+      - unbound
+    chdir: "{{ pihole_dir }}"
+  changed_when: true
+  when: pihole_unbound_up | bool and not ansible_check_mode
+
+- name: Unbound would be brought up
+  ansible.builtin.debug:
+    msg: "pihole: bring up unbound"
+  changed_when: true
+  when: pihole_unbound_up | bool and ansible_check_mode
+
+- name: Pi-hole answers DNS through Unbound on every address
+  ansible.builtin.command:
+    argv: [dig, +short, +time=3, +tries=1, "@{{ item }}", example.com, A]
+  loop: "{{ pihole_listen_ips }}"
+  register: pihole_dns_check
+  changed_when: false
+  retries: 20
+  delay: 3
+  until: pihole_dns_check.stdout_lines | select('match', '^[0-9.]+$') | list | length > 0
+  when: not ansible_check_mode
+  no_log: true
+
+- name: Pi-hole web UI answers
+  ansible.builtin.uri:
+    url: "http://{{ pihole_listen_ips[0] }}:{{ pihole_web_port }}/admin/login"
+    status_code: 200
+  register: pihole_web
+  retries: 10
+  delay: 3
+  until: pihole_web.status == 200
+  when: not ansible_check_mode
+
+# --- blocklists ------------------------------------------------------------------------------
+- name: Blocklists in gravity
+  ansible.builtin.include_tasks: blocklists.yml
+  when: not (ansible_check_mode and 'pihole' not in pihole_containers_by_name)
