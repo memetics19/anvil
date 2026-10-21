@@ -94,12 +94,19 @@ table inet {{ pve_segments_table }} {
 		counter drop
 	}
 {% endfor %}
-{% if pve_segments_list | selectattr('nat', 'defined') | selectattr('nat') | list %}
+{% if pve_segments_list | selectattr('nat', 'defined') | selectattr('nat') | list
+      or pve_segments_list | map(attribute='nat_out', default=[]) | flatten | list %}
 
+	# Source NAT: a whole segment (nat: true), or single flows of a segment without NAT
+	# (nat_out), which then are the only traffic of it translated.
 	chain postrouting {
 		type nat hook postrouting priority srcnat; policy accept;
 {% for g in pve_segments_list if g.nat | default(false) %}
 		ip saddr {{ g.subnet }} oifname != "{{ g.interface }}" masquerade
+{% endfor %}
+{% for g in pve_segments_list %}
+{% for r in g.nat_out | default([]) %}
+{{ rule(r, 'snat ip to ' ~ r.to) }}{% endfor %}
 {% endfor %}
 	}
 {% endif %}

@@ -29,7 +29,7 @@ render() {
     pve_enclave_smtp_host: smtp.example.com
     pve_enclave_smtp_port: "587"
     site:
-      pve: {ip: 192.0.2.10}
+      pve: {ip: 192.0.2.10, uplink_ip: 203.0.113.250}
       sdn: {enclave: {subnet: 198.51.100.0/24, gateway: 198.51.100.1}}
       admin_sources: [192.0.2.0/24, 203.0.113.0/24, 198.51.100.200/32]
       hosts:
@@ -72,7 +72,9 @@ has "host: apt cache on the gateway" "ip daddr 198.51.100.1 tcp dport 3142 accep
 has "host: RGW for Vaultwarden only" "ip saddr 198.51.100.21 ip daddr 192.0.2.10 tcp dport 7480 accept" "$f"
 has "gateway address only on its vnet" 'ip daddr 198.51.100.1 iifname != { "secrets", "lo" } counter drop' "$f"
 check "every segment chain ends in drop" "$(grep -c '^		counter drop$' "$f")" "3"
-hasnt "no NAT for the enclave" "masquerade" "$f"
+hasnt "no NAT for the enclave as a whole" "masquerade" "$f"
+has "only the mail hole is translated" "ip saddr 198.51.100.21 ip daddr @enclave_smtp_relay tcp dport 587 snat ip to 203.0.113.250" "$f"
+check "one source NAT rule" "$(grep -c 'snat ip to' "$f")" "1"
 hasnt "no Vault egress" "ip saddr 198.51.100.20 ip daddr" "$f"
 hasnt "no monitoring host, no monitoring rule" "dport 9100" "$f"
 
@@ -81,6 +83,7 @@ render "$tmp/novw.nft" '' false
 check "render without vaultwarden: rc" "$?" "0"
 hasnt "no Vaultwarden rule" "198.51.100.21" "$tmp/novw.nft"
 hasnt "SMTP off: no timeout set" "flags timeout" "$tmp/novw.nft"
+hasnt "without Vaultwarden: nothing translated" "snat" "$tmp/novw.nft"
 has "SSH still to Vault" "ip saddr @admin ip daddr { 198.51.100.20 } tcp dport 22 accept" "$tmp/novw.nft"
 
 # 3. A monitoring host gets node_exporter and Vault metrics.

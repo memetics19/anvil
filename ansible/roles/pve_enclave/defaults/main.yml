@@ -2,7 +2,8 @@
 # Vaultwarden on the SDN vnet `secrets` (simple zone `enclave`, Terraform sdn.tf), a bridge
 # with no physical port. The host is its only router and does no NAT for it. This role:
 #   - firewall (tag firewall): the enclave is the first segment of the routed segments'
-#     firewall (role pve_segments: one nftables table, default drop, timed rollback). Its
+#     firewall (role pve_segments: one nftables table, default drop, timed rollback), with
+#     no NAT except the one SMTP flow (nat_out). Its
 #     data is pve_enclave_segment and pve_enclave_sets below; inventory group_vars/proxmox.yml
 #     lists the segments;
 #   - sdn (tag sdn): applies the pending SDN config (pvesh set /cluster/sdn) under the
@@ -135,6 +136,16 @@ pve_enclave_segment:
       daddr: "@enclave_smtp_relay"
       proto: tcp
       dport: "{{ pve_enclave_smtp_port | default(pve_enclave_smtp_default_port) }}"
+  # The one flow that leaves the host: without source NAT the relay's answers could not
+  # find their way back (the enclave's addresses are unknown outside). Translated to the
+  # host's home-network address, like the lab network.
+  nat_out:
+    - comment: "the mail hole: Vaultwarden to the SMTP relay"
+      saddr: "{{ _pve_enclave_vw }}"
+      daddr: "@enclave_smtp_relay"
+      proto: tcp
+      dport: "{{ pve_enclave_smtp_port | default(pve_enclave_smtp_default_port) }}"
+      to: "{{ site.pve.uplink_ip }}"
   host:
     - comment: NTP and the apt cache on the gateway address, ping
       daddr: "{{ pve_enclave_gateway }}"

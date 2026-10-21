@@ -21,13 +21,16 @@
          + pve_segments_list | map(attribute='egress', default=[]) | flatten
          + pve_segments_list | map(attribute='host', default=[]) | flatten)
         | map(attribute='action', default='accept') | reject('in', ['accept', 'drop', 'return']) | list | length == 0
+      - >-
+        pve_segments_list | map(attribute='nat_out', default=[]) | flatten | map(attribute='to', default='')
+        | reject('match', '^([0-9]{1,3}\\.){3}[0-9]{1,3}$') | list | length == 0
       - pve_segments_sets | map(attribute='name') | select('match', '^[a-z][a-z0-9_]{0,30}$') | list | length == pve_segments_sets | length
       - pve_segments_sets | selectattr('refresh', 'defined') | selectattr('interval', 'defined') | selectattr('interval') | list | length == 0
       - pve_segments_target | length > 0
     fail_msg: >-
       pve_segments_list: each segment needs a lower-case name (unique), an interface, a gateway
       (a.b.c.d) and a subnet (a.b.c.d/n), and rules with proto tcp, udp or icmp (or none) and action accept, drop or return; sets need a
-      lower-case name and cannot be both interval and refreshed; pve_segments_target (the
+      lower-case name and cannot be both interval and refreshed; nat_out rules need `to` (an address); pve_segments_target (the
       controller) must be set
     quiet: true
 

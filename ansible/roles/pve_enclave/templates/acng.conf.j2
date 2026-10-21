@@ -8,6 +8,8 @@ LogDir: /var/log/apt-cacher-ng
 SupportDir: /usr/lib/apt-cacher-ng
 BindAddress: {{ pve_enclave_gateway }}
 Port: {{ pve_enclave_aptcache_port }}
+# The host has no IPv6 route out: connect upstream over IPv4 only.
+ConnectProto: v4
 Remap-debrep: file:deb_mirror*.gz /debian ; file:backends_debian # Debian Archives
 Remap-secdeb: security.debian.org security.debian.org/debian-security deb.debian.org/debian-security /debian-security cdn-fastly.deb.debian.org/debian-security ; deb.debian.org/debian-security security.debian.org cdn-fastly.deb.debian.org/debian-security
 Remap-uburep: file:ubuntu_mirrors /ubuntu archive.ubuntu.com/ubuntu ; file:backends_ubuntu # Ubuntu Archives

@@ -11,6 +11,9 @@
 #   egress     rules for new connections forwarded OUT of it (allowed; the destination
 #              segment's ingress still applies)
 #   host       rules for new connections from it to this host (input)
+#   nat_out    for a segment without nat: single flows that leave source-NATed to `to`
+#              (rule fields as below, plus `to`: an address of this host); nothing else of
+#              the segment is translated, so it has no path out even if a filter rule is wrong
 #   Anything not allowed is dropped (counted). Established and related traffic passes.
 #
 # A rule: {comment, saddr, daddr, proto (tcp|udp|icmp), dport (port or list; icmp: none,
