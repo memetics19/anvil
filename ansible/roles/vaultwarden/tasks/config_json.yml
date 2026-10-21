@@ -29,7 +29,7 @@
                'invitations_allowed', '_enable_email_2fa', 'require_device_email', 'show_password_hint',
                'use_sendmail', '_enable_smtp'] -%}
       {%- set shadowed = c.keys() | select('in', managed) | list
-            + c.keys() | select('match', '^(smtp_|email_2fa_|email_expiration_time$|email_attempts_limit$)') | list -%}
+            + c.keys() | select('match', '^(smtp_|signups_|email_2fa_|email_expiration_time$|email_attempts_limit$)') | list -%}
       {%- set smtp = vaultwarden_smtp is defined -%}
       {%- set weak = [] -%}
       {%- if c.signups_allowed | default(false) | bool -%}{%- set _ = weak.append('signups_allowed') -%}{%- endif -%}
@@ -38,6 +38,9 @@
       {%- if smtp and 'email_2fa_enforce_on_verified_invite' in c and not c.email_2fa_enforce_on_verified_invite | bool -%}
       {%- set _ = weak.append('email_2fa_enforce_on_verified_invite') -%}{%- endif -%}
       {%- if smtp and '_enable_smtp' in c and not c._enable_smtp | bool -%}{%- set _ = weak.append('_enable_smtp') -%}{%- endif -%}
+      {#- a non-empty whitelist replaces signups_allowed: those domains may sign up -#}
+      {%- if c.signups_domains_whitelist | default('') | string | trim | length > 0 -%}
+      {%- set _ = weak.append('signups_domains_whitelist') -%}{%- endif -%}
       {%- if c.show_password_hint | default(false) | bool -%}{%- set _ = weak.append('show_password_hint') -%}{%- endif -%}
       {%- if c.disable_admin_token | default(false) | bool -%}{%- set _ = weak.append('disable_admin_token') -%}{%- endif -%}
       {%- if 'domain' in c and c.domain | string != vaultwarden_domain_url -%}{%- set _ = weak.append('domain') -%}{%- endif -%}

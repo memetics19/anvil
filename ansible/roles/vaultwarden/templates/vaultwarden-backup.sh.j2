@@ -27,7 +27,8 @@ case $keep in '' | *[!0-9]* | 0) die "KEEP must be a positive number" ;; esac
 
 umask 077
 # The copy and the archive both sit in the work directory (tmpfs): need about twice the data.
-need=$(du -sk "$data/db.sqlite3" "$data/attachments" "$data/sends" 2>/dev/null | awk '{s += $1} END {print 2 * s + 1024}')
+# attachments/ and sends/ are optional: measure only what exists (du fails on a missing path).
+need=$(for f in "$data/db.sqlite3" "$data/attachments" "$data/sends"; do if [ -e "$f" ]; then du -sk "$f"; fi; done | awk '{s += $1} END {print 2 * s + 1024}')
 free=$(df -Pk "${TMPDIR:-/var/tmp}" | awk 'NR == 2 {print $4}')
 [ "$need" -lt "$free" ] || die "work space ${TMPDIR:-/var/tmp} has ${free} KiB free, needs ${need} KiB (twice the data)"
 name="vaultwarden-$(date -u +%Y%m%d-%H%M%S).tar.age"

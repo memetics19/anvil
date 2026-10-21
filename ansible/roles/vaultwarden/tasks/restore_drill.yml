@@ -204,7 +204,7 @@
         that:
           - vaultwarden_drill_alive.stdout == '200'
           - vaultwarden_drill_users.stdout_lines | length == 2
-          - vaultwarden_drill_users.stdout_lines[0].split(' ') | length == 3
+          - vaultwarden_drill_users.stdout_lines[0] is match('^[0-9]+ [0-9]+ [0-9]+$')
           - vaultwarden_drill_users.stdout_lines[0].split(' ')[0] == vaultwarden_drill_users.stdout_lines[0].split(' ')[1]
           - vaultwarden_drill_users.stdout_lines[0].split(' ')[2] == '0'
         fail_msg: >-

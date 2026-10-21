@@ -200,6 +200,7 @@ cfg_check "the UI's full save stops the run (names only)" "$smtp" \
 cfg_check "another domain, hints, no admin token" '' '{"domain": "https://other.example.com", "show_password_hint": true, "disable_admin_token": true}' \
   'disable_admin_token, domain, show_password_hint'
 cfg_check "fewer iterations" '' '{"password_iterations": 100000}' 'password_iterations'
+cfg_check "a sign-up domain whitelist" '' '{"signups_domains_whitelist": "example.com"}' 'signups_domains_whitelist'
 run "$good" '' '{"signups_verify": false, "_enable_email_2fa": false, "smtp_port": 587, "domain": "https://pass.internal.example.com", "icon_cache_ttl": 1}'
 rc=$?
 check "config.json: without SMTP these only warn" '[ "$rc" = 0 ] && grep -q "WARNING: data/config.json (saved from the admin page) overrides _enable_email_2fa, domain, signups_verify, smtp_port; settings are managed by code" "$tmp/log" && ! grep -q icon_cache_ttl "$tmp/log"'
@@ -255,6 +256,15 @@ check "backup: no icon cache, tmp or WAL files" '! age -d -i "$b/key" "$b/s3/buc
 check "backup: keeps the newest 14 of its own" '[ "$(ls "$b/s3/bucket" | grep -cE "^vaultwarden-[0-9]{8}-[0-9]{6}\.tar\.age$")" = 14 ] && [ ! -e "$b/s3/bucket/vaultwarden-20000102-000000.tar.age" ] && [ -e "$b/s3/bucket/vaultwarden-20000103-000000.tar.age" ]'
 check "backup: other objects untouched"        '[ -f "$b/s3/bucket/other-file.txt" ] && [ -f "$b/s3/bucket/vaultwarden-manual.tar.age" ]'
 check "backup: work directory removed"         '[ -z "$(ls -A "$b/tmp")" ]'
+
+# attachments/ and sends/ are optional: a data directory without them still backs up.
+mv "$b/data/attachments" "$b/data/sends" "$b/"
+sleep 1
+PATH="$b/bin:$PATH" FAKE_S3="$b/s3" TMPDIR="$b/tmp" VW_BACKUP_DATA="$b/data" VW_BACKUP_RECIPIENTS="$b/recipients" \
+  VW_BACKUP_REMOTE=vwb:bucket VW_BACKUP_KEEP=14 bash "$out/vaultwarden-backup.sh" >"$b/log" 2>&1
+rc=$?
+check "backup: no attachments or sends dir"    '[ "$rc" = 0 ]' || cat "$b/log"
+mv "$b/attachments" "$b/sends" "$b/data/"
 
 # A failed upload check stops the job before pruning.
 cat >"$b/bin/rclone2" <<'FAKE'
