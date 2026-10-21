@@ -466,10 +466,10 @@
     if (NEXT_KEYS[key] || NEXT_KEYS[e.code]) return 'next';
     if (PREV_KEYS[key] || PREV_KEYS[e.code]) return 'prev';
     if (PLAY_KEYS[key] || PLAY_KEYS[e.code]) return 'play';
-    if (key && key.length === 1) return '';
     if (NEXT_CODES[e.keyCode]) return 'next';
     if (PREV_CODES[e.keyCode]) return 'prev';
     if (PLAY_CODES[e.keyCode]) return 'play';
+    if (key && key.length === 1) return '';
     return '';
   }
 
