@@ -6,7 +6,7 @@ HVAC_CHECK := py=$$(ansible-playbook --version | sed -n 's/^  python version = .
 	"$${py:-python3}" -c 'import hvac' 2>/dev/null || { \
 	  echo "hvac is missing in the Python that runs Ansible; fix: \"$$py\" -m pip install hvac" >&2; exit 1; }
 
-.PHONY: lint secrets-scan bootstrap-ssh host host-network enclave ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply
+.PHONY: lint secrets-scan bootstrap-ssh host host-network enclave ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply docs
 
 lint:
 	@set -eu -o pipefail; \
@@ -133,3 +133,7 @@ tf-apply:
 	applyable=$$(terraform -chdir=terraform show -json homelab.tfplan | jq -r '.applyable'); \
 	[ "$$applyable" = true ] || { echo "tf-apply: the saved plan has nothing to apply"; exit 0; }; \
 	terraform -chdir=terraform apply -input=false homelab.tfplan
+
+# Build the docs site into build/site (pip install -r docs/requirements.txt first).
+docs:
+	@scripts/docs-build.sh

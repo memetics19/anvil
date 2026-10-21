@@ -26,3 +26,6 @@ site/bootstrap.yml
 
 # Python bytecode
 __pycache__/
+
+# Docs site build output
+build/
