@@ -228,8 +228,9 @@
     iptv_m3u_now: "{{ (iptv_live.results[2].content | b64decode) if iptv_live.results[2].content is defined else '' }}"
   no_log: true
 
-# Threadfin keeps its own keys (uuid, counters, last update) next to these. The source lists
-# are replaced whole, so sources added in the web UI are removed on the next run. A new
+# Threadfin keeps its own keys (uuid, counters, last update) next to these. The role owns
+# only its two source entries (Mkannada, Xkannada); sources added by hand in the web UI
+# are left alone (and are not reproduced on a rebuild). A new
 # settings file needs a "version" (Threadfin refuses to start without one); after that
 # Threadfin owns it.
 - name: Settings the role owns
@@ -277,11 +278,24 @@
     iptv_settings_want: >-
       {{ {'version': iptv_threadfin_db_version} | combine(iptv_settings_now)
          | combine(iptv_settings_managed, {'files': {
-           'hdhr': {},
-           'm3u': {'Mkannada': (iptv_settings_now.files.m3u.Mkannada | default({}))
-                               | combine(iptv_files_managed.m3u.Mkannada)},
-           'xmltv': {'Xkannada': (iptv_settings_now.files.xmltv.Xkannada | default({}))
-                                 | combine(iptv_files_managed.xmltv.Xkannada)}}}) }}
+           'hdhr': iptv_settings_now.files.hdhr | default({}),
+           'm3u': (iptv_settings_now.files.m3u | default({})) | combine({'Mkannada':
+                    (iptv_settings_now.files.m3u.Mkannada | default({})) | combine(iptv_files_managed.m3u.Mkannada)}),
+           'xmltv': (iptv_settings_now.files.xmltv | default({})) | combine({'Xkannada':
+                    (iptv_settings_now.files.xmltv.Xkannada | default({})) | combine(iptv_files_managed.xmltv.Xkannada)})}}) }}
+
+# A count only: their names and URLs are not read out or logged.
+- name: Sources the role does not manage
+  ansible.builtin.debug:
+    msg: >-
+      {{ iptv_unmanaged_sources }} unmanaged Threadfin source(s) present; not managed by the
+      repo, not reproduced on a rebuild
+  vars:
+    iptv_unmanaged_sources: >-
+      {{ (iptv_settings_now.files.m3u | default({}) | dict2items | rejectattr('key', 'eq', 'Mkannada') | list | length)
+         + (iptv_settings_now.files.xmltv | default({}) | dict2items | rejectattr('key', 'eq', 'Xkannada') | list | length)
+         + (iptv_settings_now.files.hdhr | default({}) | length) }}
+  when: iptv_unmanaged_sources | int > 0
 
 # Threadfin's login hash is HMAC-SHA256 keyed with the secret over a fixed string (no
 # salt), base64. Computed on the VM so the password never lands in a controller log.
@@ -417,6 +431,7 @@
   until: iptv_streams_health.status == 200
   when: not ansible_check_mode
 
+# Only the managed lineup is checked; hand-added channels may be in the playlist too.
 - name: Threadfin serves the whole lineup
   ansible.builtin.uri:
     url: "http://{{ iptv_bind_ip }}:{{ iptv_threadfin_port }}/m3u/threadfin.m3u"
@@ -426,5 +441,6 @@
   delay: 3
   until: >-
     iptv_playlist.status == 200
-    and iptv_playlist.content | regex_findall('(?m)^#EXTINF') | length == iptv_lineup | length
+    and iptv_lineup | map(attribute='name') | map('regex_replace', '^(.*)$', 'tvg-name="\\1"')
+        | reject('in', iptv_playlist.content) | list | length == 0
   when: not ansible_check_mode

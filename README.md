@@ -172,8 +172,10 @@ is live on YouTube (DD Chandana during bulletins); otherwise the player shows an
 `make vm HOST=ragnarok ARGS="--tags iptv"` runs, on `ragnarok`, in `/opt/iptv`:
 
 - Threadfin (port 34400): the playlist and the guide. Its web UI asks for user `admin`
-  and `admin_password` from Vault `kv/homelab/ragnarok/threadfin`; the role owns its
-  sources and settings, so changes made in the UI are overwritten on the next run.
+  and `admin_password` from Vault `kv/homelab/ragnarok/threadfin`. The role owns its own
+  two sources (the lineup playlist and guide) and the settings it sets; changes to those in
+  the UI are overwritten on the next run. Sources added by hand in the Threadfin UI are
+  left alone but are not part of the repo and are not recreated on a rebuild.
 - A stream helper (port 34401): on request it runs streamlink for that channel's live
   stream and relays it. Nothing streams while nobody watches; at most two streams at once.
 - A guide grabber (systemd timer `iptv-epg-grab`, 03:30 and 15:30): today's and
