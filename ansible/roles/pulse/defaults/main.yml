@@ -15,6 +15,9 @@ pulse_built_services: [pulse]
 # pulse_version.
 pulse_image: pulse
 pulse_image_pin_tag: "git-{{ pulse_version[:12] }}"
+# One time only: tag an existing image as built from pulse_version instead of rebuilding
+# (-e pulse_adopt_existing=true, used when the box was adopted). Never leave it on.
+pulse_adopt_existing: false
 # Settings in .env. The production compose file reads only RESEND_API_KEY and
 # SLACK_WEBHOOK_URL from it (both unset today); the admin token is not passed to the
 # container. Secret: Vault kv/homelab/<host>/pulse admin_token (a placeholder today).

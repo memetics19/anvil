@@ -10,7 +10,8 @@
   check_mode: false
   no_log: true
 
-# A client that never logged in prints "Daemon status: NeedsLogin" (text, not JSON).
+# Connected is decided from the parsed JSON first. A client that is not logged in, or whose
+# login expired, prints "Daemon status: NeedsLogin" (text, not JSON).
 - name: Work out the NetBird client state
   ansible.builtin.set_fact:
     netbird_peer_status: >-
@@ -19,9 +20,10 @@
          else {} }}
     netbird_peer_state: >-
       {%- set out = (netbird_peer_status_raw.stdout | default('')) ~ (netbird_peer_status_raw.stderr | default('')) -%}
-      {%- if 'NeedsLogin' in out -%}needs_login
-      {%- elif netbird_peer_status_raw.rc | default(1) == 0 and out is match('\s*[{]')
+      {%- if netbird_peer_status_raw.rc | default(1) == 0
+            and netbird_peer_status_raw.stdout | default('') is match('\s*[{]')
             and (netbird_peer_status_raw.stdout | from_json).management.connected | default(false) -%}connected
+      {%- elif 'NeedsLogin' in out -%}needs_login
       {%- else -%}other
       {%- endif -%}
   no_log: true

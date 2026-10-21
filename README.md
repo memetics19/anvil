@@ -165,10 +165,12 @@ that could reach the media library.
 never run it in the same Ansible run as `make host-network`.
 
 - `netbird_peer`: the NetBird client from NetBird's apt repository (signing key pinned by
-  checksum), the routing peer on NetBird's cloud service. The package is installed but never
-  upgraded, and the service is started and enabled but never restarted. A connected client
+  checksum), the routing peer on NetBird's cloud service. The package is pinned to
+  `netbird_peer_version` and held, so neither a run nor unattended-upgrades moves it;
+  bumping that variable is the (deliberate) upgrade, which restarts the client. The service
+  is started and enabled but never restarted. A connected client
   is left alone: no `netbird up`, `down` or re-enrolment, and Vault is not read. Only a
-  client that has never logged in (status `NeedsLogin`) is enrolled, with `setup_key` from
+  client that is not logged in or whose login expired (status `NeedsLogin`) is enrolled, with `setup_key` from
   Vault `kv/homelab/netbird/netbird`. The run stops with instructions when that key is
   missing. Any other state is reported and left alone. At the end of the play the run
   checks the client is still connected. Routes, groups and ACLs stay in the NetBird
@@ -183,7 +185,10 @@ never run it in the same Ansible run as `make host-network`.
   Caddy on port 80, and a one-shot docs builder).
   - The image is built only when `pulse:latest` is not the image tagged
     `git-<commit>`. That happens after a new `pulse_version` or a hand build. The whole
-    project then comes up with `--build`.
+    project then comes up with `--build`. A Pulse container on another image than that
+    (for example after an interrupted build) is brought up on its own.
+  - The box was adopted once with `-e pulse_adopt_existing=true` (tag the existing image
+    instead of rebuilding). Don't pass it otherwise.
   - Caddy and the docs builder are compared by config hash. Caddy is restarted when its
     Caddyfile is newer than the container.
   - `.env` is rendered from Vault (`docs/secrets.md`), mode 600.

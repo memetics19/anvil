@@ -1,10 +1,12 @@
 # NetBird client (routing peer) on the netbird VM. This VM carries the emergency VPN path:
-# - the package is installed, never upgraded (an upgrade stops and reinstalls the service);
+# - the package is pinned to netbird_peer_version and held, so neither a run nor
+#   unattended-upgrades moves it (an upgrade stops and reinstalls the service); upgrading is
+#   a deliberate bump of that variable;
 # - the service is started and enabled, never restarted (no task here restarts it);
-# - `netbird up` runs only for a client that has never logged in (status NeedsLogin), with
-#   the setup key from Vault. A connected client is never brought up, down or re-enrolled,
-#   and Vault is not read for it. Any other state (management unreachable, login failed)
-#   is reported and left alone.
+# - `netbird up` runs only for a client that is not logged in or whose login expired
+#   (status NeedsLogin), with the setup key from Vault. A connected client is never
+#   brought up, down or re-enrolled, and Vault is not read for it. Any other state
+#   (management unreachable, login failed) is reported and left alone.
 # Never run this in the same Ansible run as `make host-network`.
 
 # --- apt repository --------------------------------------------------------------------------
@@ -75,11 +77,18 @@
 - name: Refresh apt cache before installing
   ansible.builtin.meta: flush_handlers
 
-# state present: an installed client is never upgraded by this role.
-- name: Install the NetBird client
+# The pinned version only. A held package moves only when netbird_peer_version is bumped
+# (that upgrade restarts the client: run it deliberately, never with host-network).
+- name: Install the NetBird client (pinned)
   ansible.builtin.apt:
-    name: netbird
+    name: "netbird={{ netbird_peer_version }}*"
     state: present
+    allow_change_held_packages: true
+
+- name: Hold the NetBird client at that version
+  ansible.builtin.dpkg_selections:
+    name: netbird
+    selection: hold
 
 # NetBird's install script writes this; its updater reads it.
 - name: NetBird install marker

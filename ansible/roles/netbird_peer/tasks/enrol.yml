@@ -1,6 +1,6 @@
-# Only for a client that has never logged in (status NeedsLogin). The setup key goes from
-# Vault to a root-only file on the VM for `netbird up --setup-key-file` (never on argv) and
-# the file is removed again.
+# Only for a client that is not logged in or whose login expired (status NeedsLogin).
+# The setup key goes from Vault to a root-only file on the VM for
+# `netbird up --setup-key-file` (never on argv), and the file is removed again.
 - name: Key digests stored in Vault
   ansible.builtin.command:
     argv: ["{{ netbird_peer_repo_scripts }}/vault-kv-digests.sh", "{{ netbird_peer_vault_path }}"]
