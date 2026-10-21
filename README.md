@@ -112,8 +112,8 @@ vault/policies/
 - [x] Pi-hole and Unbound for the home network
 - [x] Homepage dashboard
 - [x] Vaultwarden with encrypted backups and a restore drill
-- [x] Secrets enclave: Vault and Vaultwarden on an isolated network, firewalled by
-  data-driven routed segments (retiring Vault's old lab NIC is a separate step)
+- [x] Secrets enclave: Vault and Vaultwarden on an isolated network, reachable only from
+  the operator's devices, firewalled by data-driven routed segments
 - [ ] VLANs 10/20/30 with an inter-VLAN firewall
 - [ ] Monitoring: VictoriaMetrics, Grafana, exporters, alerts to ntfy
 - [ ] Single sign-on (Authelia) in front of the gateway

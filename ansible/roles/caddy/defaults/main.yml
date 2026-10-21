@@ -56,8 +56,10 @@ caddy_domain: "{{ gateway_domain }}"
 caddy_email: "{{ site.email }}"
 
 # CA certificates (public) for upstreams with `upstream_ca`, copied from the controller.
+# Vault's own CA (fetched by the vault_server role), not $VAULT_CACERT: that one may point
+# at a public bundle when the operator reaches Vault through the gateway (HOMELAB_VAULT_CACERT).
 caddy_upstream_cas:
-  vault: "{{ lookup('env', 'VAULT_CACERT') }}"
+  vault: "{{ lookup('env', 'HOME') }}/.config/homelab/vault-ca.pem"
 
 # Docker networks of other projects Caddy joins, for `container` upstreams, with the
 # containers each one carries: Pi-hole's (web UI) and Homepage's (roles pihole and

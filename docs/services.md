@@ -531,35 +531,31 @@ systemd-timesyncd with that server only.
 
 ### Vault on the enclave
 
-- **NIC.** The vault VM got a second NIC on `secrets` (hot-plugged, no reboot), with its MAC
-  from `site.hosts.vault.enclave_mac`.
-- **Addresses.** `site.hosts.vault.ip` is now its enclave address, and `lab_ip` is its
-  first, lab address.
-- **Netplan.** `guest_base` owns it in enclave mode, under a timed rollback:
-  - the enclave NIC has the default route and no DNS;
-  - the lab NIC keeps its address, with no route through it;
-  - cloud-init no longer writes the network.
-- **Listeners.** Vault listens on both addresses. `api_addr` and `cluster_addr` are the
-  enclave one, and the certificate has both.
-- **Ansible** reaches it through the Proxmox host (`group_vars/enclave.yml`), on the lab
-  address while that NIC is kept.
+- **NICs.** The vault VM's enclave NIC (hot-plugged, MAC `site.hosts.vault.enclave_mac`)
+  is its only working one. Its first NIC, on the lab network, is retired
+  (`site.hosts.vault.lab_nic_retired: true`, 2026-10-22): its link is down in Proxmox
+  (`disconnected`) and the netplan keeps it with no address. `site.hosts.vault.ip` is the
+  enclave address; `lab_ip` and `mac` record the old NIC.
+- **Netplan.** `guest_base` owns it in enclave mode, under a timed rollback: the enclave NIC
+  has the default route and no DNS, and cloud-init no longer writes the network.
+- **Listener.** Vault listens on the enclave address only; `api_addr`, `cluster_addr` and
+  the certificate's address are the enclave one.
+- **Reaching it.** Ansible connects through the Proxmox host (`group_vars/enclave.yml`).
+  From the Mac: through the gateway (`https://vault.<gateway-domain>`, operator addresses
+  only), or directly once the Mac has the enclave route and the Keychain `vault-ip` is the
+  enclave address ([setup.md](setup.md#not-managed-here)). Until then, for the scripts:
 
-While the lab NIC is kept, Vault can still reach hosts on the lab network directly, because
-that traffic never passes the host's firewall: Pi-hole, and the host's lab address. The
-internet is already out of reach (no default route through the lab NIC, and nothing is
-forwarded from the enclave).
+  ```sh
+  export HOMELAB_VAULT_ADDR=https://vault.<gateway-domain>
+  export HOMELAB_VAULT_CACERT="$(python3 -m certifi)"   # the gateway's certificate is public
+  ```
 
-Retiring that NIC closes the rest:
+  `make vault-unseal`, `make backup`, the Ansible lookups and `make tf-plan` all work that
+  way. Caddy's own trust in Vault always uses Vault's CA file, never `$VAULT_CACERT`.
 
-1. Set the Mac's enclave route and the Keychain `vault-ip` ([setup.md](setup.md#not-managed-here)).
-   Check `vault status` and `make tf-plan` over the enclave address.
-2. Add `lab_nic_retired: true` to `site.hosts.vault` (CAS write).
-3. `make vm HOST=vault ARGS="--tags base -e guest_base_netplan_apply=true"`. The lab NIC
-   loses its address, and Ansible then connects to the enclave address.
-4. `make vault ARGS="-e vault_server_allow_restart=true"`, then `make vault-unseal`. The lab
-   listener goes, and the certificate keeps only the enclave address.
-5. `make tf-plan` and `make tf-apply`. These set net0 link down (`disconnected`). Removing
-   it from the VM is a later, separate change.
+Vault now reaches nothing but the host's NTP and apt cache: no DNS, no lab host, no
+internet. Removing the retired NIC from the VM altogether is a later, separate change
+(Terraform `network_device` list; it reorders the NICs, so plan it with care).
 
 The Raft configuration still names the node by its first cluster address. On a single node
 that is only a label, because the node elects itself by ID. A second node would need it

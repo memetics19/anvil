@@ -15,9 +15,11 @@ guest_base_enclave_nic:
   ip: "{{ _vault_site.ip }}"
   prefix: "{{ site.sdn.enclave.subnet.split('/')[1] }}"
   gateway: "{{ site.sdn.enclave.gateway }}"
+# Retired (lab_nic_retired): still matched by its MAC, but with no address.
 guest_base_lab_nic: >-
-  {{ {'mac': _vault_site.mac, 'name': 'eth0', 'ip': _vault_site.lab_ip,
-      'prefix': site.lan_cidr.split('/')[1]} if _vault_lab_kept | bool else none }}
+  {{ {'mac': _vault_site.mac, 'name': 'eth0',
+      'ip': _vault_site.lab_ip if _vault_lab_kept | bool else '',
+      'prefix': site.lan_cidr.split('/')[1]} if _vault_site.mac is defined else none }}
 # Vault listens on both addresses while the lab NIC is kept (api and cluster addresses on the
 # enclave one). No HashiCorp apt repository in the enclave (the apt cache passes Debian and
 # Ubuntu archives only): the pinned package stays installed and held.

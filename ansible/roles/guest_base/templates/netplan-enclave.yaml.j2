@@ -12,8 +12,14 @@ network:
         macaddress: "{{ guest_base_lab_nic.mac | lower }}"
       set-name: {{ guest_base_lab_nic.name }}
       dhcp4: false
+{% if guest_base_lab_nic.ip | default('') %}
       addresses:
         - {{ guest_base_lab_nic.ip }}/{{ guest_base_lab_nic.prefix }}
+{% else %}
+      # Retired: kept under management with no address at all (its link is also down in
+      # Proxmox), so nothing is left configured on it.
+      link-local: []
+{% endif %}
 {% endif %}
     enclave:
       match:
