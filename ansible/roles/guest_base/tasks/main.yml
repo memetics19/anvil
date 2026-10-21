@@ -22,6 +22,15 @@
     enabled: true
     state: started
 
+- name: Packages that must stay absent
+  ansible.builtin.apt:
+    name: "{{ guest_base_absent_packages }}"
+    state: absent
+    purge: true
+    autoremove: false
+  when: guest_base_absent_packages | length > 0
+  tags: [packages_absent]
+
 - name: Static netplan
   ansible.builtin.include_tasks: netplan.yml
   when: guest_base_manage_netplan | bool

@@ -1,0 +1,6 @@
+# PHP was purged by hand on 2026-10-21 (php2shell, CVE-2026-109618/109619); nothing on this
+# VM needs it. guest_base keeps these absent (make vm HOST=netbird ARGS="--tags packages_absent").
+guest_base_absent_packages:
+  - "php*"
+  - composer
+  - jsonlint

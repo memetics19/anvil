@@ -198,6 +198,10 @@ never run it in the same Ansible run as `make host-network`.
   - `.env` is rendered from Vault (`docs/secrets.md`), mode 600.
   - Don't run a plain `docker compose up` for this project: compose recreates the
     locally built Pulse container every time.
+- No PHP: `php*`, `composer` and `jsonlint` are kept absent (purged if they come back;
+  `guest_base_absent_packages` in `inventory/host_vars/netbird.yml`, tag
+  `packages_absent`). They were removed by hand on 2026-10-21 (php2shell,
+  CVE-2026-109618/109619). No autoremove.
 
 ## apps (Pi-hole)
 
