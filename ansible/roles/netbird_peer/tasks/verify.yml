@@ -1,0 +1,9 @@
+# End of the play: a client that was connected at the start still is. Read-only.
+- name: Read the NetBird client status at the end of the run
+  ansible.builtin.import_tasks: status.yml
+
+- name: The NetBird client is still connected
+  ansible.builtin.assert:
+    that: netbird_peer_state == 'connected'
+    fail_msg: "netbird: management no longer connected ({{ netbird_peer_summary }})"
+    success_msg: "netbird: {{ netbird_peer_summary }}"

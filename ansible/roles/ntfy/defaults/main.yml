@@ -1,0 +1,10 @@
+# ntfy (push notifications) on the netbird VM: compose project "ntfy" in ~/ntfy, adopted as
+# is. Its settings are the environment in the compose file; users and access rules live in
+# its auth database (./data/lib/auth.db, app data, not templated). Anonymous access is denied.
+ntfy_dir: /home/ubuntu/ntfy
+ntfy_owner: ubuntu
+# The image tag in use today (untagged, so latest).
+ntfy_image: binwiederhier/ntfy
+ntfy_port: 8081
+# Base URL in links ntfy hands out: the VM's LAN address.
+ntfy_base_url: "http://{{ site.hosts[inventory_hostname].ip }}:{{ ntfy_port }}"

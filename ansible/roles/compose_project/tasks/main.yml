@@ -6,6 +6,7 @@
 # run (the hashes still differ).
 # Containers of the project that the file does not name (orphans) and containers whose
 # labels cannot be read are reported and left alone.
+# Services in compose_project_skip_services are left to the caller.
 # Result for the caller: compose_project_plan.up (the services brought up).
 
 # The project directory and file must never be inside a protected path (the media library).
@@ -37,11 +38,11 @@
       - --project-directory
       - "{{ compose_project_dir }}"
       - --file
-      - "-"
+      - "{{ '-' if compose_project_write_file | bool else compose_project_file }}"
       - config
       - --hash
       - "*"
-    stdin: "{{ compose_project_content }}"
+    stdin: "{{ compose_project_content if compose_project_write_file | bool else omit }}"
   register: compose_project_hash_want
   changed_when: false
   check_mode: false
@@ -92,7 +93,7 @@
       {%- endfor -%}
       {%- set up = [] -%}
       {%- set legacy = [] -%}
-      {%- for name in want | sort if name not in unknown_services -%}
+      {%- for name in want | sort if name not in unknown_services and name not in compose_project_skip_services -%}
       {%- if name not in have -%}{%- set _ = up.append(name) -%}
       {%- elif have[name].hash != want[name] and have[name].version is version('2', '<') -%}{%- set _ = legacy.append(name) -%}
       {%- elif have[name].hash != want[name] -%}{%- set _ = up.append(name) -%}
@@ -104,6 +105,7 @@
   ansible.builtin.debug:
     msg: >-
       {{ compose_project_name }}: bring up {{ compose_project_plan.up | join(', ') if compose_project_plan.up else 'none' }}{{
+      '; managed by the calling role: ' ~ compose_project_skip_services | join(', ') if compose_project_skip_services else '' }}{{
       '; created by docker-compose v1, hash not comparable (not recreated): '
       ~ compose_project_plan.legacy | join(', ') if compose_project_plan.legacy else '' }}{{
       '; WARNING labels unreadable (left alone): ' ~ compose_project_plan.unknown | join(', ')
@@ -120,12 +122,13 @@
     owner: "{{ compose_project_owner }}"
     group: "{{ compose_project_group }}"
     mode: "{{ compose_project_mode }}"
+  when: compose_project_write_file | bool
 
 - name: Bring up the services that differ
   ansible.builtin.command:
     argv: >-
-      {{ ['docker', 'compose', '--project-name', compose_project_name, '--file', compose_project_file,
-          'up', '--detach', '--no-deps'] + compose_project_plan.up }}
+      {{ ['docker', 'compose', '--project-name', compose_project_name, '--project-directory', compose_project_dir,
+          '--file', compose_project_file, 'up', '--detach', '--no-deps'] + compose_project_plan.up }}
     chdir: "{{ compose_project_dir }}"
   when: not ansible_check_mode and compose_project_plan.up | length > 0
   changed_when: true

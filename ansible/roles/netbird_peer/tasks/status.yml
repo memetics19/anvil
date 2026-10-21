@@ -1,0 +1,40 @@
+# Sets netbird_peer_state (connected | needs_login | other) and netbird_peer_summary.
+# Read-only, also in check mode. The raw status lists peer addresses and names, so it stays
+# out of the output; the summary holds only states and counts.
+- name: NetBird client status
+  ansible.builtin.command:
+    argv: [netbird, status, --json]
+  register: netbird_peer_status_raw
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+
+# A client that never logged in prints "Daemon status: NeedsLogin" (text, not JSON).
+- name: Work out the NetBird client state
+  ansible.builtin.set_fact:
+    netbird_peer_status: >-
+      {{ (netbird_peer_status_raw.stdout | from_json)
+         if netbird_peer_status_raw.rc | default(1) == 0 and netbird_peer_status_raw.stdout | default('') is match('\s*[{]')
+         else {} }}
+    netbird_peer_state: >-
+      {%- set out = (netbird_peer_status_raw.stdout | default('')) ~ (netbird_peer_status_raw.stderr | default('')) -%}
+      {%- if 'NeedsLogin' in out -%}needs_login
+      {%- elif netbird_peer_status_raw.rc | default(1) == 0 and out is match('\s*[{]')
+            and (netbird_peer_status_raw.stdout | from_json).management.connected | default(false) -%}connected
+      {%- else -%}other
+      {%- endif -%}
+  no_log: true
+
+- name: Summarise the NetBird client status
+  ansible.builtin.set_fact:
+    netbird_peer_summary: >-
+      {%- if netbird_peer_status -%}
+      management {{ 'connected' if netbird_peer_status.management.connected | default(false) else 'NOT connected' }},
+      signal {{ 'connected' if netbird_peer_status.signal.connected | default(false) else 'NOT connected' }},
+      peers {{ netbird_peer_status.peers.connected | default('?') }}/{{ netbird_peer_status.peers.total | default('?') }},
+      daemon {{ netbird_peer_status.daemonVersion | default('?') }}
+      {%- else -%}
+      {{ 'waiting for a login (NeedsLogin)' if netbird_peer_state == 'needs_login'
+         else 'status unreadable (rc ' ~ netbird_peer_status_raw.rc | default('?') ~ ')' }}
+      {%- endif -%}

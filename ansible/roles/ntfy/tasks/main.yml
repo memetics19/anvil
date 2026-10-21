@@ -1,0 +1,31 @@
+# ntfy, adopted as is: only a service whose container differs from the file is brought up.
+- name: Data directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ntfy_owner }}"
+    group: "{{ ntfy_owner }}"
+    mode: "0775"
+  loop:
+    - "{{ ntfy_dir }}"
+    - "{{ ntfy_dir }}/data"
+
+- name: Ntfy compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ ntfy_dir }}"
+    compose_project_file: "{{ ntfy_dir }}/docker-compose.yml"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yml.j2') }}"
+    compose_project_owner: "{{ ntfy_owner }}"
+    compose_project_group: "{{ ntfy_owner }}"
+    compose_project_mode: "0664"
+
+- name: Ntfy answers
+  ansible.builtin.uri:
+    url: "{{ ntfy_base_url }}/v1/health"
+  register: ntfy_health
+  retries: 20
+  delay: 3
+  until: ntfy_health.status == 200
+  when: not ansible_check_mode

@@ -2,7 +2,8 @@
 # static netplan on the adopted guests), docker, cloudflared (token from Vault) and
 # node_exporter (group node_exporter in the inventory).
 # Run: make vms ARGS="--check --diff"   or one VM: make vm HOST=frigate
-# Tags: base, docker, cloudflared, node_exporter, frigate, arr, iptv_epg, filestash, iptv.
+# Tags: base, docker, cloudflared, node_exporter, frigate, arr, iptv_epg, filestash, iptv,
+# netbird_peer, redis, ntfy, pulse.
 - name: Guest base
   hosts: guests:vault_servers
   pre_tasks:
@@ -52,3 +53,28 @@
       tags: [filestash]
     - role: iptv
       tags: [iptv]
+
+# Workloads on the netbird VM: the NetBird routing peer (the emergency VPN path; never
+# restarted, re-enrolled or upgraded here), Redis, ntfy and Pulse. Never run in the same
+# Ansible run as playbooks/host-network.yml (make host-network).
+- name: Netbird workloads
+  hosts: netbird
+  force_handlers: true
+  roles:
+    - role: netbird_peer
+      tags: [netbird_peer]
+    - role: redis
+      tags: [redis]
+    - role: ntfy
+      tags: [ntfy]
+    - role: pulse
+      tags: [pulse]
+  post_tasks:
+    - name: The NetBird client is still connected
+      ansible.builtin.include_role:
+        name: netbird_peer
+        tasks_from: verify.yml
+        apply:
+          tags: [always]
+      when: netbird_peer_state_start | default('') == 'connected'
+      tags: [always]

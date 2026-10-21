@@ -1,0 +1,138 @@
+# NetBird client (routing peer) on the netbird VM. This VM carries the emergency VPN path:
+# - the package is installed, never upgraded (an upgrade stops and reinstalls the service);
+# - the service is started and enabled, never restarted (no task here restarts it);
+# - `netbird up` runs only for a client that has never logged in (status NeedsLogin), with
+#   the setup key from Vault. A connected client is never brought up, down or re-enrolled,
+#   and Vault is not read for it. Any other state (management unreachable, login failed)
+#   is reported and left alone.
+# Never run this in the same Ansible run as `make host-network`.
+
+# --- apt repository --------------------------------------------------------------------------
+- name: Read the NetBird apt keyring
+  ansible.builtin.stat:
+    path: "{{ netbird_peer_apt_keyring }}"
+    checksum_algorithm: sha256
+  register: netbird_peer_keyring
+
+# apt reads the dearmored key; NetBird publishes it ASCII-armored. Both are pinned.
+- name: Install the pinned NetBird apt key
+  when: >-
+    not (netbird_peer_keyring.stat.exists
+         and netbird_peer_keyring.stat.checksum == netbird_peer_keyring_sha256)
+  block:
+    - name: Download the NetBird apt key (checksum pinned)
+      ansible.builtin.get_url:
+        url: "{{ netbird_peer_apt_key_url }}"
+        dest: /root/.netbird-apt-key.asc
+        checksum: "sha256:{{ netbird_peer_key_asc_sha256 }}"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Dearmor it into the keyring apt reads
+      ansible.builtin.command:
+        argv: [gpg, --batch, --yes, --dearmor, --output, "{{ netbird_peer_apt_keyring }}", /root/.netbird-apt-key.asc]
+      changed_when: true
+      when: not ansible_check_mode
+      notify: Update apt cache
+
+    - name: Read the new keyring
+      ansible.builtin.stat:
+        path: "{{ netbird_peer_apt_keyring }}"
+        checksum_algorithm: sha256
+      register: netbird_peer_keyring_new
+      when: not ansible_check_mode
+
+    - name: The keyring is the pinned one
+      ansible.builtin.assert:
+        that: netbird_peer_keyring_new.stat.checksum | default('') == netbird_peer_keyring_sha256
+        fail_msg: "{{ netbird_peer_apt_keyring }} does not match netbird_peer_keyring_sha256"
+        quiet: true
+      when: not ansible_check_mode
+  always:
+    - name: Remove the downloaded key
+      ansible.builtin.file:
+        path: /root/.netbird-apt-key.asc
+        state: absent
+
+- name: Keyring mode
+  ansible.builtin.file:
+    path: "{{ netbird_peer_apt_keyring }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: netbird_peer_keyring.stat.exists or not ansible_check_mode
+
+- name: NetBird apt repository
+  ansible.builtin.template:
+    src: netbird.list.j2
+    dest: /etc/apt/sources.list.d/netbird.list
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Update apt cache
+
+- name: Refresh apt cache before installing
+  ansible.builtin.meta: flush_handlers
+
+# state present: an installed client is never upgraded by this role.
+- name: Install the NetBird client
+  ansible.builtin.apt:
+    name: netbird
+    state: present
+
+# NetBird's install script writes this; its updater reads it.
+- name: NetBird install marker
+  ansible.builtin.copy:
+    content: "package_manager=apt\n"
+    dest: /etc/netbird/install.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+# --- service -----------------------------------------------------------------------------------
+# The package's postinst runs `netbird service install` and starts it; this covers a box
+# where that did not happen.
+- name: Read the NetBird service unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/netbird.service
+  register: netbird_peer_unit
+
+- name: Install the NetBird service
+  ansible.builtin.command:
+    argv: [netbird, service, install]
+  changed_when: true
+  when: not netbird_peer_unit.stat.exists and not ansible_check_mode
+
+- name: NetBird running and enabled (started if stopped, never restarted)
+  ansible.builtin.systemd_service:
+    name: netbird
+    enabled: true
+    state: started
+  when: netbird_peer_unit.stat.exists or not ansible_check_mode
+
+# --- enrolment -----------------------------------------------------------------------------------
+- name: Read the NetBird client status
+  ansible.builtin.import_tasks: status.yml
+
+- name: Report the NetBird client status
+  ansible.builtin.debug:
+    msg: "netbird: {{ netbird_peer_summary }}"
+
+# For the end-of-play check (tasks/verify.yml).
+- name: Remember the state at the start of the run
+  ansible.builtin.set_fact:
+    netbird_peer_state_start: "{{ netbird_peer_state }}"
+    # Fixed here: enrol.yml reads the status again, which changes netbird_peer_state.
+    netbird_peer_enrol: "{{ netbird_peer_state == 'needs_login' }}"
+
+- name: NetBird is not connected and needs no login (left alone)
+  ansible.builtin.debug:
+    msg: >-
+      WARNING netbird: management is not connected and the client is not waiting for a login
+      ({{ netbird_peer_summary }}). Nothing was changed; check `sudo netbird status -d` on the VM.
+  when: netbird_peer_state == 'other'
+
+- name: Enrol the client with the setup key from Vault
+  ansible.builtin.import_tasks: enrol.yml
+  when: netbird_peer_enrol | bool

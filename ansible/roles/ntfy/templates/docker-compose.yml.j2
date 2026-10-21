@@ -1,0 +1,19 @@
+{# Managed by anvil (ansible/roles/ntfy). Kept byte-for-byte as the adopted file. #}
+services:
+  ntfy:
+    image: {{ ntfy_image }}
+    container_name: ntfy
+    command: serve
+    environment:
+      - NTFY_BASE_URL={{ ntfy_base_url }}
+      - NTFY_LISTEN_HTTP=:80
+      - NTFY_CACHE_FILE=/var/cache/ntfy/cache.db
+      - NTFY_AUTH_FILE=/var/lib/ntfy/auth.db
+      - NTFY_AUTH_DEFAULT_ACCESS=deny-all
+      - NTFY_BEHIND_PROXY=false
+    volumes:
+      - ./data/cache:/var/cache/ntfy
+      - ./data/lib:/var/lib/ntfy
+    ports:
+      - "{{ ntfy_port }}:80"
+    restart: unless-stopped

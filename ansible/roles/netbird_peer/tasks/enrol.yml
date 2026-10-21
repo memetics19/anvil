@@ -1,0 +1,74 @@
+# Only for a client that has never logged in (status NeedsLogin). The setup key goes from
+# Vault to a root-only file on the VM for `netbird up --setup-key-file` (never on argv) and
+# the file is removed again.
+- name: Key digests stored in Vault
+  ansible.builtin.command:
+    argv: ["{{ netbird_peer_repo_scripts }}/vault-kv-digests.sh", "{{ netbird_peer_vault_path }}"]
+  delegate_to: localhost
+  become: false
+  register: netbird_peer_vault_digests
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: A setup key is in Vault
+  ansible.builtin.assert:
+    that: "'setup_key' in netbird_peer_vault_digests.stdout_lines | map('split', ' ') | map('first') | list"
+    fail_msg: >-
+      The NetBird client on {{ inventory_hostname }} needs a login and
+      {{ netbird_peer_vault_mount }}/{{ netbird_peer_vault_path }} has no setup_key. Create a reusable
+      setup key in the NetBird dashboard and store it with
+      `vault kv put -mount={{ netbird_peer_vault_mount }} {{ netbird_peer_vault_path }} setup_key=-`
+      (value on stdin, docs/secrets.md), then run again.
+    quiet: true
+
+- name: Client to enrol
+  ansible.builtin.debug:
+    msg: "netbird: would run netbird up with the setup key from Vault"
+  changed_when: true
+  when: ansible_check_mode
+
+- name: Enrol
+  when: not ansible_check_mode
+  block:
+    - name: Setup key file (root only)
+      ansible.builtin.copy:
+        content: >-
+          {{ lookup('community.hashi_vault.vault_kv2_get', netbird_peer_vault_path,
+                    engine_mount_point=netbird_peer_vault_mount,
+                    url=lookup('env', 'VAULT_ADDR'),
+                    token=lookup('env', 'VAULT_TOKEN'),
+                    ca_cert=lookup('env', 'VAULT_CACERT')).secret.setup_key }}
+        dest: /root/.netbird-setup-key
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+      diff: false
+
+    - name: Log in with the setup key
+      ansible.builtin.command:
+        argv:
+          - netbird
+          - up
+          - --management-url
+          - "{{ netbird_peer_management_url }}"
+          - --setup-key-file
+          - /root/.netbird-setup-key
+      changed_when: true
+  always:
+    - name: Remove the setup key file
+      ansible.builtin.file:
+        path: /root/.netbird-setup-key
+        state: absent
+
+- name: Read the NetBird client status again
+  ansible.builtin.import_tasks: status.yml
+  when: not ansible_check_mode
+
+- name: The client is connected
+  ansible.builtin.assert:
+    that: netbird_peer_state == 'connected'
+    fail_msg: "netbird: enrolled but not connected ({{ netbird_peer_summary }})"
+    quiet: true
+  when: not ansible_check_mode

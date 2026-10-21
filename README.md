@@ -159,6 +159,37 @@ that could reach the media library.
     in it. Changes made in the admin console to the login, connections or sharing are
     overwritten.
 
+## netbird
+
+`make vm HOST=netbird` runs the "Netbird workloads" play. This VM is the emergency VPN path:
+never run it in the same Ansible run as `make host-network`.
+
+- `netbird_peer`: the NetBird client from NetBird's apt repository (signing key pinned by
+  checksum), the routing peer on NetBird's cloud service. The package is installed but never
+  upgraded, and the service is started and enabled but never restarted. A connected client
+  is left alone: no `netbird up`, `down` or re-enrolment, and Vault is not read. Only a
+  client that has never logged in (status `NeedsLogin`) is enrolled, with `setup_key` from
+  Vault `kv/homelab/netbird/netbird`. The run stops with instructions when that key is
+  missing. Any other state is reported and left alone. At the end of the play the run
+  checks the client is still connected. Routes, groups and ACLs stay in the NetBird
+  dashboard.
+- `redis`: the Ubuntu package with its default config (localhost only). A hand edit to
+  `redis.conf` is reported, not reverted.
+- `ntfy`: compose project `~/ntfy` on port 8081, through `compose_project`. Users and
+  access rules are in its auth database (app data, not templated). Anonymous access is
+  denied.
+- `pulse`: a checkout of the public `github.com/memetics19/pulse` at the commit in
+  `pulse_version`, run with the repository's own `deploy/docker-compose.prod.yml` (Pulse,
+  Caddy on port 80, and a one-shot docs builder).
+  - The image is built only when `pulse:latest` is not the image tagged
+    `git-<commit>`. That happens after a new `pulse_version` or a hand build. The whole
+    project then comes up with `--build`.
+  - Caddy and the docs builder are compared by config hash. Caddy is restarted when its
+    Caddyfile is newer than the container.
+  - `.env` is rendered from Vault (`docs/secrets.md`), mode 600.
+  - Don't run a plain `docker compose up` for this project: compose recreates the
+    locally built Pulse container every time.
+
 ## IPTV
 
 Free Kannada channels for the TV, from the broadcasters' own official sources only:
@@ -319,7 +350,7 @@ history. [`.gitleaks.toml`](.gitleaks.toml) adds rules for:
 - [x] Vault VM, Keychain-held unseal keys, snapshot backups
 - [ ] Move secrets and site values into Vault
 - [ ] Guest roles: base, Docker, node_exporter, cloudflared
-- [ ] Workload roles for `frigate`, `ragnarok`, `netbird`
+- [x] Workload roles for `frigate`, `ragnarok`, `netbird`
 - [ ] Rebuild runbook, tested on a second server
 
 ## Known issues

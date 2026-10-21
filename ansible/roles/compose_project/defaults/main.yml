@@ -1,12 +1,19 @@
 # One docker compose project, adopted as is. Callers use include_role and pass:
 #   compose_project_dir      directory of the project (also the default project name)
-#   compose_project_content  the rendered compose file
+#   compose_project_content  the rendered compose file (not needed when the file is not
+#                            written by the role, see compose_project_write_file)
 compose_project_file: "{{ compose_project_dir }}/docker-compose.yaml"
 # Compose names a project after its directory (lower case).
 compose_project_name: "{{ compose_project_dir | basename | lower }}"
 compose_project_owner: root
 compose_project_group: root
 compose_project_mode: "0644"
+# false: the file belongs to something else (a git checkout); the role reads it from disk
+# and never writes it.
+compose_project_write_file: true
+# Services the caller manages itself (for example one built locally, whose config hash
+# compose ties to the build and cannot be compared): never brought up here.
+compose_project_skip_services: []
 # The project directory and compose file must not resolve inside any of these (checked on
 # the host with realpath before anything is written).
 compose_project_protected_paths:

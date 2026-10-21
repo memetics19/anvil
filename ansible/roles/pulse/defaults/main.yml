@@ -1,0 +1,32 @@
+# Pulse (status page) on the netbird VM: a checkout of the public repository at a pinned
+# commit, run with the repository's own compose file (project "pulse": the locally built
+# pulse image, Caddy on port 80, and a one-shot mkdocs container that builds the docs site).
+pulse_repo: https://github.com/memetics19/pulse.git
+# Pinned commit (never a branch). Changing it rebuilds the image and brings the project up.
+pulse_version: 9619d66a2c0259e9f6e8cfc8659201040e2fb367
+pulse_dir: /home/ubuntu/pulse
+pulse_owner: ubuntu
+pulse_compose_file: deploy/docker-compose.prod.yml
+pulse_project: pulse
+# The services the compose file builds locally: handled by the pinned-commit image tag,
+# not by the config hash, which compose ties to the build.
+pulse_built_services: [pulse]
+# The compose file's image name, and the extra tag that marks the image built from
+# pulse_version.
+pulse_image: pulse
+pulse_image_pin_tag: "git-{{ pulse_version[:12] }}"
+# Settings in .env. The production compose file reads only RESEND_API_KEY and
+# SLACK_WEBHOOK_URL from it (both unset today); the admin token is not passed to the
+# container. Secret: Vault kv/homelab/<host>/pulse admin_token (a placeholder today).
+pulse_vault_mount: kv
+pulse_vault_path: "homelab/{{ inventory_hostname }}/pulse"
+pulse_env:
+  DATABASE_URL: ""
+  SQLITE_PATH: /data/pulse.db
+  RESEND_API_KEY: ""
+  SLACK_WEBHOOK_URL: ""
+  API_PORT: "8080"
+  PULSE_SECURE_COOKIES: "true"
+  PULSE_ALLOW_PRIVATE_MONITORS: "true"
+# Caddy publishes the status page here.
+pulse_url: "http://{{ site.hosts[inventory_hostname].ip }}/healthz"

@@ -1,0 +1,29 @@
+# Redis as installed today: the package and its service. The config is the package
+# default, so it is not templated; a hand edit to it is reported, not reverted.
+- name: Install Redis
+  ansible.builtin.apt:
+    name: "{{ redis_packages }}"
+    state: present
+
+- name: Redis running and enabled
+  ansible.builtin.systemd_service:
+    name: redis-server
+    enabled: true
+    state: started
+
+# dpkg records the shipped checksum of each conffile; `dpkg --verify` lists one that
+# differs (c = conffile, 5 = checksum).
+- name: Is redis.conf still the package default
+  ansible.builtin.command:
+    argv: [dpkg, --verify, redis-server]
+  register: redis_verify
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Report a hand-edited redis.conf
+  ansible.builtin.debug:
+    msg: >-
+      WARNING redis: /etc/redis/redis.conf differs from the package default; the repo does not
+      manage it and a rebuild will not have the change
+  when: redis_verify.stdout is search('/etc/redis/redis.conf')

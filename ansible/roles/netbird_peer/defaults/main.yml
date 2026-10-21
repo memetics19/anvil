@@ -1,0 +1,15 @@
+# NetBird client on the netbird VM: the routing peer for the lab and home networks, managed
+# by NetBird's cloud service. Routes, groups and ACLs are hand-managed in the NetBird
+# dashboard (README, "Not managed here"). This VM is the emergency VPN path, so the role
+# never restarts, upgrades, logs out or re-enrols a running client (see tasks/main.yml).
+netbird_peer_apt_key_url: https://pkgs.netbird.io/debian/public.key
+# Pinned so a changed key is refused instead of trusted. The first is the ASCII key as
+# downloaded, the second the dearmored keyring apt reads.
+netbird_peer_key_asc_sha256: 6bd434c07e7c3a71211de79ca287e93b45deadedc4b74f1a2e83e11abe6e0bf5
+netbird_peer_keyring_sha256: f6a7d72e0b3d9e009d5554374ff4b8b2212ca350811ed288798255fab9a81c71
+netbird_peer_apt_keyring: /usr/share/keyrings/netbird-archive-keyring.gpg
+netbird_peer_management_url: https://api.netbird.io:443
+# Setup key (only read to enrol a client that has never logged in): Vault KV v2, mount kv.
+netbird_peer_vault_mount: kv
+netbird_peer_vault_path: "homelab/{{ inventory_hostname }}/netbird"
+netbird_peer_repo_scripts: "{{ playbook_dir }}/../../scripts"
