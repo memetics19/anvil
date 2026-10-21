@@ -8,6 +8,9 @@ delete table inet anvil_gateway_guard
 table inet anvil_gateway_guard {
 	chain forward {
 		type filter hook forward priority filter; policy accept;
+		# replies to connections the enclave opened (Vaultwarden's DNS to Pi-hole) and to
+		# Caddy's own connections
+		ct state established,related accept
 {% for t in caddy_enclave_targets if (site.hosts[t.host] | default({})).ip is defined %}
 		ip saddr {{ caddy_gateway_subnet }} ip daddr {{ site.hosts[t.host].ip }} tcp dport {{ t.port }} accept
 {% endfor %}
@@ -16,6 +19,7 @@ table inet anvil_gateway_guard {
 
 	chain output {
 		type filter hook output priority filter; policy accept;
+		ct state established,related accept
 		ip daddr {{ caddy_enclave_subnet }} counter drop
 	}
 }
