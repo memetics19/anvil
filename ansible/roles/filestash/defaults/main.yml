@@ -5,8 +5,13 @@
 filestash_dir: /opt/filestash
 # Upstream publishes only "latest"; the digest pins the build (2026-10-21).
 filestash_image: machines/filestash:latest@sha256:a041d978f74af2802c6969e4dc1f53741ee4b1be09c0311227b7014f78f5b359
-# The image runs as user filestash, uid/gid 1000; its state directory belongs to that uid.
-filestash_uid: 1000
+# Filestash runs as its own host user (uid/gid 10001, created by the role), not as the
+# image's uid 1000, which is the VM's first user (owner of the media library). Only that
+# user can read the state directory (S3 keys and the admin hash in config.json).
+filestash_uid: 10001
+# The image's binary is mode 0730 for group 1000, so the process also gets that group to
+# run it. It only sees its own state volume, owned by filestash_uid.
+filestash_image_gid: 1000
 filestash_port: 8334
 # Published on the VM's LAN address only.
 filestash_bind_ip: "{{ site.hosts[inventory_hostname].ip }}"

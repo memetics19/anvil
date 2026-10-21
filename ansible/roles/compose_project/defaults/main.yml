@@ -7,3 +7,7 @@ compose_project_name: "{{ compose_project_dir | basename | lower }}"
 compose_project_owner: root
 compose_project_group: root
 compose_project_mode: "0644"
+# The project directory and compose file must not resolve inside any of these (checked on
+# the host with realpath before anything is written).
+compose_project_protected_paths:
+  - /home/ubuntu/media

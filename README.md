@@ -129,7 +129,11 @@ The public hostname reaches Frigate through nginx on the VM, and Frigate's own l
 `make vm HOST=ragnarok` runs three compose projects, each through the `compose_project`
 role. It compares the config hash compose stores on each container with the hash of the
 rendered file and brings up only the services that differ (`up -d --no-deps`). Check mode
-names them.
+names them. It never runs `down` or removes anything. It reports containers that are not in
+the file, and containers whose labels it cannot read, and leaves them alone. It refuses a
+project directory inside the media library.
+`tests/test_media_untouched.sh` (also in CI) checks `ansible/` and `scripts/` for anything
+that could reach the media library.
 
 - `arr_stack`: `/home/ubuntu/docker-compose.yaml` (qBittorrent, Prowlarr, Jackett,
   FlareSolverr, Radarr, Sonarr). The apps keep their own settings and API keys in
@@ -139,6 +143,11 @@ names them.
   that directory, so the site returns 403.
 - `filestash`: a read-only browser for the S3 gateway at `http://<ragnarok>:8334/`, bound
   to the VM's LAN address, with a 256 MB memory cap and no swap.
+  - It runs as its own host user (uid 10001, not the VM's first user, who owns the media),
+    on a read-only root filesystem, with all capabilities dropped and no-new-privileges.
+    Only that user can read its state, where the S3 keys are. The role never changes owners
+    recursively. After a uid change it stops with a message, and you chown
+    `/opt/filestash/state` by hand once.
   - Log in with user `admin` and `admin_password` from Vault `kv/homelab/ragnarok/filestash`.
     The same password opens `/admin`.
   - The role generates the password straight into Vault on the first run.

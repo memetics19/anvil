@@ -64,6 +64,7 @@
     ceph_single_fs_vault_want:
       s3_access_key: "{{ ceph_single_fs_keys.access_key | hash('sha256') }}"
       s3_secret_key: "{{ ceph_single_fs_keys.secret_key | hash('sha256') }}"
+  no_log: true
   when: ceph_single_fs_keys is defined
 
 - name: Filestash | write the keys straight into Vault
@@ -106,49 +107,33 @@
   when: ceph_single_fs_keys is defined and not ansible_check_mode
 
 # --- bucket policies (set by the bucket owner, the Terraform user) -------------------------
+# The owner's keys reach the aws CLI only through its environment, on tasks with no_log.
 - name: Filestash | read-only bucket policies
   when: ceph_single_s3_keys is defined and ceph_single_live | bool
   delegate_to: localhost
   become: false
+  vars:
+    ceph_single_fs_aws_env:
+      AWS_ACCESS_KEY_ID: "{{ ceph_single_s3_keys.access_key }}"
+      AWS_SECRET_ACCESS_KEY: "{{ ceph_single_s3_keys.secret_key }}"
+      AWS_SHARED_CREDENTIALS_FILE: /dev/null
+      AWS_CONFIG_FILE: /dev/null
+      AWS_REGION: us-east-1
+      AWS_EC2_METADATA_DISABLED: "true"
   block:
-    - name: Filestash | temporary AWS credentials file
-      ansible.builtin.tempfile:
-        state: file
-        suffix: .aws
-      register: ceph_single_fs_aws_creds
-      changed_when: false
-      check_mode: false
-
-    - name: Filestash | write the credentials
-      ansible.builtin.copy:
-        content: |
-          [default]
-          aws_access_key_id = {{ ceph_single_s3_keys.access_key }}
-          aws_secret_access_key = {{ ceph_single_s3_keys.secret_key }}
-        dest: "{{ ceph_single_fs_aws_creds.path }}"
-        mode: "0600"
-      changed_when: false
-      check_mode: false
-      no_log: true
-
     - name: Filestash | current bucket policy
       ansible.builtin.command:
         argv: [aws, --endpoint-url, "{{ ceph_single_rgw_endpoint }}", s3api, get-bucket-policy, --bucket, "{{ item }}"]
-      environment: &ceph_single_fs_aws_env
-        AWS_SHARED_CREDENTIALS_FILE: "{{ ceph_single_fs_aws_creds.path }}"
-        AWS_CONFIG_FILE: /dev/null
-        AWS_PROFILE: default
-        AWS_REGION: us-east-1
-        AWS_ACCESS_KEY_ID: ""
-        AWS_SECRET_ACCESS_KEY: ""
-        AWS_EC2_METADATA_DISABLED: "true"
+      environment: "{{ ceph_single_fs_aws_env }}"
       loop: "{{ ceph_single_filestash_buckets }}"
       register: ceph_single_fs_policy
       changed_when: false
       failed_when: ceph_single_fs_policy.rc != 0 and 'NoSuchBucketPolicy' not in ceph_single_fs_policy.stderr
       check_mode: false
+      no_log: true
 
-    # Keeps any other statements; only the one with Sid filestash-read is managed.
+    # Keeps any other statements; only the one with Sid filestash-read is managed. The
+    # whole wanted Statement list (others, then ours) is compared with what is stored.
     - name: Filestash | wanted bucket policies
       ansible.builtin.set_fact:
         ceph_single_fs_policy_plan: >-
@@ -162,8 +147,9 @@
                           'Resource': ['arn:aws:s3:::' ~ b, 'arn:aws:s3:::' ~ b ~ '/*']} -%}
           {%- set others = cur.Statement | default([]) | rejectattr('Sid', 'defined') | list
                            + cur.Statement | default([]) | selectattr('Sid', 'defined') | rejectattr('Sid', 'equalto', 'filestash-read') | list -%}
-          {%- if mine not in cur.Statement | default([]) or cur.Version | default('') != '2012-10-17' -%}
-          {%- set _ = out.update({b: {'Version': '2012-10-17', 'Statement': others + [mine]}}) -%}
+          {%- set wanted = {'Version': '2012-10-17', 'Statement': others + [mine]} -%}
+          {%- if cur.Statement | default([]) != wanted.Statement or cur.Version | default('') != wanted.Version -%}
+          {%- set _ = out.update({b: wanted}) -%}
           {%- endif -%}
           {%- endfor -%}
           {{ out }}
@@ -185,17 +171,9 @@
           - "{{ item.key }}"
           - --policy
           - "{{ item.value | to_json }}"
-      environment: *ceph_single_fs_aws_env
+      environment: "{{ ceph_single_fs_aws_env }}"
       loop: "{{ ceph_single_fs_policy_plan | dict2items }}"
       loop_control:
         label: "{{ item.key }}"
       changed_when: true
-  always:
-    - name: Filestash | remove the temporary credentials file
-      ansible.builtin.file:
-        path: "{{ ceph_single_fs_aws_creds.path }}"
-        state: absent
-      changed_when: false
-      diff: false
-      check_mode: false
-      when: ceph_single_fs_aws_creds.path is defined
+      no_log: true

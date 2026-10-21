@@ -10,6 +10,17 @@ services:
       # Keep config.json in plain JSON (the S3 keys included) so the role can compare it.
       # Filestash would encrypt them with a key kept in the same file; only its uid can read it.
       CONFIG_ENCRYPT: "false"
+    user: "{{ filestash_uid }}:{{ filestash_uid }}"
+    group_add:
+      - "{{ filestash_image_gid }}"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+      - /app/data/cache:size=64m,uid={{ filestash_uid }},gid={{ filestash_uid }},mode=0700
     volumes:
       - ./state:/app/data/state
     mem_limit: {{ filestash_mem_limit }}

@@ -1,9 +1,31 @@
 # Writes one compose file and brings up only the services whose container does not match
-# it (never a project-wide `docker compose up`). Compose stores each service's config hash
-# as a container label. The wanted hashes come from the rendered file on stdin, so check
-# mode names exactly the services a run would recreate, and a bring-up that failed after
-# the file was written is retried by the next run (the hashes still differ).
+# it (never a project-wide `docker compose up`, never `down`, never removes anything).
+# Compose stores each service's config hash as a container label. The wanted hashes come
+# from the rendered file on stdin, so check mode names exactly the services a run would
+# recreate, and a bring-up that failed after the file was written is retried by the next
+# run (the hashes still differ).
+# Containers of the project that the file does not name (orphans) and containers whose
+# labels cannot be read are reported and left alone.
 # Result for the caller: compose_project_plan.up (the services brought up).
+
+# The project directory and file must never be inside a protected path (the media library).
+- name: Resolve the project paths on the host
+  ansible.builtin.command:
+    argv: "{{ ['realpath', '-m', '--', compose_project_dir, compose_project_file] + compose_project_protected_paths }}"
+  register: compose_project_realpaths
+  changed_when: false
+  check_mode: false
+
+- name: The project is outside every protected path
+  ansible.builtin.assert:
+    that:
+      - compose_project_realpaths.stdout_lines | length == 2 + compose_project_protected_paths | length
+      - >-
+        compose_project_realpaths.stdout_lines[:2]
+        | select('match', '^(' ~ (compose_project_realpaths.stdout_lines[2:] | map('regex_escape') | join('|')) ~ ')(/|$)')
+        | list | length == 0
+    fail_msg: "{{ compose_project_name }}: the project directory or file is inside a protected path"
+    quiet: true
 
 - name: Config hash of each service in the rendered file
   ansible.builtin.command:
@@ -24,6 +46,7 @@
   changed_when: false
   check_mode: false
 
+# One line per container: name|service|config-hash|compose-version (fields may be empty).
 - name: Config hash of each container of the project
   ansible.builtin.command:
     argv:
@@ -34,14 +57,17 @@
       - label=com.docker.compose.project={{ compose_project_name }}
       - --format
       - >-
-        {{ '{{' }}.Label "com.docker.compose.service"{{ '}}' }}
-        {{ '{{' }}.Label "com.docker.compose.config-hash"{{ '}}' }}
-        {{ '{{' }}.Label "com.docker.compose.version"{{ '}}' }}
+        {{ '{{' }}.Names{{ '}}' }}|{{ '{{' }}.Label "com.docker.compose.service"{{ '}}'
+        }}|{{ '{{' }}.Label "com.docker.compose.config-hash"{{ '}}'
+        }}|{{ '{{' }}.Label "com.docker.compose.version"{{ '}}' }}
   register: compose_project_hash_have
   changed_when: false
   check_mode: false
 
-# Containers made by docker-compose v1 use another hash scheme: reported, not recreated.
+# up: wanted service with no container, or a container whose hash differs.
+# legacy: made by docker-compose v1 (another hash scheme): reported, not recreated.
+# unknown: a container whose service or hash label is missing: reported, not recreated.
+# orphans: containers of the project for a service the file does not name: reported only.
 - name: Work out which services differ from the file
   ansible.builtin.set_fact:
     compose_project_plan: >-
@@ -50,25 +76,40 @@
       {%- set _ = want.update({l.split()[0]: l.split()[1]}) -%}
       {%- endfor -%}
       {%- set have = {} -%}
-      {%- for l in compose_project_hash_have.stdout_lines if l.split() | length == 3 -%}
-      {%- set _ = have.update({l.split()[0]: {'hash': l.split()[1], 'version': l.split()[2]}}) -%}
+      {%- set unknown = [] -%}
+      {%- set unknown_services = [] -%}
+      {%- set orphans = [] -%}
+      {%- for l in compose_project_hash_have.stdout_lines -%}
+      {%- set f = l.split('|') -%}
+      {%- if f | length != 4 or f[1] == '' or f[2] == '' -%}
+      {%- set _ = unknown.append(f[0] if f[0] else l) -%}
+      {%- if f | length == 4 and f[1] -%}{%- set _ = unknown_services.append(f[1]) -%}{%- endif -%}
+      {%- elif f[1] not in want -%}
+      {%- set _ = orphans.append(f[0]) -%}
+      {%- else -%}
+      {%- set _ = have.update({f[1]: {'hash': f[2], 'version': f[3] or '0'}}) -%}
+      {%- endif -%}
       {%- endfor -%}
       {%- set up = [] -%}
       {%- set legacy = [] -%}
-      {%- for name in want | sort -%}
+      {%- for name in want | sort if name not in unknown_services -%}
       {%- if name not in have -%}{%- set _ = up.append(name) -%}
       {%- elif have[name].hash != want[name] and have[name].version is version('2', '<') -%}{%- set _ = legacy.append(name) -%}
       {%- elif have[name].hash != want[name] -%}{%- set _ = up.append(name) -%}
       {%- endif -%}
       {%- endfor -%}
-      {{ {'up': up, 'legacy': legacy} }}
+      {{ {'up': up, 'legacy': legacy, 'unknown': unknown, 'orphans': orphans} }}
 
 - name: Compose services to bring up
   ansible.builtin.debug:
     msg: >-
       {{ compose_project_name }}: bring up {{ compose_project_plan.up | join(', ') if compose_project_plan.up else 'none' }}{{
       '; created by docker-compose v1, hash not comparable (not recreated): '
-      ~ compose_project_plan.legacy | join(', ') if compose_project_plan.legacy else '' }}
+      ~ compose_project_plan.legacy | join(', ') if compose_project_plan.legacy else '' }}{{
+      '; WARNING labels unreadable (left alone): ' ~ compose_project_plan.unknown | join(', ')
+      if compose_project_plan.unknown else '' }}{{
+      '; WARNING running but not in the file (left alone): ' ~ compose_project_plan.orphans | join(', ')
+      if compose_project_plan.orphans else '' }}
   # The bring-up below does not run in check mode; count it here instead.
   changed_when: ansible_check_mode and compose_project_plan.up | length > 0
 
