@@ -5,6 +5,11 @@
 # Addresses and VMID are site values (var.site_json); the public key is read at plan
 # time from var.ssh_public_key_path and is not committed.
 
+# Bumping the image: the URL and checksum are pinned to one release. Changing them makes
+# the provider replace this download (plan-guard rejects the delete). Do not edit it in
+# place. Either add a new pinned download_file resource (new name, new file_name) for
+# new VMs, or `terraform state rm` this one first and then change it, so no replace
+# is planned. The vault VM never re-imports (see ignore_changes below).
 resource "proxmox_virtual_environment_download_file" "noble_cloudimg" {
   node_name           = var.node_name
   datastore_id        = "local"
@@ -91,5 +96,8 @@ resource "proxmox_virtual_environment_vm" "vault" {
 
   lifecycle {
     prevent_destroy = true
+    # import_from only matters when the disk is created. Ignoring it keeps a later image
+    # bump from planning a change to this VM's disk.
+    ignore_changes = [disk[0].import_from]
   }
 }

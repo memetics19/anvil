@@ -7,15 +7,15 @@
 #   - has a `delete` action on any resource (covers destroy and replace);
 #   - changes which storage backs a protected VM's disks (interface, datastore, size,
 #     path, format or source image), or makes them unknown. Protected: any
-#     proxmox_virtual_environment_vm named ragnarok, at any module path; its disk holds
-#     the media library. Tuning options (discard, iothread, cache, ...)
+#     proxmox_virtual_environment_vm named ragnarok (its disk holds
+#     the media library) or vault (it holds secrets), at any module path. Tuning options (discard, iothread, cache, ...)
 #     may change.
 # Prints the offending resource addresses only (no attribute values).
 set -euo pipefail
 
 plan=${1:?usage: plan-guard.sh <plan.json>}
 protected_type=proxmox_virtual_environment_vm
-protected_names='["ragnarok"]'
+protected_names='["ragnarok", "vault"]'
 
 # Read once: the argument may be a pipe, e.g. <(terraform show -json plan).
 json=$(cat "$plan" 2>/dev/null) || { echo "plan-guard: cannot read $plan" >&2; exit 1; }

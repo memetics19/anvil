@@ -195,6 +195,13 @@
       ansible.builtin.set_fact:
         pve_host_content_now: "{{ (pve_host_storage_local.stdout | from_json).content.split(',') }}"
 
+    - name: Report missing import content type (shows drift in check mode)
+      ansible.builtin.debug:
+        msg: "storage local lacks the import content type"
+      changed_when: true
+      when: "'import' not in pve_host_content_now"
+      check_mode: true
+
     - name: Enable the import content type on local
       ansible.builtin.command: >-
         pvesm set local --content {{ (pve_host_content_now + ['import']) | join(',') }}
