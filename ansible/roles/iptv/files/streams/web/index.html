@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="referrer" content="no-referrer">
+<title>Kannada TV</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/app.css">
+<script defer src="/static/mpegts.js"></script>
+<script defer src="/static/app.js"></script>
+</head>
+<body>
+<video id="video" playsinline></video>
+
+<section id="banner" class="banner" aria-live="polite" hidden>
+  <span id="b-logo" class="logo"><span class="mono"></span><span class="num"></span></span>
+  <div class="b-text">
+    <p class="b-title"><span id="b-num" class="b-num"></span> <strong id="b-name"></strong></p>
+    <p id="b-now" class="b-now"></p>
+    <p id="b-next" class="b-next"></p>
+  </div>
+  <p id="b-status" class="b-status" hidden></p>
+  <nav class="b-buttons" aria-label="Channel controls">
+    <button id="b-prev" type="button" aria-label="Previous channel">&#8249;</button>
+    <button id="b-list" type="button">Channels</button>
+    <button id="b-next-ch" type="button" aria-label="Next channel">&#8250;</button>
+  </nav>
+</section>
+
+<section id="list" class="list" hidden aria-label="Channels">
+  <header class="list-top">
+    <h1>Channels</h1>
+    <p class="hint">Arrows to choose · OK to watch · Back to close</p>
+    <time id="clock"></time>
+  </header>
+  <p id="notice" class="notice" hidden></p>
+  <div id="grid" class="grid" role="list"></div>
+  <p class="foot">Left/Right change channel · OK shows what is on · Up/Down open this list.
+    A channel plays only while its broadcaster is live.</p>
+</section>
+
+<p id="splash" class="splash">Kannada TV</p>
+<noscript><p class="splash">This page needs JavaScript.</p></noscript>
+</body>
+</html>

@@ -28,6 +28,9 @@
     iptv_epg_channels: >-
       {{ iptv_lineup | map('dict2items') | map('selectattr', 'key', 'in', ['id', 'name', 'dishtv'])
          | map('items2dict') | list }}
+    iptv_web_lineup: >-
+      {{ iptv_lineup | map('dict2items') | map('selectattr', 'key', 'in', ['id', 'name', 'number'])
+         | map('items2dict') | list }}
 
 # --- secrets ---------------------------------------------------------------------------------
 - name: Key digests stored in Vault
@@ -105,6 +108,7 @@
   loop:
     - "{{ iptv_dir }}"
     - "{{ iptv_dir }}/build"
+    - "{{ iptv_dir }}/build/web"
     - "{{ iptv_dir }}/sources"
 
 - name: Threadfin's config directory (its uid only)
@@ -140,7 +144,7 @@
     owner: root
     group: root
     mode: "0644"
-  loop: [server.py, epg.py]
+  loop: "{{ ['server.py', 'epg.py'] + iptv_web_files | map('regex_replace', '^', 'web/') }}"
 
 - name: Helper Dockerfile
   ansible.builtin.template:

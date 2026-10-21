@@ -35,6 +35,8 @@ services:
       - "{{ iptv_bind_ip }}:{{ iptv_streams_port }}:{{ iptv_streams_port }}"
     environment:
       IPTV_CHANNELS: '{{ iptv_stream_sources | to_json }}'
+      IPTV_LINEUP: '{{ iptv_web_lineup | to_json }}'
+      IPTV_GUIDE: /guide/{{ iptv_guide_file }}
       IPTV_PORT: "{{ iptv_streams_port }}"
       IPTV_MAX_STREAMS: "{{ iptv_max_streams }}"
       IPTV_START_TIMEOUT: "{{ iptv_start_timeout }}"
@@ -47,5 +49,8 @@ services:
       - ALL
     tmpfs:
       - /tmp:size=16m,mode=1777
+    # The guide directory, not the file: the grabber replaces guide.xml with a rename.
+    volumes:
+      - {{ iptv_guide_dir }}:/guide:ro
     mem_limit: {{ iptv_streams_mem_limit }}
     memswap_limit: {{ iptv_streams_mem_limit }}

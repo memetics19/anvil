@@ -1,8 +1,10 @@
 # Managed by anvil (ansible/roles/iptv). Built on the VM as anvil/iptv-streams:<tag>.
-# The stream helper (server.py) and the EPG grabber (epg.py) share this image.
+# The stream helper (server.py, with the web TV page in web/) and the EPG grabber
+# (epg.py) share this image.
 FROM {{ iptv_python_image }}
 RUN pip install --no-cache-dir --disable-pip-version-check streamlink=={{ iptv_streamlink_version }}
 COPY server.py epg.py /app/
+COPY web/ /app/web/
 USER {{ iptv_uid }}:{{ iptv_uid }}
 ENTRYPOINT ["python3", "-u"]
 CMD ["/app/server.py"]

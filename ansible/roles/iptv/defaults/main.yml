@@ -21,15 +21,24 @@ iptv_threadfin_db_version: "0.5.0"
 # Base of the helper image, built on the VM (3.12.14-slim-bookworm, 2026-09-19).
 iptv_python_image: python:3.12.14-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e
 iptv_streamlink_version: 8.6.2
+# The web TV page the helper serves (files/streams/web, copied into the image). mpegts.js
+# is vendored from the npm release tarball mpegts.js-1.8.2.tgz (2026-08-14, Apache-2.0,
+# licence in mpegts.LICENSE.txt): dist/mpegts.js, sha256 below, checked by
+# tests/test_iptv_web.sh.
+iptv_mpegts_version: 1.8.2
+iptv_mpegts_sha256: bda31748736a69cb610c2edf4623e633f1f4f47b5bda83668c8d287e51b0c3a8
+iptv_web_files: [index.html, app.css, app.js, mpegts.js, mpegts.LICENSE.txt, mpegts.js.LICENSE.txt]
 # Tag of the locally built helper image: changes with the Dockerfile (base image,
-# streamlink, uid) and the scripts.
+# streamlink, uid), the scripts and the page.
 iptv_streams_image: >-
   anvil/iptv-streams:{{ iptv_streamlink_version }}-{{ ((lookup('ansible.builtin.template', 'Dockerfile.j2')
-  ~ lookup('ansible.builtin.file', 'streams/server.py') ~ lookup('ansible.builtin.file', 'streams/epg.py'))
+  ~ lookup('ansible.builtin.file', 'streams/server.py') ~ lookup('ansible.builtin.file', 'streams/epg.py')
+  ~ lookup('ansible.builtin.file', *(iptv_web_files | map('regex_replace', '^', 'streams/web/'))))
   | hash('sha256'))[:12] }}
 
 # Hard caps, swap included. Total 296 MB: the helper holds at most iptv_max_streams
-# streamlink processes (about 60 MB each); the grabber runs for seconds twice a day.
+# streamlink processes (about 60 MB each) plus the page (about 1 MB in memory); the
+# grabber runs for seconds twice a day.
 iptv_threadfin_mem_limit: 64m
 iptv_streams_mem_limit: 192m
 iptv_epg_mem_limit: 40m

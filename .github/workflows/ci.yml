@@ -34,6 +34,8 @@ jobs:
         run: tests/test_media_untouched.sh
       - name: IPTV lineup test
         run: tests/test_iptv_lineup.sh
+      - name: IPTV web page test
+        run: tests/test_iptv_web.sh
       - name: Plan guard test
         run: tests/test_plan_guard.sh
       - name: Network rollback test

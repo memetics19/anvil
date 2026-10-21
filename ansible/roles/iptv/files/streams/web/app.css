@@ -1,0 +1,202 @@
+/* Kannada TV: full-screen playback like a TV, a channel banner and a channel list.
+ * Dark, large (10 ft first), works on phones and laptops too. */
+:root {
+  --bg: #000;
+  --panel: rgba(16, 19, 26, 0.88);
+  --card: #161a23;
+  --card-hi: #212837;
+  --text: #eef1f6;
+  --muted: #a3acbb;
+  --accent: #ffb43a;
+  --live: #ff5a4e;
+  --radius: 0.9rem;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html {
+  /* 18 px on a 960 px wide TV viewport, 30 px on 1920, never under 16 px on a phone. */
+  font-size: clamp(16px, 1.25vw + 6px, 30px);
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+}
+
+[hidden] { display: none !important; }
+p { margin: 0; }
+
+#video {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.splash {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--muted);
+  font-size: 1.6rem;
+  text-align: center;
+}
+
+/* Channel mark: monogram and number on a per-channel colour. */
+.logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 4.6rem;
+  height: 4.6rem;
+  border-radius: 0.7rem;
+  background: hsl(var(--hue, 210) 55% 34%);
+  color: #fff;
+}
+.logo .mono { font-size: 1.6rem; font-weight: 800; letter-spacing: 0.02em; line-height: 1; }
+.logo .num { font-size: 0.8rem; opacity: 0.85; margin-top: 0.2rem; }
+
+/* Banner: bottom of the picture, inside the TV-safe area. */
+.banner {
+  position: fixed;
+  left: 4vw;
+  right: 4vw;
+  bottom: 5vh;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: "logo text buttons" "logo status status";
+  align-items: center;
+  column-gap: 1.1rem;
+  row-gap: 0.4rem;
+  padding: 1rem 1.2rem;
+  border-radius: var(--radius);
+  background: var(--panel);
+  z-index: 5;
+}
+.banner .logo { grid-area: logo; width: 5.2rem; height: 5.2rem; }
+.b-text { grid-area: text; min-width: 0; }
+.b-title { font-size: 1.5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.b-num { color: var(--accent); font-weight: 800; font-variant-numeric: tabular-nums; margin-right: 0.3rem; }
+.b-now { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.b-next { color: var(--muted); font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.b-status {
+  grid-area: status;
+  justify-self: start;
+  padding: 0.2rem 0.7rem;
+  border-radius: 0.4rem;
+  background: #2a3140;
+  font-weight: 600;
+}
+.b-status.bad { background: var(--live); color: #fff; }
+.b-buttons { grid-area: buttons; display: flex; gap: 0.5rem; }
+.b-buttons button {
+  min-width: 2.6rem;
+  height: 2.6rem;
+  padding: 0 0.8rem;
+  border: 0;
+  border-radius: 0.6rem;
+  background: #2a3140;
+  color: var(--text);
+  font: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.b-buttons button:hover { background: #374055; }
+/* The remote does not need these (arrows do it); pointers and touch do. */
+@media (hover: none) and (pointer: none) { .b-buttons { display: none; } }
+
+/* Channel list: an overlay over the picture. */
+.list {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  padding: 4vh 4vw;
+  background: rgba(6, 8, 12, 0.93);
+  z-index: 10;
+}
+.list-top {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.5rem;
+  margin-bottom: 1.4rem;
+}
+.list-top h1 { margin: 0; font-size: 1.9rem; }
+.hint { color: var(--muted); flex: 1 1 auto; }
+#clock { font-size: 1.5rem; font-variant-numeric: tabular-nums; color: var(--muted); }
+.notice { margin-bottom: 1rem; padding: 0.7rem 1rem; border-radius: var(--radius); background: var(--card); color: var(--muted); }
+.foot { margin-top: 2rem; color: var(--muted); font-size: 0.85rem; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+  gap: 1.1rem;
+}
+.card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.9rem;
+  row-gap: 0.25rem;
+  align-content: center;
+  width: 100%;
+  min-height: 7rem;
+  padding: 1rem;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--card);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  outline: 0.25rem solid transparent;
+  outline-offset: 0.2rem;
+  transition: transform 120ms ease, background-color 120ms ease, outline-color 120ms ease;
+}
+.card .logo { grid-row: 1 / span 4; }
+.card:hover { background: var(--card-hi); }
+.card:focus,
+.card:focus-visible { background: var(--card-hi); outline-color: var(--accent); transform: scale(1.03); }
+.name { font-size: 1.3rem; font-weight: 700; }
+.now, .next { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.now { font-weight: 600; }
+.next { color: var(--muted); font-size: 0.9rem; }
+.bar { height: 0.3rem; border-radius: 0.2rem; background: #2a3140; overflow: hidden; margin-top: 0.2rem; }
+.bar > span { display: block; height: 100%; width: 0; background: var(--accent); }
+.card.on .name::after {
+  content: "On now";
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 0.3rem;
+  background: var(--live);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+@media (max-width: 560px) {
+  .banner { grid-template-areas: "logo text" "status status" "buttons buttons"; grid-template-columns: auto 1fr; }
+  .banner .logo { width: 4rem; height: 4rem; }
+  .b-buttons { justify-content: space-between; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+  .card:focus { transform: none; }
+}

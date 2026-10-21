@@ -141,7 +141,7 @@ that could reach the media library.
   sources in the template, and `tests/test_media_untouched.sh` keeps it that way.
 - `iptv_epg`: nginx on port 8899 serving `/home/ubuntu/iptv-epg/output`, where the `iptv`
   role's guide grabber writes `guide.xml`.
-- `iptv`: Kannada IPTV, see [IPTV](#iptv).
+- `iptv`: IPTV, see [IPTV](#iptv).
 - `filestash`: a read-only browser for the S3 gateway at `http://<ragnarok>:8334/`, bound
   to the VM's LAN address, with a 256 MB memory cap and no swap.
   - It runs as its own host user (uid 10001, not the VM's first user, who owns the media),
@@ -197,47 +197,35 @@ never run it in the same Ansible run as `make host-network`.
 
 ## IPTV
 
-Free Kannada channels for the TV, from the broadcasters' own official sources only:
-Public TV, TV9 Kannada, Asianet Suvarna News, News18 Kannada and DD Chandana, each from
-its verified YouTube channel. Paid channels (Zee Kannada, Colors Kannada, Udaya and the
-rest) are not included, and neither are third-party restreams. The lineup is
-[`iptv/channels.yml`](iptv/channels.yml); the role takes no other channels, and
-`tests/test_iptv_lineup.sh` checks the file. A channel plays only while its broadcaster
-is live on YouTube (DD Chandana during bulletins); otherwise the player shows an error.
+IPTV setup. The lineup is [`iptv/channels.yml`](iptv/channels.yml), checked by
+`tests/test_iptv_lineup.sh`.
 
 `make vm HOST=ragnarok ARGS="--tags iptv"` runs, on `ragnarok`, in `/opt/iptv`:
 
-- Threadfin (port 34400): the playlist and the guide. Its web UI asks for user `admin`
-  and `admin_password` from Vault `kv/homelab/ragnarok/threadfin`. The role owns its own
-  two sources (the lineup playlist and guide) and the settings it sets; changes to those in
-  the UI are overwritten on the next run. Sources added by hand in the Threadfin UI are
-  left alone but are not part of the repo and are not recreated on a rebuild.
-- A stream helper (port 34401): on request it runs streamlink for that channel's live
-  stream and relays it. Nothing streams while nobody watches; at most two streams at once.
-- A guide grabber (systemd timer `iptv-epg-grab`, 03:30 and 15:30): today's and
-  tomorrow's programmes from Dish TV's public guide into `iptv-epg`'s `guide.xml`, which
-  Threadfin serves. A channel without guide data gets a "<name> Live" placeholder.
+- Threadfin (port 34400): playlist and guide. Web UI login: user `admin`, password
+  `admin_password` in Vault `kv/homelab/ragnarok/threadfin`. The role owns its two sources
+  and its settings; sources added by hand in the UI are left alone and not recreated on a
+  rebuild.
+- Stream helper (port 34401): streams a channel on request (streamlink), at most two at
+  once; it also serves the web TV page and `/guide.json` (now/next).
+- Guide grabber (timer `iptv-epg-grab`, 03:30 and 15:30): writes `iptv-epg`'s `guide.xml`.
 
 Memory caps: 64 + 192 MB, and 40 MB for the grabber while it runs.
 
-Home devices reach it without router changes: `make host-network` forwards ports 34400
-and 34401 (and nothing else) from the Proxmox host's home-network address to `ragnarok`
-(DNAT and a forward rule in `/etc/network/interfaces`). Playlist links use that address,
-so they work from home Wi-Fi. Devices on the lab network itself cannot use these links
-(the replies bypass the forward); NetBird clients that route the home network can.
+`make host-network` forwards ports 34400 and 34401 (nothing else) from the Proxmox host's
+home-network address to `ragnarok`, so home Wi-Fi devices (and NetBird clients that route
+the home network) can use these URLs; devices on the lab network cannot.
 
+- Web TV page: `http://<proxmox-home-address>:34401/`
 - Playlist: `http://<proxmox-home-address>:34400/m3u/threadfin.m3u`
 - Guide (XMLTV): `http://<proxmox-home-address>:34400/xmltv/threadfin.xml`
 
-Fire TV:
+Web TV page (Fire TV, phone, laptop): opens playing the last-watched channel. Left/Right
+change channel, OK shows what is on, Up/Down open the channel list, Back closes it.
 
-1. Install TiviMate: install Downloader from the Amazon Appstore, enable it under
-   Settings > My Fire TV > Developer options > Install unknown apps, and download the
-   TiviMate APK from its official site with it. Or install VLC for Fire from the Appstore.
-2. TiviMate: Add playlist > Enter URL > the playlist URL above. It picks up the guide URL
-   from the playlist; if not, Settings > EPG > Add EPG source > the guide URL.
-3. VLC: Browse > New favorite (or Stream) > the playlist URL. VLC shows the channels but
-   no guide.
+- On a Vega-OS Fire TV: open Silk → `http://<proxmox-home-address>:34401/`
+- Fire OS with sideloading: TiviMate (Add playlist > Enter URL > the playlist URL) or VLC
+  for Fire (Browse > New favorite > the playlist URL; no guide).
 
 ## Ceph and the Terraform state bucket
 
