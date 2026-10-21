@@ -147,14 +147,14 @@ check "no private address in the output"   '! grep -rqE "\b(10\.[0-9]+|172\.(1[6
 
 # The optional background picture (a placeholder file in the test HOME) and the weather.
 mkdir -p "$tmp/home/homelab-assets" && printf 'placeholder' >"$tmp/home/homelab-assets/homepage-bg.jpg"
-SITE_HOMEPAGE='{weather: {latitude: 12.5, longitude: 77.5, label: Here}}' \
+SITE_HOMEPAGE='{weather: {latitude: 1.5, longitude: 2.5, label: Here}}' \
   run '[{name: pve, host: pve.ip, port: 8006, scheme: https}, {name: home, container: homepage, port: 3000, scheme: http}]'
 rm -rf "$tmp/home/homelab-assets"
 st=$(json settings.yaml) || st='{}'
 check "background: the picture with its filters" \
   '[ "$(jq -c .background <<<"$st")" = "{\"blur\":\"sm\",\"saturate\":50,\"brightness\":50,\"opacity\":50,\"image\":\"/images/homepage-bg.jpg\"}" ]'
 check "weather: Open-Meteo from site.homepage.weather" \
-  '[ "$(json widgets.yaml | jq -c ".[1].openmeteo | [.label, .latitude, .longitude, .units]")" = "[\"Here\",12.5,77.5,\"metric\"]" ]'
+  '[ "$(json widgets.yaml | jq -c ".[1].openmeteo | [.label, .latitude, .longitude, .units]")" = "[\"Here\",1.5,2.5,\"metric\"]" ]'
 
 # Widget results: an error is a warning (the play goes on), or a failure when strict.
 widgets() {
