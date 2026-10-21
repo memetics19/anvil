@@ -154,7 +154,7 @@ check "timer: nightly, persistent"             'grep -qx "OnCalendar=\*-\*-\* 03
 cf="$out/Caddyfile"
 check "gateway: pass route to the container"   'grep -q "@pass host pass.internal.example.com" "$cf" && grep -q "reverse_proxy http://vaultwarden:8080" "$cf"'
 check "gateway: websockets survive a reload"   'awk "/handle @pass/{f=1} f&&/stream_close_delay/{print; exit}" "$cf" | grep -q 5m'
-check "gateway: Caddy joins vaultwarden_web"   'grep -qx "      vaultwarden_web: {}" "$out/caddy-compose.yaml" && grep -q "^  vaultwarden_web:" "$out/caddy-compose.yaml"'
+check "gateway: Caddy no longer joins vaultwarden_web" '! grep -q vaultwarden_web "$out/caddy-compose.yaml"'
 
 s=$(grep -v '^#' "$out/services.yaml" | jq -c .) || s='[]'
 check "dashboard: Vaultwarden under Security"  '[ "$(jq -r ".[] | select(has(\"Security\")) | .Security[] | select(has(\"Vaultwarden\")) | .Vaultwarden.href" <<<"$s")" = "https://pass.internal.example.com" ]'

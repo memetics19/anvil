@@ -131,16 +131,6 @@
     # After the services it lets in, so its checks can reach them.
     - role: host_firewall
       tags: [firewall]
-  post_tasks:
-    # Vaultwarden moved to its own VM in the secrets enclave (play below): the copy here is
-    # stopped and kept until the operator removes it; its backup timer is off.
-    - name: Retired Vaultwarden copy
-      ansible.builtin.include_role:
-        name: vaultwarden
-        tasks_from: retired.yml
-        apply:
-          tags: [vaultwarden]
-      tags: [vaultwarden]
 
 # Vaultwarden on its own VM in the secrets enclave (no internet): Docker from Ubuntu's
 # archive through the apt cache, the image through ragnarok, published on the VM's address

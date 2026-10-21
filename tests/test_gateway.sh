@@ -143,7 +143,7 @@ else ok "ports: no unbound, 0.0.0.0 or UDP entry"; fi
 # routes to containers on a missing network are not checked.
 # Service networks are a mapping (gateway carries gw_priority): the 6-space keys under it.
 nets() { awk '/^    networks:/{on=1; next} on && /^      [a-z_]+:/{sub(":","",$1); print $1; next} on && /^        /{next} on && /^      #/{next} on{on=0}' "$1" | tr '\n' ' '; }
-if [ "$(nets "$tmp/compose.yaml")" = "gateway pihole_dns homepage_web vaultwarden_web " ]; then ok "networks: all container networks by default"
+if [ "$(nets "$tmp/compose.yaml")" = "gateway pihole_dns homepage_web " ]; then ok "networks: all container networks by default"
 else bad_ "networks default: $(nets "$tmp/compose.yaml")"; fi
 if [ "$(nets "$tmp/compose-partial.yaml")" = "gateway pihole_dns " ] && ! grep -q "homepage_web" "$tmp/compose-partial.yaml"
 then ok "networks: a missing network is left out"; else bad_ "networks partial: $(nets "$tmp/compose-partial.yaml")"; fi

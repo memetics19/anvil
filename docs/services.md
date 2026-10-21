@@ -151,8 +151,7 @@ The list is `guest_base_absent_packages` in `inventory/host_vars/netbird.yml`, t
 
 `apps` is one small VM (1 vCPU, 1.5 GB) for the always-on services: Pi-hole, the service
 gateway and Homepage. Vaultwarden ran here first; it now runs on its own VM in the
-[secrets enclave](#secrets-enclave). The old copy here is stopped and kept until you
-remove it (see [Vaultwarden](#vaultwarden)).
+[secrets enclave](#secrets-enclave).
 
 It has two NICs on `vmbr0`, both set by cloud-init in `terraform/vm_apps.tf`. One has a lab
 address and the default route. The other has a home-network address
@@ -324,34 +323,16 @@ same name. On a VM with no database the role refuses to start an empty Vaultward
 The Vault paths keep the name of the VM it was first set up on: `kv/homelab/apps/vaultwarden`
 and `kv/homelab/apps/vaultwarden-backup`.
 
-#### The move from `apps` (2026-10-21) and the old copy
+#### The move from `apps` (2026-10-21)
 
 The `apps` copy's backup job ran one last time and was checked. Then its container was
 stopped, the database was copied with `sqlite3 .backup` (plus `rsa_key.pem`), the new VM
 started on that copy, and the `pass` entry was switched to `host: hosts.vaultwarden.ip`.
-The users and ciphers rows, and digests of both tables, were equal on both sides. On `apps`
-the old container is stopped, its backup timer is off (`vaultwarden` tag of the apps play,
-`tasks/retired.yml`) and `/opt/vaultwarden` is kept. Caddy stays on the network
-`vaultwarden_web` while that project exists.
-
-Rollback while the old copy is there: stop the new container (`docker stop vaultwarden` on
-`vaultwarden`), start the old one (`docker start vaultwarden` on `apps`), set the `pass`
-entry back to `container: vaultwarden` in `kv/homelab/site`, and run
-`make vm HOST=apps ARGS="--tags caddy"`. Data written on the new VM since the move would be
-lost; copy it back first with the same `.backup` steps.
-
-Removing the old copy, once you have used the new one for a while:
-
-```sh
-ssh ubuntu@<apps-address> 'cd /opt/vaultwarden && sudo docker compose rm -f vaultwarden \
-  && sudo docker network rm vaultwarden_web && sudo rm -rf /opt/vaultwarden \
-  && sudo rm -f /etc/systemd/system/vaultwarden-backup.* /usr/local/sbin/vaultwarden-backup \
-  && sudo rm -rf /etc/vaultwarden-backup && sudo systemctl daemon-reload'
-```
-
-Then drop `vaultwarden_web` from `caddy_container_networks`
-(`ansible/roles/caddy/defaults/main.yml`) and run `make vm HOST=apps`: Caddy leaves that
-network, which recreates it once, and Homepage picks up the new `pass` entry (one restart).
+The users and ciphers rows, and digests of both tables, were equal on both sides. After a
+day on the new VM (a fresh backup decrypted, the drill passed, the counts unchanged), the old
+copy on `apps` was removed: its container, `/opt/vaultwarden` (data included), its backup
+units and `/etc/vaultwarden-backup` (the S3 keys), and Caddy left the network
+`vaultwarden_web` (one recreate), which was then removed.
 
 `DOMAIN` is the gateway name. Sign-ups are closed (`SIGNUPS_ALLOWED=false`), invitations
 are on, and password hints are never shown.

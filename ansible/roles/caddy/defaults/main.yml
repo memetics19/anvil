@@ -60,15 +60,15 @@ caddy_upstream_cas:
   vault: "{{ lookup('env', 'VAULT_CACERT') }}"
 
 # Docker networks of other projects Caddy joins, for `container` upstreams, with the
-# containers each one carries: Pi-hole's (web UI), Homepage's and Vaultwarden's (roles
-# homepage and vaultwarden, which run before this one). A network that does not exist on
+# containers each one carries: Pi-hole's (web UI) and Homepage's (roles pihole and
+# homepage, which run before this one). Vaultwarden runs on its own VM and is reached by
+# address. A network that does not exist on
 # the host (its role has not run there yet, e.g. `--tags caddy` on a new VM) is left out
 # and its containers' routes are not checked (a warning names them); the next run that
 # finds it joins it. A network joined or left recreates Caddy once.
 caddy_container_networks:
   pihole_dns: [pihole]
   homepage_web: [homepage]
-  vaultwarden_web: [vaultwarden]
 
 # Routes only the operator's devices may use (the secrets enclave's: Vaultwarden and Vault):
 # every other client gets 403. The sources are the enclave's operators (inventory

@@ -5,7 +5,7 @@
 # only (vaultwarden_publish_ip), where the enclave firewall lets only Caddy in, and its
 # image comes through ragnarok (vaultwarden_image_transfer). On the apps VM, where it ran
 # first, it was served over a Docker network Caddy shares (vaultwarden_publish_ip empty);
-# that copy is retired (tasks/retired.yml).
+# that copy has been removed.
 # Accounts: sign-ups are closed; the admin page (/admin, token from Vault) invites an email,
 # which can then register directly (no SMTP: an invited email needs no mail to sign up).
 vaultwarden_dir: /opt/vaultwarden
