@@ -14,6 +14,19 @@ cluster on the same host.
 
 It is a work in progress. See the [Roadmap](#roadmap).
 
+## Hardware
+
+<img src="docs/images/poweredge-t130.jpg" alt="Dell PowerEdge T130" width="420">
+
+- Dell PowerEdge T130 tower server:
+  - CPU: `Intel Xeon E3-1220 v6 @ 3.00GHz` (4 cores, 4 threads)
+  - RAM: `32GB` DDR4-2400 ECC (4 × 8GB)
+  - RAID controller: `PERC H730` (each disk is its own virtual disk)
+  - Disks: `4TB` Seagate Exos 7200 rpm (Proxmox, VM disks, media) and `1TB` Seagate Exos 7200 rpm (Ceph OSD)
+  - Network: 2 × `1GbE` (Broadcom BCM5720)
+  - Out-of-band: iDRAC8
+- Cisco managed switch
+
 ## Hosts
 
 | Host       | Runs |
