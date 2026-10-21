@@ -22,10 +22,11 @@ channels = (doc or {}).get("channels") or []
 fail = []
 if not channels:
     fail.append("source: no channels")
-src = re.compile(r"^https://www\.youtube\.com/channel/UC[A-Za-z0-9_-]{22}/live$")
+# fullmatch: no trailing newline or anything else after /live.
+src = re.compile(r"https://www\.youtube\.com/channel/UC[A-Za-z0-9_-]{22}/live")
 paid = re.compile(r"zee|colou?rs|udaya|star|\bsun\b|sony", re.I)
 for c in channels:
-    if not src.match(str(c.get("source", ""))):
+    if not src.fullmatch(str(c.get("source", ""))):
         fail.append(f"source: {c.get('id')}: {c.get('source')}")
     if paid.search(f"{c.get('id', '')} {c.get('name', '')}"):
         fail.append(f"paid: {c.get('id')}: {c.get('name')}")
@@ -59,6 +60,7 @@ case_() {
 }
 yt="https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx/live"
 case_ restream source "  - {id: zz, name: Restream, number: 90, source: 'https://example.com/live/index.m3u8'}"
+case_ trailing-newline source "  - {id: zz, name: Newline, number: 90, source: \"$yt\\n\"}"
 case_ video-id source "  - {id: zz, name: Video, number: 90, source: 'https://www.youtube.com/watch?v=abcdefghijk'}"
 case_ paid paid "  - {id: zeekannada, name: Zee Kannada, number: 90, source: '$yt'}"
 case_ paid-colors paid "  - {id: colorskannada, name: Colors Kannada, number: 90, source: '$yt'}"

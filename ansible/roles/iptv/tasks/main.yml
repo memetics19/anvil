@@ -8,16 +8,17 @@
     iptv_lineup: "{{ (lookup('ansible.builtin.file', iptv_lineup_file) | from_yaml).channels }}"
 
 # Official sources only: every channel must be a YouTube channel's /live URL. Ids and
-# names are restricted so they can go into the playlist, shell and JSON unquoted.
+# names are restricted so they can go into the playlist, shell and JSON unquoted. \Z, not
+# $: $ also matches before a trailing newline.
 - name: The lineup has only official YouTube channel streams
   ansible.builtin.assert:
     that:
       - iptv_lineup | length > 0
       - iptv_lineup | map(attribute='id') | unique | length == iptv_lineup | length
       - iptv_lineup | map(attribute='number') | unique | length == iptv_lineup | length
-      - iptv_lineup | rejectattr('id', 'match', '^[a-z0-9]+$') | list | length == 0
-      - iptv_lineup | rejectattr('name', 'match', '^[A-Za-z0-9 .-]+$') | list | length == 0
-      - iptv_lineup | rejectattr('source', 'match', '^https://www[.]youtube[.]com/channel/UC[A-Za-z0-9_-]{22}/live$') | list | length == 0
+      - iptv_lineup | rejectattr('id', 'match', '^[a-z0-9]+\\Z') | list | length == 0
+      - iptv_lineup | rejectattr('name', 'match', '^[A-Za-z0-9 .-]+\\Z') | list | length == 0
+      - iptv_lineup | rejectattr('source', 'match', '^https://www[.]youtube[.]com/channel/UC[A-Za-z0-9_-]{22}/live\\Z') | list | length == 0
     fail_msg: "{{ iptv_lineup_file }}: duplicate id/number, unsafe id/name, or a source that is not a YouTube channel /live URL"
     quiet: true
 
@@ -323,6 +324,24 @@
   no_log: true
   when: iptv_have_secrets | bool
 
+# Threadfin keeps its settings in memory and saves them back on its own (scheduled
+# refreshes, web UI), so a file rewritten under a running Threadfin can be overwritten
+# again. Stop it first; it is started again after the compose step.
+- name: Does Threadfin's config differ
+  ansible.builtin.set_fact:
+    iptv_threadfin_dirty: >-
+      {{ iptv_settings_want != iptv_settings_now or iptv_m3u_want != iptv_m3u_now
+         or (iptv_have_secrets | bool and iptv_auth_want != iptv_auth_now) }}
+  no_log: true
+
+- name: Stop Threadfin before rewriting its config
+  ansible.builtin.command:
+    argv: [docker, stop, iptv-threadfin]
+  register: iptv_threadfin_stop
+  changed_when: iptv_threadfin_stop.rc == 0
+  failed_when: iptv_threadfin_stop.rc != 0 and 'No such container' not in iptv_threadfin_stop.stderr
+  when: iptv_threadfin_dirty | bool and not ansible_check_mode
+
 - name: Threadfin settings
   ansible.builtin.copy:
     content: "{{ iptv_settings_want | to_nice_json(indent=2) }}\n"
@@ -367,6 +386,13 @@
   vars:
     compose_project_dir: "{{ iptv_dir }}"
     compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+
+# Not needed when the compose step just (re)created it.
+- name: Start Threadfin again
+  ansible.builtin.command:
+    argv: [docker, start, iptv-threadfin]
+  changed_when: true
+  when: iptv_threadfin_stop.rc | default(1) == 0 and 'threadfin' not in compose_project_plan.up
 
 - name: The stream helper answers
   ansible.builtin.uri:

@@ -34,8 +34,10 @@ iptv_threadfin_mem_limit: 64m
 iptv_streams_mem_limit: 192m
 iptv_epg_mem_limit: 40m
 iptv_max_streams: 2
-# Seconds the helper waits for the first bytes of a stream (and tolerates a stall).
+# Seconds the helper waits for the first bytes of a stream (and tolerates a stall), and
+# for a client that stopped reading before it ends that stream.
 iptv_start_timeout: 25
+iptv_client_timeout: 30
 
 # The guide: written into the directory the iptv_epg nginx serves, read by Threadfin.
 iptv_guide_dir: "{{ iptv_epg_dir }}/output"

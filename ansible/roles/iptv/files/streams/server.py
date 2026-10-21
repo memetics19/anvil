@@ -8,7 +8,8 @@ iptv/channels.yml; any other path is a 404.
 
 Answers 503 when IPTV_MAX_STREAMS streams already run (the container is memory-capped)
 and 504 when streamlink produces no data within IPTV_START_TIMEOUT seconds (for example
-when the channel is not live). A stream that stalls for that long is ended.
+when the channel is not live). A stream that stalls for that long is ended, and so is a
+client that stops reading for IPTV_CLIENT_TIMEOUT seconds, so neither holds a slot.
 """
 import json
 import os
@@ -24,6 +25,7 @@ CHANNELS = json.loads(os.environ["IPTV_CHANNELS"])
 PORT = int(os.environ.get("IPTV_PORT", "34401"))
 MAX_STREAMS = int(os.environ.get("IPTV_MAX_STREAMS", "2"))
 TIMEOUT = int(os.environ.get("IPTV_START_TIMEOUT", "25"))
+CLIENT_TIMEOUT = int(os.environ.get("IPTV_CLIENT_TIMEOUT", "30"))
 QUALITY = os.environ.get("IPTV_QUALITY", "best")
 CHUNK = 64 * 1024
 
@@ -100,6 +102,8 @@ class Handler(BaseHTTPRequestHandler):
              source, QUALITY],
             stdout=subprocess.PIPE, stdin=subprocess.DEVNULL, start_new_session=True)
         fd = proc.stdout.fileno()
+        # A write that cannot finish in time (client stopped reading) raises TimeoutError.
+        self.connection.settimeout(CLIENT_TIMEOUT)
         sent = 0
         started = time.monotonic()
         try:
@@ -121,6 +125,8 @@ class Handler(BaseHTTPRequestHandler):
                 data = os.read(fd, CHUNK) if ready else b""
         except (BrokenPipeError, ConnectionResetError):
             pass
+        except TimeoutError:
+            log(f"{cid}: client stopped reading for {CLIENT_TIMEOUT}s, ending")
         finally:
             stop(proc)
             if sent:

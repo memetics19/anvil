@@ -1,16 +1,32 @@
 #!/bin/sh
 # Managed by anvil (ansible/roles/iptv). Writes the IPTV guide for the iptv_epg nginx.
 # The grabber container has no mounts: it prints XMLTV, and this script replaces the
-# served file only with a complete, parseable result.
+# served file only with a complete, parseable result. A degraded guide (grabber exit 3:
+# the guide source failed for some channel) replaces nothing but a missing file, so an
+# outage never swaps a real guide for placeholders.
+# IPTV_EPG_SIGNIN_URL / IPTV_EPG_PROGRAMS_URL, when set, are passed on (to test an outage).
 set -eu
 out="{{ iptv_guide_dir }}/{{ iptv_guide_file }}"
 tmp=$(mktemp "$out.XXXXXX")
 trap 'rm -f "$tmp"' EXIT
+rc=0
 docker run --rm --name iptv-epg-grab \
   --memory {{ iptv_epg_mem_limit }} --memory-swap {{ iptv_epg_mem_limit }} \
   --read-only --cap-drop ALL --security-opt no-new-privileges \
   --env IPTV_EPG_CHANNELS='{{ iptv_epg_channels | to_json }}' \
-  {{ iptv_streams_image }} /app/epg.py >"$tmp"
+  ${IPTV_EPG_SIGNIN_URL:+--env IPTV_EPG_SIGNIN_URL="$IPTV_EPG_SIGNIN_URL"} \
+  ${IPTV_EPG_PROGRAMS_URL:+--env IPTV_EPG_PROGRAMS_URL="$IPTV_EPG_PROGRAMS_URL"} \
+  {{ iptv_streams_image }} /app/epg.py >"$tmp" || rc=$?
+case $rc in
+  0) ;;
+  3)
+    if [ -s "$out" ]; then
+      echo "iptv-epg-grab: WARNING degraded guide (source outage?), keeping the existing $out" >&2
+      exit 0
+    fi
+    echo "iptv-epg-grab: WARNING degraded guide, using it because there is no guide yet" >&2 ;;
+  *) echo "iptv-epg-grab: grabber failed (exit $rc), keeping the existing guide" >&2; exit 1 ;;
+esac
 python3 -c 'import sys, xml.etree.ElementTree as E; r = E.parse(sys.argv[1]).getroot(); sys.exit(r.tag != "tv" or not r.findall("channel"))' "$tmp"
 chmod 0644 "$tmp"
 mv -f "$tmp" "$out"

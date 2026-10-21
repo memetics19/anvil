@@ -23,3 +23,6 @@ site/bootstrap.yml
 !site/*.example*
 .ansible/
 .collections/
+
+# Python bytecode
+__pycache__/

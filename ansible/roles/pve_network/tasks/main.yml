@@ -151,6 +151,7 @@
             state: stopped
           when: not ansible_check_mode
       rescue:
+        # In check mode there is no backup (and nothing was written).
         - name: Restore the backed up interfaces file
           ansible.builtin.copy:
             src: "{{ pve_network_backup.dest }}"
@@ -159,10 +160,12 @@
             mode: "0644"
             owner: root
             group: root
+          when: pve_network_backup.dest is defined
 
         - name: Reload the restored network configuration
           ansible.builtin.command: ifreload -a
           changed_when: true
+          when: pve_network_backup.dest is defined
 
         - name: Stop the rollback timer
           ansible.builtin.systemd:
