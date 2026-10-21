@@ -21,7 +21,10 @@
 
 - name: No SMTP
   ansible.builtin.debug:
-    msg: "no smtp_username/smtp_password in kv/{{ vaultwarden_vault_path }}: Vaultwarden runs without SMTP (invited emails register directly)"
+    msg: >-
+      no smtp_username/smtp_password in kv/{{ vaultwarden_vault_path }}: Vaultwarden runs without
+      SMTP (invited emails register directly); SIGNUPS_VERIFY and email two-step login
+      (and its enforcement on invited accounts) are off without SMTP
   when: vaultwarden_smtp_keys | length == 0
 
 - name: Pick the SMTP settings
@@ -65,32 +68,3 @@
       smtp_from (default smtp_username) an email address
     quiet: true
   when: vaultwarden_smtp is defined
-
-# Settings saved on the admin page land in data/config.json and override the environment.
-# Reported only (the file is the operator's): the names of any SMTP settings it holds.
-- name: Is there an admin-page config file
-  ansible.builtin.stat:
-    path: "{{ vaultwarden_dir }}/data/config.json"
-  register: vaultwarden_config_json
-
-- name: Read the admin-page config file
-  ansible.builtin.slurp:
-    src: "{{ vaultwarden_dir }}/data/config.json"
-  register: vaultwarden_config_json_raw
-  no_log: true
-  when: vaultwarden_config_json.stat.exists
-
-- name: SMTP settings in the admin-page config file
-  ansible.builtin.set_fact:
-    vaultwarden_config_json_smtp: >-
-      {{ (vaultwarden_config_json_raw.content | b64decode | from_json).keys()
-         | select('match', '^(smtp_|use_sendmail|sendmail_)') | list }}
-  when: vaultwarden_config_json.stat.exists
-
-- name: The admin-page config file overrides SMTP
-  ansible.builtin.debug:
-    msg: >-
-      WARNING: {{ vaultwarden_dir }}/data/config.json (saved on the admin page) sets
-      {{ vaultwarden_config_json_smtp | join(', ') }}, which override the SMTP settings from Vault.
-      SMTP is managed by code: remove those settings on the admin page (or the file) by hand.
-  when: vaultwarden_config_json_smtp | default([]) | length > 0

@@ -365,9 +365,16 @@ extensions use it as a self-hosted server URL.
   port 8080 with a read-only root filesystem, no capabilities and a 128 MB memory cap.
   Websocket notifications (`/notifications/hub`) go through the gateway on the same name.
 - **Settings:** `DOMAIN` is the gateway name; sign-ups are closed (`SIGNUPS_ALLOWED=false`),
-  invitations are on, password hints are never shown. Settings saved on the admin page go
-  to `data/config.json`, which overrides the role's environment: leave SMTP and the other
-  role settings alone there (each run warns when `config.json` sets SMTP).
+  invitations are on, password hints are never shown. **Don't save settings on the admin
+  page:** they go to `data/config.json`, which overrides the role's environment. Each run
+  lists (by name) the keys there that shadow a role setting and stops before touching the
+  container when one weakens it (open sign-ups, email verification or email two-step login
+  off while SMTP is on, hints shown, no admin token, another domain, fewer iterations, or a
+  pinned `admin_token`): `data/config.json (saved from the admin page) overrides <keys>;
+  open /admin → Reset defaults, then rerun`. The role never deletes or rewrites that file.
+- The run's admin-login check counts against Vaultwarden's admin rate limit (3 tries per
+  5 minutes per address); several runs within 5 minutes can fail with `admin=429`: wait
+  and rerun.
 - **Mail (SMTP) is managed by code**, from `kv/homelab/apps/vaultwarden`: the pair
   `smtp_username` + `smtp_password` turns it on (with it, invitations are mailed and
   `SIGNUPS_VERIFY` is on); `smtp_host`, `smtp_port`, `smtp_security` (starttls, force_tls,
@@ -417,6 +424,13 @@ runs `/usr/local/sbin/vaultwarden-backup` as the Vaultwarden user:
    `vaultwarden-YYYYMMDD-HHMMSS.tar.age` (UTC) and checked by size;
 4. the newest 14 of those objects are kept; nothing else in the bucket is touched.
 
+The work files (the plaintext copy and the archive) are on tmpfs
+(`/run/vaultwarden-backup`, removed when the job ends), never on disk; the job stops if
+that has less than twice the data free (`/run` is about 145 MB on `apps`).
+Follow-up, not done: object versioning or object lock on the bucket, so that a
+compromised `apps` (which owns the bucket) could not delete the backups; today the Mac
+copies from `make backup` are the second copy.
+
 The bucket belongs to the RGW user `vaultwarden-backup` (`make ceph`), which may own no
 other bucket and cannot read any other; its keys are in Vault
 (`kv/homelab/apps/vaultwarden-backup`). `make backup` copies the newest object to
@@ -428,8 +442,9 @@ other bucket and cannot read any other; its keys are in Vault
 `make backup` pulled), decrypts it on the Mac straight into a one-time key made on `apps`
 (no plaintext on the Mac's disk, the identity never leaves it), restores it into a
 temporary container `vaultwarden-restore-drill` (no network, no gateway route, no admin
-page), checks that `/alive` answers and that the users table equals the live one, then
-removes that container and its directory. A real restore is the same steps into
+page; a restored `config.json` is moved aside so it cannot override that), checks that
+`/alive` answers, that the user count equals the live one and that every restored user is
+live, then removes that container (by its ID) and its directory. A real restore is the same steps into
 `/opt/vaultwarden/data` with the `vaultwarden` container stopped.
 
 ## IPTV

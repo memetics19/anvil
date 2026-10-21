@@ -26,8 +26,12 @@ out="$tmp/out"
 mkdir -p "$out"
 # run <services-yaml-flow> [<vault-secrets-yaml-flow>] -> renders into $out; returns the play's rc
 run() {
-  local sec=${2:-}
+  local sec=${2:-} dirvar=
   [ -n "$sec" ] || sec='{}'
+  rm -rf "$tmp/vw"
+  if [ -n "${3:-}" ]; then
+    mkdir -p "$tmp/vw/data"; printf '%s\n' "$3" >"$tmp/vw/data/config.json"; dirvar="vaultwarden_dir: $tmp/vw"
+  fi
   cat >"$tmp/play.yml" <<PLAY
 - name: Vaultwarden test
   hosts: localhost
@@ -51,6 +55,7 @@ run() {
     vaultwarden_backup_age_recipient: age1qyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqs3290gq
     vaultwarden_secrets: $sec
     vaultwarden_vault_keys: "{{ vaultwarden_secrets.keys() | list }}"
+    $dirvar
   tasks:
     - name: Gateway routes
       ansible.builtin.include_role:
@@ -66,6 +71,11 @@ run() {
       ansible.builtin.include_role:
         name: vaultwarden
         tasks_from: smtp.yml
+        public: true
+    - name: Admin-page overrides
+      ansible.builtin.include_role:
+        name: vaultwarden
+        tasks_from: config_json.yml
         public: true
     - name: Dashboard entries
       ansible.builtin.include_role:
@@ -173,6 +183,27 @@ reject_smtp "an unknown security" '{smtp_username: a@example.com, smtp_password:
 reject_smtp "a quote in the password" "{smtp_username: a@example.com, smtp_password: \"abc'defghij\"}" 'smtp_from (default smtp_username) an email address'
 reject_smtp "no sender address"   '{smtp_username: resend, smtp_password: re_fakekey123456}' 'smtp_from (default smtp_username) an email address'
 check "smtp: the password never in the log"  '! grep -rq "re_fakekey123456\|abcdefghijkl" "$tmp/log"'
+
+# Admin-page config.json: shadowing keys are listed by name, weakening ones stop the run
+# (names only, never values), and the file is left as it was.
+cfg_check() {
+  run "$good" "$2" "$3"; rc=$?
+  if [ "$rc" -ne 0 ] && grep -q "data/config.json (saved from the admin page) overrides $4; open /admin → Reset defaults" "$tmp/log" \
+     && [ "$(cat "$tmp/vw/data/config.json")" = "$3" ] && ! grep -q "s3cr3t-hash-value" "$tmp/log"; then ok "config.json: $1"
+  else bad_ "config.json: $1"; grep -m1 "overrides" "$tmp/log"; fi
+}
+smtp='{smtp_username: a@example.com, smtp_password: abcdefghijkl}'
+cfg_check "open sign-ups stop the run" '' '{"signups_allowed": true}' 'signups_allowed'
+cfg_check "the UI's full save stops the run (names only)" "$smtp" \
+  '{"signups_allowed": true, "signups_verify": false, "_enable_email_2fa": false, "email_2fa_enforce_on_verified_invite": false, "admin_token": "s3cr3t-hash-value", "domain": "https://pass.internal.example.com", "smtp_port": 587}' \
+  '_enable_email_2fa, admin_token, email_2fa_enforce_on_verified_invite, signups_allowed, signups_verify'
+cfg_check "another domain, hints, no admin token" '' '{"domain": "https://other.example.com", "show_password_hint": true, "disable_admin_token": true}' \
+  'disable_admin_token, domain, show_password_hint'
+cfg_check "fewer iterations" '' '{"password_iterations": 100000}' 'password_iterations'
+run "$good" '' '{"signups_verify": false, "_enable_email_2fa": false, "smtp_port": 587, "domain": "https://pass.internal.example.com", "icon_cache_ttl": 1}'
+rc=$?
+check "config.json: without SMTP these only warn" '[ "$rc" = 0 ] && grep -q "WARNING: data/config.json (saved from the admin page) overrides _enable_email_2fa, domain, signups_verify, smtp_port; settings are managed by code" "$tmp/log" && ! grep -q icon_cache_ttl "$tmp/log"'
+check "smtp off: the notice names 2FA and SIGNUPS_VERIFY" 'grep -q "SIGNUPS_VERIFY and email two-step login" "$tmp/log"'
 
 # --- backup script ---------------------------------------------------------------------------
 run "$good" >/dev/null

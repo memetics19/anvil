@@ -1,0 +1,65 @@
+# Settings saved on the admin page land in data/config.json and override the environment
+# this role sets. The file is the operator's: it is never deleted or rewritten here. Each run
+# lists (by name) every key in it that shadows a role-managed setting, and stops before the
+# container is touched when one of them weakens the role's value. Values are never shown.
+
+- name: Is there an admin-page config file
+  ansible.builtin.stat:
+    path: "{{ vaultwarden_dir }}/data/config.json"
+  register: vaultwarden_config_json
+
+- name: Read the admin-page config file
+  ansible.builtin.slurp:
+    src: "{{ vaultwarden_dir }}/data/config.json"
+  register: vaultwarden_config_json_raw
+  no_log: true
+  when: vaultwarden_config_json.stat.exists
+
+# shadowed: keys that override a setting this role manages; weakened: those whose value is
+# weaker than the role's (open sign-ups, no email verification or email two-step login while
+# SMTP is configured, hints shown, no admin token, another domain, fewer iterations) or that
+# pin the admin token (its hash then no longer follows Vault).
+- name: Admin-page settings that shadow or weaken the role's
+  ansible.builtin.set_fact:
+    vaultwarden_config_json_check: >-
+      {%- set c = (vaultwarden_config_json_raw.content | b64decode | from_json)
+                  if vaultwarden_config_json.stat.exists else {} -%}
+      {%- set managed = vaultwarden_settings.keys() | map('lower') | list
+            + ['domain', 'admin_token', 'disable_admin_token', 'signups_allowed', 'signups_verify',
+               'invitations_allowed', '_enable_email_2fa', 'require_device_email', 'show_password_hint',
+               'use_sendmail', '_enable_smtp'] -%}
+      {%- set shadowed = c.keys() | select('in', managed) | list
+            + c.keys() | select('match', '^(smtp_|email_2fa_|email_expiration_time$|email_attempts_limit$)') | list -%}
+      {%- set smtp = vaultwarden_smtp is defined -%}
+      {%- set weak = [] -%}
+      {%- if c.signups_allowed | default(false) | bool -%}{%- set _ = weak.append('signups_allowed') -%}{%- endif -%}
+      {%- if smtp and 'signups_verify' in c and not c.signups_verify | bool -%}{%- set _ = weak.append('signups_verify') -%}{%- endif -%}
+      {%- if smtp and '_enable_email_2fa' in c and not c._enable_email_2fa | bool -%}{%- set _ = weak.append('_enable_email_2fa') -%}{%- endif -%}
+      {%- if smtp and 'email_2fa_enforce_on_verified_invite' in c and not c.email_2fa_enforce_on_verified_invite | bool -%}
+      {%- set _ = weak.append('email_2fa_enforce_on_verified_invite') -%}{%- endif -%}
+      {%- if smtp and '_enable_smtp' in c and not c._enable_smtp | bool -%}{%- set _ = weak.append('_enable_smtp') -%}{%- endif -%}
+      {%- if c.show_password_hint | default(false) | bool -%}{%- set _ = weak.append('show_password_hint') -%}{%- endif -%}
+      {%- if c.disable_admin_token | default(false) | bool -%}{%- set _ = weak.append('disable_admin_token') -%}{%- endif -%}
+      {%- if 'domain' in c and c.domain | string != vaultwarden_domain_url -%}{%- set _ = weak.append('domain') -%}{%- endif -%}
+      {%- if 'admin_token' in c -%}{%- set _ = weak.append('admin_token') -%}{%- endif -%}
+      {%- if 'password_iterations' in c and c.password_iterations | int < vaultwarden_settings.PASSWORD_ITERATIONS | int -%}
+      {%- set _ = weak.append('password_iterations') -%}{%- endif -%}
+      {{ {'shadowed': shadowed | unique | sort, 'weakened': weak | sort} }}
+  no_log: true
+
+- name: Admin-page settings that shadow the role's (names only)
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: data/config.json (saved from the admin page) overrides
+      {{ vaultwarden_config_json_check.shadowed | join(', ') }}; settings are managed by code:
+      open /admin → Reset defaults, then rerun
+  when: vaultwarden_config_json_check.shadowed | length > 0
+
+- name: No admin-page setting weakens the role's
+  ansible.builtin.assert:
+    that: vaultwarden_config_json_check.weakened | length == 0
+    fail_msg: >-
+      data/config.json (saved from the admin page) overrides
+      {{ vaultwarden_config_json_check.weakened | join(', ') }}; open /admin → Reset defaults,
+      then rerun
+    quiet: true

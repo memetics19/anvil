@@ -1,8 +1,11 @@
 # Restore drill (playbooks/vaultwarden-restore-drill.yml, make vaultwarden-drill): the
 # newest backup in the bucket, as `make backup` copied it to the controller, is restored
 # into a temporary container on this host and checked: /alive answers 200 (it opens the
-# database) and the restored users table equals the live one. Then that container and its
-# directory are removed (only what this run created).
+# database), the restored user count equals the live one and every restored user is live.
+# A restored config.json is moved aside first (it would override the drill's settings).
+# Then that container and its directory are removed (only what this run created). The
+# drill directory is on disk (/var/tmp, root-only, removed at the end), not tmpfs: a
+# container bind-mounts it as its data directory.
 # The operator's age identity never leaves the controller: the backup is decrypted there
 # straight into age again, to a one-time key made on this host, so no plaintext touches the
 # controller's disk.
@@ -110,7 +113,17 @@
       register: vaultwarden_drill_ls
       changed_when: false
 
-    # No network at all (no gateway route, no other container), no admin page, no sign-up.
+    # A restored admin-page config.json would override the drill's environment (it may open
+    # the admin page or sign-ups). It was restored and is counted above; it is moved out of
+    # the data directory (inside the drill directory) before the container starts.
+    - name: Drill | move the restored config.json aside
+      ansible.builtin.command:
+        argv: [mv, --no-clobber, vaultwarden/config.json, config.json.restored]
+        chdir: "{{ vaultwarden_drill_dir.path }}"
+        removes: "{{ vaultwarden_drill_dir.path }}/vaultwarden/config.json"
+
+    # No network at all (no gateway route, no other container), no admin page (no token), no
+    # sign-up; nothing in the data directory overrides that (config.json is moved aside).
     - name: Drill | start the temporary container
       ansible.builtin.command:
         argv:
@@ -168,17 +181,20 @@
       delay: 3
       until: vaultwarden_drill_alive.stdout == '200'
 
-    # Users (count and a digest of uuid, email and password hash), read-only: the restored
-    # database as root (it is in the root-only drill directory, removed below) against the
-    # live one, read as the Vaultwarden user so SQLite never makes a root-owned file there.
+    # Users, read-only: the restored database as root (it is in the root-only drill
+    # directory, removed below), the live one as the Vaultwarden user so SQLite never makes
+    # a root-owned file there. Line 1: restored count, live count, restored uuids missing
+    # from live. Line 2 (information only; accounts change after a backup): whether
+    # uuid, email and password hash are identical.
     - name: Drill | users in the restored and the live database
       ansible.builtin.shell:
         cmd: >-
           set -o pipefail;
-          q='SELECT uuid, email, password_hash FROM users ORDER BY uuid;';
-          users() { "$@" 'SELECT count(*) FROM users;' | tr '\n' ' '; "$@" "$q" | sha256sum | cut -c1-16; };
-          users sqlite3 -readonly {{ (vaultwarden_drill_dir.path ~ '/vaultwarden/db.sqlite3') | quote }};
-          users runuser -u vaultwarden -- sqlite3 -readonly {{ (vaultwarden_dir ~ '/data/db.sqlite3') | quote }}
+          r() { sqlite3 -readonly {{ (vaultwarden_drill_dir.path ~ '/vaultwarden/db.sqlite3') | quote }} "$1"; };
+          l() { runuser -u vaultwarden -- sqlite3 -readonly {{ (vaultwarden_dir ~ '/data/db.sqlite3') | quote }} "$1"; };
+          q='SELECT uuid FROM users ORDER BY uuid;'; d='SELECT uuid, email, password_hash FROM users ORDER BY uuid;';
+          echo "$(r 'SELECT count(*) FROM users;') $(l 'SELECT count(*) FROM users;') $(comm -23 <(r "$q") <(l "$q") | wc -l)";
+          [ "$(r "$d" | sha256sum)" = "$(l "$d" | sha256sum)" ] && echo identical || echo differs
         executable: /bin/bash
       register: vaultwarden_drill_users
       changed_when: false
@@ -188,20 +204,39 @@
         that:
           - vaultwarden_drill_alive.stdout == '200'
           - vaultwarden_drill_users.stdout_lines | length == 2
-          - vaultwarden_drill_users.stdout_lines[0] == vaultwarden_drill_users.stdout_lines[1]
+          - vaultwarden_drill_users.stdout_lines[0].split(' ') | length == 3
+          - vaultwarden_drill_users.stdout_lines[0].split(' ')[0] == vaultwarden_drill_users.stdout_lines[0].split(' ')[1]
+          - vaultwarden_drill_users.stdout_lines[0].split(' ')[2] == '0'
         fail_msg: >-
-          /alive={{ vaultwarden_drill_alive.stdout }}; users restored/live (count digest):
-          {{ vaultwarden_drill_users.stdout_lines }}
+          /alive={{ vaultwarden_drill_alive.stdout }}; users restored, live, restored-not-in-live:
+          {{ vaultwarden_drill_users.stdout_lines[0] | default('') }}
         success_msg: >-
           {{ vaultwarden_drill_newest.stdout | trim }}: /alive=200, users {{ vaultwarden_drill_users.stdout_lines[0].split(' ')[0] }}
-          (restored = live), files {{ vaultwarden_drill_ls.stdout_lines | join(' ') }}
+          (count = live, all restored users live; uuid/email/hash {{ vaultwarden_drill_users.stdout_lines[1] }}),
+          files {{ vaultwarden_drill_ls.stdout_lines | join(' ') }}
 
   always:
-    - name: Drill | remove the temporary container
+    # By the ID docker run printed; by name only when the run failed after the name was
+    # confirmed free above (so a container of that name can only be this run's).
+    - name: Drill | remove the temporary container (by ID)
+      ansible.builtin.command:
+        argv: [docker, rm, --force, "{{ vaultwarden_drill_run.stdout | trim }}"]
+      changed_when: true
+      when:
+        - vaultwarden_drill_run is defined and vaultwarden_drill_run is not skipped
+        - vaultwarden_drill_run.rc | default(1) == 0
+        - vaultwarden_drill_run.stdout | default('') | trim is match('^[0-9a-f]{64}$')
+
+    - name: Drill | remove the temporary container (by name, after a failed run)
       ansible.builtin.command:
         argv: [docker, rm, --force, "{{ vaultwarden_drill_container }}"]
-      changed_when: true
-      when: vaultwarden_drill_run is defined and vaultwarden_drill_run is not skipped
+      register: vaultwarden_drill_rm_name
+      changed_when: vaultwarden_drill_rm_name.rc == 0
+      failed_when: false
+      when:
+        - vaultwarden_drill_run is defined and vaultwarden_drill_run is not skipped
+        - not (vaultwarden_drill_run.rc | default(1) == 0 and vaultwarden_drill_run.stdout | default('') | trim is match('^[0-9a-f]{64}$'))
+        - vaultwarden_drill_exists.stdout | default('x') | trim | length == 0
 
     - name: Drill | remove the temporary directory on the host
       ansible.builtin.file:

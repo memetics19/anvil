@@ -48,6 +48,11 @@
 - name: Outgoing mail (optional)
   ansible.builtin.include_tasks: smtp.yml
 
+# Before anything is written or recreated: stop when the admin page's config.json weakens
+# a setting this role manages.
+- name: Admin-page overrides
+  ansible.builtin.include_tasks: config_json.yml
+
 - name: Render the env file
   ansible.builtin.set_fact:
     vaultwarden_env_content: "{{ lookup('ansible.builtin.template', 'vaultwarden.env.j2') }}"
@@ -127,7 +132,13 @@
 - name: Health, admin token and closed sign-ups (HTTP codes)
   ansible.builtin.assert:
     that: vaultwarden_check.stdout | default('') | trim == 'alive=200 admin=200 signup=400'
-    fail_msg: "want alive=200 admin=200 signup=400, got: {{ vaultwarden_check.stdout | default('') | trim }} (rc {{ vaultwarden_check.rc | default('') }})"
+    fail_msg: >-
+      want alive=200 admin=200 signup=400, got: {{ vaultwarden_check.stdout | default('') | trim }}
+      (rc {{ vaultwarden_check.rc | default('') }}).
+      admin=429: the admin login rate limit (3 tries per 5 minutes per address, counted here
+      from inside the container) was hit by quick reruns; wait 5 minutes and rerun.
+      admin=401 or signup=200: check data/config.json (saved from the admin page), which
+      overrides the role's settings; open /admin → Reset defaults, then rerun
     success_msg: "{{ vaultwarden_check.stdout | default('') | trim }}"
   when: not ansible_check_mode
 

@@ -12,8 +12,13 @@ Group=vaultwarden
 # The S3 remote "vwb" for rclone (endpoint and keys). Read by systemd as root; mode 600.
 EnvironmentFile={{ vaultwarden_backup_etc }}/rclone.env
 ExecStart=/usr/local/sbin/vaultwarden-backup
-# Private /tmp and /var/tmp (the work directory); the data directory is writable because
-# SQLite takes its WAL locks there. Everything else is read-only.
+# The work directory (the plaintext copy and the encrypted archive) is on tmpfs, in
+# /run/vaultwarden-backup (mode 700, removed by systemd when the job ends), never on disk.
+# The data directory is writable because SQLite takes its WAL locks there. Everything else
+# is read-only.
+RuntimeDirectory=vaultwarden-backup
+RuntimeDirectoryMode=0700
+Environment=TMPDIR=%t/vaultwarden-backup
 PrivateTmp=true
 ProtectSystem=strict
 ReadWritePaths={{ vaultwarden_dir }}/data

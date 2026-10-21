@@ -9,7 +9,9 @@
 #   3. uploaded as vaultwarden-YYYYMMDD-HHMMSS.tar.age, then checked by size;
 #   4. of the objects named like that, all but the newest KEEP are deleted (nothing else in
 #      the bucket is touched).
-# Settings come from the environment (the unit), with these defaults.
+# The work directory is under $TMPDIR, which the unit puts on tmpfs (/run/vaultwarden-backup):
+# the plaintext copy never touches the disk. Settings come from the environment (the unit),
+# with these defaults.
 set -euo pipefail
 
 data=${VW_BACKUP_DATA:-{{ vaultwarden_dir }}/data}
@@ -24,6 +26,10 @@ die() { echo "vaultwarden-backup: $*" >&2; exit 1; }
 case $keep in '' | *[!0-9]* | 0) die "KEEP must be a positive number" ;; esac
 
 umask 077
+# The copy and the archive both sit in the work directory (tmpfs): need about twice the data.
+need=$(du -sk "$data/db.sqlite3" "$data/attachments" "$data/sends" 2>/dev/null | awk '{s += $1} END {print 2 * s + 1024}')
+free=$(df -Pk "${TMPDIR:-/var/tmp}" | awk 'NR == 2 {print $4}')
+[ "$need" -lt "$free" ] || die "work space ${TMPDIR:-/var/tmp} has ${free} KiB free, needs ${need} KiB (twice the data)"
 name="vaultwarden-$(date -u +%Y%m%d-%H%M%S).tar.age"
 work=$(mktemp -d "${TMPDIR:-/var/tmp}/vaultwarden-backup.XXXXXX")
 trap 'rm -rf "$work"' EXIT
