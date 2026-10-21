@@ -7,7 +7,8 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 blob=https://github.com/memetics19/anvil/blob/main
 src="$root/build/docs-src"
-rm -rf "$src" && mkdir -p "$src"
+mkdir -p "$src"
+rm -f "$src"/*.md # only the copied pages live here
 
 # README links: docs/x.md -> x.md, other repo files -> GitHub
 sed -E -e 's#\]\(docs/#](#g' \
