@@ -187,9 +187,9 @@
   ansible.builtin.shell:
     cmd: >-
       set -o pipefail;
-      hs() { openssl s_client -connect {{ caddy_listen_ips[0] }}:443 -servername {{ caddy_routes[0].fqdn | quote }}
+      hs() { timeout 10 openssl s_client -connect {{ caddy_listen_ips[0] }}:443 -servername {{ caddy_routes[0].fqdn | quote }}
       -tls1_2 "$@" </dev/null 2>&1 | grep -cE 'Cipher is [A-Z0-9][A-Z0-9-]*$' || true; };
-      hse() { openssl s_client -connect {{ caddy_listen_ips[0] }}:443 -servername {{ caddy_routes[0].fqdn | quote }}
+      hse() { timeout 10 openssl s_client -connect {{ caddy_listen_ips[0] }}:443 -servername {{ caddy_routes[0].fqdn | quote }}
       -tls1_2 </dev/null 2>&1 | grep -cE 'Cipher is ECDHE-' || true; };
       echo "rsa=$(hs -cipher AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA:AES256-SHA) ecdhe=$(hse)"
     executable: /bin/bash

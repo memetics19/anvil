@@ -227,7 +227,8 @@ subnet. Each NIC answers ARP only for its own address.
 - Block lists (`pihole_blocklists`): StevenBlack plus a few lists from firebog and
   URLhaus. A change runs a gravity update. Lists added in the web UI are left alone.
 - Web UI: `https://dns.<domain>/admin/`, password `web_password` from Vault
-  `kv/homelab/apps/pihole`. Settings passed by the role are read-only in the UI.
+  `kv/homelab/apps/pihole`. Settings passed by the role are read-only in the UI. Local DNS
+  records come from Vault: one added in the UI is removed on the next run.
 
 Host firewall (`host_firewall` role, ufw): inbound denied by default; SSH (22), DNS (53
 tcp/udp) and the gateway (80, 443) are allowed, each bound to its NIC and address. A firewall

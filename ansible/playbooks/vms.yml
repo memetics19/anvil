@@ -93,6 +93,8 @@
       ansible.builtin.include_role:
         name: caddy
         tasks_from: services.yml
+        apply:
+          tags: [always]
       tags: [always]
   roles:
     - role: docker
