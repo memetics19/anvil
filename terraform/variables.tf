@@ -37,9 +37,11 @@ variable "site_json" {
       can(regex("^[0-9.]+$", jsondecode(var.site_json).hosts.apps.ip)) &&
       can(regex("^[0-9.]+$", jsondecode(var.site_json).hosts.apps.home_ip)) &&
       can(regex("^[0-9]+$", jsonencode(jsondecode(var.site_json).hosts.apps.vmid))) &&
-      can(regex("^[0-9]+$", jsonencode(jsondecode(var.site_json).pve.uplink_prefix)))
+      can(regex("^[0-9]+$", jsonencode(jsondecode(var.site_json).pve.uplink_prefix))) &&
+      alltrue([for k in ["mac", "home_mac"] :
+      can(regex("^\"([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\"$", jsonencode(jsondecode(var.site_json).hosts.apps[k])))])
     )
-    error_message = "site.hosts.apps needs ip (lab, a.b.c.d), home_ip (home network, a.b.c.d) and vmid (a number), and site.pve.uplink_prefix (a number)."
+    error_message = "site.hosts.apps needs ip (lab, a.b.c.d), home_ip (home network, a.b.c.d), mac and home_mac (quoted aa:bb:cc:dd:ee:ff) and vmid (a number), and site.pve.uplink_prefix (a number)."
   }
 
   validation {

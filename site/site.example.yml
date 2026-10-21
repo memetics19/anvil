@@ -18,9 +18,18 @@ site:
     netbird: {ip: 192.0.2.115, vmid: 9002, mac: "02:00:00:00:00:02"}
     ragnarok: {ip: 192.0.2.119, vmid: 9003, mac: "02:00:00:00:00:03"}
     vault: {ip: 192.0.2.120, vmid: 9004}
-    # Two NICs: ip on the lab network (default route), home_ip on the home network
-    # (pve.uplink_ip's /uplink_prefix, no gateway). Reserve home_ip in the router's DHCP.
-    apps: {ip: 192.0.2.121, home_ip: 198.51.100.249, vmid: 9005}
+    # Two NICs: ip/mac on the lab network (default route), home_ip/home_mac on the home
+    # network (pve.uplink_ip's /uplink_prefix, no gateway). Reserve home_ip for home_mac in
+    # the router's DHCP. dns_subnet: the Pi-hole compose network (private, unused
+    # elsewhere); dns_unbound_ip: Unbound's fixed address in it (Pi-hole's upstream).
+    apps:
+      ip: 192.0.2.121
+      home_ip: 198.51.100.249
+      vmid: 9005
+      mac: "02:00:00:00:00:05"
+      home_mac: "02:00:00:00:00:06"
+      dns_subnet: 203.0.113.0/24
+      dns_unbound_ip: 203.0.113.53
   # Addresses the frigate stack's config refers to (frigate_stack role).
   frigate_stack:
     genai_ollama_ip: 192.0.2.127

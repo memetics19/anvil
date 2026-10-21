@@ -9,7 +9,7 @@
 # network with no gateway, so home clients reach Pi-hole directly on their own subnet.
 # Proxmox cloud-init takes one address per NIC, so two NICs keep the whole network
 # config in cloud-init (guest_base leaves the netplan alone, as on the vault VM).
-# Addresses and VMID are site values (site.hosts.apps.{ip,home_ip,vmid}).
+# Addresses, MACs and VMID are site values (site.hosts.apps.{ip,home_ip,mac,home_mac,vmid}).
 
 resource "proxmox_virtual_environment_vm" "apps" {
   node_name     = var.node_name
@@ -47,18 +47,21 @@ resource "proxmox_virtual_environment_vm" "apps" {
     discard      = "on"
   }
 
-  # net0: lab network.
+  # net0: lab network. MACs are pinned from site (the router's DHCP reservation for the
+  # home address is made by MAC).
   network_device {
-    bridge   = "vmbr0"
-    model    = "virtio"
-    firewall = true
+    bridge      = "vmbr0"
+    model       = "virtio"
+    mac_address = nonsensitive(local.site.hosts.apps.mac)
+    firewall    = true
   }
 
   # net1: home network (same bridge; the home /24 shares the L2 segment).
   network_device {
-    bridge   = "vmbr0"
-    model    = "virtio"
-    firewall = true
+    bridge      = "vmbr0"
+    model       = "virtio"
+    mac_address = nonsensitive(local.site.hosts.apps.home_mac)
+    firewall    = true
   }
 
   operating_system {
