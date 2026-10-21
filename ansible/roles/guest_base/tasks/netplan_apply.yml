@@ -22,6 +22,13 @@
     argv: [cp, -a, /etc/netplan/., "{{ guest_base_netplan_backup.path }}/"]
   changed_when: true
 
+# A unit left over from an earlier run (failed or finished) would make systemd-run refuse
+# the name.
+- name: Clear a stale rollback unit
+  ansible.builtin.command: systemctl reset-failed netplan-rollback.service netplan-rollback.timer
+  changed_when: false
+  failed_when: false
+
 - name: Arm the timed rollback
   ansible.builtin.command:
     argv:
@@ -33,7 +40,7 @@
       - --wait
       - "0"
       - --target
-      - "{{ guest_base_netplan_rollback_target }}"
+      - "{{ guest_base_netplan_target }}"
   changed_when: true
 
 - name: Write, apply and confirm

@@ -3,6 +3,46 @@
     - name: Validate the rendered netplan
       ansible.builtin.include_tasks: netplan_validate.yml
 
+    - name: Read the controller address as the guest sees it (no become, sudo drops SSH_CLIENT)
+      ansible.builtin.command: printenv SSH_CLIENT
+      # ansible_become in group_vars outranks the `become` keyword, so override the variable.
+      vars:
+        ansible_become: false
+      register: guest_base_netplan_ssh_client
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Pick the rollback ping target
+      ansible.builtin.set_fact:
+        guest_base_netplan_target: >-
+          {{ guest_base_netplan_rollback_target
+             or (guest_base_netplan_ssh_client.stdout | default('') | trim).split(' ')[0] }}
+
+    - name: The rollback ping target is known
+      ansible.builtin.assert:
+        that: guest_base_netplan_target | length > 0
+        fail_msg: >-
+          Could not read the controller address (SSH_CLIENT) on {{ inventory_hostname }}; set
+          guest_base_netplan_rollback_target explicitly. No fallback to the gateway.
+        quiet: true
+
+    - name: Report the rollback ping target (address not shown)
+      ansible.builtin.debug:
+        msg: >-
+          netplan rollback target resolved: yes ({{ 'override' if guest_base_netplan_rollback_target else 'SSH_CLIENT' }});
+          in the lab network: {{ 'yes' if guest_base_netplan_target_in_lan | bool else 'no' }}
+      vars:
+        guest_base_netplan_t: "{{ (guest_base_netplan_target ~ '.x.x.x.x').split('.')[:4] | map('int') | list }}"
+        guest_base_netplan_n: "{{ site.lan_cidr.split('/')[0].split('.') | map('int') | list }}"
+        guest_base_netplan_div: "{{ 2 ** (32 - (site.lan_cidr.split('/')[1] | int)) }}"
+        guest_base_netplan_target_in_lan: >-
+          {{ guest_base_netplan_target is match('^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$')
+             and ((guest_base_netplan_t[0] * 16777216 + guest_base_netplan_t[1] * 65536
+                   + guest_base_netplan_t[2] * 256 + guest_base_netplan_t[3]) // (guest_base_netplan_div | int))
+              == ((guest_base_netplan_n[0] * 16777216 + guest_base_netplan_n[1] * 65536
+                   + guest_base_netplan_n[2] * 256 + guest_base_netplan_n[3]) // (guest_base_netplan_div | int)) }}
+
     - name: Checksum of the rendered file
       ansible.builtin.stat:
         path: "{{ guest_base_netplan_stage.path }}/etc/netplan/{{ guest_base_netplan_file }}"

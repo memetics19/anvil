@@ -19,7 +19,8 @@ guest_base_netplan_backup_dir: /var/backups/guest-netplan
 guest_base_netplan_rollback_script: /usr/local/sbin/netplan-rollback.sh
 # Seconds before the rollback fires if the guest stops answering.
 guest_base_netplan_rollback_after: 120
-# Address the guest pings to decide whether the change broke connectivity: the Ansible
-# controller as seen over SSH, else the gateway.
-guest_base_netplan_rollback_target: >-
-  {{ (ansible_env.SSH_CLIENT | default('')).split(' ')[0] | default(guest_base_gateway, true) }}
+# Address the guest pings to decide whether the change broke connectivity. Empty means the
+# Ansible controller as the guest sees it over SSH (read without become: sudo drops
+# SSH_CLIENT). There is no fallback to the gateway: a change that keeps the gateway
+# reachable but cuts off the controller must still roll back.
+guest_base_netplan_rollback_target: ""
