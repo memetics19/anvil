@@ -30,9 +30,8 @@ The three cloudflared units currently run the same tunnel token.
 
 | Vault path | Key | What it is for | Who creates it |
 |---|---|---|---|
-| `kv/homelab/pve/netbird` | `setup_key` | NetBird enrolment of the Proxmox host | Shreeda: reusable setup key from the NetBird dashboard |
-| `kv/homelab/netbird/netbird` | `setup_key` | NetBird enrolment of the netbird VM | Shreeda: reusable setup key from the NetBird dashboard |
-| `kv/homelab/ragnarok/testinspector-mcp` | `deploy_key` | Read-only deploy key for the testinspector-mcp repo | Shreeda: after the GitHub repo exists |
+| `kv/homelab/pve/netbird` | `setup_key` | NetBird enrolment of the Proxmox host | operator: reusable setup key from the NetBird dashboard |
+| `kv/homelab/netbird/netbird` | `setup_key` | NetBird enrolment of the netbird VM | operator: reusable setup key from the NetBird dashboard |
 
 Setup keys cannot be read back from an enrolled client, so these are new keys, written with
 `vault kv put -mount=kv homelab/<path> setup_key=-` (value on stdin).
@@ -53,4 +52,3 @@ Setup keys cannot be read back from an enrolled client, so these are new keys, w
 | ragnarok | ARR compose (`/home/ubuntu/docker-compose.yaml`) | Env holds only ids, ports, timezone, log settings |
 | ragnarok | qbittorrent, privoxy, jackett, dispatcharr, flaresolverr | No secret in compose env; app logins and API keys sit in each app's config dir (app data) |
 | ragnarok | iptv-epg | No env file or secret |
-| ragnarok | `testinspector-mcp` unit | Env holds only URLs, origins and hosts |
