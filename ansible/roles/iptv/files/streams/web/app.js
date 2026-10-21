@@ -279,8 +279,10 @@
         lazyLoad: false,
         autoCleanupSourceBuffer: true,
         liveBufferLatencyChasing: true,
-        liveBufferLatencyMaxLatency: 8,
-        liveBufferLatencyMinRemain: 3,
+        // The helper delivers whole 4 s HLS segments with gaps of up to about 7 s: keep three
+        // segments in reserve so a late one does not stall playback.
+        liveBufferLatencyMaxLatency: 30,
+        liveBufferLatencyMinRemain: 12,
         customLoader: LiveLoader || undefined
       });
       engine = e;
