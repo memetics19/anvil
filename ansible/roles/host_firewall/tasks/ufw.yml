@@ -1,0 +1,31 @@
+# Run twice: as a preview in check mode (host_firewall_preview) and for real (apply.yml).
+- name: Default policies
+  community.general.ufw:
+    direction: "{{ item.direction }}"
+    default: "{{ item.policy }}"
+  loop:
+    - {direction: incoming, policy: deny}
+    - {direction: outgoing, policy: allow}
+  check_mode: "{{ host_firewall_preview | default(false) | bool or ansible_check_mode }}"
+  register: host_firewall_preview_defaults
+
+- name: Allow rules (per NIC and address)
+  community.general.ufw:
+    rule: allow
+    direction: in
+    interface: "{{ host_firewall_nic[item.ip] }}"
+    to_ip: "{{ item.ip }}"
+    to_port: "{{ item.port | string }}"
+    proto: "{{ item.proto }}"
+    comment: managed by ansible (host_firewall)
+  loop: "{{ host_firewall_rules }}"
+  loop_control:
+    label: "{{ item.port }}/{{ item.proto }} on {{ host_firewall_nic[item.ip] }}"
+  check_mode: "{{ host_firewall_preview | default(false) | bool or ansible_check_mode }}"
+  register: host_firewall_preview_rules
+
+- name: Firewall enabled
+  community.general.ufw:
+    state: enabled
+  check_mode: "{{ host_firewall_preview | default(false) | bool or ansible_check_mode }}"
+  register: host_firewall_preview_enable

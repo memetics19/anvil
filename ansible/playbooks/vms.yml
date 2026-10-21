@@ -3,7 +3,7 @@
 # node_exporter (group node_exporter in the inventory).
 # Run: make vms ARGS="--check --diff"   or one VM: make vm HOST=frigate
 # Tags: base, docker, cloudflared, node_exporter, frigate, arr, iptv_epg, filestash, iptv,
-# netbird_peer, redis, ntfy, pulse, pihole.
+# netbird_peer, redis, ntfy, pulse, pihole, firewall.
 - name: Guest base
   hosts: guests:vault_servers:apps_servers
   pre_tasks:
@@ -89,3 +89,6 @@
       tags: [docker]
     - role: pihole
       tags: [pihole]
+    # After the services it lets in, so its checks can reach them.
+    - role: host_firewall
+      tags: [firewall]

@@ -4,3 +4,25 @@ ansible_become_password: "{{ lookup('env', 'ANSIBLE_BECOME_PASSWORD') }}"
 # Two NICs, both addressed by cloud-init (terraform/vm_apps.tf); guest_base leaves the
 # netplan alone, as on the vault VM.
 guest_base_manage_netplan: false
+
+# Host firewall (role host_firewall): SSH, DNS and the Pi-hole web UI on both NICs; 443
+# is added on the lab NIC with Vaultwarden.
+_apps_ip: "{{ site.hosts[inventory_hostname].ip }}"
+_apps_home_ip: "{{ site.hosts[inventory_hostname].home_ip }}"
+host_firewall_rules:
+  - {ip: "{{ _apps_ip }}", port: 22, proto: tcp}
+  - {ip: "{{ _apps_ip }}", port: 53, proto: tcp}
+  - {ip: "{{ _apps_ip }}", port: 53, proto: udp}
+  - {ip: "{{ _apps_ip }}", port: 80, proto: tcp}
+  - {ip: "{{ _apps_home_ip }}", port: 22, proto: tcp}
+  - {ip: "{{ _apps_home_ip }}", port: 53, proto: tcp}
+  - {ip: "{{ _apps_home_ip }}", port: 53, proto: udp}
+  - {ip: "{{ _apps_home_ip }}", port: 80, proto: tcp}
+host_firewall_verify_tcp:
+  - {ip: "{{ _apps_ip }}", port: 22}
+  - {ip: "{{ _apps_ip }}", port: 80}
+  - {ip: "{{ _apps_home_ip }}", port: 22}
+  - {ip: "{{ _apps_home_ip }}", port: 80}
+host_firewall_verify_dns:
+  - "{{ _apps_ip }}"
+  - "{{ _apps_home_ip }}"

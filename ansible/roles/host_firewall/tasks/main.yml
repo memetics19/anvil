@@ -1,0 +1,49 @@
+- name: The rules keep SSH open
+  ansible.builtin.assert:
+    that:
+      - host_firewall_rules | length > 0
+      - host_firewall_rules | selectattr('port', 'equalto', 22) | list | length > 0
+    fail_msg: host_firewall_rules is empty or has no rule for port 22 (refusing to lock SSH out)
+    quiet: true
+
+- name: Install ufw
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+
+# address -> NIC, from the facts of every interface with an IPv4 address.
+- name: Find the NIC of each rule's address
+  ansible.builtin.set_fact:
+    host_firewall_nic: >-
+      {%- set m = {} -%}
+      {%- for i in ansible_facts.interfaces | default([]) -%}
+      {%- set f = ansible_facts[i | replace('-', '_')] | default({}) -%}
+      {%- for a in [f.ipv4 | default({})] + f.ipv4_secondaries | default([]) if a.address is defined -%}
+      {%- set _ = m.update({a.address: i}) -%}
+      {%- endfor -%}
+      {%- endfor -%}
+      {{ m }}
+  no_log: true
+
+- name: Every rule's address is on a NIC of this host
+  ansible.builtin.assert:
+    that: host_firewall_rules | map(attribute='ip') | reject('in', host_firewall_nic) | list | length == 0
+    fail_msg: a host_firewall_rules address is not configured on any NIC of {{ inventory_hostname }}
+    quiet: true
+
+# The same tasks as the apply, in check mode, to find out whether anything would change.
+- name: Preview the firewall
+  ansible.builtin.include_tasks: ufw.yml
+  vars:
+    host_firewall_preview: true
+
+- name: Note whether the firewall would change
+  ansible.builtin.set_fact:
+    host_firewall_pending: >-
+      {{ host_firewall_preview_defaults.results | selectattr('changed') | list | length > 0
+         or host_firewall_preview_rules.results | selectattr('changed') | list | length > 0
+         or host_firewall_preview_enable.changed }}
+
+- name: Apply the firewall with a timed rollback
+  ansible.builtin.include_tasks: apply.yml
+  when: host_firewall_pending | bool and not ansible_check_mode

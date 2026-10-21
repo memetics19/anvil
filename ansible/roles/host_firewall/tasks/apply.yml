@@ -1,0 +1,64 @@
+# Arm the rollback first: if this run loses the host, ufw is disabled again by itself.
+# A unit left over from an earlier run would make systemd-run refuse the name.
+- name: Stop a leftover rollback timer
+  ansible.builtin.systemd_service:
+    name: "{{ host_firewall_rollback_unit }}.timer"
+    state: stopped
+  failed_when: false
+
+- name: Clear a stale rollback unit
+  ansible.builtin.command: systemctl reset-failed {{ host_firewall_rollback_unit }}.service {{ host_firewall_rollback_unit }}.timer
+  changed_when: false
+  failed_when: false
+
+- name: Arm the rollback (ufw disable after host_firewall_rollback_after seconds)
+  ansible.builtin.command:
+    argv:
+      - systemd-run
+      - --unit={{ host_firewall_rollback_unit }}
+      - --on-active={{ host_firewall_rollback_after }}
+      - /usr/sbin/ufw
+      - --force
+      - disable
+  changed_when: true
+
+- name: Apply
+  ansible.builtin.include_tasks: ufw.yml
+  vars:
+    host_firewall_preview: false
+
+# A new SSH connection must get through the new rules.
+- name: Drop the SSH connection
+  ansible.builtin.meta: reset_connection
+
+- name: A fresh SSH connection works
+  ansible.builtin.command: "true"
+  changed_when: false
+
+- name: TCP ports answer from the controller
+  ansible.builtin.wait_for:
+    host: "{{ item.ip }}"
+    port: "{{ item.port }}"
+    timeout: 10
+  loop: "{{ host_firewall_verify_tcp }}"
+  loop_control:
+    label: "{{ item.port }}"
+  delegate_to: localhost
+  become: false
+
+- name: DNS answers from the controller
+  ansible.builtin.command:
+    argv: [dig, +short, +time=3, +tries=2, "@{{ item }}", example.com, A]
+  loop: "{{ host_firewall_verify_dns }}"
+  loop_control:
+    label: dns
+  register: host_firewall_dns
+  changed_when: false
+  failed_when: host_firewall_dns.stdout_lines | select('match', '^[0-9.]+$') | list | length == 0
+  delegate_to: localhost
+  become: false
+
+- name: Cancel the rollback
+  ansible.builtin.systemd_service:
+    name: "{{ host_firewall_rollback_unit }}.timer"
+    state: stopped

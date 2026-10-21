@@ -226,13 +226,36 @@ subnet. Each NIC answers ARP only for its own address.
 - Web UI: `http://<apps home address>/admin`, password `web_password` from Vault
   `kv/homelab/apps/pihole`. Settings passed by the role are read-only in the UI.
 
+Host firewall (`host_firewall` role, ufw): inbound denied by default; SSH (22), DNS (53
+tcp/udp) and the web UI (80) are allowed, each bound to its NIC and address. Ports that
+Docker publishes pass the FORWARD chain, not ufw's input rules, so their exposure is set
+by the two addresses they are published on. A firewall change is applied with a timed
+rollback: ufw disables itself after 3 minutes unless a fresh SSH connection and DNS and
+HTTP checks from the controller succeed first.
+
+Rate limit caveat: the limit (1000 queries per 60 s) counts per client address. Hand
+Pi-hole out to devices directly (router DHCP, below). If the router is instead set up to
+forward its own DNS to Pi-hole, every device appears as the router and shares one limit;
+NetBird clients behind the masquerading routing peer likewise share the `netbird` VM's
+address. Raise `pihole_rate_limit_count` if that is the setup.
+
 Hand steps on the home router (not managed here):
 
-1. Reserve `site.hosts.apps.home_ip` for the `apps` VM's home NIC (its MAC is on the
-   Proxmox VM's `net1`) in the router's DHCP, or exclude it from the DHCP pool.
+1. Reserve `site.hosts.apps.home_ip` for `site.hosts.apps.home_mac` (the `apps` VM's home NIC,
+   Proxmox `net1`, pinned by Terraform) in the router's DHCP.
 2. In the router's DHCP settings, hand out that address as the primary DNS server and the
    router itself as the secondary. Devices pick it up when they renew their lease (or
    reconnect to Wi-Fi). On a Mac, `scutil --dns` then lists Pi-hole first.
+
+Hand step in NetBird (dashboard, not managed here), for each network: the NetBird cloud
+network now, and the self-hosted one once it exists.
+
+1. DNS > Nameservers > Add nameserver: custom, IP = the `apps` lab address, port 53, UDP.
+   The lab network must be a route the peers use (the `netbird` routing peer).
+2. Distribution groups: the peer groups that should use it (for example All).
+3. Either leave match domains empty (all queries go to Pi-hole, so remote devices get
+   filtering too), or set match domain `lan.<domain>` for local names only. Leave
+   "Enabled" on and save. Peers pick it up within a minute; check with `netbird status -d`.
 
 ## IPTV
 
@@ -373,7 +396,7 @@ history. [`.gitleaks.toml`](.gitleaks.toml) adds rules for:
 ## Not managed here
 
 - Cloudflare tunnels and public hostnames
-- NetBird routes, ACLs and setup keys
+- NetBird routes, ACLs, setup keys and nameserver groups
 - DHCP reservation for the Proxmox uplink on the home router
 - The home router's DHCP: the `apps` home address reservation and the DNS servers it hands
   out (see [apps (Pi-hole)](#apps-pi-hole))

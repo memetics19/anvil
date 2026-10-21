@@ -1,0 +1,15 @@
+# Host firewall (ufw): inbound denied by default, outbound allowed, and one allow rule per
+# entry of host_firewall_rules: {ip, port, proto (tcp|udp)}. Each rule is bound to the NIC
+# that holds `ip` (found from facts) and to that address.
+# Ports Docker publishes are DNATed to containers and pass the FORWARD chain, not ufw's
+# INPUT rules: their exposure is set by the addresses they are published on. Their rules
+# here state the intent and cover a later move to host networking.
+host_firewall_rules: []
+# A change is applied with a timed rollback: ufw is disabled after this many seconds
+# unless a fresh SSH connection and the checks below succeed first.
+host_firewall_rollback_after: 180
+host_firewall_rollback_unit: ufw-rollback
+# Checked from the controller after a change, before the rollback is cancelled: TCP ports
+# that must accept connections ({ip, port}) and addresses that must answer DNS.
+host_firewall_verify_tcp: []
+host_firewall_verify_dns: []
