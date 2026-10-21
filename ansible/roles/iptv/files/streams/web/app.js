@@ -166,7 +166,7 @@
     busy: ['Busy: two streams already play on other screens. OK to retry', true],
     ended: ['The stream ended. OK to retry', true],
     error: ['Cannot play this channel. OK to retry', true],
-    muted: ['Press OK for sound', false],
+    muted: ['Press OK or click for sound', false],
     start: ['Press OK to start', false]
   };
 
@@ -494,7 +494,7 @@
   setMediaAction('seekbackward', -1);
   setMediaAction('previoustrack', -1);
 
-  document.addEventListener('keydown', function (e) {
+  window.addEventListener('keydown', function (e) {
     var key = e.key;
     var act = remote(e);
     var isBack = BACK_KEYS[key] || BACK_CODES[e.keyCode];
@@ -521,6 +521,7 @@
   onButton('b-prev', function () { zap(-1); });
   onButton('b-next-ch', function () { zap(1); });
   onButton('b-list', openList);
+  onButton('b-status', ok);
   video.addEventListener('click', function () { if (video.muted) ok(); else showBanner(); });
   video.addEventListener('dblclick', function () {
     if (document.fullscreenElement) document.exitFullscreen();

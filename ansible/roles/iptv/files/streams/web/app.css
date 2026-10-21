@@ -97,11 +97,17 @@ p { margin: 0; }
   grid-area: status;
   justify-self: start;
   padding: 0.2rem 0.7rem;
+  border: 0;
   border-radius: 0.4rem;
   background: #2a3140;
+  color: var(--text);
+  font: inherit;
   font-weight: 600;
+  text-align: left;
+  cursor: pointer;
 }
 .b-status.bad { background: var(--live); color: #fff; }
+.b-status:hover { filter: brightness(1.12); }
 .b-buttons { grid-area: buttons; display: flex; gap: 0.5rem; }
 .b-buttons button {
   min-width: 2.6rem;
