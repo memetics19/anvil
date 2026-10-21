@@ -9,7 +9,7 @@
 #     path, format or source image), or makes them unknown. Protected: any
 #     proxmox_virtual_environment_vm named ragnarok (its disk holds
 #     the media library) or vault (it holds secrets), at any module path. Tuning options (discard, iothread, cache, ...)
-#     may change.
+#     may change. A pure create (new box, rebuild) is allowed; delete/replace never are.
 # Prints the offending resource addresses only (no attribute values).
 set -euo pipefail
 
@@ -43,7 +43,7 @@ disks=$(q -r --arg t "$protected_type" --argjson n "$protected_names" '
                               file_format, file_id, import_from} ] | sort_by(.interface);
   .resource_changes // [] | .[]
   | select(.type == $t and (.name as $x | $n | index($x)))
-  | select(.change.actions | index("update") or index("create"))
+  | select(.change.actions | index("update"))   # an existing VM only: a pure create is fine
   | select(((.change.before.disk // null) | ident) != ((.change.after.disk // null) | ident)
            or (.change.after == null) or (.change.after.disk == null))
   | .address')
