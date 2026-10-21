@@ -49,6 +49,8 @@ printf 'add-generic-password -U -s %s -a %s -w %s\n' \
   die "Keychain write failed"
 back="$(security find-generic-password -s "$kc_service" -a "$account" -w 2>/dev/null)" ||
   die "Keychain read-back failed"
-[ "$(printf '%s' "$back" | jq -S -c . 2>/dev/null | digest)" = "$want_sum" ] ||
+back="$(printf '%s' "$back" | jq -S -c . 2>/dev/null)" # capture first: jq's trailing newline must not reach digest
+[ "$(printf '%s' "$back" | digest)" = "$want_sum" ] ||
   die "Keychain read-back does not match Vault"
+unset back
 echo updated
