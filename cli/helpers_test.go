@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -143,5 +144,12 @@ const recapChanges = `PLAY RECAP ***********************************************
 apps                       : ok=42   changed=2    unreachable=0    failed=0    skipped=7    rescued=0    ignored=0
 `
 
-// setTestHooks replaces the parts of app that reach outside the test lab.
-func setTestHooks(a *app) {}
+// setTestHooks replaces the parts of app that reach outside the test lab: anvil up's
+// init checks pass, and its status stage prints a marker.
+func setTestHooks(a *app) {
+	a.preflight = func(*app, *runner) bool { return true }
+	a.status = func(a *app, _ *runner) int {
+		fmt.Fprintln(a.stdout, "STATUS-RAN")
+		return 0
+	}
+}

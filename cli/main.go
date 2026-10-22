@@ -36,6 +36,10 @@ type app struct {
 	cwd            string
 	// env is the environment for child processes. nil inherits anvil's own.
 	env []string
+	// preflight and status are anvil up's first and last steps. nil: the real ones.
+	// Tests replace them.
+	preflight func(a *app, r *runner) bool
+	status    func(a *app, r *runner) int
 }
 
 type command struct {
