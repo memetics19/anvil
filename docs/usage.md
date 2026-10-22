@@ -28,6 +28,8 @@ Placeholders: `<apps-address>` (the `apps` VM's lab address), `<apps-home-addres
 | `make tf-apply` | Applies only the saved plan, after running the guard again, then deletes the plan. |
 | `make backup` | Encrypted Terraform state, a Vault Raft snapshot and the newest Vaultwarden backup, into `~/homelab-backups`. |
 | `make vaultwarden-drill` | Restores the newest Vaultwarden backup into a temporary container on the `vaultwarden` VM, checks it, then removes it. |
+| `make docs` | Builds this documentation into `build/site` with the `mkdocs` on your PATH. |
+| `make docs-publish` | Builds the same site in a throwaway venv and publishes it at `https://docs.<gateway-domain>`. |
 
 ## Daily commands
 
@@ -96,8 +98,33 @@ The run checks every entry before it touches Pi-hole. `tests/test_gateway.sh` an
 `tests/test_homepage.sh` cover the rules. To take a service down but keep its entry, set
 `enabled: false`, which removes its route and DNS record.
 
+A site that Caddy serves itself, with no upstream, is a `static` entry: `{name: docs,
+static: docs}`. `static` names a key of `caddy_static_sites` (the directory built on the
+controller). It takes no `port`, `scheme` or other upstream field. See
+[Publishing the docs](#publishing-the-docs).
+
 To undo a bad write, list the versions with `vault kv metadata get -mount=kv homelab/site`
 and restore one with `vault kv rollback -mount=kv -version=<n> homelab/site`.
+
+## Publishing the docs
+
+This documentation is also served privately at `https://docs.<gateway-domain>`, from the
+LAN and over NetBird like the other open services. After a docs change:
+
+```sh
+make docs-publish
+```
+
+It builds the site the GitHub Pages workflow builds (`scripts/docs-build.sh`, the pinned
+`docs/requirements.txt`) in a venv under `build/` that it removes afterwards. The build
+date is the last commit's, so an unchanged tree builds identical files. Then it runs
+`make vm HOST=apps ARGS="--tags docs"`, which copies `build/site` to
+`/opt/caddy/sites/docs` on `apps` only when its content hash changed. Caddy serves those
+files from a read-only mount (`file_server`), so no container restarts and no reload. Add
+`ARGS=--check` for a dry run. The docs hold no secrets, addresses or domain.
+
+The route is the `site.services` entry `{name: docs, static: docs}`. Pi-hole's record and
+the Homepage tile (Infrastructure) come from that entry, like any other service.
 
 ## Secrets in Vault
 

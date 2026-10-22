@@ -31,6 +31,11 @@
 {% if s.home is defined %}
 		redir / {{ s.home }}
 {% endif %}
+{% if s.static is defined %}
+		# Files from the read-only mount (role caddy, tasks/static.yml), no upstream.
+		root * /srv/{{ s.static }}
+		file_server
+{% else %}
 		reverse_proxy {{ s.url }} {
 {% if s.host_header | default('original') == 'upstream' %}
 			header_up Host {upstream_hostport}
@@ -54,6 +59,7 @@
 {% endif %}
 			}
 		}
+{% endif %}
 {% if s.name in caddy_admin_only_routes %}
 		}
 {% endif %}

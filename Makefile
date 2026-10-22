@@ -6,7 +6,7 @@ HVAC_CHECK := py=$$(ansible-playbook --version | sed -n 's/^  python version = .
 	"$${py:-python3}" -c 'import hvac' 2>/dev/null || { \
 	  echo "hvac is missing in the Python that runs Ansible; fix: \"$$py\" -m pip install hvac" >&2; exit 1; }
 
-.PHONY: lint secrets-scan bootstrap-ssh host host-network enclave ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply docs
+.PHONY: lint secrets-scan bootstrap-ssh host host-network enclave ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply docs docs-publish
 
 lint:
 	@set -eu -o pipefail; \
@@ -137,3 +137,15 @@ tf-apply:
 # Build the docs site into build/site (pip install -r docs/requirements.txt first).
 docs:
 	@scripts/docs-build.sh
+
+# Build the same site in a throwaway venv (build/docs-venv, pinned docs/requirements.txt) and
+# publish it on the apps VM as https://docs.<gateway domain> (Caddy serves the files). Only
+# changed content is copied. The build date is the last commit's, so a rebuild is identical.
+DOCS_VENV := build/docs-venv
+docs-publish:
+	@set -eu -o pipefail; \
+	rm -rf $(DOCS_VENV); trap 'rm -rf $(DOCS_VENV)' EXIT; \
+	python3 -m venv $(DOCS_VENV); \
+	$(DOCS_VENV)/bin/pip install --quiet --disable-pip-version-check -r docs/requirements.txt; \
+	SOURCE_DATE_EPOCH=$$(git log -1 --format=%ct) PATH="$$PWD/$(DOCS_VENV)/bin:$$PATH" scripts/docs-build.sh; \
+	$(MAKE) --no-print-directory vm HOST=apps ARGS="--tags docs $(ARGS)"

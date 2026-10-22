@@ -38,10 +38,14 @@ caddy_listen_ips:
 
 # The service list (Vault, kv/homelab/site, key site.services). Each entry:
 #   name               label: served as <name>.<gateway domain>
-#   host | container   upstream address: `host` is a dotted path into the site dict to an
-#                      IPv4 address (e.g. hosts.ragnarok.ip); `container` is a container
-#                      on a Docker network Caddy shares (caddy_container_networks)
-#   port, scheme       upstream port and http|https
+#   host | container | static
+#                      exactly one. `host` is a dotted path into the site dict to an
+#                      IPv4 address (e.g. hosts.ragnarok.ip). `container` is a container
+#                      on a Docker network Caddy shares (caddy_container_networks).
+#                      `static` is a key of caddy_static_sites: Caddy serves those files
+#                      itself (file_server), with no upstream and no other field below
+#                      except home and enabled
+#   port, scheme       upstream port and http|https (not for static)
 #   insecure_upstream  true: do not verify the upstream's certificate (self-signed)
 #   upstream_ca        verify the upstream against this CA (key of caddy_upstream_cas)
 #   websocket          the app uses websockets: they survive a Caddy reload (5 minutes)
@@ -54,6 +58,14 @@ caddy_listen_ips:
 caddy_services: "{{ site.services | default([]) }}"
 caddy_domain: "{{ gateway_domain }}"
 caddy_email: "{{ site.email }}"
+
+# Static sites (`static: <key>` entries): the key names the directory built on the controller.
+# tasks/static.yml copies it to <caddy_dir>/sites/<key> only when its content changed (a
+# sha256 over every file, kept next to it as .<key>.sha256), and Caddy reads it through a
+# read-only bind mount (<caddy_dir>/sites at /srv). A site that is not built is skipped with
+# a warning, and its route is not checked. docs: this repo's MkDocs site (make docs-publish).
+caddy_static_sites:
+  docs: "{{ playbook_dir }}/../../build/site"
 
 # CA certificates (public) for upstreams with `upstream_ca`, copied from the controller.
 # Vault's own CA (fetched by the vault_server role), not $VAULT_CACERT: that one may point

@@ -36,6 +36,19 @@
     # Certificates and the ACME account key.
     - {path: "{{ caddy_dir }}/data", mode: "0700"}
     - {path: "{{ caddy_dir }}/config", mode: "0700"}
+    - {path: "{{ caddy_dir }}/sites", mode: "0755"}
+
+# Static sites from the controller, only when their content changed. Also run alone by the
+# tag docs (make docs-publish): files only, Caddy needs no reload for them.
+- name: Static sites
+  ansible.builtin.include_tasks:
+    file: static.yml
+    apply:
+      tags: [docs]
+  loop: "{{ caddy_routes | selectattr('static', 'defined') | map(attribute='static') | unique | list }}"
+  loop_control:
+    loop_var: caddy_static_name
+  tags: [docs]
 
 - name: Caddy image
   ansible.builtin.include_tasks: image.yml
@@ -178,7 +191,7 @@
       - --resolve
       - "{{ item.fqdn }}:443:{{ caddy_listen_ips[0] }}"
       - "https://{{ item.fqdn }}/"
-  loop: "{{ caddy_routes | rejectattr('name', 'in', caddy_routes_unchecked) | list }}"
+  loop: "{{ caddy_routes | rejectattr('name', 'in', caddy_routes_unchecked + caddy_static_unchecked | default([])) | list }}"
   loop_control:
     label: "{{ item.name }}"
   register: caddy_route_check

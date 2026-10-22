@@ -7,17 +7,25 @@
       {%- set out = [] -%}
       {%- for s in caddy_services if s.enabled | default(true) | bool -%}
       {%- set ns = namespace(v=site) -%}
-      {%- if s.host is defined and s.container is not defined -%}
+      {%- set kinds = ['host', 'container', 'static'] | select('in', s) | list -%}
+      {%- if kinds == ['host'] -%}
       {%- for k in (s.host | string).split('.') -%}{%- set ns.v = ns.v[k] | default('') if ns.v is mapping else '' -%}{%- endfor -%}
-      {%- elif s.container is defined and s.host is not defined -%}{%- set ns.v = s.container | string -%}
+      {%- elif kinds == ['container'] -%}{%- set ns.v = s.container | string -%}
       {%- else -%}{%- set ns.v = '' -%}
       {%- endif -%}
       {%- set _ = out.append(s | combine({
+            'kinds': kinds | length,
             'addr': ns.v | string,
             'url': (s.scheme | default('')) ~ '://' ~ ns.v ~ ':' ~ (s.port | default('')),
             'fqdn': (s.name | default('') | string) ~ '.' ~ caddy_domain})) -%}
       {%- endfor -%}
       {{ out }}
+  no_log: true
+
+- name: Proxied and static routes
+  ansible.builtin.set_fact:
+    caddy_proxied: "{{ caddy_routes | rejectattr('static', 'defined') | list }}"
+    caddy_static: "{{ caddy_routes | selectattr('static', 'defined') | list }}"
   no_log: true
 
 - name: Every service has a valid name, upstream, port and scheme, no name twice
@@ -26,26 +34,37 @@
       - caddy_services | map(attribute='name', default='') | select('match', '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$') | list | length
         == caddy_services | length
       - caddy_services | map(attribute='name') | unique | list | length == caddy_services | length
-      - caddy_routes | map(attribute='port') | map('string') | select('match', '^[0-9]{1,5}$') | map('int')
-        | select('ge', 1) | select('le', 65535) | list | length == caddy_routes | length
-      - caddy_routes | map(attribute='scheme', default='') | reject('in', ['http', 'https']) | list | length == 0
+      # Exactly one of host, container or static.
+      - caddy_routes | rejectattr('kinds', 'equalto', 1) | list | length == 0
+      - caddy_proxied | map(attribute='port') | map('string') | select('match', '^[0-9]{1,5}$') | map('int')
+        | select('ge', 1) | select('le', 65535) | list | length == caddy_proxied | length
+      - caddy_proxied | map(attribute='scheme', default='') | reject('in', ['http', 'https']) | list | length == 0
       # An address (dotted IPv4 from the site dict) or a container name.
       - >-
-        caddy_routes | selectattr('container', 'undefined') | map(attribute='addr')
+        caddy_proxied | selectattr('container', 'undefined') | map(attribute='addr')
         | reject('match', '^([0-9]{1,3}\.){3}[0-9]{1,3}$') | list | length == 0
       - >-
         caddy_routes | selectattr('container', 'defined') | map(attribute='addr')
         | reject('match', '^[a-z0-9][a-z0-9_.-]*$') | list | length == 0
       # Certificate options only for https upstreams, and one of them at most.
-      - caddy_routes | selectattr('scheme', 'ne', 'https') | selectattr('insecure_upstream', 'defined')
+      - caddy_proxied | selectattr('scheme', 'ne', 'https') | selectattr('insecure_upstream', 'defined')
         | selectattr('insecure_upstream') | list | length == 0
-      - caddy_routes | selectattr('scheme', 'ne', 'https') | selectattr('upstream_ca', 'defined') | list | length == 0
+      - caddy_proxied | selectattr('scheme', 'ne', 'https') | selectattr('upstream_ca', 'defined') | list | length == 0
       - caddy_routes | selectattr('insecure_upstream', 'defined') | selectattr('insecure_upstream')
         | selectattr('upstream_ca', 'defined') | list | length == 0
       - caddy_routes | selectattr('upstream_ca', 'defined') | map(attribute='upstream_ca')
         | reject('in', caddy_upstream_cas) | list | length == 0
       - caddy_routes | map(attribute='host_header', default='original') | reject('in', ['original', 'upstream']) | list | length == 0
       - caddy_routes | map(attribute='home', default='/') | reject('match', '^/[A-Za-z0-9/_.-]*$') | list | length == 0
+      # A static site is a known key of caddy_static_sites and has no upstream fields.
+      - caddy_static | map(attribute='static') | map('string') | reject('in', caddy_static_sites) | list | length == 0
+      - >-
+        caddy_static | selectattr('static', 'in', caddy_static_sites)
+        | map(attribute='static') | reject('match', '^[a-z0-9][a-z0-9_-]*$') | list | length == 0
+      - >-
+        caddy_static | map('dict2items') | flatten | map(attribute='key')
+        | select('in', ['port', 'scheme', 'insecure_upstream', 'upstream_ca', 'host_header', 'stream', 'websocket'])
+        | list | length == 0
       # Admin-only routes need operator addresses (a.b.c.d or a.b.c.d/n).
       - >-
         caddy_routes | selectattr('name', 'in', caddy_admin_only_routes) | list | length == 0
@@ -54,9 +73,10 @@
       # The gateway domain (site.domain, or site.gateway.subdomain under it) is a host name.
       - caddy_domain is match('^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z][a-z0-9-]*[a-z0-9]$')
     fail_msg: >-
-      site.services: each entry needs a lower-case `name` (unique), exactly one of `host` (a
-      dotted path to an IPv4 address in the site dict) or `container`, a `port` and a
-      `scheme` (http|https); insecure_upstream / upstream_ca (one of {{ caddy_upstream_cas | list }})
+      site.services: each entry needs a lower-case `name` (unique) and exactly one of `host` (a
+      dotted path to an IPv4 address in the site dict), `container` or `static` (one of
+      {{ caddy_static_sites | list }}, with no port, scheme or other upstream field). host and
+      container entries need a `port` and a `scheme` (http|https); insecure_upstream / upstream_ca (one of {{ caddy_upstream_cas | list }})
       only with https and not both; host_header original|upstream; home a path;
       site.gateway.subdomain a lower-case label; admin-only routes ({{ caddy_admin_only_routes }})
       need operator addresses, each a single a.b.c.d/32 (site.admin_sources / admin_vpn_sources)

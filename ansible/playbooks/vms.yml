@@ -3,7 +3,8 @@
 # node_exporter (group node_exporter in the inventory).
 # Run: make vms ARGS="--check --diff"   or one VM: make vm HOST=frigate
 # Tags: base, docker, cloudflared, node_exporter, frigate, arr, iptv_epg, filestash, iptv,
-# netbird_peer, redis, ntfy, pulse, pihole, homepage, vaultwarden, caddy, firewall. The tag homepage alone
+# netbird_peer, redis, ntfy, pulse, pihole, homepage, vaultwarden, caddy, docs, firewall. The tag
+# docs alone copies only the static sites Caddy serves (make docs-publish). The tag homepage alone
 # also runs the pieces other roles keep for the dashboard (ARR API keys into Vault on
 # ragnarok, the Frigate viewer login, Pi-hole's app password).
 # The secrets enclave's VMs have no internet: apt and time through the Proxmox host first.

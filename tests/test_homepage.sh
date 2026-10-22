@@ -80,6 +80,7 @@ run '[
   {name: jackett, host: hosts.ragnarok.ip, port: 9117, scheme: http, widget: none},
   {name: newapp, host: hosts.ragnarok.ip, port: 1234, scheme: http},
   {name: home, container: homepage, port: 3000, scheme: http},
+  {name: docs, static: docs},
   {name: pass, container: vaultwarden, port: 80, scheme: http, enabled: false}]'
 if [ "$?" -eq 0 ] && [ -s "$tmp/services.yaml" ]; then ok "good services render"
 else bad_ "good services render"; tail -30 "$tmp/log"; exit 1; fi
@@ -108,6 +109,8 @@ check "qbittorrent without credentials"     '[ "$(svc Media qBittorrent | jq -c 
 check "frigate viewer login"                '[ "$(svc Home Frigate | jq -c "[.widget.url, .widget.username, .widget.password]")" = "[\"https://192.0.2.114:8971\",\"homepage\",\"{{HOMEPAGE_VAR_FRIGATE_PASSWORD}}\"]" ]'
 check "site hints override the catalog"     '[ "$(svc Media Push | jq -c "[.icon, .description, .href]")" = "[\"mdi-bell\",\"Alerts\",\"https://gotify.internal.example.com\"]" ]'
 check "widget: none turns a widget off"     '[ "$(svc Media Jackett | jq -c "has(\"widget\")")" = false ]'
+check "static site: a tile, no widget, no status" \
+  '[ "$(svc Infrastructure Docs | jq -c "[.href, has(\"widget\"), has(\"container\")]")" = "[\"https://docs.internal.example.com\",false,false]" ]'
 check "unknown service goes to Other"       '[ "$(svc Other newapp | jq -r .href)" = "https://newapp.internal.example.com" ]'
 check "internal keys stay out (check, service, path)" '! grep -qE "\"(check|service|path)\":" "$tmp/services.yaml"'
 check "no fake secret value in the config" '! grep -rq "fake-value" "$tmp/services.yaml" "$tmp/settings.yaml" "$tmp/docker.yaml"'

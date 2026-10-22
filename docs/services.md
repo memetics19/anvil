@@ -234,7 +234,9 @@ name, an upstream (`host`, a path into the site dict, or `container`), a port an
 Optional fields cover self-signed upstreams, Vault's CA, websockets, long streams and the
 upstream Host header. They are documented in `ansible/roles/caddy/defaults/main.yml`, and
 `tests/test_gateway.sh` covers the rules. See
-[Adding a service](usage.md#adding-a-service-behind-the-gateway).
+[Adding a service](usage.md#adding-a-service-behind-the-gateway). A `static` entry has no
+upstream: Caddy serves files from `/opt/caddy/sites/<static>`, a read-only mount. This
+documentation is one, at `docs.<gateway-domain>` ([Publishing the docs](usage.md#publishing-the-docs)).
 
 HTTP redirects to HTTPS. Names not in the list get the connection closed. Only HTTP/1.1
 and HTTP/2 are served. No UDP port is published.

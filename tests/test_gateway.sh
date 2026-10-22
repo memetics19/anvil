@@ -108,6 +108,7 @@ run '[
   {name: tv, host: hosts.ragnarok.ip, port: 34401, scheme: http, stream: true},
   {name: dns, container: pihole, port: 80, scheme: http, home: /admin/},
   {name: home, container: homepage, port: 3000, scheme: http},
+  {name: docs, static: docs},
   {name: pass, container: vaultwarden, port: 80, scheme: http, enabled: false}]'
 if [ "$?" -eq 0 ] && [ -s "$tmp/Caddyfile" ]; then ok "good services render"
 else bad_ "good services render"; tail -20 "$tmp/log"; exit 1; fi
@@ -127,6 +128,12 @@ block tv | grep -q 'response_header_timeout' && bad_ "tv: no response timeout" |
 block dns | grep -q 'reverse_proxy http://pihole:80 {' && ok "dns: container upstream" || bad_ "dns: container upstream"
 block dns | grep -q 'redir / /admin/' && ok "dns: / redirects to /admin/" || bad_ "dns: home redirect"
 hasnt "disabled entry has no route"        "@pass"
+# Static site: files from the read-only mount, no upstream, open like the other routes.
+block docs | grep -q 'root \* /srv/docs' && block docs | grep -q 'file_server' && ok "docs: file_server from /srv/docs" || bad_ "docs: file_server"
+block docs | grep -q 'reverse_proxy' && bad_ "docs: no upstream" || ok "docs: no upstream"
+block docs | grep -q '_denied' && bad_ "docs: no allowlist" || ok "docs: no allowlist"
+block vault | grep -q 'file_server' && bad_ "vault: still proxied only" || ok "vault: still proxied only"
+grep -q -- "- ./sites:/srv:ro" "$tmp/compose.yaml" && ok "compose: static sites mounted read-only" || bad_ "compose: sites mount"
 has   "unknown names are refused"          "abort"
 hasnt "no HTTP/3 (only TCP is published)"  "h3"
 
@@ -164,7 +171,8 @@ if [ "$(cat "$tmp/records" 2>/dev/null)" = "192.0.2.120 vault.lan.example.com
 198.51.100.249 qbit.internal.example.com
 198.51.100.249 tv.internal.example.com
 198.51.100.249 dns.internal.example.com
-198.51.100.249 home.internal.example.com" ]; then ok "records: every enabled name at the gateway's home address, local records kept"
+198.51.100.249 home.internal.example.com
+198.51.100.249 docs.internal.example.com" ]; then ok "records: every enabled name at the gateway's home address, local records kept"
 else bad_ "records"; cat "$tmp/records" 2>/dev/null; fi
 
 # No subdomain (empty or absent): the names sit directly under site.domain.
@@ -193,6 +201,12 @@ reject "unknown CA"             '[{name: a, host: pve.ip, port: 1, scheme: https
 reject "insecure and a CA"      '[{name: a, host: pve.ip, port: 1, scheme: https, upstream_ca: vault, insecure_upstream: true}]'
 reject "bad host_header"        '[{name: a, host: pve.ip, port: 1, scheme: http, host_header: other}]'
 reject "bad subdomain"          '[{name: a, host: pve.ip, port: 1, scheme: http}]' '{subdomain: "In ternal"}'
+reject "static and host"        '[{name: a, static: docs, host: pve.ip, port: 1, scheme: http}]'
+reject "static and container"   '[{name: a, static: docs, container: x}]'
+reject "unknown static site"    '[{name: a, static: other}]'
+reject "static with a port"     '[{name: a, static: docs, port: 80}]'
+reject "static with a scheme"   '[{name: a, static: docs, scheme: http}]'
+reject "static with a CA"       '[{name: a, static: docs, upstream_ca: vault}]'
 
 # Admin-only routes: the 403 comes first, inside a route block (kept in written order).
 good='[{name: vault, host: hosts.vault.ip, port: 8200, scheme: https, upstream_ca: vault, home: /ui/}]'

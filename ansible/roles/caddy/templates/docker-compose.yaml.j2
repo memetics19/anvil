@@ -19,6 +19,8 @@ services:
       # The directory, not the file: Ansible replaces the Caddyfile by rename, which a
       # file bind mount would not see.
       - ./etc:/etc/caddy:ro
+      # Static sites (tasks/static.yml), read-only.
+      - ./sites:/srv:ro
       - ./data:/data
       - ./config:/config
     networks:

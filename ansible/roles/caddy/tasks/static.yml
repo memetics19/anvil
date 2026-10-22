@@ -1,0 +1,137 @@
+# One static site (caddy_static_name, a key of caddy_static_sites): the directory built on the
+# controller goes to <caddy_dir>/sites/<name> when its content hash differs from the one kept
+# in <caddy_dir>/sites/.<name>.sha256 (outside every site root, so never served). It goes up
+# as one archive, is unpacked next to the live copy and swapped in, so removed pages go too.
+# A site that is not built is skipped with a warning and its route is not checked.
+- name: "Static site, sites directory: {{ caddy_static_name }}"
+  ansible.builtin.file:
+    path: "{{ caddy_dir }}/sites"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "Static site, is it built on the controller: {{ caddy_static_name }}"
+  ansible.builtin.stat:
+    path: "{{ caddy_static_sites[caddy_static_name] }}/index.html"
+  delegate_to: localhost
+  become: false
+  register: caddy_static_built
+
+- name: "Static site, not built: {{ caddy_static_name }}"
+  ansible.builtin.debug:
+    msg: "WARNING: {{ caddy_static_name }} is not built (make docs-publish builds and publishes it); nothing copied"
+  when: not caddy_static_built.stat.exists
+
+- name: "Static site, content hash on the controller: {{ caddy_static_name }}"
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256 | cut -c1-64
+    chdir: "{{ caddy_static_sites[caddy_static_name] }}"
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  register: caddy_static_want
+  changed_when: false
+  check_mode: false
+  when: caddy_static_built.stat.exists
+
+- name: "Static site, content hash here: {{ caddy_static_name }}"
+  ansible.builtin.command:
+    argv: [cat, "{{ caddy_dir }}/sites/.{{ caddy_static_name }}.sha256"]
+  register: caddy_static_have
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: "Static site, publish: {{ caddy_static_name }}"
+  when:
+    - caddy_static_built.stat.exists
+    - caddy_static_want.stdout | trim != caddy_static_have.stdout | default('') | trim
+  block:
+    - name: "Static site, content changed: {{ caddy_static_name }}"
+      ansible.builtin.debug:
+        msg: "{{ caddy_static_name }}: new content, published"
+      changed_when: true
+
+    - name: "Static site, controller scratch directory: {{ caddy_static_name }}"
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: caddy-static.
+      delegate_to: localhost
+      become: false
+      register: caddy_static_tmp
+      when: not ansible_check_mode
+
+    - name: "Static site, archive it: {{ caddy_static_name }}"
+      community.general.archive:
+        path: "{{ caddy_static_sites[caddy_static_name] }}/"
+        dest: "{{ caddy_static_tmp.path }}/site.tgz"
+        format: gz
+        mode: "0600"
+      delegate_to: localhost
+      become: false
+      when: not ansible_check_mode
+
+    - name: "Static site, no leftover copies, empty staging directory: {{ caddy_static_name }}"
+      ansible.builtin.file:
+        path: "{{ caddy_dir }}/sites/.{{ caddy_static_name }}.{{ item.suffix }}"
+        state: "{{ item.state }}"
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - {suffix: old, state: absent}
+        - {suffix: new, state: absent}
+        - {suffix: new, state: directory}
+      when: not ansible_check_mode
+
+    - name: "Static site, unpack: {{ caddy_static_name }}"
+      ansible.builtin.unarchive:
+        src: "{{ caddy_static_tmp.path }}/site.tgz"
+        dest: "{{ caddy_dir }}/sites/.{{ caddy_static_name }}.new"
+        extra_opts: [--no-same-owner, --no-same-permissions]
+      when: not ansible_check_mode
+
+    - name: "Static site, swap it in and keep the hash: {{ caddy_static_name }}"
+      ansible.builtin.shell:
+        cmd: >-
+          set -e;
+          n={{ caddy_static_name | quote }};
+          chown -R root:root ".$n.new"; chmod -R u=rwX,go=rX ".$n.new";
+          [ -f ".$n.new/index.html" ];
+          if [ -d "$n" ]; then mv "$n" ".$n.old"; fi;
+          mv ".$n.new" "$n";
+          printf '%s\n' {{ caddy_static_want.stdout | trim | quote }} >".$n.sha256"
+        chdir: "{{ caddy_dir }}/sites"
+        executable: /bin/bash
+      changed_when: true
+      when: not ansible_check_mode
+
+    - name: "Static site, remove the previous copy: {{ caddy_static_name }}"
+      ansible.builtin.file:
+        path: "{{ caddy_dir }}/sites/.{{ caddy_static_name }}.old"
+        state: absent
+      when: not ansible_check_mode
+  always:
+    - name: "Static site, remove the controller copy: {{ caddy_static_name }}"
+      ansible.builtin.file:
+        path: "{{ caddy_static_tmp.path }}"
+        state: absent
+      delegate_to: localhost
+      become: false
+      when: caddy_static_tmp.path is defined
+
+- name: "Static site, is it served: {{ caddy_static_name }}"
+  ansible.builtin.stat:
+    path: "{{ caddy_dir }}/sites/{{ caddy_static_name }}/index.html"
+  register: caddy_static_here
+
+- name: "Static site, route not checked without content: {{ caddy_static_name }}"
+  ansible.builtin.set_fact:
+    caddy_static_unchecked: >-
+      {{ caddy_static_unchecked | default([])
+         + (caddy_routes | selectattr('static', 'defined') | selectattr('static', 'equalto', caddy_static_name)
+            | map(attribute='name') | list) }}
+  when: not caddy_static_here.stat.exists
