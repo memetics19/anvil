@@ -291,6 +291,11 @@ Cloudflare tunnel. Check the hand steps in [setup.md](setup.md#self-hosted-netbi
 connection on the route, gRPC on in the zone). `docker logs netbird-caddy` on `netbird`
 shows whether gRPC requests arrive. Until it works, use the `cloud` profile.
 
+If peers connect but a connection that needs the relay fails (`Relayed` with no traffic in
+`netbird status -d`), the relay's WebSocket may not pass the HTTP/2 route. Add a second
+public hostname for the same name with path `^/relay`, the same service and TLS settings
+but HTTP2 connection off, and move it above the first.
+
 Status of the routing peer on the VM:
 `sudo netbird status -d --daemon-addr unix:///var/run/netbird-home.sock`.
 

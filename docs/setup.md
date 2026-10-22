@@ -433,8 +433,9 @@ Every device you log in to the self-hosted server joins group `operator`.
 **4. Your new peer addresses.** The self-hosted network gives your devices other 100.x
 addresses than the cloud one. Add each device's self-hosted address as a /32 to
 `site.admin_vpn_sources` (find it with `netbird status` on the Mac, and in the app on the
-phone), then run `make enclave` and `make vm HOST=apps ARGS="--tags caddy"`. Until then the
-enclave and the `pass` and `vault` names refuse them.
+phone), then run `make vm HOST=apps ARGS="--tags caddy"`. Until then the `pass` and
+`vault` names refuse them. The enclave itself stays a cloud network path: the self-hosted
+lab route masquerades as the `netbird` VM, and the enclave firewall drops every VM.
 
 Failure drills, with the user at hand:
 
