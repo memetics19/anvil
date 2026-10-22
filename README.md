@@ -117,6 +117,8 @@ vault/policies/
   the operator's devices, firewalled by data-driven routed segments
 - [ ] VLANs 10/20/30 with an inter-VLAN firewall
 - [ ] Monitoring: VictoriaMetrics, Grafana, exporters, alerts to ntfy
+- [ ] Patch tracking: [PatchMon](https://github.com/PatchMon/PatchMon) for pending and security
+  updates on every host (on the second server)
 - [ ] Single sign-on (Authelia) in front of the gateway
 - [ ] Self-hosted NetBird next to the hosted one
 - [ ] Bare-metal provisioning of the second server (iDRAC virtual media or Tinkerbell)
