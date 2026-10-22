@@ -405,8 +405,10 @@ whose connectors run on `frigate`, `netbird` and `ragnarok`. In the Cloudflare d
 Then check `https://sync.<domain>` shows the login page, and run
 `make vm HOST=netbird ARGS="--tags netbird_home"`. It enrolls `netbird-home`, the routing
 peer. Native NetBird clients need gRPC through the tunnel. Cloudflare documents gRPC on
-public tunnel names as unsupported, so if `netbird-home` does not connect, see
-[docs/usage.md](usage.md#self-hosted-netbird).
+public tunnel names as unsupported: the tunnel answers but drops the `grpc-status`
+trailer, and the client gives up. The run checks for that trailer first. Without it, it
+skips the enrollment with a warning and the rest of the run goes on. See
+[docs/usage.md](usage.md#self-hosted-netbird) for a route that works.
 
 **2. The Proxmox host's return route.** The `home-gateway` route keeps the peer's own
 address (masquerade off). `apps` answers such a peer through the Proxmox host, which needs a

@@ -51,12 +51,20 @@
   ansible.builtin.set_fact:
     netbird_peer_home_state_start: "{{ netbird_peer_home_state }}"
 
-# A login needs the server's public name to answer (the Cloudflare route, docs/setup.md).
-- name: Does the self-hosted server answer on its public name
-  ansible.builtin.uri:
-    url: "{{ netbird_peer_home_management_url }}/api/instance"
-    timeout: 10
-  register: netbird_peer_home_public
+# A login needs the server's gRPC API on its public name, with its trailers. A Cloudflare
+# tunnel answers gRPC calls but drops the grpc-status trailer, and the client then fails
+# after minutes of retries. Ask for the server key the way the client does and look for it.
+- name: Does the self-hosted server answer gRPC on its public name
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      printf '\0\0\0\0\0' | curl -sS -v --http2 -m 15 -X POST
+      -H 'content-type: application/grpc' -H 'te: trailers' --data-binary @- -o /dev/null
+      '{{ netbird_peer_home_management_url }}/management.ManagementService/GetServerKey' 2>&1
+      | grep -ci '^< grpc-status: 0'
+    executable: /bin/bash
+  register: netbird_peer_home_grpc
+  changed_when: false
   failed_when: false
   check_mode: false
   when: netbird_peer_home_state == 'needs_login'
@@ -64,17 +72,17 @@
 - name: Netbird-home waits for the public name
   ansible.builtin.debug:
     msg: >-
-      WARNING netbird-home: not logged in, and {{ site.netbird_domain }} does not answer yet
-      (status {{ netbird_peer_home_public.status | default('?') }}). Add the Cloudflare route
-      (docs/setup.md, Self-hosted NetBird), then run again.
+      WARNING netbird-home: not logged in, and {{ site.netbird_domain }} does not answer gRPC
+      with its trailers (a Cloudflare tunnel drops them). Skipping the enrollment. It needs a
+      route that passes gRPC as is (docs/setup.md, Self-hosted NetBird), then run again.
   when:
     - netbird_peer_home_state == 'needs_login'
-    - netbird_peer_home_public.status | default(0) != 200
+    - netbird_peer_home_grpc.stdout | default('0') | int == 0
 
 - name: Enrol netbird-home
   when:
     - netbird_peer_home_state == 'needs_login'
-    - netbird_peer_home_public.status | default(0) == 200
+    - netbird_peer_home_grpc.stdout | default('0') | int > 0
   block:
     - name: A setup key for netbird-home into Vault
       ansible.builtin.include_role:
