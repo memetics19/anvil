@@ -168,7 +168,9 @@
   changed_when: true
   when: iptv_image.rc != 0 and ansible_check_mode
 
-- name: Build the helper image
+# apt fetches ffmpeg (about 130 MB) unless Docker kept the layer from the last build. On a slow
+# mirror that takes many minutes with no output.
+- name: Build the helper image (several minutes when ffmpeg is downloaded again)
   ansible.builtin.command:
     argv: [docker, build, --tag, "{{ iptv_streams_image }}", "{{ iptv_dir }}/build"]
   changed_when: true
@@ -441,6 +443,23 @@
   delay: 3
   until: iptv_streams_health.status == 200
   when: not ansible_check_mode
+
+# Each rebuild leaves the previous tag behind (about 240 MB each). Once the new helper answers,
+# remove the other tags. docker refuses an image a container still uses, and that is not an error.
+- name: List the stream helper images
+  ansible.builtin.command:
+    argv: [docker, image, ls, --format, "{{ '{{' }}.Repository{{ '}}' }}:{{ '{{' }}.Tag{{ '}}' }}", "{{ iptv_streams_image.split(':')[0] }}"]
+  register: iptv_helper_images
+  changed_when: false
+  check_mode: false
+
+- name: Remove old stream helper images
+  ansible.builtin.command:
+    argv: [docker, image, rm, "{{ item }}"]
+  loop: "{{ iptv_helper_images.stdout_lines | reject('equalto', iptv_streams_image) | list }}"
+  register: iptv_helper_rm
+  changed_when: iptv_helper_rm.rc == 0
+  failed_when: iptv_helper_rm.rc != 0 and 'conflict' not in iptv_helper_rm.stderr
 
 # Threadfin's channel mapping is the owner's (web UI): a managed channel the owner unmapped
 # or replaced is reported, not an error. Only a Threadfin that does not answer fails the run.
