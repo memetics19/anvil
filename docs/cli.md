@@ -20,7 +20,10 @@ sudo install -m 755 build/anvil /usr/local/bin/anvil
 anvil version
 ```
 
-The build is reproducible: the same commit builds the same bytes. Another platform:
+`anvil version` prints the version, the commit and date it was built from, the Go version
+and the platform. `make cli` sets them from git. The date is the commit's, not the
+clock's, so the build is reproducible: the same commit builds the same bytes. Another
+platform:
 `GOOS=linux GOARCH=amd64 make cli ANVIL_OUT=build/anvil-linux-amd64`.
 
 `anvil` finds the repo by walking up from the current directory. From anywhere else, set

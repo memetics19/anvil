@@ -16,14 +16,20 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"runtime"
 	"sort"
 	"strings"
 	"sync/atomic"
 	"syscall"
 )
 
-// version is set at build time (make cli).
-var version = "dev"
+// version, commit and date are set at build time with -ldflags -X (make cli, GoReleaser).
+// version has no leading v. A release is a plain X.Y.Z.
+var (
+	version = "dev"
+	commit  = ""
+	date    = ""
+)
 
 // childRunning is set while make runs. An interrupt then goes to make (same process
 // group), and anvil waits for it and passes on its exit code.
@@ -72,7 +78,7 @@ func register(c command) {
 }
 
 func init() {
-	register(command{"version", "print the version", "usage: anvil version\n\nPrints the version of this binary.\n", cmdVersion, 90})
+	register(command{"version", "print the version, commit, build date, Go version and platform", versionUsage, cmdVersion, 90})
 	register(command{"help", "help for a command", "usage: anvil help [command]\n", cmdHelp, 91})
 }
 
@@ -147,8 +153,25 @@ func cmdVersion(a *app, args []string) int {
 		fmt.Fprint(a.stdout, c.usage)
 		return 0
 	}
-	fmt.Fprintf(a.stdout, "anvil %s\n", version)
+	fmt.Fprint(a.stdout, versionText())
 	return 0
+}
+
+const versionUsage = `usage: anvil version
+
+Prints the version of this binary, the commit and date it was built from, the Go version
+and the platform. make cli and the release build set them from git.
+`
+
+func versionText() string {
+	or := func(s, def string) string {
+		if s == "" {
+			return def
+		}
+		return s
+	}
+	return fmt.Sprintf("anvil %s\n  commit    %s\n  built     %s\n  go        %s\n  platform  %s/%s\n",
+		version, or(commit, "unknown"), or(date, "unknown"), runtime.Version(), runtime.GOOS, runtime.GOARCH)
 }
 
 func cmdHelp(a *app, args []string) int {
