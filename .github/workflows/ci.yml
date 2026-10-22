@@ -65,3 +65,28 @@ jobs:
           tests/test_switch.sh
       - name: Provisioning answer file and guard test
         run: tests/test_provision.sh
+
+  cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          # Keep in step with the go line in cli/go.mod.
+          go-version: "1.27.2"
+          cache-dependency-path: cli/go.sum
+      - name: Vet and test the anvil CLI
+        working-directory: cli
+        run: |
+          go vet ./...
+          go test ./...
+      - name: Build darwin/arm64 and linux/amd64 twice, and compare
+        run: |
+          for p in darwin/arm64 linux/amd64; do
+            os=${p%/*} arch=${p#*/}
+            GOOS=$os GOARCH=$arch make cli ANVIL_OUT="build/anvil-$os-$arch"
+            GOOS=$os GOARCH=$arch make cli ANVIL_OUT="build/again/anvil-$os-$arch"
+            cmp "build/anvil-$os-$arch" "build/again/anvil-$os-$arch"
+          done
