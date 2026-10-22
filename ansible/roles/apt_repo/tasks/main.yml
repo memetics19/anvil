@@ -1,0 +1,152 @@
+# The signed apt repository on the netbird VM: the signing key from Vault, apt-publish with
+# its timer, and Caddy serving the tree read-only. apt-publish fetches and signs (on the
+# timer, and once here). Nothing here removes a release that is already published.
+
+# --- signing key ---------------------------------------------------------------------------------
+- name: Read the apt signing key from Vault
+  ansible.builtin.set_fact:
+    apt_repo_key: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', apt_repo_vault_path,
+                engine_mount_point=apt_repo_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
+  no_log: true
+
+- name: The signing key is complete
+  ansible.builtin.assert:
+    that:
+      - apt_repo_key.private_key | default('') is search('BEGIN PGP PRIVATE KEY BLOCK')
+      - apt_repo_key.fingerprint | default('') is match('^[0-9A-F]{40}$')
+    fail_msg: "{{ apt_repo_vault_mount }}/{{ apt_repo_vault_path }} is incomplete: run scripts/apt-key-init.sh"
+    quiet: true
+
+- name: Install apt-utils, gnupg, git and curl
+  ansible.builtin.apt:
+    name: [apt-utils, gnupg, git, curl]
+    state: present
+
+- name: Directories of the apt repository
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ apt_repo_dir }}", mode: "0755"}
+    - {path: "{{ apt_repo_dir }}/gnupg", mode: "0700"}
+    - {path: "{{ apt_repo_dir }}/site", mode: "0755"}
+
+- name: Is the signing key in the keyring
+  ansible.builtin.command:
+    argv: [gpg, --homedir, "{{ apt_repo_dir }}/gnupg", --batch, --with-colons, --list-secret-keys]
+  register: apt_repo_keyring
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# From Vault on stdin, never to a file. A key that is not the one in Vault is left in the
+# keyring but no longer used: apt-publish signs with the first secret key, so a rotation
+# starts from an empty keyring (see scripts/apt-key-init.sh).
+- name: Import the signing key
+  ansible.builtin.command:
+    argv: [gpg, --homedir, "{{ apt_repo_dir }}/gnupg", --batch, --import]
+    stdin: "{{ apt_repo_key.private_key }}"
+  changed_when: true
+  no_log: true
+  when: apt_repo_key.fingerprint not in apt_repo_keyring.stdout | default('')
+
+# --- files ---------------------------------------------------------------------------------------
+- name: Settings, Caddy, compose file and the index page
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ apt_repo_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [publish.conf, Caddyfile, compose.yaml, index.html]
+  register: apt_repo_files
+
+- name: The apt-publish script
+  ansible.builtin.template:
+    src: apt-publish.sh.j2
+    dest: /usr/local/sbin/apt-publish
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Units of apt-publish
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [apt-publish.service, apt-publish.timer]
+  register: apt_repo_units
+
+# --- publish and serve ---------------------------------------------------------------------------
+- name: What apt-publish would do
+  ansible.builtin.command:
+    argv: [/usr/local/sbin/apt-publish, --check]
+  register: apt_repo_plan
+  changed_when: "'would' in apt_repo_plan.stdout"
+  check_mode: false
+  when: not (ansible_check_mode and apt_repo_files.changed)
+
+- name: Report it
+  ansible.builtin.debug:
+    msg: "{{ apt_repo_plan.stdout_lines }}"
+  when: apt_repo_plan.stdout_lines is defined
+
+- name: Publish new releases
+  ansible.builtin.command:
+    argv: [/usr/local/sbin/apt-publish]
+  register: apt_repo_publish
+  changed_when: "'published' in apt_repo_publish.stdout"
+  when: not ansible_check_mode
+
+# A new index page reaches the live tree without a rebuild.
+- name: Index page in the live tree
+  ansible.builtin.copy:
+    src: "{{ apt_repo_dir }}/index.html"
+    dest: "{{ apt_repo_dir }}/site/current/index.html"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+  when: not ansible_check_mode
+
+- name: Caddy for the apt repository
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ apt_repo_dir }}"
+    compose_project_file: "{{ apt_repo_dir }}/compose.yaml"
+    compose_project_write_file: false
+
+# Caddy reads its Caddyfile only at start.
+- name: Restart Caddy for a new Caddyfile
+  ansible.builtin.command:
+    argv: [docker, compose, --project-directory, "{{ apt_repo_dir }}", --file, "{{ apt_repo_dir }}/compose.yaml", restart, caddy]
+  changed_when: true
+  when: not ansible_check_mode and apt_repo_files.results[1].changed
+
+- name: Timer of apt-publish
+  ansible.builtin.systemd_service:
+    name: apt-publish.timer
+    enabled: true
+    state: started
+    daemon_reload: "{{ apt_repo_units.changed }}"
+  when: not (ansible_check_mode and apt_repo_units.changed)
+
+- name: The repository answers with a signed index
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ apt_repo_port }}/dists/{{ apt_repo_suite }}/InRelease"
+    return_content: true
+  register: apt_repo_check
+  retries: 10
+  delay: 3
+  until: apt_repo_check.status == 200 and 'BEGIN PGP SIGNED MESSAGE' in apt_repo_check.content
+  when: not ansible_check_mode

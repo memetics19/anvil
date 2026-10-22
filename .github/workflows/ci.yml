@@ -69,6 +69,10 @@ jobs:
         run: tests/test_install.sh
       - name: Pulse deploy test
         run: tests/test_pulse.sh
+      - name: apt repository test
+        run: |
+          sudo apt-get install -y -qq apt-utils
+          tests/test_apt_repo.sh
 
   cli:
     runs-on: ubuntu-latest

@@ -1,0 +1,16 @@
+# Managed by Ansible (role apt_repo). Caddy serves the signed apt repository read-only
+# (site/current, built by apt-publish) on port {{ apt_repo_port }}, for the Cloudflare tunnel.
+name: {{ apt_repo_project }}
+
+services:
+  caddy:
+    image: {{ apt_repo_caddy_image }}
+    ports:
+      - "{{ apt_repo_port }}:80"
+    volumes:
+      - {{ apt_repo_dir }}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - {{ apt_repo_dir }}/site:/srv/site:ro
+    read_only: true
+    tmpfs: [/data, /config]
+    mem_limit: 64m
+    restart: unless-stopped

@@ -1,0 +1,16 @@
+# Managed by Ansible (role apt_repo). Plain HTTP: the Cloudflare tunnel terminates TLS.
+# Read-only: GET and HEAD only, files only, no directory listings.
+{
+	auto_https off
+	admin off
+}
+
+:80 {
+	@write not method GET HEAD
+	respond @write 405
+	root * /srv/site/current
+	header Cache-Control "public, max-age=300"
+	@meta path /dists/*
+	header @meta Cache-Control "no-cache"
+	file_server
+}
