@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # The release PR carries labels (autorelease: pending), which are issue labels.
+      issues: write
       pull-requests: write
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
