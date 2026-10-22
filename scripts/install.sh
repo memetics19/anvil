@@ -42,8 +42,9 @@ if [ -z "$tag" ]; then
   url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$releases/latest") ||
     die "cannot reach $releases"
   tag=${url##*/}
+  case $tag in v[0-9]*) ;; *) die "no release is published yet at $releases" ;; esac
 fi
-case $tag in v[0-9]*) ;; *) die "no release found (got '$tag')" ;; esac
+case $tag in v[0-9]*) ;; *) die "ANVIL_VERSION must be a tag such as v0.1.0, not '$tag'" ;; esac
 version=${tag#v}
 
 archive="anvil_${version}_${os}_${arch}.tar.gz"
