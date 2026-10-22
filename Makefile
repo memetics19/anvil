@@ -6,7 +6,7 @@ HVAC_CHECK := py=$$(ansible-playbook --version | sed -n 's/^  python version = .
 	"$${py:-python3}" -c 'import hvac' 2>/dev/null || { \
 	  echo "hvac is missing in the Python that runs Ansible; fix: \"$$py\" -m pip install hvac" >&2; exit 1; }
 
-.PHONY: lint secrets-scan bootstrap-ssh host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply provision-iso provision provision-clean docs docs-publish
+.PHONY: lint secrets-scan bootstrap-ssh host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply provision-iso provision provision-clean docs docs-publish cli
 
 lint:
 	@set -eu -o pipefail; \
@@ -180,3 +180,14 @@ docs-publish:
 	$(DOCS_VENV)/bin/pip install --quiet --disable-pip-version-check -r docs/requirements.txt; \
 	SOURCE_DATE_EPOCH=$$(git log -1 --format=%ct) PATH="$$PWD/$(DOCS_VENV)/bin:$$PATH" scripts/docs-build.sh; \
 	$(MAKE) --no-print-directory vm HOST=apps ARGS="--tags docs $(ARGS)"
+
+# The anvil CLI (cli/, docs/cli.md) as one static binary, build/anvil. The same commit
+# builds the same bytes: no cgo, no paths, no build ID, the version from git.
+# Another platform: GOOS=linux GOARCH=amd64 make cli ANVIL_OUT=build/anvil-linux-amd64
+ANVIL_OUT ?= build/anvil
+ANVIL_VERSION = $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+cli:
+	@set -eu -o pipefail; mkdir -p "$(dir $(ANVIL_OUT))"; out="$$PWD/$(ANVIL_OUT)"; \
+	cd cli && CGO_ENABLED=0 go build -trimpath -buildvcs=false \
+	  -ldflags "-s -w -buildid= -X main.version=$(ANVIL_VERSION)" -o "$$out" .; \
+	echo "built $(ANVIL_OUT) ($(ANVIL_VERSION))"
