@@ -361,8 +361,8 @@ invitations are mailed and `SIGNUPS_VERIFY` is on. `smtp_host`, `smtp_port`,
 
 - Gmail: `smtp_username` is the Gmail address and `smtp_password` a Google App Password,
   which needs 2-step verification on the account.
-- Resend: `smtp_host=smtp.resend.com`, `smtp_username=resend`, `smtp_password` is the API
-  key, and `smtp_from` an address on the verified domain.
+- Another relay: set `smtp_host`, `smtp_username`, `smtp_password` and an address on its
+  verified domain as `smtp_from`.
 
 Write each value from stdin (see [Secrets in Vault](usage.md#secrets-in-vault)), then run
 `make vm HOST=vaultwarden`. When `smtp_host` or `smtp_port` changed, also run
@@ -499,10 +499,9 @@ subnet comes from `site.hosts.apps.gateway_subnet` and its bridge is always `br-
 differs, recreating Caddy once), Caddy is its only member and its default route
 (`gw_priority`), and the guard matches both the bridge and the subnet, so no other or
 recreated network can inherit the admitted addresses. Replies (Pi-hole's DNS answers to
-Vaultwarden) pass as established. The guard and drops everything else from that VM to the enclave
-drops everything else from that VM to the enclave (other containers, the host). It is not
-required by Docker, so a failed guard never keeps
-Pi-hole down. In Caddy, the `pass` and `vault` routes (`caddy_admin_only_routes`) answer
+Vaultwarden) pass as established. The guard drops everything else from that VM to the
+enclave (other containers, the host). It is not required by Docker, so a failed guard never
+keeps Pi-hole down. In Caddy, the `pass` and `vault` routes (`caddy_admin_only_routes`) answer
 only the same operator addresses, matched on the real client address. Any other client
 gets 403.
 
@@ -516,10 +515,8 @@ The mail hole: `smtp_host` and `smtp_port` come from `kv/homelab/apps/vaultwarde
 timer resolves the host through Pi-hole, the resolver Vaultwarden uses, every 10 minutes,
 and keeps each address for 24 h. The set holds at most 64. An answer that would not fit
 next to the kept ones replaces the set (never more than 64, nothing but the answer). No
-expected-range list (`refresh.expect`) is set for it: the relay (Resend) answers from AWS
-load balancers in us-east-1 whose addresses come from Amazon's whole regional EC2 pool, so
-the only published range would be thousands of shared AWS addresses, which would not narrow
-anything. Without an SMTP login in Vault the set stays empty. Not done: Vaultwarden may ask Pi-hole
+expected-range list (`refresh.expect`) is set for it. The relay answers from a large shared
+cloud address pool, so a published range would not narrow anything. Without an SMTP login in Vault the set stays empty. Not done: Vaultwarden may ask Pi-hole
 for any name, not only the relay's (a narrow DNS channel out through Pi-hole's own
 recursion). Closing it needs a Pi-hole client group for Vaultwarden that allows only the
 relay's name, or a resolver of its own. Neither is managed here yet.
@@ -539,15 +536,49 @@ any VM or home device can take over the Mac's addresses, ARP included). In this 
    only your devices, the access policy without the runner peers, the enclave network routed
    through the Proxmox host, and the `apps` home address as a /32 route through the Proxmox
    host with masquerade off.
-2. With NetBird up on the Mac, check that the Mac reaches `https://pass.<gateway-domain>`
-   (200, not 403) and Vault (`vault status` with `vault-ip`, or `HOMELAB_VAULT_ADDR`) over
-   NetBird, with the LAN path out of the way (for example away from home, or Wi-Fi off).
-3. Set `enclave: {vpn_only: true}` in `kv/homelab/site` (CAS write).
-4. `make enclave ARGS="--tags firewall"` and `make vm HOST=apps ARGS="--tags caddy"`.
+2. Clear the Mac's static enclave route, so the enclave is reached over NetBird only:
+   `sudo networksetup -setadditionalroutes "Wi-Fi"` with no further arguments.
+3. At home with Wi-Fi on and NetBird up, check that both addresses go through the NetBird
+   interface (a `utun` device), not Wi-Fi:
 
-Rollback: set `vpn_only: false` again (from the Proxmox host's console if the Mac is locked
-out: `vault` CLI there, or the Keychain site copy with `HOMELAB_SITE_SOURCE=keychain`), then
-rerun the same two commands.
+   ```sh
+   route -n get <vault-enclave-address>
+   route -n get <apps-home-address>
+   ```
+
+   It is unverified whether NetBird installs a /32 inside the Mac's own home subnet. The
+   `apps` home address is in that subnet, so the Wi-Fi route may win. Test this at home
+   before the switch. If either answer names the Wi-Fi interface, stop here.
+4. Over NetBird, check that the Mac reaches `https://pass.<gateway-domain>` (200, not 403)
+   and Vault (`vault status` with `vault-ip`, or `HOMELAB_VAULT_ADDR`). Check it at home and
+   also away from home or with Wi-Fi off.
+5. Set `enclave: {vpn_only: true}` in `kv/homelab/site` with a CAS write, as in
+   [Adding a service behind the gateway](usage.md#adding-a-service-behind-the-gateway).
+6. `make enclave ARGS="--tags firewall"` and `make vm HOST=apps ARGS="--tags caddy"`.
+
+Rollback. This works while the Mac is locked out:
+
+1. From the Proxmox host's console or SSH, admit the Mac's LAN address again. This lasts
+   until the next firewall apply:
+
+   ```sh
+   nft add element inet segments admin { <mac-lan-address>/32 }
+   ```
+
+   Then put the Mac's static enclave route back
+   ([setup.md](setup.md#the-macs-route-to-the-secrets-enclave) has the command).
+2. From the Mac, set `vpn_only: false` in `kv/homelab/site` (CAS write).
+3. Rerun the two make commands of step 6. The apply replaces the temporary element with the
+   full list.
+
+An SSH tunnel through the Proxmox host also reaches Vault, with no route and no change to
+the table. The host's own connections never pass the enclave firewall's forward chain:
+
+```sh
+ssh -N -L 8200:<vault-enclave-address>:8200 root@<proxmox-home-address> &
+export HOMELAB_VAULT_ADDR=https://127.0.0.1:8200 VAULT_TLS_SERVER_NAME=<vault-enclave-address>
+source scripts/env.sh && vault status
+```
 
 ### Guests didn't start at boot (enclave firewall failed to load)
 
@@ -558,7 +589,9 @@ would be open.
 
 1. Fix the table: read the error (`nft -c -f /etc/segments/segments.nft`), repair the file
    (or copy the newest `/var/backups/pve-network/segments.nft.<epoch>.file` back), then
-   `nft -f /etc/segments/segments.nft` and check `nft list table inet segments`.
+   `nft -f /etc/segments/segments.nft` and check `nft list table inet segments`. Then run
+   `systemctl start segments-set-refresh@enclave_smtp_relay`. The table loads with the
+   DNS-fed set empty, and without this the mail relay waits up to 10 minutes for the timer.
 2. Start the guests. `pve-guests` refuses manual starts (`RefuseManualStart=yes`, see
    `systemctl cat pve-guests`), so use `pvesh create /nodes/localhost/startall` (all, in
    startup order) or `qm start <vmid>` for one.
@@ -569,10 +602,17 @@ every VM and the home network, and its VMs could reach anything routed. If you m
 the home), start only `apps` with `qm start`, and fix the table before starting `vault` and
 `vaultwarden`.
 
-Shutdown is unaffected: stopping `pve-guests` (shutdown, reboot) runs Proxmox's stopall as
-usual. Nothing ties it to the firewall unit. Never `systemctl restart` or `stop` a unit that
-`pve-guests` is ordered against, and never link one to it with Requires, RequiredBy,
-Requisite, BindsTo or PartOf: a restart of such a unit stops every guest (it happened once).
+After a manual start, shutdown is not clean. The failed boot leaves `pve-guests` failed,
+and a failed unit has nothing to stop. At the next shutdown or reboot Proxmox's stopall does
+not run, so the guests started by hand (`startall` or `qm start`) are hard-stopped. That
+risks Vault's Raft store and Vaultwarden's sqlite database. So, after fixing the table,
+reboot the host. That boot starts `pve-guests` normally, and its stop runs stopall at the
+next shutdown. If guests were started by hand and stay up, run
+`pvesh create /nodes/localhost/stopall` before any later shutdown or reboot.
+
+Never `systemctl restart` or `stop` a unit that `pve-guests` is ordered against. Never link
+one to it with Requires, RequiredBy, Requisite, BindsTo, PartOf, Conflicts or
+PropagatesStopTo: a restart of such a unit stops every guest (it happened once).
 
 ### Apt cache and time
 

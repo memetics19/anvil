@@ -181,25 +181,33 @@
     - name: Apply a pending systemd reload (drop-in)
       ansible.builtin.meta: flush_handlers
 
-    # Read from systemd: pve-guests is ordered after the table and checks it, and does not
-    # Require it (a Requires= would stop every guest on a firewall restart).
+    # Read from systemd: pve-guests is ordered after the table and checks it, and has no
+    # dependency that stops it with the firewall unit (Requires, Requisite, BindsTo, PartOf,
+    # Conflicts, PropagatesStopTo and their reverse forms would stop every guest on a firewall
+    # restart or stop).
     - name: The boot check is in place, without a stop-propagating dependency
       ansible.builtin.command:
         argv: [systemctl, show, --property=Requires, --property=Requisite, --property=BindsTo,
-               --property=PartOf, --property=After, --property=ExecStartPre, pve-guests.service]
+               --property=PartOf, --property=Conflicts, --property=ConflictedBy,
+               --property=PropagatesStopTo, --property=StopPropagatedFrom,
+               --property=After, --property=ExecStartPre, pve-guests.service]
       register: pve_segments_guests_deps
+      vars:
+        pve_segments_stop_props: (Requires|Requisite|BindsTo|PartOf|Conflicts|ConflictedBy|PropagatesStopTo|StopPropagatedFrom)
       changed_when: false
       check_mode: false
       failed_when: >-
         not ansible_check_mode
-        and (pve_segments_guests_deps.stdout is search('(Requires|Requisite|BindsTo|PartOf)=[^\n]*segments-firewall')
+        and (pve_segments_guests_deps.stdout is search(pve_segments_stop_props ~ '=[^\n]*segments-firewall')
              or pve_segments_guests_deps.stdout is not search('After=[^\n]*segments-firewall[.]service')
              or pve_segments_guests_deps.stdout is not search('ExecStartPre=[^\n]*nft list table inet ' ~ pve_segments_table))
 
     - name: The firewall unit is tied to no guest unit either way
       ansible.builtin.command:
         argv: [systemctl, show, --property=PartOf, --property=BindsTo, --property=RequiredBy,
-               --property=RequisiteOf, --property=BoundBy, segments-firewall.service]
+               --property=RequisiteOf, --property=BoundBy, --property=Conflicts,
+               --property=ConflictedBy, --property=PropagatesStopTo,
+               --property=StopPropagatedFrom, segments-firewall.service]
       register: pve_segments_fw_deps
       changed_when: false
       check_mode: false
@@ -305,7 +313,7 @@
         - name: Put the previous table back
           ansible.builtin.shell:
             cmd: >-
-              set -o pipefail;
+              set -eo pipefail;
               { printf 'table inet %s\ndelete table inet %s\n' {{ pve_segments_table | quote }} {{ pve_segments_table | quote }};
               cat {{ pve_segments_backup.stdout | trim | quote }}; } | nft -f -;
               s={{ (pve_segments_backup.stdout | trim ~ '.file') | quote }};

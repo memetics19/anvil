@@ -19,6 +19,7 @@
       {%- for k, c in {'gateway': caddy_gateway_subnet, 'lab': site.lan_cidr,
                        'home': site.pve.uplink_ip ~ '/' ~ site.pve.uplink_prefix,
                        'dns': site.hosts[inventory_hostname].dns_subnet | default('192.0.2.0/32'),
+                       'enclave': caddy_enclave_subnet | default('192.0.2.0/32', true),
                        'docker': caddy_docker_bridge.stdout | default('', true) | trim
                                  | default('192.0.2.0/32', true)}.items() -%}
       {%- set a = (c.split('/')[0] ~ '.x.x.x.x').split('.')[:4] | map('int') | list -%}
@@ -41,7 +42,8 @@
         | selectattr('value.1', 'ge', caddy_net_ranges.gateway[0]) | list | length == 0
     fail_msg: >-
       site.hosts.{{ inventory_hostname }}.gateway_subnet must be an RFC 1918 network, /16 to /29,
-      overlapping neither the lab, the home network, the DNS network nor Docker's default bridge
+      overlapping neither the lab, the home network, the DNS network, the secrets enclave nor
+      Docker's default bridge
     quiet: true
   when: caddy_gateway_subnet | length > 0
 

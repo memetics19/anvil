@@ -28,7 +28,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -n "$backup" ] && [ -n "$target" ] || { echo "usage: segments-fw-rollback.sh <backup-file> --target HOST [--wait SECONDS] [--table NAME]" >&2; exit 2; }
+[ -n "$backup" ] && [ -n "$target" ] || { echo "usage: segments-fw-rollback.sh <backup-file> --target HOST [--wait SECONDS] [--table NAME] [--file SAVED --to PATH]" >&2; exit 2; }
 [[ $table =~ ^[a-z][a-z0-9_]*$ ]] || { echo "segments-fw-rollback: bad table name" >&2; exit 2; }
 [ -f "$backup" ] || { echo "segments-fw-rollback: backup $backup not found" >&2; exit 1; }
 
