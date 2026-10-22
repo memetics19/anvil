@@ -57,3 +57,7 @@ jobs:
         run: tests/test_segments.sh
       - name: Vault in the secrets enclave test
         run: tests/test_enclave_vault.sh
+      - name: Switch plan and SSH helper test
+        run: |
+          sudo apt-get install -y -qq expect sshpass
+          tests/test_switch.sh
