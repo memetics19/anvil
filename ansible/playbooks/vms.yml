@@ -3,7 +3,7 @@
 # node_exporter (group node_exporter in the inventory).
 # Run: make vms ARGS="--check --diff"   or one VM: make vm HOST=frigate
 # Tags: base, docker, cloudflared, node_exporter, frigate, arr, iptv_epg, filestash, iptv,
-# netbird_peer, redis, ntfy, pulse, netbird_server, pihole, homepage,
+# netbird_peer, netbird_home, redis, ntfy, pulse, netbird_server, pihole, homepage,
 # vaultwarden, caddy, docs, firewall. The tag docs alone copies only the static sites Caddy
 # serves (make docs-publish). The tag homepage alone also runs the pieces other roles keep
 # for the dashboard (ARR API keys into Vault on ragnarok, the Frigate viewer login, Pi-hole's
@@ -87,6 +87,16 @@
       tags: [pulse]
     - role: netbird_server
       tags: [netbird_server]
+  tasks:
+    # After the server: the routing peer of the self-hosted network, a second client service.
+    - name: The netbird-home client
+      ansible.builtin.include_role:
+        name: netbird_peer
+        tasks_from: home.yml
+        apply:
+          tags: [netbird_peer, netbird_home]
+      when: site.netbird_domain | default('', true) | length > 0
+      tags: [netbird_peer, netbird_home]
   post_tasks:
     - name: The NetBird client is still connected
       ansible.builtin.include_role:

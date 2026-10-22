@@ -1,3 +1,14 @@
 - name: Update apt cache
   ansible.builtin.apt:
     update_cache: true
+
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+# Only the self-hosted network's client (tasks/home.yml). The cloud client is never restarted.
+- name: Restart netbird-home
+  ansible.builtin.systemd_service:
+    name: "{{ netbird_peer_home_service }}"
+    state: restarted
+  when: netbird_peer_home_unit.stat.exists | default(false) or not ansible_check_mode

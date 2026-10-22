@@ -15,3 +15,20 @@ netbird_peer_management_url: https://api.netbird.io:443
 netbird_peer_vault_mount: kv
 netbird_peer_vault_path: "homelab/{{ inventory_hostname }}/netbird"
 netbird_peer_repo_scripts: "{{ playbook_dir }}/../../scripts"
+
+# --- netbird-home: the routing peer of the self-hosted network (Task 13c, tasks/home.yml) ---
+# A second client service next to the cloud one: its own state directory, socket, log,
+# interface and WireGuard port, and its own nftables table. Only when site.netbird_domain
+# is set (role netbird_server).
+netbird_peer_home_enabled: "{{ site.netbird_domain | default('', true) | length > 0 }}"
+netbird_peer_home_service: netbird-home
+netbird_peer_home_state_dir: /var/lib/netbird-home
+netbird_peer_home_log_dir: /var/log/netbird-home
+netbird_peer_home_daemon_addr: unix:///var/run/netbird-home.sock
+netbird_peer_home_interface: wt1
+netbird_peer_home_wg_port: 51821
+netbird_peer_home_nftables_table: netbird_home
+netbird_peer_home_memory_max: 256M
+netbird_peer_home_management_url: "https://{{ site.netbird_domain | default('') }}:443"
+# Groups its setup key puts it in (role netbird_server: the routers of its networks).
+netbird_peer_home_groups: [routers]

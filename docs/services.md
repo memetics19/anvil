@@ -158,6 +158,25 @@ The role then sets up the server through its API (`files/netbird_api.py`, run on
 
 Objects are matched by name. Anything else you add in the dashboard is left alone.
 
+### netbird-home client
+
+The self-hosted network's routing peer is a second NetBird client service on this VM,
+`netbird-home` (the netbird_peer role, `tasks/home.yml`). It uses the same held package as
+the cloud client but its own state directory, socket, log, interface `wt1` and WireGuard
+port 51821. It has its own nftables table and no custom routing rules or eBPF proxy, which
+are host wide and belong to the cloud client. It starts after Docker and the cloud client,
+and only once the `ip filter` table exists. With that table NetBird picks its nftables
+backend, so `netbird-home` never touches the cloud client's iptables chains.
+
+It runs with DNS and client routes off: it only routes. A client that needs a login is
+enrolled once the public name answers, with a new one-off setup key that the role creates
+through the API and stores in Vault. A connected client is never brought up, down or
+re-enrolled. Its unit is restarted only when the unit file changes. The cloud client is
+never touched.
+
+Check it on the VM with
+`sudo netbird status -d --daemon-addr unix:///var/run/netbird-home.sock`.
+
 ### Other services
 
 - `redis`: the Ubuntu package with its default config, localhost only. A hand edit to

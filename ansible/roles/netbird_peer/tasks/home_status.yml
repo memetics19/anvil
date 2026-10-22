@@ -1,0 +1,38 @@
+# Sets netbird_peer_home_state (connected | needs_login | other) and
+# netbird_peer_home_summary for the netbird-home client. Read-only, also in check mode.
+- name: Netbird-home client status
+  ansible.builtin.command:
+    argv: [netbird, status, --json, --daemon-addr, "{{ netbird_peer_home_daemon_addr }}"]
+  register: netbird_peer_home_raw
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Work out the netbird-home client state
+  ansible.builtin.set_fact:
+    netbird_peer_home_status: >-
+      {{ (netbird_peer_home_raw.stdout | from_json)
+         if netbird_peer_home_raw.rc | default(1) == 0 and netbird_peer_home_raw.stdout | default('') is match('\s*[{]')
+         else {} }}
+    netbird_peer_home_state: >-
+      {%- set out = (netbird_peer_home_raw.stdout | default('')) ~ (netbird_peer_home_raw.stderr | default('')) -%}
+      {%- if netbird_peer_home_raw.rc | default(1) == 0
+            and netbird_peer_home_raw.stdout | default('') is match('\s*[{]')
+            and (netbird_peer_home_raw.stdout | from_json).management.connected | default(false) -%}connected
+      {%- elif 'NeedsLogin' in out or 'LoginFailed' in out -%}needs_login
+      {%- else -%}other
+      {%- endif -%}
+  no_log: true
+
+- name: Summarise the netbird-home client status
+  ansible.builtin.set_fact:
+    netbird_peer_home_summary: >-
+      {%- if netbird_peer_home_status -%}
+      management {{ 'connected' if netbird_peer_home_status.management.connected | default(false) else 'NOT connected' }},
+      signal {{ 'connected' if netbird_peer_home_status.signal.connected | default(false) else 'NOT connected' }},
+      peers {{ netbird_peer_home_status.peers.connected | default('?') }}/{{ netbird_peer_home_status.peers.total | default('?') }}
+      {%- else -%}
+      {{ 'waiting for a login' if netbird_peer_home_state == 'needs_login'
+         else 'status unreadable (rc ' ~ netbird_peer_home_raw.rc | default('?') ~ ')' }}
+      {%- endif -%}

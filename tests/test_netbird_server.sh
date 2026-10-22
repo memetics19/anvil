@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Self-hosted NetBird (role netbird_server, Task 13c), run locally with a
+# Self-hosted NetBird (roles netbird_server and netbird_peer, Task 13c), run locally with a
 # fixture site dict and fake secrets:
 # - the server configuration, Caddyfile and compose file: public STUN only, ports on the
 #   lab address and loopback only, pinned images, a memory cap on every service, no secret
 #   in the compose file;
+# - the netbird-home unit: kept apart from the cloud client;
 # - the API helper against an in-memory API stub: setup, reconcile (and a second run with
 #   nothing to do), check mode without writes, the setup key.
 # Uses documentation-range addresses and example.com only.
@@ -26,6 +27,7 @@ cat >"$tmp/play.yml" <<PLAY
   vars_files:
     - $PWD/ansible/inventory/group_vars/all/gateway.yml
     - $PWD/ansible/roles/netbird_server/defaults/main.yml
+    - $PWD/ansible/roles/netbird_peer/defaults/main.yml
   vars:
     inventory_hostname: netbird
     site:
@@ -35,8 +37,10 @@ cat >"$tmp/play.yml" <<PLAY
       gateway: {subdomain: internal}
       netbird_domain: netbird.example.com
       netbird_server: {network_range: 100.64.0.0/16}
+      pve: {ip: 192.0.2.10, gateway_alias_ip: 192.0.2.1, uplink_ip: 198.51.100.250, uplink_prefix: 24, uplink_gw: 198.51.100.1}
       hosts:
         netbird: {ip: 192.0.2.115}
+        frigate: {ip: 192.0.2.114}
         apps: {ip: 192.0.2.121, home_ip: 198.51.100.249}
     netbird_server_secrets:
       relay_secret: fake-relay-secret
@@ -57,6 +61,7 @@ cat >"$tmp/play.yml" <<PLAY
         - {src: $PWD/ansible/roles/netbird_server/templates/config.yaml.j2, dest: config.yaml}
         - {src: $PWD/ansible/roles/netbird_server/templates/Caddyfile.j2, dest: Caddyfile}
         - {src: $PWD/ansible/roles/netbird_server/templates/docker-compose.yaml.j2, dest: docker-compose.yaml}
+        - {src: $PWD/ansible/roles/netbird_peer/templates/netbird-home.service.j2, dest: netbird-home.service}
     - name: Desired state as JSON
       ansible.builtin.copy:
         content: "{{ netbird_server_desired | to_json }}"
@@ -105,6 +110,17 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; 
   if docker compose -p t -f "$d" config -q 2>"$tmp/compose.err"; then ok "compose file is valid"
   else bad "compose file is valid"; cat "$tmp/compose.err"; fi
 fi
+
+# --- netbird-home unit -------------------------------------------------------------------------
+u=$tmp/netbird-home.service
+has "home: own state directory" "Environment=NB_STATE_DIR=/var/lib/netbird-home" "$u"
+has "home: own nftables table" "Environment=NB_NFTABLES_TABLE=netbird_home" "$u"
+has "home: no custom routing rules" "Environment=NB_DISABLE_CUSTOM_ROUTING=true" "$u"
+has "home: no eBPF proxy" "Environment=NB_DISABLE_EBPF_WG_PROXY=true" "$u"
+has "home: own socket, not under /var/run/netbird/" "--daemon-addr unix:///var/run/netbird-home.sock" "$u"
+has "home: after Docker and the cloud client" "After=network-online.target docker.service netbird.service" "$u"
+has "home: only with the ip filter table" "nft list table ip filter" "$u"
+has "home: memory cap" "MemoryMax=256M" "$u"
 
 # --- desired state --------------------------------------------------------------------------------
 j=$tmp/desired.json

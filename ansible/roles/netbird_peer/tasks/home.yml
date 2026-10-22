@@ -1,0 +1,156 @@
+# netbird-home: the routing peer of the self-hosted network (role netbird_server), a second
+# client service on this VM next to the cloud client. The package is the one main.yml
+# installs and holds. Like the cloud client, a connected netbird-home is never brought up,
+# down or re-enrolled. Its unit is restarted only when the unit file changes. The cloud
+# client (netbird.service) is never touched here.
+- name: Directories of the netbird-home client
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - "{{ netbird_peer_home_state_dir }}"
+    - "{{ netbird_peer_home_log_dir }}"
+
+- name: Read the netbird-home unit
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ netbird_peer_home_service }}.service"
+  register: netbird_peer_home_unit
+
+- name: Netbird-home unit
+  ansible.builtin.template:
+    src: netbird-home.service.j2
+    dest: "/etc/systemd/system/{{ netbird_peer_home_service }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart netbird-home
+
+- name: Apply a unit change
+  ansible.builtin.meta: flush_handlers
+
+- name: Netbird-home running and enabled
+  ansible.builtin.systemd_service:
+    name: "{{ netbird_peer_home_service }}"
+    enabled: true
+    state: started
+  when: netbird_peer_home_unit.stat.exists or not ansible_check_mode
+
+- name: Read the netbird-home client status
+  ansible.builtin.import_tasks: home_status.yml
+
+- name: Report the netbird-home client status
+  ansible.builtin.debug:
+    msg: "netbird-home: {{ netbird_peer_home_summary }}"
+
+- name: Remember the netbird-home state at the start
+  ansible.builtin.set_fact:
+    netbird_peer_home_state_start: "{{ netbird_peer_home_state }}"
+
+# A login needs the server's public name to answer (the Cloudflare route, docs/setup.md).
+- name: Does the self-hosted server answer on its public name
+  ansible.builtin.uri:
+    url: "{{ netbird_peer_home_management_url }}/api/instance"
+    timeout: 10
+  register: netbird_peer_home_public
+  failed_when: false
+  check_mode: false
+  when: netbird_peer_home_state == 'needs_login'
+
+- name: Netbird-home waits for the public name
+  ansible.builtin.debug:
+    msg: >-
+      WARNING netbird-home: not logged in, and {{ site.netbird_domain }} does not answer yet
+      (status {{ netbird_peer_home_public.status | default('?') }}). Add the Cloudflare route
+      (docs/setup.md, Self-hosted NetBird), then run again.
+  when:
+    - netbird_peer_home_state == 'needs_login'
+    - netbird_peer_home_public.status | default(0) != 200
+
+- name: Enrol netbird-home
+  when:
+    - netbird_peer_home_state == 'needs_login'
+    - netbird_peer_home_public.status | default(0) == 200
+  block:
+    - name: A setup key for netbird-home into Vault
+      ansible.builtin.include_role:
+        name: netbird_server
+        tasks_from: setup_key.yml
+        # Its defaults (the Vault path) are read below.
+        public: true
+      vars:
+        netbird_server_key_name: "{{ netbird_peer_home_service }}"
+        netbird_server_key_groups: "{{ netbird_peer_home_groups }}"
+
+    - name: Client to enrol
+      ansible.builtin.debug:
+        msg: "netbird-home: would run netbird up with a new setup key"
+      changed_when: true
+      when: ansible_check_mode
+
+    - name: Log in
+      when: not ansible_check_mode
+      block:
+        - name: Setup key file (root only)
+          ansible.builtin.copy:
+            content: >-
+              {{ (lookup('community.hashi_vault.vault_kv2_get', netbird_server_vault_path,
+                         engine_mount_point=netbird_server_vault_mount,
+                         url=lookup('env', 'VAULT_ADDR'),
+                         token=lookup('env', 'VAULT_TOKEN'),
+                         ca_cert=lookup('env', 'VAULT_CACERT')).secret)['setup_key_' ~ (netbird_peer_home_service | replace('-', '_'))] }}
+            dest: /root/.netbird-home-setup-key
+            owner: root
+            group: root
+            mode: "0600"
+          no_log: true
+          diff: false
+
+        # Routing peer only: no DNS settings and no routes from the network on this VM.
+        - name: Log in with the setup key
+          ansible.builtin.command:
+            argv:
+              - netbird
+              - up
+              - --daemon-addr
+              - "{{ netbird_peer_home_daemon_addr }}"
+              - --management-url
+              - "{{ netbird_peer_home_management_url }}"
+              - --setup-key-file
+              - /root/.netbird-home-setup-key
+              - --interface-name
+              - "{{ netbird_peer_home_interface }}"
+              - --wireguard-port
+              - "{{ netbird_peer_home_wg_port | string }}"
+              - --hostname
+              - "{{ netbird_peer_home_service }}"
+              - --disable-dns
+              - --disable-client-routes
+          changed_when: true
+      always:
+        - name: Remove the setup key file
+          ansible.builtin.file:
+            path: /root/.netbird-home-setup-key
+            state: absent
+
+    - name: Read the netbird-home client status again
+      ansible.builtin.include_tasks: home_status.yml
+      when: not ansible_check_mode
+
+    - name: Netbird-home is connected
+      ansible.builtin.assert:
+        that: netbird_peer_home_state == 'connected'
+        fail_msg: "netbird-home: enrolled but not connected ({{ netbird_peer_home_summary }})"
+        success_msg: "netbird-home: {{ netbird_peer_home_summary }}"
+      when: not ansible_check_mode
+
+- name: Netbird-home is not connected and needs no login (left alone)
+  ansible.builtin.debug:
+    msg: >-
+      WARNING netbird-home: {{ netbird_peer_home_summary }}. Nothing was changed; check
+      `sudo netbird status -d --daemon-addr {{ netbird_peer_home_daemon_addr }}` on the VM.
+  when: netbird_peer_home_state == 'other'

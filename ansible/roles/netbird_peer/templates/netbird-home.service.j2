@@ -1,0 +1,29 @@
+# Managed by anvil (ansible/roles/netbird_peer, tasks/home.yml).
+# The self-hosted network's client, next to the cloud client (netbird.service). Kept apart
+# from it: its own state directory, socket, log, interface and WireGuard port; its own
+# nftables table; no custom routing rules or eBPF proxy (both are host wide and owned by
+# the cloud client). It starts after Docker and the cloud client, and only once the ip
+# filter table exists: with that table NetBird picks its nftables backend, so this client
+# never touches the cloud client's iptables chains.
+[Unit]
+Description=NetBird client for the self-hosted network ({{ netbird_peer_home_service }})
+ConditionFileIsExecutable=/usr/bin/netbird
+After=network-online.target docker.service netbird.service
+Wants=network-online.target
+
+[Service]
+Environment=NB_STATE_DIR={{ netbird_peer_home_state_dir }}
+Environment=NB_NFTABLES_TABLE={{ netbird_peer_home_nftables_table }}
+Environment=NB_DISABLE_CUSTOM_ROUTING=true
+Environment=NB_DISABLE_EBPF_WG_PROXY=true
+Environment=SYSTEMD_UNIT={{ netbird_peer_home_service }}
+ExecStartPre=/bin/sh -c '/usr/sbin/nft list table ip filter >/dev/null'
+ExecStart=/usr/bin/netbird service run --log-level info --daemon-addr {{ netbird_peer_home_daemon_addr }} --log-file {{ netbird_peer_home_log_dir }}/client.log
+StandardOutput=append:{{ netbird_peer_home_log_dir }}/netbird.out
+StandardError=append:{{ netbird_peer_home_log_dir }}/netbird.err
+Restart=always
+RestartSec=30
+MemoryMax={{ netbird_peer_home_memory_max }}
+
+[Install]
+WantedBy=multi-user.target
