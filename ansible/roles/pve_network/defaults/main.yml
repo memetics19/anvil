@@ -13,3 +13,8 @@ pve_network_rollback_target: ""
 # changes. Every iptables post-up line checks before adding, because Proxmox's ifreload
 # (ifreload_down_changed=0) runs post-up again without post-down; post-down removes every
 # copy of a rule.
+
+# VLAN IDs the uplink port (eno1) carries tagged, for the switch trunk (inventory
+# group_vars/proxmox.yml `vlans`, docs/cisco-switch.md). The lab and home networks stay
+# untagged (PVID 1). Empty: no bridge-vids line.
+pve_network_trunk_vids: "{{ vlans | default([]) | map(attribute='tag') | list }}"

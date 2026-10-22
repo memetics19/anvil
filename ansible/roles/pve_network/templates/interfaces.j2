@@ -19,6 +19,9 @@ iface eno2 inet manual
 auto vmbr0
 iface vmbr0 inet static
 	bridge-vlan-aware yes
+{% if pve_network_trunk_vids | length > 0 %}
+	bridge-vids {{ pve_network_trunk_vids | join(' ') }}
+{% endif %}
 	address {{ site.pve.ip }}/{{ site.lan_cidr.split('/')[1] }}
 	address {{ site.pve.gateway_alias_ip }}/{{ site.lan_cidr.split('/')[1] }}
 	address {{ site.pve.uplink_ip }}/{{ site.pve.uplink_prefix }}
