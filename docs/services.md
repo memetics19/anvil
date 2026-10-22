@@ -744,8 +744,8 @@ the enclave and not another VLAN.
   each VLAN has its own. It also starts only with the table loaded. Neither unit is linked
   to `pve-guests` in any way.
 - **Trunk.** `vmbr0`'s uplink carries VLANs 10, 20 and 30 tagged (`bridge-vids`, from
-  `make host-network`). The lab and home networks stay untagged. The switch side is a hand
-  step, see [cisco-switch.md](cisco-switch.md).
+  `make host-network`). The lab and home networks stay untagged. The switch side is
+  `make switch`, see [cisco-switch.md](cisco-switch.md).
 
 ### Changing it
 

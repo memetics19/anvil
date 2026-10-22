@@ -448,9 +448,9 @@ NetBird dashboard:
 
 ### Switch
 
-The Cisco switch's ports and VLANs. [cisco-switch.md](cisco-switch.md) has the config: the
-Proxmox port as a trunk (the lab untagged, VLANs 10, 20 and 30 tagged), camera ports in
-VLAN 20 and personal ports in VLAN 30.
+The Cisco switch's ports and VLANs, from `site.network.switch` with `make switch`. The
+Proxmox port is a trunk (the lab untagged, VLANs 10, 20 and 30 tagged). See
+[cisco-switch.md](cisco-switch.md).
 
 ### Wi-Fi access point
 

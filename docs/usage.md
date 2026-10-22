@@ -16,6 +16,7 @@ Placeholders: `<apps-address>` (the `apps` VM's lab address), `<apps-home-addres
 | `make host-network` | Proxmox `/etc/network/interfaces`, with a timed rollback. |
 | `make enclave` | The secrets enclave on the Proxmox host: firewall, SDN apply, apt cache, NTP, cloud-init vendor data. |
 | `make vlans` | VLANs 10, 20 and 30 on the Proxmox host: the routed segments firewall, then the gateway addresses, DHCP and NTP per VLAN. |
+| `make switch` | The Cisco switch's ports and VLANs. A dry run that prints the commands. `ARGS="-e network_switch_apply=true"` applies, checks and saves. |
 | `make ceph` | Single-node Ceph, the S3 gateway, the `tfstate` bucket and the S3 users. The first real run wipes the OSD disk. |
 | `make vms` | Every play in `ansible/playbooks/vms.yml`: the base roles and all workloads. |
 | `make vm HOST=<name>` | The same for one VM: `frigate`, `netbird`, `ragnarok`, `vault` or `apps`. |

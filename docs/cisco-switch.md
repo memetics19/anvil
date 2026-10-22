@@ -1,147 +1,98 @@
 # Cisco switch
 
-The switch is configured by hand. Nothing in this repo logs in to it. This page has the
-config for VLANs 10, 20 and 30 ([VLANs](services.md#vlans)).
-
-The switch model is not recorded here. The commands are generic Catalyst IOS (IOS 15 and
-IOS XE). Check each one against your model before you paste it. The notes say where models
-differ.
+The switch is a Cisco SG300-52 on firmware 1.3. `make switch` manages part of its config
+from site data (role `network_switch`). Everything else on the switch is still set by
+hand, and the role never touches it.
 
 Placeholders: `<proxmox-port>` (the port cabled to the Proxmox host's `eno1`),
-`<camera-ports>`, `<personal-ports>`, `<ap-port>`, for example `GigabitEthernet1/0/5` or a
-range such as `GigabitEthernet1/0/10 - 12`.
+`<office-port>`, `<router-port>`, `<ap-port>`, each a name such as `gi10`.
 
-## Before you start
+## What is code
 
-- Work from the console port, or over SSH from a device that does not depend on the port
-  you are changing. Changing `<proxmox-port>` can cut off the lab and the home network if
-  it goes wrong.
-- Find the VLAN the lab and home network use on the switch today. On a default switch it
-  is VLAN 1. Use it as the native VLAN below. If it is not 1, replace every `1` in
-  `native vlan 1` and `allowed vlan 1,...` with it.
+The desired state is `site.network.switch` in `kv/homelab/site`
+(structure in `site/site.example.yml`):
 
-  ```
-  show vlan brief
-  show interfaces <proxmox-port> switchport
-  ```
-
-- Check that the native VLAN is sent untagged. This must print nothing:
-
-  ```
-  show running-config | include vlan dot1q tag native
-  ```
-
-  If it prints the line, the lab would break on the trunk. Stop and ask.
-
-- Check VTP. In `server` or `client` mode inside a VTP domain, the VLANs you create can
-  spread to other switches, or be replaced by theirs. `transparent` or `off` keeps them on
-  this switch:
-
-  ```
-  show vtp status
-  ```
-
-  If the mode is `server` or `client` and other switches share the domain, decide first.
-  `vtp mode transparent` keeps this switch's VLANs local.
-
-- Save a copy of the current config:
-
-  ```
-  copy running-config flash:pre-vlans.cfg
-  ```
-
-## The VLANs
-
-```
-configure terminal
-vlan 10
- name servers
-vlan 20
- name cameras
-vlan 30
- name personal
-end
+```yaml
+network:
+  switch:
+    ports:
+      <proxmox-port>: [trunk, protected]
+      <office-port>: [protected]
+    keep_ports: [<router-port>, <ap-port>]
 ```
 
-## The Proxmox port: a trunk
+A port has one or both roles:
 
-The lab and the home network stay untagged (native VLAN). VLANs 10, 20 and 30 are tagged.
-The Proxmox host already accepts them (`bridge-vids 10 20 30` on `vmbr0`).
+1. `trunk`. VLAN 1 stays native and untagged. The VLANs of the `vlans` list in
+   `ansible/inventory/group_vars/proxmox.yml` (10 servers, 20 cameras, 30 personal) are
+   created with their names and added tagged. The port's other VLANs are left alone.
+2. `protected`. `switchport protected-port`. Two protected ports cannot reach each other.
+   Both still reach every unprotected port, such as the router uplink and the access
+   point. The role does not change the port's mode for this.
 
-Changing the port's mode takes the link through spanning tree again. Without portfast the
-port blocks for about 30 seconds (listening, then learning). The Proxmox host, every VM and
-the home DNS are cut off for that time. So set portfast first, before the mode change.
+Ports that are not listed are never touched. The plan may not name a port in
+`keep_ports`, and the run stops if one of them is protected. The VLANs are created only
+when some port is a trunk.
 
-```
-configure terminal
-interface <proxmox-port>
- description proxmox eno1 (lab untagged, VLANs 10 20 30 tagged)
- spanning-tree portfast trunk
- switchport trunk encapsulation dot1q
- switchport trunk native vlan 1
- switchport trunk allowed vlan 1,10,20,30
- switchport mode trunk
- switchport nonegotiate
-end
-```
+Today the Proxmox port is a trunk and protected, and the office port is protected. The
+Proxmox port was already a trunk with VLAN 1 native, so it only gains VLANs 10, 20 and 30.
+The office port was also a trunk with only VLAN 1, the firmware's default, and stays so.
 
-- `spanning-tree portfast trunk`: on IOS 15.2(2)E and later, and on IOS XE, the command is
-  `spanning-tree portfast edge trunk`. The Proxmox bridge runs no spanning tree, so the
-  port can forward at once. Even with portfast, expect the link to drop for a few seconds.
-- `switchport trunk encapsulation dot1q`: only models that also support ISL take it (for
-  example the 3560 and 3750). A 2960 rejects it, because it only knows 802.1Q. Skip the line
-  there.
+## How it runs
 
-Check from the switch:
+Every task runs on the Mac. The firmware's SSH speaks only SHA1 key exchange, `ssh-rsa`
+host keys and CBC ciphers. `scripts/switch-cli.sh` allows them for that one connection with
+`ssh -o` flags, and reads no ssh config file. The password comes from Vault
+`kv/homelab/network/switch` into the environment of one task, through `sshpass -e`. It
+is never on a command line and never logged. The script sends one line at a time, waits
+for the prompt after each, stops at the first error and leaves config mode before it
+logs out.
 
-```
-show interfaces trunk
-show interfaces <proxmox-port> switchport
-```
+1. It reads the state with `show vlan`, `show interfaces protected-ports` and
+   `show interfaces switchport <port>` for each listed port.
+2. It works out the commands that are missing and prints them. Nothing else is sent.
 
-`<proxmox-port>` should list native VLAN 1 and VLANs 1,10,20,30 as allowed and active.
-Then check from the Mac that the Proxmox host and the home DNS still answer.
-
-## Camera ports: access VLAN 20
-
-```
-configure terminal
-interface range <camera-ports>
- description camera (VLAN 20)
- switchport mode access
- switchport access vlan 20
- switchport nonegotiate
- spanning-tree portfast
- spanning-tree bpduguard enable
-end
+```sh
+make switch
 ```
 
-On IOS 15.2(2)E and later, and on IOS XE, the portfast line is `spanning-tree portfast edge`.
+To apply:
 
-## Personal ports: access VLAN 30
-
-```
-configure terminal
-interface range <personal-ports>
- description personal (VLAN 30)
- switchport mode access
- switchport access vlan 30
- switchport nonegotiate
- spanning-tree portfast
- spanning-tree bpduguard enable
-end
+```sh
+make switch ARGS="-e network_switch_apply=true"
 ```
 
-A device on one of these ports gets its address from the Proxmox host's DHCP for VLAN 30.
+The apply goes in this order:
 
-## Save
+1. Save the running config to `build/switch/running-config-<time>.cfg` (mode 600,
+   gitignored).
+2. Send the plan.
+3. Read the state again. The plan must now be empty.
+4. Check for 60 s from the Mac that the Proxmox host, Pi-hole DNS and the internet answer.
+5. Only then `copy running-config startup-config`.
 
-```
-copy running-config startup-config
-```
+A second run prints nothing to change. The host key is pinned in `build/switch/known_hosts`
+on first use. `tests/test_switch.sh` renders the plan from example output and checks that
+it names only the listed ports. It also runs the script against a fake switch.
 
-To undo one port, `default interface <port>` puts it back to the switch's defaults (access
-VLAN 1). `flash:pre-vlans.cfg` has the old config of every port.
+## Rollback
+
+Until step 5 the startup config is the old one. If the apply or the check fails, the run
+stops without saving. Reload the switch (`reload` at its console or over SSH) or power
+cycle it. It boots the old startup config, which brings the whole home network down for
+about two minutes. The running config from before is in `build/switch/` if a single line
+needs to be put back by hand.
+
+After step 5, undo by hand. `no switchport protected-port` on a port, or
+`switchport trunk allowed vlan remove 10,20,30`, then
+`copy running-config startup-config`. Take the role off the port in the site data first,
+or the next `make switch` puts it back.
+
+## VLANs 20 and 30 wait for an access point
+
+The trunk carries VLANs 20 and 30, but nothing uses them yet. The cameras and the personal
+devices are on Wi-Fi, and the home router's Wi-Fi cannot tag VLANs. They move when a
+VLAN-capable access point exists, see below.
 
 ## Cameras on VLAN 20
 
@@ -150,20 +101,9 @@ isolate them. To move them:
 
 1. Add a VLAN-capable access point, for example a TP-Link Omada EAP or a UniFi U6 or U7.
    The home router's own Wi-Fi cannot tag VLANs.
-2. Cable it to `<ap-port>` as a trunk. Its management stays on the native VLAN:
-
-   ```
-   configure terminal
-   interface <ap-port>
-    description access point (native 1, VLANs 20 30 tagged)
-    spanning-tree portfast trunk
-    switchport trunk encapsulation dot1q
-    switchport trunk native vlan 1
-    switchport trunk allowed vlan 1,20,30
-    switchport mode trunk
-    switchport nonegotiate
-   end
-   ```
+2. Cable it to `<ap-port>`. Take that port out of `keep_ports`, give it the role `trunk`
+   (CAS write to `kv/homelab/site`) and run `make switch`. Its management stays on the
+   native VLAN. The trunk role adds all three VLANs, VLAN 10 too.
 
 3. On the access point, make a hidden SSID for the cameras, tagged VLAN 20, on 2.4 GHz
    with WPA2-PSK (many Tapo cameras do not join 5 GHz or WPA3-only networks). Turn on
