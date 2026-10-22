@@ -1,0 +1,129 @@
+# GoReleaser: the anvil CLI for darwin and linux, amd64 and arm64, as tar.gz archives,
+# checksums, .deb and .rpm packages (nfpm) and a Homebrew formula in memetics19/homebrew-tap.
+# .github/workflows/release.yml runs it on a release tag, and as a snapshot check on every
+# pull request and push to main. Locally: make release-snapshot.
+# release-please writes the changelog and creates the GitHub Release. GoReleaser only adds
+# the files to it.
+version: 2
+project_name: anvil
+
+before:
+  hooks:
+    - scripts/completions.sh
+
+builds:
+  - id: anvil
+    dir: cli
+    main: .
+    binary: anvil
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    # The same flags as make cli: the same commit builds the same bytes.
+    flags:
+      - -trimpath
+      - -buildvcs=false
+    ldflags:
+      - -s -w -buildid= -X main.version={{ .Version }} -X main.commit={{ .FullCommit }} -X main.date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: anvil
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    builds_info:
+      mtime: "{{ .CommitDate }}"
+    files:
+      - src: README.md
+        info: {mtime: "{{ .CommitDate }}"}
+      - src: LICENSE
+        info: {mtime: "{{ .CommitDate }}"}
+      - src: completions/*
+        info: {mtime: "{{ .CommitDate }}"}
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot+{{ .ShortCommit }}"
+
+changelog:
+  disable: true
+
+nfpms:
+  - id: anvil
+    package_name: anvil
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: memetics19
+    homepage: https://github.com/memetics19/anvil
+    maintainer: memetics19 <https://github.com/memetics19/anvil/issues>
+    description: |-
+      The anvil CLI: one command over the make targets of the anvil homelab repo.
+      Run anvil fetch to clone the repo, then anvil doctor.
+    license: MIT
+    section: utils
+    priority: optional
+    formats: [deb, rpm]
+    bindir: /usr/bin
+    mtime: "{{ .CommitDate }}"
+    dependencies:
+      - git
+    recommends:
+      - ansible
+      - terraform
+      - vault
+      - jq
+      - age
+    contents:
+      - src: completions/anvil.bash
+        dst: /usr/share/bash-completion/completions/anvil
+        file_info: {mode: 0644}
+      - src: completions/_anvil
+        dst: /usr/share/zsh/vendor-completions/_anvil
+        file_info: {mode: 0644}
+        packager: deb
+      - src: completions/_anvil
+        dst: /usr/share/zsh/site-functions/_anvil
+        file_info: {mode: 0644}
+        packager: rpm
+      - src: completions/anvil.fish
+        dst: /usr/share/fish/vendor_completions.d/anvil.fish
+        file_info: {mode: 0644}
+      - src: LICENSE
+        dst: /usr/share/doc/anvil/copyright
+        file_info: {mode: 0644}
+    scripts:
+      postinstall: packaging/postinstall.sh
+
+brews:
+  - name: anvil
+    repository:
+      owner: memetics19
+      name: homebrew-tap
+      token: '{{ envOrDefault "HOMEBREW_TAP_GITHUB_TOKEN" "" }}'
+    directory: Formula
+    homepage: https://github.com/memetics19/anvil
+    description: One command over the make targets of the anvil homelab repo
+    license: MIT
+    # Forks and runs without the tap token build the formula but do not publish it.
+    skip_upload: '{{ if envOrDefault "HOMEBREW_TAP_GITHUB_TOKEN" "" }}false{{ else }}true{{ end }}'
+    dependencies:
+      - name: git
+    install: |
+      bin.install "anvil"
+      bash_completion.install "completions/anvil.bash" => "anvil"
+      zsh_completion.install "completions/_anvil"
+      fish_completion.install "completions/anvil.fish"
+    caveats: |
+      anvil needs the repo. Clone it into ~/.local/share/anvil/repo, then check this Mac:
+        anvil fetch && anvil doctor
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/anvil version")
+
+release:
+  github:
+    owner: memetics19
+    name: anvil
+  # release-please created the release and wrote its notes: keep them, add the files.
+  mode: keep-existing

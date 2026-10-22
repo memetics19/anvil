@@ -29,3 +29,7 @@ __pycache__/
 
 # Docs site build output
 build/
+
+# Release builds (make release-snapshot, GoReleaser)
+dist/
+completions/

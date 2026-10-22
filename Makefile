@@ -6,7 +6,7 @@ HVAC_CHECK := py=$$(ansible-playbook --version | sed -n 's/^  python version = .
 	"$${py:-python3}" -c 'import hvac' 2>/dev/null || { \
 	  echo "hvac is missing in the Python that runs Ansible; fix: \"$$py\" -m pip install hvac" >&2; exit 1; }
 
-.PHONY: lint secrets-scan bootstrap-ssh host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply provision-iso provision provision-clean docs docs-publish cli
+.PHONY: lint secrets-scan bootstrap-ssh host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply provision-iso provision provision-clean docs docs-publish cli release-snapshot
 
 lint:
 	@set -eu -o pipefail; \
@@ -205,3 +205,11 @@ cli:
 	cd cli && CGO_ENABLED=0 go build -trimpath -buildvcs=false \
 	  -ldflags "-s -w -buildid= -X main.version=$(ANVIL_VERSION) -X main.commit=$(ANVIL_COMMIT) -X main.date=$(ANVIL_DATE)" -o "$$out" .; \
 	echo "built $(ANVIL_OUT) ($(ANVIL_VERSION))"
+
+# The release build without publishing (.goreleaser.yaml): archives, checksums, .deb and
+# .rpm in dist/. GoReleaser runs through go run at the pinned version, so nothing is
+# installed. Keep GORELEASER_VERSION in step with .github/workflows/release.yml.
+GORELEASER_VERSION := v2.18.2
+release-snapshot:
+	@set -eu -o pipefail; \
+	go run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION) release --snapshot --clean --skip=publish
