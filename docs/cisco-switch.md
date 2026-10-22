@@ -33,6 +33,17 @@ range such as `GigabitEthernet1/0/10 - 12`.
 
   If it prints the line, the lab would break on the trunk. Stop and ask.
 
+- Check VTP. In `server` or `client` mode inside a VTP domain, the VLANs you create can
+  spread to other switches, or be replaced by theirs. `transparent` or `off` keeps them on
+  this switch:
+
+  ```
+  show vtp status
+  ```
+
+  If the mode is `server` or `client` and other switches share the domain, decide first.
+  `vtp mode transparent` keeps this switch's VLANs local.
+
 - Save a copy of the current config:
 
   ```
@@ -57,24 +68,29 @@ end
 The lab and the home network stay untagged (native VLAN). VLANs 10, 20 and 30 are tagged.
 The Proxmox host already accepts them (`bridge-vids 10 20 30` on `vmbr0`).
 
+Changing the port's mode takes the link through spanning tree again. Without portfast the
+port blocks for about 30 seconds (listening, then learning). The Proxmox host, every VM and
+the home DNS are cut off for that time. So set portfast first, before the mode change.
+
 ```
 configure terminal
 interface <proxmox-port>
  description proxmox eno1 (lab untagged, VLANs 10 20 30 tagged)
+ spanning-tree portfast trunk
  switchport trunk encapsulation dot1q
- switchport mode trunk
  switchport trunk native vlan 1
  switchport trunk allowed vlan 1,10,20,30
+ switchport mode trunk
  switchport nonegotiate
- spanning-tree portfast trunk
 end
 ```
 
+- `spanning-tree portfast trunk`: on IOS 15.2(2)E and later, and on IOS XE, the command is
+  `spanning-tree portfast edge trunk`. The Proxmox bridge runs no spanning tree, so the
+  port can forward at once. Even with portfast, expect the link to drop for a few seconds.
 - `switchport trunk encapsulation dot1q`: only models that also support ISL take it (for
   example the 3560 and 3750). A 2960 rejects it, because it only knows 802.1Q. Skip the line
   there.
-- `spanning-tree portfast trunk`: on IOS XE it is `spanning-tree portfast edge trunk`. The
-  Proxmox bridge runs no spanning tree, so the port can forward at once.
 
 Check from the switch:
 
@@ -100,7 +116,7 @@ interface range <camera-ports>
 end
 ```
 
-On IOS XE the portfast line is `spanning-tree portfast edge`.
+On IOS 15.2(2)E and later, and on IOS XE, the portfast line is `spanning-tree portfast edge`.
 
 ## Personal ports: access VLAN 30
 
@@ -140,12 +156,12 @@ isolate them. To move them:
    configure terminal
    interface <ap-port>
     description access point (native 1, VLANs 20 30 tagged)
+    spanning-tree portfast trunk
     switchport trunk encapsulation dot1q
-    switchport mode trunk
     switchport trunk native vlan 1
     switchport trunk allowed vlan 1,20,30
+    switchport mode trunk
     switchport nonegotiate
-    spanning-tree portfast trunk
    end
    ```
 

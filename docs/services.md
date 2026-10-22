@@ -247,9 +247,28 @@ of Caddy needs more memory than `apps` has free, then copied through the Mac and
 `apps`. The tag includes a hash of the Dockerfile, so a version change builds a new image.
 The memory cap is 128 MB.
 
-The gateway adds no authentication. Turn on each app's own login. Every client reaches the
+The gateway adds no login of its own. Turn on each app's own login. Every client reaches the
 app from the gateway's address, so for qBittorrent, set a password and remove the "bypass
 authentication for clients in whitelisted IP subnets" entry.
+
+Some routes answer only the operator's devices. Every other client gets 403, checked on
+the real client address before anything else:
+
+- `pass` and `vault` (`caddy_admin_only_routes`): the enclave's operators, see
+  [Secrets enclave](#secrets-enclave).
+- The infrastructure pages (`caddy_infra_routes`): `pve`, `ceph`, `idrac`, `dns`, `home`,
+  `qbit`, `frigate` and `threadfin`. The sources are `site.admin_sources` and
+  `site.admin_vpn_sources` together, whatever `site.enclave.vpn_only` says, so the Mac
+  keeps LAN access to them. Homepage is one of them because it has no login and its widgets
+  show Proxmox, Pi-hole and ARR data. Threadfin is one because it is the TV lineup's admin page.
+- `tasks/services.yml` refuses any source that is not a single /32, and the Proxmox host's
+  own addresses. VLAN clients and NetBird peers behind the host's masquerade arrive as
+  those addresses, so admitting one would let all of them in.
+
+These stay open on the gateway: the ARR apps (API key and login), Filestash (`files`, a
+generated 32-character password) and Gotify (its token), the live TV streams (`tv`) and the
+docs. ntfy has no web login (its topic access rules decide), and Pulse's login was not
+checked. Add either to `caddy_infra_routes` to close it to everyone but the operator.
 
 ### Homepage
 
@@ -680,6 +699,10 @@ Proxmox host routes for them. `make vlans` sets them up (role `pve_vlans`).
 | 20 | `cameras` | Pi-hole DNS, the host's NTP, the internet while `cameras_internet` is true | everything else |
 | 30 | `personal` | the internet, the service gateway's web ports (80 and 443), Pi-hole DNS | cameras, servers, the lab, the Proxmox UI and SSH, the enclave |
 
+VLAN 30 reaches the gateway's ports, but not every page behind them. The infrastructure
+pages and the enclave's pages answer 403 to it, Proxmox included
+([Service gateway](#service-gateway)).
+
 Lab hosts open connections into every VLAN. Nothing else does: not the home network, not
 the enclave and not another VLAN.
 
@@ -691,19 +714,26 @@ the enclave and not another VLAN.
   `vlan_sets`). Each VLAN has `nat: true`, so its traffic leaves with the host's address.
   "The internet" means any address outside the set `vlan_nonpublic` (private, shared,
   link-local, documentation, multicast and reserved ranges). That set covers the lab, the
-  home network, the NetBird range, the enclave and the other VLANs. The enclave's own
-  rules, sets and operator list are not changed by the VLANs.
+  home network, the NetBird range, the enclave and the other VLANs (`make vlans` checks
+  that, and that no two of those networks overlap). Each VLAN has `strict_source`: the
+  first rule of its `_out` chain drops any source outside its subnet, so a device cannot
+  send with a forged address. The enclave's own rules, sets and operator list are not
+  changed by the VLANs. Each `vlans` entry names its own egress profile (`dns`, `web`,
+  `internet`).
 - **Gateways.** The host's address on each vnet (`site.sdn.subnets.<vnet>.gateway`) is in
   `/etc/network/interfaces.d/vlans`. ifupdown2 merges it into SDN's stanza for the vnet.
   A change goes through the same 120 s rollback as `make host-network`.
 - **DHCP.** One dnsmasq per VLAN (`vlan-dhcp@<vnet>`), DHCP only, bound to its vnet alone.
   It hands out `site.sdn.subnets.<vnet>.dhcp_range`, the gateway as router and NTP
   server, and Pi-hole's lab address as DNS. The package is `dnsmasq-base`, which has no
-  service of its own. The home router stays the only DHCP server of the home network.
+  service of its own. The home router stays the only DHCP server of the home network. The
+  unit runs only while its vnet exists (bound to the device), and starts only when the
+  table `inet segments` is loaded, so no lease is handed out without the firewall.
 - **NTP.** One small chronyd per VLAN (`vlan-ntp@<vnet>`) answers on that gateway only. It
   serves the host clock and never sets it. The host's own chronyd keeps the clock and
   still answers only the enclave. Chrony takes one bind address per process, which is why
-  each VLAN has its own.
+  each VLAN has its own. It also starts only with the table loaded. Neither unit is linked
+  to `pve-guests` in any way.
 - **Trunk.** `vmbr0`'s uplink carries VLANs 10, 20 and 30 tagged (`bridge-vids`, from
   `make host-network`). The lab and home networks stay untagged. The switch side is a hand
   step, see [cisco-switch.md](cisco-switch.md).
@@ -711,7 +741,8 @@ the enclave and not another VLAN.
 ### Changing it
 
 - `cameras_internet: false` in `inventory/group_vars/proxmox.yml` leaves VLAN 20 with DNS
-  and NTP only. Then run `make vlans`.
+  and NTP only. Then run `make vlans`. VLAN 20 stays NATed either way: its DNS queries reach
+  Pi-hole with the host's address, which Pi-hole answers and can reply to.
 - To bring VLANs up one at a time, name them:
   `make vlans ARGS="-e '{\"pve_vlans_enabled\": [\"servers\"]}'"`. The ones not named
   lose their gateway, DHCP and NTP. The firewall keeps all three.
@@ -737,12 +768,21 @@ on port 123.
   per-client statistics lump them together.
 - Lab clients reach VLAN devices with the host's home address as their source. The lab
   SNAT rule matches that traffic too. The firewall still decides on the real source.
-- The service gateway proxies the Proxmox UI (`pve.<gateway-domain>`). From VLAN 30 the
-  host's ports 8006 and 22 are closed, but that gateway name still shows the Proxmox login
-  page. Closing it needs an address check in Caddy's `pve` route.
+- Pi-hole's rate limit (`pihole_rate_limit_count`, 1000 queries per 60 s per client) counts
+  every VLAN client and every masqueraded NetBird peer as one client, the host. A busy VLAN
+  could hit it. Raising it means a new value in Pi-hole's compose environment, which
+  recreates the Pi-hole container (a home DNS gap), so it is not changed yet. Later, the
+  VLANs' DNS could skip the masquerade so Pi-hole sees each client.
 - IPv6 is not routed for the VLANs. The firewall drops it.
 - Devices on the same VLAN reach each other directly (layer 2). The firewall sees only
-  traffic that the host routes.
+  traffic that the host routes. That holds while `net.bridge.bridge-nf-call-iptables` is
+  0, as it is today. The Proxmox firewall sets it to 1 when it is turned on. Then bridged
+  frames pass the segment chains too, and traffic inside a VLAN would be dropped.
+- Frigate's VLAN 20 NIC, when it comes, puts Frigate on the cameras' layer 2 segment. The
+  cameras then reach every port Frigate listens on there, without the host's firewall in
+  between. Frigate must listen only where it needs to and must not route between its NICs.
+  A Proxmox NIC with `firewall=1` sits behind an `fwbr` bridge, which the segment rules do
+  not name.
 - The cameras are on the home Wi-Fi today, so VLAN 20 isolates nothing yet. The plan for
   them is in [cisco-switch.md](cisco-switch.md#cameras-on-vlan-20). Frigate gets its VLAN 20
   NIC only when the access point exists.

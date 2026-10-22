@@ -1,5 +1,6 @@
-# Proxmox SDN as it exists today: VLAN zone `vlanzone` on vmbr0 with three VNets.
-# Nothing uses them (their gateways were OPNsense); kept as they are.
+# Proxmox SDN: VLAN zone `vlanzone` on vmbr0 with three VNets (VLANs 10, 20 and 30). The
+# Proxmox host routes them: their gateway addresses, DHCP, NTP and firewall come from
+# Ansible (make vlans, role pve_vlans). A VLAN zone does not apply subnet gateways itself.
 
 resource "proxmox_sdn_zone_vlan" "vlanzone" {
   id     = "vlanzone"
