@@ -2,15 +2,31 @@
 # Run CLI lines on the Cisco SG300 switch over its old SSH, one line at a time.
 #   usage: SSHPASS=<password> scripts/switch-cli.sh [--show-only] <user> <host> < lines
 # Lines come on stdin, one command per line. Before each command's output the script prints
-# a line "@@@ <command>". It waits for the switch prompt after every line, so nothing is
-# typed ahead. --show-only refuses any line that is not a show command, before connecting.
-# The password reaches ssh only through sshpass -e (the environment), never argv.
+# a line "@@@ <command>". --show-only refuses any line that is not a show command, before
+# connecting. The password reaches ssh only through sshpass -e (the environment), never argv.
 # The firmware speaks only SHA1 key exchange, ssh-rsa host keys and CBC ciphers. They are
 # allowed here, for this one connection, with -o flags. No ssh config file is read.
+#
+# The switch drops typed characters while it is busy, for example right after it creates
+# VLANs. So each line is typed one character at a time, and Enter is pressed only when the
+# switch has echoed the whole line back intact. Otherwise the line is cleared (Ctrl-U) and
+# typed again, up to 3 times. After every line it waits for the prompt.
+# A login that fails before the first prompt is tried again (SWITCH_CLI_TRIES, default 3,
+# SWITCH_CLI_BACKOFF seconds apart, default 20): the switch can refuse new sessions for a
+# while. Nothing has been sent at that point, so a retry is safe.
+# copy running-config startup-config must print "Copy succeeded". A (Y/N) question after
+# it, which some firmware asks, is answered Y. Any other question fails the run.
 # SWITCH_KNOWN_HOSTS: the known hosts file (default /dev/null, no host key check). A real
 # file pins the key on first use. SWITCH_CLI_TIMEOUT: seconds per command (default 60).
-# Exit codes: 0 ok, 2 usage or refused line, 3 the switch reported an error (the session
-# leaves config mode with end first), 4 timeout, 5 connection or login failed.
+# Exit codes:
+#   0 ok
+#   2 usage, or a line refused by --show-only
+#   3 the switch rejected a command, or the save did not report success
+#   4 timeout
+#   5 no login (connection, SSH or password) after every try
+#   6 a line was not echoed back intact. It was cleared and never sent
+#   7 the connection closed in the middle of the session
+# Codes 3 and 6 leave config mode with end and log out before they exit.
 set -euo pipefail
 { set +x; } 2>/dev/null
 
@@ -41,8 +57,10 @@ SWITCH_CLI_LINES=$(printf '%s\n' "${lines[@]}")
 export SWITCH_CLI_LINES
 export SWITCH_KNOWN_HOSTS="${SWITCH_KNOWN_HOSTS:-/dev/null}"
 export SWITCH_CLI_TIMEOUT="${SWITCH_CLI_TIMEOUT:-60}"
+tries="${SWITCH_CLI_TRIES:-3}"
+backoff="${SWITCH_CLI_BACKOFF:-20}"
 
-exec expect -f - "$1" "$2" <<'TCL'
+read -r -d '' prog <<'TCL' || true
 log_user 0
 set user [lindex $argv 0]
 set host [lindex $argv 1]
@@ -51,14 +69,20 @@ set known $env(SWITCH_KNOWN_HOSTS)
 set strict [expr {$known eq "/dev/null" ? "no" : "accept-new"}]
 # The prompt: a host name, an optional (config...) mode, then # or >, at the end of output.
 set prompt {(^|[\r\n])[A-Za-z0-9._-]+(\([A-Za-z0-9-]+\))?[#>] ?$}
-set send_slow {16 .005}
 set mode exec
+set ready 0
 
 proc fail {code msg} {
   puts stderr "switch-cli: $msg"
   catch {close}
   catch {wait}
   exit $code
+}
+
+proc lost {what} {
+  global ready
+  if {$ready} { fail 7 "the connection closed $what" }
+  fail 5 "the connection closed $what"
 }
 
 spawn -noecho sshpass -e ssh -tt \
@@ -68,20 +92,61 @@ spawn -noecho sshpass -e ssh -tt \
   -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no \
   -o NumberOfPasswordPrompts=1 -o StrictHostKeyChecking=$strict \
   -o UserKnownHostsFile=$known -o GlobalKnownHostsFile=/dev/null \
-  -o ConnectTimeout=10 -o LogLevel=ERROR -F /dev/null \
+  -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 \
+  -o LogLevel=ERROR -F /dev/null \
   "$user@$host"
 
 expect {
   -re $prompt {}
-  timeout { fail 4 "no prompt after login" }
-  eof { fail 5 "the connection closed before the prompt (login or SSH failed)" }
+  timeout { fail 5 "no prompt after login" }
+  eof { lost "before the prompt (login or SSH failed)" }
+}
+set ready 1
+
+# Type a line one character at a time and check the echo. Enter is not pressed here.
+# Returns 1 when the switch echoed the whole line, else clears it and returns 0.
+proc type_line {line} {
+  set got ""
+  foreach ch [split $line ""] {
+    send -- $ch
+    expect {
+      -timeout 3
+      -re {.+} { append got $expect_out(buffer) }
+      timeout {}
+      eof { lost "while typing: $line" }
+    }
+  }
+  expect {
+    -timeout 1
+    -re {.+} { append got $expect_out(buffer); exp_continue }
+    timeout {}
+    eof { lost "while typing: $line" }
+  }
+  set n [string length $line]
+  set seen [string map [list "\r" "" "\n" ""] $got]
+  if {[string range $seen end-[expr {$n - 1}] end] eq $line} { return 1 }
+  send -- "\025"
+  expect {
+    -timeout 2
+    -re {.+} { exp_continue }
+    timeout {}
+    eof { lost "while clearing: $line" }
+  }
+  return 0
 }
 
-# Send one line and wait for the prompt. Sets ::out to the output (no echo, no prompt) and
-# ::mode to exec or config. Only the save command may answer a (Y/N) question, with Y.
+# Type one line, press Enter and wait for the prompt. Sets ::out (no echo, no prompt) and
+# ::mode (exec or config). Only the save command may answer a (Y/N) question, with Y.
 proc run {line} {
   global prompt mode out
-  send -s -- "$line\r"
+  set typed 0
+  for {set i 0} {$i < 3 && !$typed} {incr i} { set typed [type_line $line] }
+  if {!$typed} {
+    puts stderr "switch-cli: the switch did not echo this line intact, it was not sent: $line"
+    leave
+    exit 6
+  }
+  send -- "\r"
   set acc ""
   set answered 0
   expect {
@@ -97,7 +162,7 @@ proc run {line} {
     }
     -re $prompt { append acc $expect_out(buffer) }
     timeout { fail 4 "timeout after: $line" }
-    eof { fail 5 "the connection closed after: $line" }
+    eof { lost "after: $line" }
   }
   set rows [split [string map [list "\r" ""] $acc] "\n"]
   set last [lindex $rows end]
@@ -105,13 +170,14 @@ proc run {line} {
   set out [join [lrange $rows 1 end-1] "\n"]
 }
 
+# Leave config mode, then log out and wait for the switch to close the session.
 proc leave {} {
   global mode prompt
   if {$mode eq "config"} { run "end" }
   for {set i 0} {$i < 3} {incr i} {
     send -- "exit\r"
     expect {
-      eof { catch {wait}; return }
+      eof { catch {close}; catch {wait}; return }
       -re $prompt { }
       timeout { fail 4 "no clean exit" }
     }
@@ -129,7 +195,22 @@ foreach line [split [string trimright $env(SWITCH_CLI_LINES) "\n"] "\n"] {
     leave
     exit 3
   }
+  if {$line eq "copy running-config startup-config" && ![regexp -nocase {copy succeeded} $out]} {
+    puts stderr "switch-cli: the save did not report Copy succeeded"
+    leave
+    exit 3
+  }
 }
 leave
 exit 0
 TCL
+
+try=1
+while :; do
+  rc=0
+  expect -f - "$1" "$2" <<<"$prog" || rc=$?
+  if [ "$rc" -ne 5 ] || [ "$try" -ge "$tries" ]; then exit "$rc"; fi
+  echo "switch-cli: no login (try $try of $tries), again in ${backoff}s" >&2
+  sleep "$backoff"
+  try=$((try + 1))
+done
