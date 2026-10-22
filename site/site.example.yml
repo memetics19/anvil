@@ -15,6 +15,10 @@ site:
     uplink_gw: 198.51.100.1
     # The server's BMC (iDRAC), on the lab network.
     idrac_ip: 192.0.2.123
+  # Devices on the home network that are not hosts. switch_ip: the managed switch's web UI
+  # (gateway name switch). Reserve it for the switch's MAC in the router's DHCP.
+  network:
+    switch_ip: 198.51.100.24
   hosts:
     frigate: {ip: 192.0.2.114, vmid: 9001, mac: "02:00:00:00:00:01"}
     netbird: {ip: 192.0.2.115, vmid: 9002, mac: "02:00:00:00:00:02"}
@@ -96,3 +100,4 @@ site:
     - {name: dns, container: pihole, port: 80, scheme: http, home: /admin/}
     - {name: home, container: homepage, port: 3000, scheme: http}
     - {name: pass, host: hosts.vaultwarden.ip, port: 8080, scheme: http, websocket: true}
+    - {name: switch, host: network.switch_ip, port: 80, scheme: http, rewrite_location: true}
