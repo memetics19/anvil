@@ -668,6 +668,85 @@ fixed first, with a `peers.json` recovery.
 2. Copy it to the VM and run `sudo apt install ./vault_<version>_amd64.deb`.
 3. Run `make vault` with `vault_server_allow_restart=true`, then unseal.
 
+## VLANs
+
+The SDN VLAN zone `vlanzone` on `vmbr0` (`terraform/sdn.tf`) has three vnets. The
+Proxmox host routes for them. `make vlans` sets them up (role `pve_vlans`).
+
+| VLAN | Vnet | Reaches | Blocked from |
+|---|---|---|---|
+| Lab (untagged) | `vmbr0` | everything, as before | nothing |
+| 10 | `servers` | the internet, Pi-hole DNS, the host's NTP | the lab, cameras, personal, the home network, the enclave |
+| 20 | `cameras` | Pi-hole DNS, the host's NTP, the internet while `cameras_internet` is true | everything else |
+| 30 | `personal` | the internet, the service gateway's web ports (80 and 443), Pi-hole DNS | cameras, servers, the lab, the Proxmox UI and SSH, the enclave |
+
+Lab hosts open connections into every VLAN. Nothing else does: not the home network, not
+the enclave and not another VLAN.
+
+### How it is built
+
+- **Firewall.** Each VLAN is a segment of the routed segments' table `inet segments`
+  ([Firewall: routed segments](#firewall-routed-segments)), next to the enclave. The data
+  is in `ansible/inventory/group_vars/proxmox.yml` (`vlans`, `vlan_segments`,
+  `vlan_sets`). Each VLAN has `nat: true`, so its traffic leaves with the host's address.
+  "The internet" means any address outside the set `vlan_nonpublic` (private, shared,
+  link-local, documentation, multicast and reserved ranges). That set covers the lab, the
+  home network, the NetBird range, the enclave and the other VLANs. The enclave's own
+  rules, sets and operator list are not changed by the VLANs.
+- **Gateways.** The host's address on each vnet (`site.sdn.subnets.<vnet>.gateway`) is in
+  `/etc/network/interfaces.d/vlans`. ifupdown2 merges it into SDN's stanza for the vnet.
+  A change goes through the same 120 s rollback as `make host-network`.
+- **DHCP.** One dnsmasq per VLAN (`vlan-dhcp@<vnet>`), DHCP only, bound to its vnet alone.
+  It hands out `site.sdn.subnets.<vnet>.dhcp_range`, the gateway as router and NTP
+  server, and Pi-hole's lab address as DNS. The package is `dnsmasq-base`, which has no
+  service of its own. The home router stays the only DHCP server of the home network.
+- **NTP.** One small chronyd per VLAN (`vlan-ntp@<vnet>`) answers on that gateway only. It
+  serves the host clock and never sets it. The host's own chronyd keeps the clock and
+  still answers only the enclave. Chrony takes one bind address per process, which is why
+  each VLAN has its own.
+- **Trunk.** `vmbr0`'s uplink carries VLANs 10, 20 and 30 tagged (`bridge-vids`, from
+  `make host-network`). The lab and home networks stay untagged. The switch side is a hand
+  step, see [cisco-switch.md](cisco-switch.md).
+
+### Changing it
+
+- `cameras_internet: false` in `inventory/group_vars/proxmox.yml` leaves VLAN 20 with DNS
+  and NTP only. Then run `make vlans`.
+- To bring VLANs up one at a time, name them:
+  `make vlans ARGS="-e '{\"pve_vlans_enabled\": [\"servers\"]}'"`. The ones not named
+  lose their gateway, DHCP and NTP. The firewall keeps all three.
+- Dry run first: `make vlans ARGS="--check --diff"`.
+
+### Checking it
+
+On the Proxmox host:
+
+```sh
+ip -br -4 addr show servers
+ss -Hlunp | grep -E 'dnsmasq|chronyd-vlan'
+nft list chain inet segments servers_out
+cat /var/lib/vlan-dhcp/servers.leases
+```
+
+Each dnsmasq socket shows as `0.0.0.0%<vnet>:67`. Each `chronyd-vlan` socket is its gateway
+on port 123.
+
+### Limits
+
+- Pi-hole and Caddy see VLAN clients as the host's address, because of the NAT. Pi-hole's
+  per-client statistics lump them together.
+- Lab clients reach VLAN devices with the host's home address as their source. The lab
+  SNAT rule matches that traffic too. The firewall still decides on the real source.
+- The service gateway proxies the Proxmox UI (`pve.<gateway-domain>`). From VLAN 30 the
+  host's ports 8006 and 22 are closed, but that gateway name still shows the Proxmox login
+  page. Closing it needs an address check in Caddy's `pve` route.
+- IPv6 is not routed for the VLANs. The firewall drops it.
+- Devices on the same VLAN reach each other directly (layer 2). The firewall sees only
+  traffic that the host routes.
+- The cameras are on the home Wi-Fi today, so VLAN 20 isolates nothing yet. The plan for
+  them is in [cisco-switch.md](cisco-switch.md#cameras-on-vlan-20). Frigate gets its VLAN 20
+  NIC only when the access point exists.
+
 ## Ceph
 
 `make ceph` builds a one-disk Ceph cluster on `pve`: a monitor, a manager, one OSD and pool

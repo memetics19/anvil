@@ -239,6 +239,14 @@ Run each step with `ARGS="--check --diff"` first, then without.
    make enclave
    ```
 
+   Then the VLANs: their firewall, the gateway addresses on the vnets, DHCP and NTP
+   ([VLANs](services.md#vlans)). `site.sdn.subnets` needs a `dhcp_range` for each.
+
+   ```sh
+   make vlans ARGS="--check --diff"
+   make vlans
+   ```
+
 9. Install your key on the guests and configure them:
 
    ```sh
@@ -440,7 +448,17 @@ NetBird dashboard:
 
 ### Switch
 
-The Cisco switch's ports and VLANs.
+The Cisco switch's ports and VLANs. [cisco-switch.md](cisco-switch.md) has the config: the
+Proxmox port as a trunk (the lab untagged, VLANs 10, 20 and 30 tagged), camera ports in
+VLAN 20 and personal ports in VLAN 30.
+
+### Wi-Fi access point
+
+The cameras are on the home Wi-Fi, so VLAN 20 cannot isolate them yet. A VLAN-capable
+access point on the switch trunk fixes that, with a hidden camera SSID tagged VLAN 20. See
+[Cameras on VLAN 20](cisco-switch.md#cameras-on-vlan-20). Until it exists, the home
+router's per-device internet block can keep the cameras off the internet, at the cost of
+the Tapo app away from home.
 
 ### App settings
 

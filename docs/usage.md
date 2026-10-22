@@ -15,6 +15,7 @@ Placeholders: `<apps-address>` (the `apps` VM's lab address), `<apps-home-addres
 | `make host` | Proxmox host base: repositories, packages, time, `/etc/hosts`, the Terraform API token, storage content types, and the Homepage token (`--tags homepage`). |
 | `make host-network` | Proxmox `/etc/network/interfaces`, with a timed rollback. |
 | `make enclave` | The secrets enclave on the Proxmox host: firewall, SDN apply, apt cache, NTP, cloud-init vendor data. |
+| `make vlans` | VLANs 10, 20 and 30 on the Proxmox host: the routed segments firewall, then the gateway addresses, DHCP and NTP per VLAN. |
 | `make ceph` | Single-node Ceph, the S3 gateway, the `tfstate` bucket and the S3 users. The first real run wipes the OSD disk. |
 | `make vms` | Every play in `ansible/playbooks/vms.yml`: the base roles and all workloads. |
 | `make vm HOST=<name>` | The same for one VM: `frigate`, `netbird`, `ragnarok`, `vault` or `apps`. |
@@ -239,6 +240,7 @@ confirms the change:
 - `make host-network`: the host restores its old `/etc/network/interfaces` after 120 s
   unless it can still reach the Mac after the reload.
 - `make enclave`: the enclave firewall and the SDN apply each have a 120 s rollback.
+- `make vlans`: the firewall and the VLAN gateway addresses each have a 120 s rollback.
 - The `apps` firewall: ufw disables itself after 180 s unless a fresh SSH connection and
   the DNS and HTTP checks from the Mac succeed first.
 - Guest netplan: applied only with `-e guest_base_netplan_apply=true`, with a 120 s

@@ -115,7 +115,8 @@ vault/policies/
 - [x] Vaultwarden with encrypted backups and a restore drill
 - [x] Secrets enclave: Vault and Vaultwarden on an isolated network, reachable only from
   the operator's devices, firewalled by data-driven routed segments
-- [ ] VLANs 10/20/30 with an inter-VLAN firewall
+- [x] VLANs 10/20/30 with routing, DHCP, NTP and an inter-VLAN firewall (the switch and a
+  VLAN-capable access point are hand steps)
 - [ ] Monitoring: VictoriaMetrics, Grafana, exporters, alerts to ntfy
 - [ ] Patch tracking: [PatchMon](https://github.com/PatchMon/PatchMon) for pending and security
   updates on every host (on the second server)
