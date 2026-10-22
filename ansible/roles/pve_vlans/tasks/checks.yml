@@ -38,3 +38,37 @@
     _gw: "{% set o = _n.gateway.split('.') | map('int') | list %}{{ o[0] * 16777216 + o[1] * 65536 + o[2] * 256 + o[3] }}"
     _start: "{% set o = _n.dhcp_range.start.split('.') | map('int') | list %}{{ o[0] * 16777216 + o[1] * 65536 + o[2] * 256 + o[3] }}"
     _end: "{% set o = _n.dhcp_range.end.split('.') | map('int') | list %}{{ o[0] * 16777216 + o[1] * 65536 + o[2] * 256 + o[3] }}"
+
+# Every network the host routes (the lab, the home network, the enclave, the VLANs) must
+# count as "not the internet" for the VLANs (inside vlan_nonpublic), and no two may overlap.
+# Only names are reported.
+- name: The routed networks are all in vlan_nonpublic and none overlap
+  ansible.builtin.assert:
+    that: _bad | length == 0
+    fail_msg: "{{ _bad }}"
+    quiet: true
+  vars:
+    _bad: >-
+      {%- macro span(c) -%}
+      {%- set p = c.split('/') -%}{%- set o = p[0].split('.') | map('int') | list -%}
+      {%- set size = 2 ** (32 - (p[1] | int)) -%}
+      {%- set lo = (o[0] * 16777216 + o[1] * 65536 + o[2] * 256 + o[3]) // size * size -%}
+      {{ lo }},{{ lo + size - 1 }}
+      {%- endmacro -%}
+      {%- set nets = {'lab': site.lan_cidr, 'home': site.pve.uplink_ip ~ '/' ~ site.pve.uplink_prefix,
+                      'enclave': site.sdn.enclave.subnet} -%}
+      {%- for v in vlans %}{% set _ = nets.update({v.name: site.sdn.subnets[v.name].cidr}) %}{% endfor -%}
+      {%- set r = [] -%}
+      {%- for k in nets %}{% set _ = r.append([k] + (span(nets[k]).split(',') | map('int') | list)) %}{% endfor -%}
+      {%- set np = [] -%}
+      {%- for c in (vlan_sets | selectattr('name', 'equalto', 'vlan_nonpublic') | first).elements -%}
+      {%- set _ = np.append(span(c).split(',') | map('int') | list) -%}
+      {%- endfor -%}
+      {%- set bad = [] -%}
+      {%- for a in r -%}
+      {%- set inside = [] -%}
+      {%- for e in np if e[0] <= a[1] and a[2] <= e[1] %}{% set _ = inside.append(1) %}{% endfor -%}
+      {%- if not inside %}{% set _ = bad.append(a[0] ~ ' is not inside vlan_nonpublic') %}{% endif -%}
+      {%- for b in r if b[0] > a[0] and a[1] <= b[2] and b[1] <= a[2] %}{% set _ = bad.append(a[0] ~ ' overlaps ' ~ b[0]) %}{% endfor -%}
+      {%- endfor -%}
+      {{ bad }}

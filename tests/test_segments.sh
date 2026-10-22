@@ -310,8 +310,11 @@ cat >"$tmp/vcheck.yml" <<PLAY
     - $PWD/ansible/roles/pve_vlans/defaults/main.yml
   vars:
     site:
+      lan_cidr: 192.0.2.0/25
+      pve: {uplink_ip: \$HOMEIP, uplink_prefix: 24}
       hosts: {apps: {ip: 192.0.2.121}}
       sdn:
+        enclave: {subnet: 198.51.100.0/26, gateway: 198.51.100.1}
         subnets:
           servers: {cidr: 198.51.100.64/26, gateway: 198.51.100.65, dhcp_range: {start: 198.51.100.80, end: \$END}}
           cameras: {cidr: 198.51.100.128/26, gateway: 198.51.100.129, dhcp_range: {start: 198.51.100.144, end: 198.51.100.183}}
@@ -320,12 +323,19 @@ cat >"$tmp/vcheck.yml" <<PLAY
     - name: Checks
       ansible.builtin.include_tasks: $PWD/ansible/roles/pve_vlans/tasks/checks.yml
 PLAY
-sed 's/\$END/198.51.100.119/' "$tmp/vcheck.yml" >"$tmp/vcheck-ok.yml"
-sed 's/\$END/198.51.100.130/' "$tmp/vcheck.yml" >"$tmp/vcheck-bad.yml"
-ansible-playbook "$tmp/vcheck-ok.yml" >"$tmp/out-vc.log" 2>&1
+vc() { sed -e "s/\\\$END/$1/" -e "s/\\\$HOMEIP/$2/" "$tmp/vcheck.yml" >"$tmp/vc.yml"; ansible-playbook "$tmp/vc.yml" >"$tmp/out-vc.log" 2>&1; }
+vc 198.51.100.119 203.0.113.250
 check "checks: a range inside the subnet passes" "$?" "0"
-ansible-playbook "$tmp/vcheck-bad.yml" >"$tmp/out-vc2.log" 2>&1
+vc 198.51.100.130 203.0.113.250
 check "checks: a range past the subnet is refused" "$?" "2"
+vc 198.51.100.119 198.51.100.70
+check "checks: a home network overlapping a VLAN is refused" "$?" "2"
+grep -q "home overlaps servers\|servers overlaps home" "$tmp/out-vc.log"
+check "checks: the overlap is named" "$?" "0"
+vc 198.51.100.119 100.128.0.9
+check "checks: a routed network outside vlan_nonpublic is refused" "$?" "2"
+grep -q "home is not inside vlan_nonpublic" "$tmp/out-vc.log"
+check "checks: the network is named" "$?" "0"
 
 # 5. Set refresh script (stubbed dig/nft). Private addresses are built at run time (the
 # repo's gitleaks rule rejects private IPv4 literals).
