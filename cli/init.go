@@ -311,7 +311,7 @@ func (a *app) initFindings(r *runner) []finding {
 	return all
 }
 
-func printFindings(w io.Writer, all []finding) {
+func printFindings(w io.Writer, p palette, all []finding) {
 	group := ""
 	for _, f := range all {
 		if f.group != group {
@@ -319,7 +319,7 @@ func printFindings(w io.Writer, all []finding) {
 			fmt.Fprintln(w, group)
 		}
 		mark := map[level]string{lvOK: "ok  ", lvWarn: "warn", lvFail: "FAIL"}[f.lv]
-		line := fmt.Sprintf("  %s  %s", mark, f.text)
+		line := fmt.Sprintf("  %s  %s", p.level(f.lv, mark), f.text)
 		if f.lv != lvOK && f.fix != "" {
 			line += ". Fix: " + f.fix
 		}
@@ -337,13 +337,14 @@ func cmdInit(a *app, args []string) int {
 		return 1
 	}
 	all := a.initFindings(r)
-	printFindings(a.stdout, all)
+	p := a.pal()
+	printFindings(a.stdout, p, all)
 	for _, f := range all {
 		if f.lv == lvFail {
-			fmt.Fprintln(a.stdout, "init: not ready, fix the FAIL lines above")
+			fmt.Fprintln(a.stdout, p.fail("init: not ready, fix the FAIL lines above"))
 			return 1
 		}
 	}
-	fmt.Fprintln(a.stdout, "init: ready")
+	fmt.Fprintln(a.stdout, p.ok("init: ready"))
 	return 0
 }

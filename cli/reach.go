@@ -91,14 +91,14 @@ func reachable(a *app, r *runner, n needs) bool {
 	vaultInUse := len(lines) > 1 && strings.TrimSpace(lines[1]) == "yes"
 	if n.state && !a.reached["state"] && pve != "" {
 		if !retry(func() bool { return tcpOpen(net.JoinHostPort(pve, stateStorePort)) }) {
-			fmt.Fprintln(a.stderr, "anvil: "+msgStateStore)
+			fmt.Fprintln(a.stderr, "anvil: "+a.pal().fail(msgStateStore))
 			return false
 		}
 		a.reached["state"] = true
 	}
 	if n.vault && !a.reached["vault"] && vaultInUse {
 		if !retry(func() bool { return parseVaultStatus(r.quiet(vaultStatusScript)).reachable }) {
-			fmt.Fprintln(a.stderr, "anvil: "+msgVault)
+			fmt.Fprintln(a.stderr, "anvil: "+a.pal().fail(msgVault))
 			return false
 		}
 		a.reached["vault"] = true

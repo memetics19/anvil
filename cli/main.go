@@ -36,6 +36,8 @@ type app struct {
 	cwd            string
 	// env is the environment for child processes. nil inherits anvil's own.
 	env []string
+	// tty: stdout is a terminal. noColor: --no-color was given. See color.go.
+	tty, noColor bool
 	// preflight and status are anvil up's first and last steps. nil: the real ones.
 	// Tests replace them.
 	preflight func(a *app, r *runner) bool
@@ -80,6 +82,7 @@ func main() {
 		stderr: os.Stderr,
 		stdin:  bufio.NewReader(os.Stdin),
 		getenv: os.Getenv,
+		tty:    isTerminal(os.Stdout),
 	}
 	a.cwd, _ = os.Getwd()
 
@@ -97,6 +100,8 @@ func main() {
 }
 
 func (a *app) run(args []string) int {
+	args, noColor := stripNoColor(args)
+	a.noColor = a.noColor || noColor
 	if len(args) == 0 {
 		a.printHelp(a.stderr)
 		return 2
@@ -132,7 +137,8 @@ func (a *app) printHelp(w io.Writer) {
 	for _, c := range commands {
 		fmt.Fprintf(w, "  %-14s %s\n", c.name, c.summary)
 	}
-	fmt.Fprint(w, "\nEvery command takes --help. The repo is found from the current directory, or ANVIL_REPO.\n")
+	fmt.Fprint(w, "\nEvery command takes --help, and --no-color (or NO_COLOR) for plain output.\n"+
+		"The repo is found from the current directory, or ANVIL_REPO.\n")
 }
 
 func cmdVersion(a *app, args []string) int {

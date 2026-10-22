@@ -17,7 +17,7 @@ import (
 
 const statusUsage = `usage: anvil status
 
-A read-only dashboard:
+A read-only dashboard. It marks the problems and ends with a count of them:
 
   vault         sealed or unsealed
   site source   vault or keychain, and whether the Keychain copy is stale
@@ -26,6 +26,9 @@ A read-only dashboard:
                 https://<name>.<gateway domain>/ (000: no connection)
   pi-hole       whether it answers DNS on the apps VM's home address
   backups       the age of the newest file of each kind in ~/homelab-backups
+
+A problem is Vault not unsealed, a gateway name with 000 or a 5xx, Pi-hole not
+answering, or a backup that is missing or over 36h old. The exit code is 0 either way.
 
 It prints names only: no secrets, no addresses, no domain.
 `
@@ -179,9 +182,27 @@ func gitState(r *runner) string {
 	return fmt.Sprintf("%s, %s ahead and %s behind %s (as of the last fetch)", branch, f[0], f[1], up)
 }
 
-func backupAges(home string, now time.Time) [][2]string {
+// staleAfter: a backup older than this is a problem. make backup runs daily.
+const staleAfter = 36 * time.Hour
+
+type backupAge struct {
+	kind  string
+	age   time.Duration
+	found bool
+}
+
+func (b backupAge) String() string {
+	if !b.found {
+		return "none"
+	}
+	return ago(b.age)
+}
+
+func (b backupAge) stale() bool { return !b.found || b.age > staleAfter }
+
+func backupAges(home string, now time.Time) []backupAge {
 	dir := filepath.Join(home, "homelab-backups")
-	var out [][2]string
+	var out []backupAge
 	for _, k := range [][2]string{{"tfstate", "tfstate-*.json.age"}, {"vault", "vault-*.snap"}, {"vaultwarden", "vaultwarden-*.tar.age"}} {
 		files, _ := filepath.Glob(filepath.Join(dir, k[1]))
 		var newest time.Time
@@ -190,19 +211,43 @@ func backupAges(home string, now time.Time) [][2]string {
 				newest = fi.ModTime()
 			}
 		}
-		age := "none"
-		if !newest.IsZero() {
-			age = ago(now.Sub(newest))
+		b := backupAge{kind: k[0], found: !newest.IsZero()}
+		if b.found {
+			b.age = now.Sub(newest)
 		}
-		out = append(out, [2]string{k[0], age})
+		out = append(out, b)
 	}
 	return out
 }
 
-// printStatus prints the dashboard. It never prints a value from the site dict other
-// than the gateway names.
+// gatewayNote is the problem a gateway status code shows, or "".
+func gatewayNote(code int) string {
+	switch {
+	case code == 0:
+		return "no connection"
+	case code >= 500:
+		return "server error"
+	}
+	return ""
+}
+
+// printStatus prints the dashboard and marks the problems: Vault not unsealed, a gateway
+// name with no connection or a 5xx, Pi-hole not answering, a backup over 36h old. It
+// never prints a value from the site dict other than the gateway names.
 func printStatus(a *app, r *runner) int {
 	w := a.stdout
+	p := a.pal()
+	var problems []string
+	row := func(indent bool, name, value string, problem bool) {
+		format := "%-13s %s\n"
+		if indent {
+			format = "  %-11s %s\n"
+		}
+		if problem {
+			value = p.fail(value)
+		}
+		fmt.Fprintf(w, format, name, value)
+	}
 	raw, code := r.quiet(statusScript)
 	var d statusData
 	if code != 0 || json.Unmarshal([]byte(raw), &d) != nil {
@@ -213,7 +258,13 @@ func printStatus(a *app, r *runner) int {
 	if d.EnvRC != 0 {
 		v = vaultState{}
 	}
-	fmt.Fprintf(w, "%-13s %s\n", "vault", v)
+	vf := vaultFinding(v)
+	if vf.lv == lvFail {
+		problems = append(problems, "vault")
+		row(false, "vault", v.String()+". Fix: "+vf.fix, true)
+	} else {
+		row(false, "vault", p.ok(v.String()), false)
+	}
 
 	src := d.Used
 	switch {
@@ -226,14 +277,14 @@ func printStatus(a *app, r *runner) int {
 	case src == "vault":
 		src = "vault, the Keychain copy is current"
 	}
-	fmt.Fprintf(w, "%-13s %s\n", "site source", src)
-	fmt.Fprintf(w, "%-13s %s\n", "git", gitState(r))
+	row(false, "site source", src, false)
+	row(false, "git", gitState(r), false)
 
 	var site siteDict
 	haveSite := d.Site != "" && json.Unmarshal([]byte(d.Site), &site) == nil && site.Domain != ""
 	if !haveSite {
-		fmt.Fprintf(w, "%-13s %s\n", "gateway", "unknown, no site dict")
-		fmt.Fprintf(w, "%-13s %s\n", "pi-hole", "unknown, no site dict")
+		row(false, "gateway", "unknown, no site dict", false)
+		row(false, "pi-hole", "unknown, no site dict", false)
 	} else {
 		names := site.gatewayNames()
 		codes := make([]int, len(names))
@@ -246,27 +297,46 @@ func printStatus(a *app, r *runner) int {
 			}()
 		}
 		wg.Wait()
-		fmt.Fprintf(w, "%-13s %s\n", "gateway", "HTTPS status per name (000: no connection)")
+		row(false, "gateway", "HTTPS status per name (000: no connection)", false)
 		for i, n := range names {
-			fmt.Fprintf(w, "  %-11s %03d\n", n, codes[i])
+			note := gatewayNote(codes[i])
+			if note == "" {
+				row(true, n, fmt.Sprintf("%03d", codes[i]), false)
+				continue
+			}
+			problems = append(problems, "gateway "+n)
+			row(true, n, fmt.Sprintf("%03d  %s", codes[i], note), true)
 		}
-		pihole := "unknown, site.hosts.apps.home_ip is not set"
+		pihole, bad := "unknown, site.hosts.apps.home_ip is not set", false
 		if ip := site.Hosts.Apps.HomeIP; ip != "" {
-			pihole = "not answering"
+			pihole, bad = "not answering", true
 			probe := site.gatewayDomain()
 			if len(names) > 0 {
 				probe = names[0] + "." + probe
 			}
 			if statusDNS(ip, probe) {
-				pihole = "answering"
+				pihole, bad = "answering", false
 			}
 		}
-		fmt.Fprintf(w, "%-13s %s\n", "pi-hole", pihole)
+		if bad {
+			problems = append(problems, "pi-hole")
+		}
+		row(false, "pi-hole", pihole, bad)
 	}
 
-	fmt.Fprintf(w, "%-13s %s\n", "backups", "newest in ~/homelab-backups")
+	row(false, "backups", "newest in ~/homelab-backups", false)
 	for _, b := range backupAges(a.getenv("HOME"), time.Now()) {
-		fmt.Fprintf(w, "  %-11s %s\n", b[0], b[1])
+		if b.stale() {
+			problems = append(problems, "backup "+b.kind)
+			row(true, b.kind, b.String()+", stale (over 36h)", true)
+			continue
+		}
+		row(true, b.kind, b.String(), false)
+	}
+	if len(problems) == 0 {
+		fmt.Fprintln(w, p.ok("status: no problems"))
+	} else {
+		fmt.Fprintln(w, p.fail(fmt.Sprintf("status: %d problem(s): %s", len(problems), strings.Join(problems, ", "))))
 	}
 	return 0
 }

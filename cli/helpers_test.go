@@ -40,7 +40,9 @@ type testLab struct {
 	env      map[string]string
 	// realReach keeps the real endpoint checks (reach_test.go).
 	realReach bool
-	out, err  bytes.Buffer
+	// tty makes anvil believe stdout is a terminal (color_test.go).
+	tty      bool
+	out, err bytes.Buffer
 }
 
 // newTestLab makes a repo with the real playbook and inventory, a scripts/env.sh that
@@ -117,6 +119,7 @@ func (l *testLab) run(stdin string, args ...string) int {
 		getenv: func(k string) string { return l.env[k] },
 		cwd:    l.root,
 		env:    env,
+		tty:    l.tty,
 	}
 	setTestHooks(a)
 	if l.realReach {

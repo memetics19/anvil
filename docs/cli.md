@@ -175,7 +175,7 @@ Each problem prints its fix. It exits 1 when something is missing.
 anvil status
 ```
 
-A read-only dashboard:
+A read-only dashboard. It marks each problem and ends with a count:
 
 ```
 vault         unsealed
@@ -190,7 +190,13 @@ backups       newest in ~/homelab-backups
   tfstate     17h ago
   vault       17h ago
   vaultwarden 17h ago
+status: no problems
 ```
+
+A problem is Vault not unsealed, a gateway name with `000` or a `5xx` code, Pi-hole not
+answering, or a backup that is missing or older than 36 hours. A problem line says what is
+wrong, for example `000  no connection` or `40h ago, stale (over 36h)`, and is red on a
+terminal. The exit code is 0 either way, because the dashboard only reports.
 
 The gateway lines check `https://<name>.<gateway-domain>/` for every enabled entry of
 `site.services`. It prints the names and status codes only. It does not fetch from git, so
@@ -263,6 +269,13 @@ anvil provision pve2 --install       # the dry run, the name typed, then the ins
 `--install` adds `ARGS="-e provision_confirm=<name>"`, and `--media-ready` adds
 `-e provision_media_ready=true` for manual media. The guard in `scripts/provision.py`
 still refuses the current server. See [provisioning.md](provisioning.md).
+
+## Colors
+
+On a terminal, anvil colors its own status words: `ok`, `warn` and `FAIL`, the stage
+results of `anvil up` and the problems of `anvil status`. Piped output stays plain.
+`NO_COLOR=1`, `TERM=dumb` or `--no-color` anywhere on the command line turn colors off.
+The output of make and Ansible is passed on as it is.
 
 ## Exit codes
 

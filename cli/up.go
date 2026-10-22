@@ -329,7 +329,7 @@ func (a *app) runStage(r *runner, s stage, st *upState, yes bool) int {
 
 func preflightChecks(a *app, r *runner) bool {
 	all := a.initFindings(r)
-	printFindings(a.stdout, all)
+	printFindings(a.stdout, a.pal(), all)
 	for _, f := range all {
 		if f.upNeeds && f.lv == lvFail {
 			fmt.Fprintln(a.stderr, "anvil up: fix the FAIL lines above first (Vault may still be down: up builds it)")
