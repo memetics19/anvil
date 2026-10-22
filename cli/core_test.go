@@ -395,3 +395,28 @@ func TestPrepareTerraform(t *testing.T) {
 		}
 	}
 }
+
+// Missing collections are installed once before the first check.
+func TestPrepareCollections(t *testing.T) {
+	l := newTestLab(t)
+	fakeTools(l)
+	l.write("ansible/requirements.yml", "collections:\n  - name: community.general\n  - name: ansible.posix\n")
+	l.setCheckOutput(recapNoChanges)
+	l.env["FAKE_GALAXY_EMPTY"] = "1"
+	if code := l.run("", "check", "vms"); code != 0 {
+		t.Fatalf("exit %d: %s", code, l.output())
+	}
+	b, _ := os.ReadFile(l.log)
+	if strings.Count(string(b), "galaxy install") != 1 {
+		t.Fatalf("want one install, log:\n%s\nout:\n%s", b, l.output())
+	}
+	l.resetCalls()
+	delete(l.env, "FAKE_GALAXY_EMPTY")
+	if code := l.run("", "check", "vms"); code != 0 {
+		t.Fatalf("exit %d: %s", code, l.output())
+	}
+	b, _ = os.ReadFile(l.log)
+	if strings.Contains(string(b), "galaxy install") {
+		t.Fatalf("installed although every collection is there, log:\n%s", b)
+	}
+}

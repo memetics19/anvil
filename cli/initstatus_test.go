@@ -20,6 +20,16 @@ func fakeTools(l *testLab) {
 	for name, v := range versions {
 		l.tool(name, "#!/bin/sh\necho '"+v+"'\n")
 	}
+	// ansible-galaxy: every required collection is installed unless FAKE_GALAXY_EMPTY is set;
+	// an install is logged to FAKE_LOG as "galaxy install".
+	l.tool("ansible-galaxy", `#!/bin/sh
+case "$*" in
+  "collection list --format json")
+    if [ -n "$FAKE_GALAXY_EMPTY" ]; then echo '{}'; else
+    echo '{"/c":{"community.general":{},"community.hashi_vault":{},"community.crypto":{},"ansible.posix":{}}}'; fi ;;
+  "collection install"*) echo "galaxy install" >> "$FAKE_LOG" ;;
+esac
+`)
 	py := filepath.Join(l.bin, "ansible-python")
 	l.tool("ansible-python", "#!/bin/sh\nexit 0\n")
 	l.tool("ansible-playbook", "#!/bin/sh\necho 'ansible-playbook [core 2.19.2]'\necho '  python version = 3.13.7 (main) [Clang 17] ("+py+")'\n")

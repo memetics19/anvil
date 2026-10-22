@@ -139,8 +139,9 @@ A name anvil does not know is refused, with the names close to it.
 ## Setup of a new checkout
 
 You never run make yourself. Before `check`, `apply` and `up` do anything, anvil sets up
-the checkout. Today that means Terraform: a fresh clone or worktree has no `.terraform`,
-so anvil runs `tf-init` once and then goes on.
+the checkout. A fresh clone or worktree has no `.terraform`, so anvil runs `tf-init` once.
+When a collection in `ansible/requirements.yml` is missing, anvil installs them. Then it
+goes on.
 
 ## anvil init
 

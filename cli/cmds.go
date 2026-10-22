@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -127,24 +125,6 @@ func (a *app) setup(dryRun bool) (*runner, *catalog, bool) {
 		return nil, nil, false
 	}
 	return r, c, true
-}
-
-// prepare sets up this checkout the way the docs' first-time steps do, so no command
-// needs a manual make first. Today that is Terraform: a fresh clone or worktree has no
-// .terraform, and every plan would fail with "Backend initialization required".
-// A dry run only prints what it would do.
-func (a *app) prepare(r *runner) bool {
-	if _, err := os.Stat(filepath.Join(r.root, "terraform", ".terraform", "terraform.tfstate")); err == nil {
-		return true
-	}
-	if !r.dryRun {
-		fmt.Fprintln(a.stderr, "anvil: this checkout has no Terraform setup yet, running tf-init first")
-	}
-	if code := r.make(newMake("tf-init"), nil); code != 0 {
-		fmt.Fprintf(a.stderr, "anvil: tf-init failed (exit %d)\n", code)
-		return false
-	}
-	return true
 }
 
 // runCheck runs one target's dry run and returns its exit code and summary.
