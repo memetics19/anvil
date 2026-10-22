@@ -1,0 +1,81 @@
+# Self-hosted NetBird on the netbird VM (Task 13c), next to the NetBird cloud client.
+# Compose project "netbird-server": the combined server (management, signal, relay and the
+# embedded identity provider), the dashboard, and Caddy in front of both. The public name
+# is site.netbird_domain, published through the existing Cloudflare tunnel (docs/setup.md,
+# Self-hosted NetBird). The site key is optional: without it the role does nothing.
+netbird_server_dir: /opt/netbird-server
+# Pinned by tag and digest. A bump is a deliberate change of these lines.
+netbird_server_image: netbirdio/netbird-server:0.81.3@sha256:541ecef7e98a66b17411d44e9d4dcfdb65913415f39b3b944b8e7e748f997f1d
+netbird_server_dashboard_image: netbirdio/dashboard:v2.95.0@sha256:3d6adfee19dd8d34d795af51daee69d27d2081d2076a5a304cfdd14acc67d6f4
+netbird_server_caddy_image: caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+# Memory caps (the VM has 3 GB for everything it runs).
+netbird_server_mem_limit: 512m
+netbird_server_dashboard_mem_limit: 96m
+netbird_server_caddy_mem_limit: 96m
+# Caddy (TLS with its own internal CA) on the VM's lab address: the Cloudflare tunnel's
+# origin for site.netbird_domain. Every tunnel connector reaches it there.
+netbird_server_https_port: 8443
+# The server's plain HTTP port, on the VM's loopback only: the role's API calls.
+netbird_server_api_port: 8089
+# Public STUN only. Without local STUN the server opens no UDP port. The relay (WebSocket
+# through the tunnel) carries a connection when hole punching fails.
+netbird_server_stuns:
+  - stun:stun.cloudflare.com:3478
+  - stun:stun.l.google.com:19302
+# Secrets: Vault KV v2, mount kv. The role generates missing keys (never displayed).
+netbird_server_vault_mount: kv
+netbird_server_vault_path: homelab/netbird-srv
+netbird_server_repo_scripts: "{{ playbook_dir }}/../../scripts"
+# Personal access token of the owner user (the role's API calls): replaced when it has
+# fewer days left than this.
+netbird_server_pat_days: 365
+netbird_server_pat_renew_days: 30
+
+# --- desired state of the self-hosted network (applied through the management API) ---------
+# Groups: operator (the owner's devices: every device the owner logs in joins it) and
+# routers (the routing peer and the routed resources). The only policy: operator to
+# routers. NetBird's All to All policy "Default" is deleted.
+netbird_server_groups: [operator, routers]
+netbird_server_owner_auto_groups: [operator]
+netbird_server_policies:
+  - name: operator-to-routers
+    description: The operator's devices reach the routed networks and the routing peer
+    sources: [operator]
+    destinations: [routers]
+netbird_server_delete_policies: [Default]
+# The lab's /16 (masquerade on) and the apps VM's home address (masquerade off, so the
+# gateway's Caddy allowlist sees the peer's own address).
+netbird_server_lab_route: "{{ (site.lan_cidr.split('/')[0].split('.')[:2] + ['0', '0']) | join('.') }}/16"
+netbird_server_networks:
+  - name: lab
+    description: The lab network
+    resources:
+      - {name: lab, address: "{{ netbird_server_lab_route }}", groups: [routers]}
+    routers:
+      - {peer_groups: [routers], masquerade: true, metric: 9999}
+  - name: home-gateway
+    description: The service gateway's home address
+    resources:
+      - {name: apps-home, address: "{{ site.hosts.apps.home_ip | default('') }}/32", groups: [routers]}
+    routers:
+      - {peer_groups: [routers], masquerade: false, metric: 9999}
+# Pi-hole answers the gateway names (<name>.<gateway domain>) for the operator's devices.
+netbird_server_nameservers:
+  - name: gateway
+    description: Pi-hole for the gateway names
+    nameservers:
+      - {ip: "{{ site.hosts.apps.home_ip | default('') }}", ns_type: udp, port: 53}
+    domains: ["{{ gateway_domain }}"]
+    groups: [operator]
+# What tasks/api.yml sends to the API helper (files/netbird_api.py).
+netbird_server_desired:
+  settings: >-
+    {{ {'network_range': site.netbird_server.network_range}
+       if (site.netbird_server | default({}, true)).network_range | default('') | length > 0 else {} }}
+  groups: "{{ netbird_server_groups }}"
+  owner_email: "{{ site.email }}"
+  owner_auto_groups: "{{ netbird_server_owner_auto_groups }}"
+  policies: "{{ netbird_server_policies }}"
+  delete_policies: "{{ netbird_server_delete_policies }}"
+  networks: "{{ netbird_server_networks }}"
+  nameservers: "{{ netbird_server_nameservers }}"

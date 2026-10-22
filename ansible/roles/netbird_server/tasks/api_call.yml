@@ -1,0 +1,31 @@
+# One call of the API helper. In: netbird_server_request (the request without "api" and
+# "check"). Out: netbird_server_api (the helper's result). The request and the raw result
+# hold secrets: only the changed object names, warnings and errors are shown.
+- name: Call the management API ({{ netbird_server_request.action }})
+  ansible.builtin.command:
+    argv: [python3, /usr/local/lib/anvil-netbird-api.py]
+    stdin: >-
+      {{ netbird_server_request | combine({'api': 'http://127.0.0.1:' ~ netbird_server_api_port ~ '/api',
+                                           'check': ansible_check_mode}) | to_json }}
+  register: netbird_server_api_raw
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Read the result ({{ netbird_server_request.action }})
+  ansible.builtin.set_fact:
+    netbird_server_api: >-
+      {{ netbird_server_api_raw.stdout | from_json
+         if netbird_server_api_raw.stdout | default('') is match('\s*[{]')
+         else {'error': 'no JSON from the helper (rc ' ~ netbird_server_api_raw.rc | default('?') ~ ')'} }}
+  no_log: true
+
+- name: Result ({{ netbird_server_request.action }})
+  ansible.builtin.debug:
+    msg:
+      changed: "{{ netbird_server_api.changed | default([]) }}"
+      warnings: "{{ netbird_server_api.warnings | default([]) }}"
+      error: "{{ netbird_server_api.error | default('') }}"
+  changed_when: netbird_server_api.changed | default([]) | length > 0
+  failed_when: netbird_server_api.error is defined or netbird_server_api_raw.rc | default(1) != 0

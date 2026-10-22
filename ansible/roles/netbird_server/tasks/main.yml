@@ -1,0 +1,19 @@
+# Self-hosted NetBird server on the netbird VM. Optional per site: without
+# site.netbird_domain nothing here runs. The NetBird cloud client on this VM (role
+# netbird_peer) is a separate service and is never touched here.
+- name: Is self-hosted NetBird configured for this site
+  ansible.builtin.set_fact:
+    netbird_server_enabled: "{{ site.netbird_domain | default('', true) | length > 0 }}"
+
+- name: Self-hosted NetBird is not configured (site.netbird_domain is absent)
+  ansible.builtin.debug:
+    msg: "netbird_server: skipped, site.netbird_domain is not set"
+  when: not netbird_server_enabled | bool
+
+- name: Server, dashboard and Caddy
+  ansible.builtin.include_tasks: server.yml
+  when: netbird_server_enabled | bool
+
+- name: Groups, policies, networks and DNS through the management API
+  ansible.builtin.include_tasks: api.yml
+  when: netbird_server_enabled | bool

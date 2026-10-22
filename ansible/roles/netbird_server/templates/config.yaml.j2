@@ -1,0 +1,29 @@
+{# Managed by anvil (ansible/roles/netbird_server). Holds secrets from Vault: mode 0600. #}
+server:
+  listenAddress: ":80"
+  exposedAddress: "https://{{ site.netbird_domain }}:443"
+  metricsPort: 9090
+  healthcheckAddress: ":9000"
+  logLevel: "info"
+  logFile: "console"
+  authSecret: "{{ netbird_server_secrets.relay_secret }}"
+  dataDir: "/var/lib/netbird"
+  # External STUN servers turn off the local STUN server (no UDP port).
+  stuns:
+{% for uri in netbird_server_stuns %}
+    - uri: "{{ uri }}"
+{% endfor %}
+  disableAnonymousMetrics: true
+  disableGeoliteUpdate: true
+  auth:
+    issuer: "https://{{ site.netbird_domain }}/oauth2"
+    signKeyRefreshEnabled: true
+    sessionCookieEncryptionKey: "{{ netbird_server_secrets.idp_session_key }}"
+    dashboardRedirectURIs:
+      - "https://{{ site.netbird_domain }}/nb-auth"
+      - "https://{{ site.netbird_domain }}/nb-silent-auth"
+    cliRedirectURIs:
+      - "http://localhost:53000/"
+  store:
+    engine: "sqlite"
+    encryptionKey: "{{ netbird_server_secrets.datastore_key }}"

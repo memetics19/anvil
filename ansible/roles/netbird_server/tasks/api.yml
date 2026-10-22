@@ -1,0 +1,89 @@
+# The management API on the VM's loopback port, through files/netbird_api.py. Requests go
+# on stdin (they hold the API token and passwords), so every call is no_log and only the
+# helper's list of changed object names is shown.
+
+# A helper file, not app state: copied in check mode too, so the calls below can plan.
+- name: API helper
+  ansible.builtin.copy:
+    src: netbird_api.py
+    dest: /usr/local/lib/anvil-netbird-api.py
+    owner: root
+    group: root
+    mode: "0755"
+  check_mode: false
+  diff: false
+
+- name: Plan in check mode while the server is not deployed yet
+  ansible.builtin.set_fact:
+    netbird_server_api_up: "{{ not ansible_check_mode or netbird_server_have_secrets | bool }}"
+
+- name: Is the first owner user still to be created
+  ansible.builtin.include_tasks: api_call.yml
+  vars:
+    netbird_server_request: {action: status}
+  when: netbird_server_api_up | bool
+
+- name: Note whether setup is required
+  ansible.builtin.set_fact:
+    netbird_server_setup_required: "{{ netbird_server_api.setup_required | default(true) }}"
+
+# The owner user (site.email, the password from Vault) and its first personal access token.
+# Runs before the public name is routed, so nobody else can claim the server first.
+- name: Create the owner user
+  ansible.builtin.include_tasks: api_call.yml
+  vars:
+    netbird_server_request:
+      action: setup
+      email: "{{ site.email }}"
+      password: "{{ netbird_server_secrets.owner_password }}"
+      name: owner
+      pat_days: "{{ netbird_server_pat_days }}"
+  when: netbird_server_api_up | bool and netbird_server_setup_required | bool
+
+- name: Store the owner's personal access token in Vault
+  ansible.builtin.include_tasks: store_secret.yml
+  vars:
+    netbird_server_store_key: api_token
+    netbird_server_store_value: "{{ netbird_server_api.secrets.api_token }}"
+  when:
+    - netbird_server_api_up | bool
+    - netbird_server_setup_required | bool
+    - not ansible_check_mode
+
+# In check mode with the owner still to be created there is no token to plan with.
+- name: Is there an API token
+  ansible.builtin.set_fact:
+    netbird_server_ready: >-
+      {{ netbird_server_api_up | bool and not (ansible_check_mode and netbird_server_setup_required | bool) }}
+
+- name: Read the API token from Vault
+  ansible.builtin.set_fact:
+    netbird_server_api_token: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', netbird_server_vault_path,
+                 engine_mount_point=netbird_server_vault_mount,
+                 url=lookup('env', 'VAULT_ADDR'),
+                 token=lookup('env', 'VAULT_TOKEN'),
+                 ca_cert=lookup('env', 'VAULT_CACERT')).secret).api_token | default('') }}
+  no_log: true
+  when: netbird_server_ready | bool
+
+- name: Groups, policies, networks and DNS
+  ansible.builtin.include_tasks: api_call.yml
+  vars:
+    netbird_server_request:
+      action: reconcile
+      token: "{{ netbird_server_api_token }}"
+      desired: "{{ netbird_server_desired }}"
+      pat_days: "{{ netbird_server_pat_days }}"
+      pat_renew_days: "{{ netbird_server_pat_renew_days }}"
+  when: netbird_server_ready | bool
+
+- name: Store a renewed personal access token in Vault
+  ansible.builtin.include_tasks: store_secret.yml
+  vars:
+    netbird_server_store_key: api_token
+    netbird_server_store_value: "{{ netbird_server_api.secrets.api_token }}"
+  when:
+    - netbird_server_ready | bool
+    - not ansible_check_mode
+    - netbird_server_api.secrets.api_token is defined

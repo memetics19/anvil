@@ -120,6 +120,44 @@ is not read. Only a client in state `NeedsLogin` is enrolled, with `setup_key` f
 other state is reported and left alone. At the end the run checks that the client is
 still connected. Routes, groups and ACLs stay in the NetBird dashboard.
 
+### Self-hosted NetBird server
+
+The `netbird_server` role runs a NetBird server on this VM next to the cloud client. It
+runs only when `site.netbird_domain` is set (for example `netbird.<domain>`). Compose
+project `/opt/netbird-server` has three containers, each with a memory cap:
+
+- `netbird-server`: NetBird's combined server (management, signal, relay and the built in
+  identity provider), pinned by tag and digest. Its plain HTTP port is on the VM's loopback
+  only, for the role's API calls.
+- `netbird-dashboard`: the web dashboard.
+- `netbird-caddy`: TLS with its own internal CA on the VM's lab address, port 8443. It is
+  the Cloudflare tunnel's origin for `site.netbird_domain` and sends gRPC (HTTP/2
+  cleartext), the relay, the API and the identity provider to the server, and everything
+  else to the dashboard.
+
+STUN uses public servers only (Cloudflare and Google). The server opens no UDP port. When
+hole punching fails the relay carries the connection, over WebSocket through the tunnel.
+There is no port forward on the home router.
+
+Secrets come from `kv/homelab/netbird-srv`. The role creates any that are missing.
+`config.yaml` holds them with mode 600. A change to it or to the Caddyfile recreates that
+container through a hash label in the compose file.
+
+The role then sets up the server through its API (`files/netbird_api.py`, run on the VM):
+
+1. On a new server it creates the owner user (`site.email`, the password from Vault) and a
+   personal access token, before the public name is routed. Both go to Vault. The token is
+   replaced when it has less than 30 days left.
+2. The network range `site.netbird_server.network_range`.
+3. Groups `operator` and `routers`. Every device the owner logs in joins `operator`.
+4. One access policy, `operator` to `routers`. The All to All policy `Default` is deleted.
+5. Networks `lab` (the lab's /16, masquerade on) and `home-gateway` (the `apps` home
+   address as a /32, masquerade off), both routed by group `routers`.
+6. Pi-hole on the `apps` home address as the nameserver for the gateway domain, for
+   `operator`.
+
+Objects are matched by name. Anything else you add in the dashboard is left alone.
+
 ### Other services
 
 - `redis`: the Ubuntu package with its default config, localhost only. A hand edit to

@@ -1,0 +1,30 @@
+# A new one-off setup key for a peer of the self-hosted network, valid for a day, into
+# Vault (kv/<netbird_server_vault_path>, key setup_key_<name with - as _>). Older keys with
+# that name are revoked. Called by role netbird_peer (tasks/home.yml) for a client that
+# needs a login. In: netbird_server_key_name, netbird_server_key_groups.
+- name: API token from Vault
+  ansible.builtin.set_fact:
+    netbird_server_api_token: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', netbird_server_vault_path,
+                 engine_mount_point=netbird_server_vault_mount,
+                 url=lookup('env', 'VAULT_ADDR'),
+                 token=lookup('env', 'VAULT_TOKEN'),
+                 ca_cert=lookup('env', 'VAULT_CACERT')).secret).api_token | default('') }}
+  no_log: true
+
+- name: Create the setup key
+  ansible.builtin.include_tasks: api_call.yml
+  vars:
+    netbird_server_request:
+      action: setup_key
+      token: "{{ netbird_server_api_token }}"
+      name: "{{ netbird_server_key_name }}"
+      auto_groups: "{{ netbird_server_key_groups }}"
+      expires_in: 86400
+
+- name: Store the setup key in Vault
+  ansible.builtin.include_tasks: store_secret.yml
+  vars:
+    netbird_server_store_key: "setup_key_{{ netbird_server_key_name | replace('-', '_') }}"
+    netbird_server_store_value: "{{ netbird_server_api.secrets.setup_key }}"
+  when: not ansible_check_mode

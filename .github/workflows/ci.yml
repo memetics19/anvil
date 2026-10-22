@@ -44,6 +44,8 @@ jobs:
         run: tests/test_gateway.sh
       - name: Homepage dashboard test
         run: tests/test_homepage.sh
+      - name: Self-hosted NetBird test
+        run: tests/test_netbird_server.sh
       - name: Vaultwarden test
         run: |
           sudo apt-get update -qq

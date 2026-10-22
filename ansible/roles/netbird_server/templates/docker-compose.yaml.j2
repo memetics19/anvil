@@ -1,0 +1,69 @@
+{# Managed by anvil (ansible/roles/netbird_server). The config-sha256 labels change when a
+   mounted file changes, so the service is recreated then. #}
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  netbird-server:
+    image: {{ netbird_server_image }}
+    container_name: netbird-server
+    restart: unless-stopped
+    command: ["--config", "/etc/netbird/config.yaml"]
+    environment:
+      # POST /api/setup may return a personal access token for the owner (role tasks).
+      - NB_SETUP_PAT_ENABLED=true
+    ports:
+      - "127.0.0.1:{{ netbird_server_api_port }}:80"
+    volumes:
+      - netbird_data:/var/lib/netbird
+      - ./config.yaml:/etc/netbird/config.yaml:ro
+    labels:
+      anvil.config-sha256: "{{ netbird_server_config | hash('sha256') }}"
+    mem_limit: {{ netbird_server_mem_limit }}
+    memswap_limit: {{ netbird_server_mem_limit }}
+    logging: *logging
+
+  dashboard:
+    image: {{ netbird_server_dashboard_image }}
+    container_name: netbird-dashboard
+    restart: unless-stopped
+    environment:
+      - NETBIRD_MGMT_API_ENDPOINT=https://{{ site.netbird_domain }}
+      - NETBIRD_MGMT_GRPC_API_ENDPOINT=https://{{ site.netbird_domain }}
+      - AUTH_AUDIENCE=netbird-dashboard
+      - AUTH_CLIENT_ID=netbird-dashboard
+      - AUTH_CLIENT_SECRET=
+      - AUTH_AUTHORITY=https://{{ site.netbird_domain }}/oauth2
+      - USE_AUTH0=false
+      - AUTH_SUPPORTED_SCOPES=openid profile email groups
+      - AUTH_REDIRECT_URI=/nb-auth
+      - AUTH_SILENT_REDIRECT_URI=/nb-silent-auth
+      - NGINX_SSL_PORT=443
+      - LETSENCRYPT_DOMAIN=none
+    mem_limit: {{ netbird_server_dashboard_mem_limit }}
+    memswap_limit: {{ netbird_server_dashboard_mem_limit }}
+    logging: *logging
+
+  caddy:
+    image: {{ netbird_server_caddy_image }}
+    container_name: netbird-caddy
+    restart: unless-stopped
+    ports:
+      - "{{ site.hosts[inventory_hostname].ip }}:{{ netbird_server_https_port }}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    labels:
+      anvil.config-sha256: "{{ netbird_server_caddyfile | hash('sha256') }}"
+    mem_limit: {{ netbird_server_caddy_mem_limit }}
+    memswap_limit: {{ netbird_server_caddy_mem_limit }}
+    logging: *logging
+
+volumes:
+  netbird_data:
+  caddy_data:
+  caddy_config:

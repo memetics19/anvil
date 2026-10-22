@@ -3,10 +3,11 @@
 # node_exporter (group node_exporter in the inventory).
 # Run: make vms ARGS="--check --diff"   or one VM: make vm HOST=frigate
 # Tags: base, docker, cloudflared, node_exporter, frigate, arr, iptv_epg, filestash, iptv,
-# netbird_peer, redis, ntfy, pulse, pihole, homepage, vaultwarden, caddy, docs, firewall. The tag
-# docs alone copies only the static sites Caddy serves (make docs-publish). The tag homepage alone
-# also runs the pieces other roles keep for the dashboard (ARR API keys into Vault on
-# ragnarok, the Frigate viewer login, Pi-hole's app password).
+# netbird_peer, redis, ntfy, pulse, netbird_server, pihole, homepage,
+# vaultwarden, caddy, docs, firewall. The tag docs alone copies only the static sites Caddy
+# serves (make docs-publish). The tag homepage alone also runs the pieces other roles keep
+# for the dashboard (ARR API keys into Vault on ragnarok, the Frigate viewer login, Pi-hole's
+# app password).
 # The secrets enclave's VMs have no internet: apt and time through the Proxmox host first.
 - name: Enclave guests (apt cache, time)
   hosts: enclave
@@ -69,8 +70,9 @@
       tags: [iptv]
 
 # Workloads on the netbird VM: the NetBird routing peer (the emergency VPN path; never
-# restarted, re-enrolled or upgraded here), Redis, ntfy and Pulse. Never run in the same
-# Ansible run as playbooks/host-network.yml (make host-network).
+# restarted, re-enrolled or upgraded here), Redis, ntfy, Pulse and the self-hosted NetBird
+# server (when site.netbird_domain is set). Never run in the same Ansible run as
+# playbooks/host-network.yml (make host-network).
 - name: Netbird workloads
   hosts: netbird
   force_handlers: true
@@ -83,6 +85,8 @@
       tags: [ntfy]
     - role: pulse
       tags: [pulse]
+    - role: netbird_server
+      tags: [netbird_server]
   post_tasks:
     - name: The NetBird client is still connected
       ansible.builtin.include_role:

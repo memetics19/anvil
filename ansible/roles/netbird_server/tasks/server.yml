@@ -1,0 +1,185 @@
+# --- checks ------------------------------------------------------------------------------------
+- name: The site values the server needs
+  ansible.builtin.assert:
+    that:
+      - site.netbird_domain is match('^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$')
+      - site.hosts.apps.home_ip | default('') | length > 0
+      - site.email | default('') | length > 0
+    fail_msg: >-
+      site.netbird_domain must be a lower-case host name (for example netbird.<domain>), and
+      site.hosts.apps.home_ip and site.email must be set
+    quiet: true
+
+# --- secrets -----------------------------------------------------------------------------------
+- name: Key digests stored in Vault
+  ansible.builtin.command:
+    argv: ["{{ netbird_server_repo_scripts }}/vault-kv-digests.sh", "{{ netbird_server_vault_path }}"]
+  delegate_to: localhost
+  become: false
+  register: netbird_server_vault_digests
+  changed_when: false
+  check_mode: false
+
+- name: Keys stored in Vault
+  ansible.builtin.set_fact:
+    netbird_server_vault_keys: "{{ netbird_server_vault_digests.stdout_lines | map('split', ' ') | map('first') | list }}"
+
+# Each value goes from openssl straight into Vault; it is never displayed or logged.
+# datastore_key: 32 bytes, base64. idp_session_key: 32 characters (an AES-256 key).
+- name: Generate the missing server secrets into Vault
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      {{ item.value }} | tr -d '\n' |
+      vault kv {{ 'patch' if (netbird_server_vault_keys or idx > 0) else 'put' }}
+      -mount={{ netbird_server_vault_mount }} {{ netbird_server_vault_path }} {{ item.key }}=- >/dev/null
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  loop: >-
+    {{ {'relay_secret': 'openssl rand -hex 32',
+        'datastore_key': 'openssl rand -base64 32',
+        'idp_session_key': 'openssl rand -hex 16',
+        'owner_password': 'openssl rand -hex 24'}
+       | dict2items | rejectattr('key', 'in', netbird_server_vault_keys) | list }}
+  loop_control:
+    index_var: idx
+    label: "{{ item.key }}"
+
+# The owner's login name next to its password, so the credentials are in one place.
+- name: Owner login name into Vault
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      printf '%s' {{ site.email | quote }} |
+      vault kv patch -mount={{ netbird_server_vault_mount }} {{ netbird_server_vault_path }} owner_email=- >/dev/null
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  when: >-
+    not ansible_check_mode and (
+    'owner_email' not in netbird_server_vault_keys
+    or (netbird_server_vault_digests.stdout_lines | select('match', '^owner_email ') | first | split(' ') | last)
+       != (site.email | hash('sha256')))
+
+# In check mode secrets that would be generated above do not exist yet.
+- name: The server secrets are readable
+  ansible.builtin.set_fact:
+    netbird_server_have_secrets: >-
+      {{ not ansible_check_mode
+         or (['relay_secret', 'datastore_key', 'idp_session_key', 'owner_password']
+             | reject('in', netbird_server_vault_keys) | list | length == 0) }}
+
+- name: Read the server secrets from Vault
+  ansible.builtin.set_fact:
+    netbird_server_secrets: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', netbird_server_vault_path,
+                engine_mount_point=netbird_server_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
+  no_log: true
+  when: netbird_server_have_secrets | bool
+
+- name: The server secrets are present
+  ansible.builtin.assert:
+    that:
+      - netbird_server_secrets.relay_secret | default('') | length >= 32
+      - netbird_server_secrets.datastore_key | default('') | b64decode | length == 32
+      - netbird_server_secrets.idp_session_key | default('') | length == 32
+      - netbird_server_secrets.owner_password | default('') | length >= 32
+    fail_msg: "kv/{{ netbird_server_vault_path }}: a server secret is missing or malformed"
+    quiet: true
+  no_log: true
+  when: netbird_server_have_secrets | bool
+
+# --- files -------------------------------------------------------------------------------------
+- name: Project directory
+  ansible.builtin.file:
+    path: "{{ netbird_server_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Render the server configuration and the Caddyfile
+  ansible.builtin.set_fact:
+    netbird_server_config: "{{ lookup('ansible.builtin.template', 'config.yaml.j2') }}"
+    netbird_server_caddyfile: "{{ lookup('ansible.builtin.template', 'Caddyfile.j2') }}"
+  no_log: true
+  when: netbird_server_have_secrets | bool
+
+- name: Read the live server configuration
+  ansible.builtin.stat:
+    path: "{{ netbird_server_dir }}/config.yaml"
+    checksum_algorithm: sha256
+  register: netbird_server_config_stat
+
+# Holds the relay secret and the store and session keys: never logged or diffed.
+- name: Server configuration (secrets from Vault)
+  ansible.builtin.copy:
+    content: "{{ netbird_server_config }}"
+    dest: "{{ netbird_server_dir }}/config.yaml"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+  when:
+    - netbird_server_have_secrets | bool
+    - >-
+      not netbird_server_config_stat.stat.exists
+      or netbird_server_config_stat.stat.checksum != (netbird_server_config | hash('sha256'))
+
+- name: Server configuration mode
+  ansible.builtin.file:
+    path: "{{ netbird_server_dir }}/config.yaml"
+    owner: root
+    group: root
+    mode: "0600"
+  when: netbird_server_config_stat.stat.exists or not ansible_check_mode
+
+# The file names the public host: kept out of --diff output.
+- name: Caddyfile
+  ansible.builtin.copy:
+    content: "{{ netbird_server_caddyfile }}"
+    dest: "{{ netbird_server_dir }}/Caddyfile"
+    owner: root
+    group: root
+    mode: "0644"
+  diff: false
+  when: netbird_server_have_secrets | bool
+
+# --- compose project ------------------------------------------------------------------------------
+# The file holds the VM's address and the public host name: no --diff output.
+- name: NetBird server compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ netbird_server_dir }}"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+    compose_project_diff: false
+  when: netbird_server_have_secrets | bool
+
+- name: The management API answers on the loopback port
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ netbird_server_api_port }}/api/instance"
+  register: netbird_server_instance
+  retries: 30
+  delay: 3
+  until: netbird_server_instance.status == 200
+  when: not ansible_check_mode
+
+- name: Caddy answers on the VM's lab address (the tunnel's origin)
+  ansible.builtin.uri:
+    url: "https://{{ site.hosts[inventory_hostname].ip }}:{{ netbird_server_https_port }}/api/instance"
+    headers:
+      Host: "{{ site.netbird_domain }}"
+    validate_certs: false
+  register: netbird_server_origin
+  retries: 20
+  delay: 3
+  until: netbird_server_origin.status == 200
+  when: not ansible_check_mode
