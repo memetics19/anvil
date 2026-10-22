@@ -107,17 +107,33 @@ sys.exit(1 if fails else 0)
 PY
 
 # --- switch-cli.sh against a fake switch --------------------------------------------------------
+# The fake echoes each typed character itself, so it can drop one (FAKE_DROP=<n>: the n-th
+# character typed after login). Ctrl-U clears the line. FAKE_REFUSE=<n> refuses the first n
+# logins. FAKE_COPY: ask (a Y/N question, then success), plain (success, no question) or
+# fail (no success line).
 mkdir "$tmp/bin"
 cat >"$tmp/bin/sshpass" <<'STUB'
 #!/usr/bin/env bash
 log=${FAKE_LOG:?}
 printf '%s\n' "$@" >"$log.argv"
 [ "${SSHPASS:-}" = s3cret-pw ] && echo yes >"$log.env"
+n=$(( $(cat "$log.logins" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$log.logins"
+[ "$n" -le "${FAKE_REFUSE:-0}" ] && exit 255
+stty -echo -icanon min 1 2>/dev/null
 mode=""
 p() { printf '\r\nsw%s#' "$mode"; }
 printf '\r\nbanner\r\n'; p
-while IFS= read -r line; do
-  line=${line%$'\r'}
+buf=""; typed=0
+while IFS= read -r -s -n1 -d '' c; do
+  case "$c" in
+    $'\r'|$'\n') ;;
+    $'\025') buf=""; printf '\r\033[Ksw%s#' "$mode"; continue ;;
+    *) typed=$((typed + 1))
+       [ "$typed" = "${FAKE_DROP:-0}" ] && continue
+       buf+=$c; printf '%s' "$c"; continue ;;
+  esac
+  line=$buf; buf=""
+  printf '\r\n'
   echo "$line" >>"$log"
   case "$line" in
     "terminal datadump") ;;
@@ -127,7 +143,12 @@ while IFS= read -r line; do
     "switchport protected-port") ;;
     "end") mode="" ;;
     "copy running-config startup-config")
-      printf '\r\nOverwrite file [startup-config].... (Y/N)[N] ?'; IFS= read -r -n1 a; echo "answer:$a" >>"$log" ;;
+      case "${FAKE_COPY:-plain}" in
+        ask) printf '\r\nOverwrite file [startup-config].... (Y/N)[N] ?'; IFS= read -r -s -n1 -d '' a
+             echo "answer:$a" >>"$log"; printf '\r\nCopy succeeded' ;;
+        plain) printf '\r\nCopy succeeded' ;;
+        *) printf '\r\nCopy failed' ;;
+      esac ;;
     "exit") case "$mode" in "") exit 0 ;; "(config)") mode="" ;; *) mode="(config)" ;; esac ;;
     *) printf '\r\n%% Unrecognized command' ;;
   esac
@@ -136,7 +157,7 @@ done
 STUB
 chmod +x "$tmp/bin/sshpass"
 export FAKE_LOG="$tmp/log"
-cli() { rm -f "$tmp/log"*; PATH="$tmp/bin:$PATH" SSHPASS=s3cret-pw SWITCH_CLI_TIMEOUT=10 scripts/switch-cli.sh "$@" >"$tmp/out" 2>"$tmp/err"; }
+cli() { rm -f "$tmp/log"*; PATH="$tmp/bin:$PATH" SSHPASS=s3cret-pw SWITCH_CLI_TIMEOUT=10 SWITCH_CLI_BACKOFF=0 scripts/switch-cli.sh "$@" >"$tmp/out" 2>"$tmp/err"; }
 
 printf 'show vlan\n' | cli --show-only admin 192.0.2.24
 check "show: rc" "$?" 0
@@ -159,6 +180,11 @@ check "config: rc" "$?" 0
 check "config: leaves config mode with end, then exit" "$(tail -2 "$tmp/log")" "end
 exit"
 
+# 17 characters of terminal datadump, then the 3rd of configure terminal is dropped.
+printf 'configure terminal\ninterface gi10\n' | FAKE_DROP=20 cli admin 192.0.2.24
+check "dropped character: rc" "$?" 0
+check "dropped character: the line is retyped, never sent broken" "$(sed -n 2p "$tmp/log")" "configure terminal"
+
 printf 'configure terminal\nbogus\nshow vlan\n' | cli admin 192.0.2.24
 check "error: rc 3" "$?" 3
 check "error: stops, ends config mode, exits" "$(cat "$tmp/log")" "terminal datadump
@@ -167,9 +193,18 @@ bogus
 end
 exit"
 
-printf 'copy running-config startup-config\n' | cli admin 192.0.2.24
-check "save: rc" "$?" 0
-check "save: answers Y" "$(grep answer "$tmp/log")" "answer:Y"
+printf 'copy running-config startup-config\n' | FAKE_COPY=plain cli admin 192.0.2.24
+check "save without a question: rc" "$?" 0
+printf 'copy running-config startup-config\n' | FAKE_COPY=ask cli admin 192.0.2.24
+check "save with a question: rc" "$?" 0
+check "save with a question: answers Y" "$(grep answer "$tmp/log")" "answer:Y"
+printf 'copy running-config startup-config\n' | FAKE_COPY=fail cli admin 192.0.2.24
+check "save without Copy succeeded: rc 3" "$?" 3
+
+printf 'show vlan\n' | FAKE_REFUSE=2 cli --show-only admin 192.0.2.24
+check "login refused twice: third try works" "$?:$(cat "$tmp/log.logins")" "0:3"
+printf 'show vlan\n' | FAKE_REFUSE=9 cli --show-only admin 192.0.2.24
+check "login refused every time: rc 5 after 3 tries" "$?:$(cat "$tmp/log.logins")" "5:3"
 
 printf 'show vlan\n' | env -u SSHPASS PATH="$tmp/bin:$PATH" scripts/switch-cli.sh admin 192.0.2.24 >/dev/null 2>&1
 check "no SSHPASS: refused" "$?" 2
