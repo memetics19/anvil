@@ -58,14 +58,14 @@
   when: apt_repo_key.fingerprint not in apt_repo_keyring.stdout | default('')
 
 # --- files ---------------------------------------------------------------------------------------
-- name: Settings, Caddy, compose file and the index page
+- name: Settings, Caddy and the index page
   ansible.builtin.template:
     src: "{{ item }}.j2"
     dest: "{{ apt_repo_dir }}/{{ item }}"
     owner: root
     group: root
     mode: "0644"
-  loop: [publish.conf, Caddyfile, compose.yaml, index.html]
+  loop: [publish.conf, Caddyfile, index.html]
   register: apt_repo_files
 
 - name: The apt-publish script
@@ -124,7 +124,7 @@
   vars:
     compose_project_dir: "{{ apt_repo_dir }}"
     compose_project_file: "{{ apt_repo_dir }}/compose.yaml"
-    compose_project_write_file: false
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'compose.yaml.j2') }}"
 
 # Caddy reads its Caddyfile only at start.
 - name: Restart Caddy for a new Caddyfile
