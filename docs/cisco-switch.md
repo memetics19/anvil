@@ -178,3 +178,27 @@ isolate them. To move them:
 Until then, the home router can stop the cameras reaching the internet. Most routers have
 a per-device internet block or parental control. That also stops the Tapo app working
 away from home.
+
+## Web UI through the gateway
+
+The switch's web UI is on the gateway as `https://switch.<gateway-domain>`. It is the
+`switch` entry of `site.services`, and its address is `site.network.switch_ip`. The home
+router hands out that address by DHCP, with a static entry for the switch's MAC, so it
+does not change. The gateway only proxies. It never logs in to the switch.
+
+It is an infrastructure page (`caddy_infra_routes`). Only the operator's devices get it,
+and every other client gets 403. Homepage shows it as Switch in the Infrastructure group.
+
+Known limits of the old firmware:
+
+- Its HTTPS speaks only TLS 1.0 with legacy renegotiation. Current Go and Chromium refuse
+  that, so Caddy talks plain HTTP to port 80. Browsers get HTTPS from the gateway, but the
+  hop from `apps` to the switch is plain HTTP on the home network. The login and every
+  page cross that hop unencrypted.
+- It redirects to absolute URLs, such as `http://<switch-address>/<session-path>/`. The
+  entry sets `rewrite_location: true`, so Caddy rewrites any `Location` header that points
+  at the switch's address, or at the gateway name over plain HTTP, to
+  `https://switch.<gateway-domain>` with the same path. The login page and its scripts use
+  relative links.
+- The login page has a button that reloads the page over HTTPS. It shows only on plain
+  HTTP, so it stays hidden behind the gateway.

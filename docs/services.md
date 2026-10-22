@@ -239,8 +239,9 @@ zone, and it reaches Caddy through a mode 600 env file.
 
 One list drives Caddy, Pi-hole and Homepage: `site.services` in Vault. Each entry has a
 name, an upstream (`host`, a path into the site dict, or `container`), a port and a scheme.
-Optional fields cover self-signed upstreams, Vault's CA, websockets, long streams and the
-upstream Host header. They are documented in `ansible/roles/caddy/defaults/main.yml`, and
+Optional fields cover self-signed upstreams, Vault's CA, websockets, long streams, the
+upstream Host header and absolute redirects to the upstream's own address
+(`rewrite_location`, used by the [switch](cisco-switch.md#web-ui-through-the-gateway)). They are documented in `ansible/roles/caddy/defaults/main.yml`, and
 `tests/test_gateway.sh` covers the rules. See
 [Adding a service](usage.md#adding-a-service-behind-the-gateway). A `static` entry has no
 upstream: Caddy serves files from `/opt/caddy/sites/<static>`, a read-only mount. This
@@ -264,8 +265,8 @@ the real client address before anything else:
 
 - `pass` and `vault` (`caddy_admin_only_routes`): the enclave's operators, see
   [Secrets enclave](#secrets-enclave).
-- The infrastructure pages (`caddy_infra_routes`): `pve`, `ceph`, `idrac`, `dns`, `home`,
-  `qbit`, `frigate` and `threadfin`. The sources are `site.admin_sources` and
+- The infrastructure pages (`caddy_infra_routes`): `pve`, `ceph`, `idrac`, `switch`, `dns`,
+  `home`, `qbit`, `frigate` and `threadfin`. The sources are `site.admin_sources` and
   `site.admin_vpn_sources` together, whatever `site.enclave.vpn_only` says, so the Mac
   keeps LAN access to them. Homepage is one of them because it has no login and its widgets
   show Proxmox, Pi-hole and ARR data. Threadfin is one because it is the TV lineup's admin page.
