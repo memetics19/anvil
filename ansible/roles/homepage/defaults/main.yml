@@ -44,6 +44,7 @@ homepage_catalog:
   vault: {title: Vault, group: Infrastructure, icon: hashicorp-vault.png, description: Secrets}
   dns: {title: Pi-hole, group: Infrastructure, icon: pi-hole.png, description: DNS and ad blocking, widget: pihole}
   idrac: {title: iDRAC, group: Infrastructure, icon: idrac.png, description: Server management}
+  switch: {title: Switch, group: Infrastructure, icon: cisco.png, description: Network switch}
   docs: {title: Docs, group: Infrastructure, icon: mdi-book-open-variant, description: Homelab documentation}
   sonarr: {title: Sonarr, group: Media, icon: sonarr.png, description: TV series, widget: sonarr}
   radarr: {title: Radarr, group: Media, icon: radarr.png, description: Movies, widget: radarr}
