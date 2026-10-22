@@ -59,12 +59,14 @@
 
 - name: The pulse-compose and pulse-update scripts
   ansible.builtin.template:
-    src: "{{ item }}.j2"
-    dest: "/usr/local/sbin/{{ item }}"
+    src: "{{ item.src }}"
+    dest: "/usr/local/sbin/{{ item.dest }}"
     owner: root
     group: root
     mode: "0755"
-  loop: [pulse-compose, pulse-update]
+  loop:
+    - {src: pulse-compose.j2, dest: pulse-compose}
+    - {src: pulse-update.sh.j2, dest: pulse-update}
 
 - name: Units of pulse-update
   ansible.builtin.template:
