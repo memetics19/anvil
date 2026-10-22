@@ -1,0 +1,22 @@
+# Show commands only (switch-cli.sh --show-only refuses anything else). Sets network_switch__outputs.
+- name: Show commands on the switch
+  ansible.builtin.command:
+    argv: ["{{ network_switch_cli }}", --show-only, "{{ network_switch__login.username }}", "{{ network_switch_host }}"]
+    stdin: "{{ network_switch_ports | switch_read_commands | join('\n') }}"
+  environment:
+    SSHPASS: "{{ network_switch__login.password }}"
+    SWITCH_KNOWN_HOSTS: "{{ network_switch_known_hosts }}"
+  register: network_switch__read
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: The show commands ran
+  ansible.builtin.assert:
+    that: network_switch__read.rc == 0
+    fail_msg: "switch-cli.sh exit {{ network_switch__read.rc }}: {{ network_switch__read.stderr | default('') | replace(network_switch_host, '<switch>') }}"
+    quiet: true
+
+- name: Switch outputs by command
+  ansible.builtin.set_fact:
+    network_switch__outputs: "{{ network_switch__read.stdout | switch_state }}"

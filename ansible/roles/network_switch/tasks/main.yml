@@ -1,0 +1,57 @@
+# See defaults/main.yml. Every task runs on the controller. Tasks that carry the switch's
+# address or the login are no_log. The plan holds only ports, VLAN tags and names.
+- name: The tools are installed
+  ansible.builtin.command: "sh -c 'command -v expect && command -v sshpass'"
+  changed_when: false
+
+- name: The desired state is set
+  ansible.builtin.assert:
+    that:
+      - network_switch_ports is mapping
+      - network_switch_keep_ports is sequence
+      - network_switch_vlans | length > 0
+      - network_switch_host is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
+    fail_msg: >-
+      site.network.switch.ports (a map) and site.network.switch_ip are needed, and the vlans
+      list of group_vars/proxmox.yml
+    quiet: true
+
+- name: Local directory for the switch (gitignored)
+  ansible.builtin.file:
+    path: "{{ network_switch_local_dir }}"
+    state: directory
+    mode: "0700"
+
+- name: Switch login from Vault
+  ansible.builtin.set_fact:
+    network_switch__login: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', network_switch_vault_path,
+                engine_mount_point=network_switch_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
+  no_log: true
+
+- name: Read the switch state
+  ansible.builtin.include_tasks: read.yml
+
+- name: Work out the plan
+  ansible.builtin.set_fact:
+    network_switch_plan: >-
+      {{ network_switch__outputs | switch_plan(network_switch_ports, network_switch_vlans,
+                                       network_switch_native_vlan, network_switch_keep_ports) }}
+
+- name: Planned commands
+  ansible.builtin.debug:
+    msg: "{{ network_switch_plan if network_switch_plan else 'nothing to change' }}"
+
+- name: Dry run
+  ansible.builtin.debug:
+    msg: "Dry run, nothing sent. To apply: make switch ARGS=\"-e network_switch_apply=true\""
+  when: not (network_switch_apply | bool)
+
+- name: Apply
+  ansible.builtin.include_tasks: apply.yml
+  when:
+    - network_switch_apply | bool
+    - network_switch_plan | length > 0

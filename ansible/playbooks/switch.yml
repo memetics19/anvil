@@ -1,0 +1,13 @@
+# The Cisco SG300 switch (role network_switch). Runs on the controller only. A dry run that
+# prints the planned commands, unless -e network_switch_apply=true.
+#   make switch
+#   make switch ARGS="-e network_switch_apply=true"
+- name: Cisco switch
+  hosts: network_switches
+  gather_facts: false
+  pre_tasks:
+    - name: Resolve the site dict once for this run
+      ansible.builtin.import_tasks: tasks/site.yml
+      tags: [always]
+  roles:
+    - network_switch

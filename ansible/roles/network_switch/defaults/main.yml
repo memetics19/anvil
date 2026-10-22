@@ -1,0 +1,38 @@
+# The Cisco SG300 switch (make switch, playbooks/switch.yml). Runs on the controller. Every
+# session goes through scripts/switch-cli.sh (OpenSSH with the old algorithms, password by
+# sshpass -e from the environment). See docs/cisco-switch.md.
+#
+# A dry run by default: it reads the state with show commands and prints the commands it
+# would send. -e network_switch_apply=true sends them, in this order: save the running
+# config to a local file, apply, check the plan is now empty, check reachability for
+# network_switch_verify_seconds, and only then copy running-config startup-config.
+network_switch_apply: false
+
+# Desired state, from the site dict. ports: {<port>: [roles]}, roles among trunk and
+# protected. keep_ports: ports the plan must never name and that must not be protected
+# (the router uplink, the access point).
+network_switch_ports: "{{ site.network.switch.ports }}"
+network_switch_keep_ports: "{{ site.network.switch.keep_ports | default([]) }}"
+
+# The VLANs a trunk port carries tagged: the `vlans` list of group_vars/proxmox.yml (name
+# and tag), the same list the Proxmox host routes.
+network_switch_vlans: "{{ hostvars[groups['proxmox'] | first]['vlans'] }}"
+# Untagged on every trunk port. The lab and the home network.
+network_switch_native_vlan: 1
+
+network_switch_host: "{{ site.network.switch_ip }}"
+# Login (keys username, password) in Vault KV v2.
+network_switch_vault_mount: kv
+network_switch_vault_path: homelab/network/switch
+
+# Local, gitignored (build/). Running-config copies (mode 600) and the pinned host key.
+network_switch_local_dir: "{{ playbook_dir }}/../../build/switch"
+network_switch_known_hosts: "{{ network_switch_local_dir }}/known_hosts"
+network_switch_cli: "{{ playbook_dir }}/../../scripts/switch-cli.sh"
+
+# Reachability after the change, from the controller.
+network_switch_verify_seconds: 60
+network_switch_verify_pve_host: "{{ site.pve.ip }}"
+network_switch_verify_dns_host: "{{ site.hosts.apps.ip }}"
+network_switch_verify_dns_name: www.cloudflare.com
+network_switch_verify_url: https://www.cloudflare.com/cdn-cgi/trace

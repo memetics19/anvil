@@ -1,0 +1,80 @@
+# Save, apply, check, verify, then copy to startup. Until the last step the startup config
+# is the old one, so a reload or a power cycle of the switch undoes everything.
+- name: Copy of the running config
+  ansible.builtin.command:
+    argv: ["{{ network_switch_cli }}", --show-only, "{{ network_switch__login.username }}", "{{ network_switch_host }}"]
+    stdin: show running-config
+  environment:
+    SSHPASS: "{{ network_switch__login.password }}"
+    SWITCH_KNOWN_HOSTS: "{{ network_switch_known_hosts }}"
+  register: network_switch__running
+  changed_when: false
+  no_log: true
+
+- name: Save it locally (mode 600, gitignored)
+  ansible.builtin.copy:
+    content: "{{ network_switch__running.stdout }}\n"
+    dest: "{{ network_switch_local_dir }}/running-config-{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}.cfg"
+    mode: "0600"
+  no_log: true
+
+- name: Apply, check and verify
+  block:
+    - name: Send the plan
+      ansible.builtin.command:
+        argv: ["{{ network_switch_cli }}", "{{ network_switch__login.username }}", "{{ network_switch_host }}"]
+        stdin: "{{ network_switch_plan | join('\n') }}"
+      environment:
+        SSHPASS: "{{ network_switch__login.password }}"
+        SWITCH_KNOWN_HOSTS: "{{ network_switch_known_hosts }}"
+      register: network_switch__apply
+      changed_when: true
+      no_log: true
+
+    - name: Read the state again
+      ansible.builtin.include_tasks: read.yml
+
+    - name: Nothing is left to change
+      ansible.builtin.assert:
+        that: >-
+          (network_switch__outputs | switch_plan(network_switch_ports, network_switch_vlans,
+                                         network_switch_native_vlan, network_switch_keep_ports)) | length == 0
+        fail_msg: The switch does not match the desired state after the apply
+        quiet: true
+
+    - name: Reachability check (network_switch_verify_seconds)
+      ansible.builtin.script:
+        cmd: verify.py
+        executable: "{{ ansible_playbook_python }}"
+      environment:
+        VERIFY_SECONDS: "{{ network_switch_verify_seconds }}"
+        VERIFY_PVE_HOST: "{{ network_switch_verify_pve_host }}"
+        VERIFY_DNS_HOST: "{{ network_switch_verify_dns_host }}"
+        VERIFY_DNS_NAME: "{{ network_switch_verify_dns_name }}"
+        VERIFY_URL: "{{ network_switch_verify_url }}"
+      register: network_switch__verify
+      changed_when: false
+
+    - name: Copy running-config to startup-config
+      ansible.builtin.command:
+        argv: ["{{ network_switch_cli }}", "{{ network_switch__login.username }}", "{{ network_switch_host }}"]
+        stdin: copy running-config startup-config
+      environment:
+        SSHPASS: "{{ network_switch__login.password }}"
+        SWITCH_KNOWN_HOSTS: "{{ network_switch_known_hosts }}"
+      register: network_switch__save
+      changed_when: true
+      no_log: true
+
+    - name: Saved
+      ansible.builtin.debug:
+        msg: "Applied, verified ({{ network_switch__verify.stdout | trim }}) and saved to startup-config."
+  rescue:
+    - name: Not saved. Roll back
+      ansible.builtin.fail:
+        msg: >-
+          The change failed or did not verify, so it was NOT copied to startup-config. Roll
+          back with a reload of the switch (console or SSH: reload) or a power cycle. It
+          boots the old startup-config. The running config from before is in
+          {{ network_switch_local_dir | basename }}/running-config-*.cfg under build/.
+          {{ (network_switch__verify.stdout | default('')) | trim }}
