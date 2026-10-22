@@ -121,6 +121,8 @@ vault/policies/
 ## Roadmap
 
 - [x] Secret scanning, linters, CI
+- [x] Trivy on every pull request and weekly: the repository and the release binary block on
+  a fixable HIGH or CRITICAL finding, and every pinned container image is reported
 - [x] Inventory, SSH bootstrap, Proxmox host base role
 - [x] Host network with automatic rollback
 - [x] Single-node Ceph and S3 gateway for Terraform state
@@ -162,9 +164,11 @@ vault/policies/
   ([docs/install.md](docs/install.md))
 - [x] A signed apt repository for the .deb, `apt.shreeda.xyz`, published by the homelab
   from each release ([docs/install.md](docs/install.md#debian-and-ubuntu))
-- [ ] cloudflared pinned to one version in code and upgraded on all three tunnel
-  connectors, one at a time so the tunnel stays up. Today it installs whatever
-  Cloudflare's apt repository has, so the connectors drifted apart (2025.11.1 and 2026.3.0)
+- [ ] cloudflared upgrade: one `cloudflared_version` in the role, installed from
+  Cloudflare's apt repository and held, instead of whatever version was current when a VM
+  was set up. The three connectors have drifted (frigate and ragnarok run 2025.11.1, netbird
+  2026.3.0). The role upgrades one connector at a time and moves on only when the other two
+  are healthy in the tunnel, so the public names never go down
 - [ ] The rebuild runbook, tested on a second server
 
 ## Known issues
