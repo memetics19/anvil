@@ -143,6 +143,176 @@ has "pve-guests drop-in: checks the table before startall" "ExecStartPre=/bin/sh
 hasnt "pve-guests drop-in: no Requires" "Requires=" "$u/pve-guests-segments.conf.j2"
 hasnt "the apply never restarts the unit" "state: restarted" ansible/roles/pve_segments/tasks/main.yml
 
+# 4c. The VLANs (inventory group_vars/proxmox.yml): three NAT segments next to the
+# enclave, rendered with the real data and a fixture site dict (documentation ranges:
+# the lab 192.0.2.0/25, home 203.0.113.0/24, enclave and VLANs /26s of 198.51.100.0/24).
+# render_vlans <out> <cameras_internet> [enclave-only]
+render_vlans() {
+  local list='{{ [pve_enclave_segment] + vlan_segments }}' sets='{{ pve_enclave_sets + vlan_sets }}'
+  if [ -n "${3:-}" ]; then list='{{ [pve_enclave_segment] }}'; sets='{{ pve_enclave_sets }}'; fi
+  cat >"$tmp/vlans.yml" <<PLAY
+- name: VLAN segments test
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - $PWD/ansible/roles/pve_enclave/defaults/main.yml
+    - $PWD/ansible/inventory/group_vars/all/enclave.yml
+    - $PWD/ansible/inventory/group_vars/proxmox.yml
+    - $PWD/ansible/roles/pve_vlans/defaults/main.yml
+  vars:
+    pve_segments_table: segments
+    pve_segments_list: "$list"
+    pve_segments_sets: "$sets"
+    pve_enclave_smtp_enabled: true
+    pve_enclave_smtp_host: smtp.example.com
+    pve_enclave_smtp_port: "587"
+    site:
+      lan_cidr: 192.0.2.0/25
+      pve: {ip: 192.0.2.10, gateway_alias_ip: 192.0.2.1, uplink_ip: 203.0.113.250, uplink_prefix: 24, uplink_gw: 203.0.113.1}
+      sdn:
+        enclave: {subnet: 198.51.100.0/26, gateway: 198.51.100.1}
+        subnets:
+          servers: {cidr: 198.51.100.64/26, gateway: 198.51.100.65, dhcp_range: {start: 198.51.100.80, end: 198.51.100.119}}
+          cameras: {cidr: 198.51.100.128/26, gateway: 198.51.100.129, dhcp_range: {start: 198.51.100.144, end: 198.51.100.183}}
+          personal: {cidr: 198.51.100.192/26, gateway: 198.51.100.193, dhcp_range: {start: 198.51.100.208, end: 198.51.100.247}}
+      admin_sources: [203.0.113.51/32]
+      admin_vpn_sources: [100.64.0.7/32]
+      enclave: {vpn_only: false}
+      hosts:
+        apps: {ip: 192.0.2.121, home_ip: 203.0.113.249}
+        frigate: {ip: 192.0.2.114}
+        vault: {ip: 198.51.100.20}
+        vaultwarden: {ip: 198.51.100.21}
+  tasks:
+    - name: Ruleset
+      ansible.builtin.template:
+        src: $PWD/ansible/roles/pve_segments/templates/segments.nft.j2
+        dest: "$1"
+        mode: "0600"
+    - name: Host files
+      ansible.builtin.template:
+        src: "$PWD/ansible/roles/{{ item.src }}"
+        dest: "$tmp/{{ item.dest }}"
+        mode: "0600"
+      loop:
+        - {src: pve_vlans/templates/vlans.interfaces.j2, dest: vlans.interfaces}
+        - {src: pve_network/templates/interfaces.j2, dest: interfaces}
+      vars:
+        iptv_host: frigate
+        iptv_threadfin_port: 34400
+        iptv_streams_port: 34401
+        pve_network_trunk_vids: "{{ vlans | map(attribute='tag') | list }}"
+    - name: DHCP per VLAN
+      ansible.builtin.template:
+        src: $PWD/ansible/roles/pve_vlans/templates/vlan-dhcp.conf.j2
+        dest: "$tmp/vlan-dhcp-{{ item }}.conf"
+        mode: "0600"
+      loop: [servers, cameras, personal]
+    - name: NTP per VLAN
+      ansible.builtin.template:
+        src: $PWD/ansible/roles/pve_vlans/templates/vlan-ntp.conf.j2
+        dest: "$tmp/vlan-ntp-{{ item }}.conf"
+        mode: "0600"
+      loop: [servers, cameras, personal]
+PLAY
+  ansible-playbook -e "{\"cameras_internet\": $2}" "$tmp/vlans.yml" >"$tmp/out-vlans.log" 2>&1
+}
+chain() { awk -v c="chain $1 {" '$0 ~ c {f=1} f {print} f && /^\t}$/ {exit}' "$2"; }
+
+render_vlans "$tmp/v.nft" true
+check "VLANs: render rc" "$?" "0"
+v=$tmp/v.nft
+for n in servers cameras personal; do
+  has "$n: masqueraded out of its vnet" "oifname != \"$n\" masquerade" "$v"
+  has "$n: no spoofed addresses from elsewhere" "iifname != \"$n\" counter drop" "$v"
+  has "$n: forward jumps" "iifname \"$n\" jump ${n}_out" "$v"
+  check "$n: the lab reaches everything, nothing else gets in" "$(chain "${n}_in" "$v" | grep -cE 'accept$')" "1"
+  chain "${n}_in" "$v" >"$tmp/c"; has "$n: ingress from the lab" "ip saddr 192.0.2.0/25 accept" "$tmp/c"
+  chain "${n}_out" "$v" >"$tmp/c"
+  has "$n: DNS to Pi-hole (udp)" "ip daddr { 192.0.2.121, 203.0.113.249 } udp dport 53 return" "$tmp/c"
+  has "$n: DNS to Pi-hole (tcp)" "ip daddr { 192.0.2.121, 203.0.113.249 } tcp dport 53 return" "$tmp/c"
+  check "$n: nothing private before the internet" "$(grep -nE '@vlan_nonpublic counter drop|^		return$' "$tmp/c" | cut -d: -f2 | tr -d '\t' | tr '\n' '|')" \
+    "ip daddr @vlan_nonpublic counter drop|return|"
+  hasnt "$n: no rule names the enclave" "198.51.100.2" "$tmp/c"
+  chain "${n}_host" "$v" >"$tmp/c"
+  has "$n: DHCP to the host" "udp dport 67 accept" "$tmp/c"
+  check "$n: host: only DHCP, NTP and ping" "$(grep -cE 'accept$' "$tmp/c")" "3"
+  hasnt "$n: no SSH or Proxmox UI" "tcp dport" "$tmp/c"
+done
+has "servers: NTP on its own gateway" "ip daddr 198.51.100.65 udp dport 123 accept" "$v"
+has "cameras: ping on its own gateway" "ip daddr 198.51.100.129 icmp type echo-request accept" "$v"
+has "personal: NTP on its own gateway" "ip daddr 198.51.100.193 udp dport 123 accept" "$v"
+has "personal: the gateway's web ports" "ip daddr { 192.0.2.121, 203.0.113.249 } tcp dport { 80, 443 } return" "$v"
+check "web ports for personal only" "$(grep -c 'tcp dport { 80, 443 }' "$v")" "1"
+has "not the internet: the shared range (VPN)" "100.64.0.0/10" "$v"
+has "not the internet: multicast and reserved" "224.0.0.0/3" "$v"
+check "three VLAN masquerades, the mail hole still the only snat" "$(grep -c masquerade "$v") $(grep -c 'snat ip to' "$v")" "3 1"
+render_vlans "$tmp/e.nft" true only
+check "enclave-only render rc" "$?" "0"
+for c in enclave_in enclave_out enclave_host; do
+  check "the enclave's $c is unchanged by the VLANs" "$(chain "$c" "$v" | shasum)" "$(chain "$c" "$tmp/e.nft" | shasum)"
+done
+check "the enclave's sets are unchanged" "$(awk '/set (admin|not_admin|enclave_smtp_relay) \{/,/^\t}/' "$v" | shasum)" \
+  "$(awk '/set (admin|not_admin|enclave_smtp_relay) \{/,/^\t}/' "$tmp/e.nft" | shasum)"
+
+render_vlans "$tmp/v2.nft" false
+check "cameras_internet false: render rc" "$?" "0"
+chain cameras_out "$tmp/v2.nft" >"$tmp/c"
+check "cameras_internet false: DNS only" "$(grep -cE 'return$' "$tmp/c") $(grep -c vlan_nonpublic "$tmp/c")" "2 0"
+chain servers_out "$tmp/v2.nft" >"$tmp/c"
+has "cameras_internet false: servers keep the internet" "@vlan_nonpublic" "$tmp/c"
+
+# Host files of the VLANs.
+f=$tmp/vlans.interfaces
+check "gateways: one stanza per VLAN" "$(grep -c '^iface ' "$f")" "3"
+has "gateways: the servers gateway on its vnet" "$(printf '\taddress 198.51.100.65/26')" "$f"
+has "trunk: the VLAN tags on vmbr0's uplink" "$(printf '\tbridge-vids 10 20 30')" "$tmp/interfaces"
+f=$tmp/vlan-dhcp-cameras.conf
+has "dhcp: no DNS" "port=0" "$f"
+has "dhcp: its vnet only" "interface=cameras" "$f"
+has "dhcp: bound to it" "bind-interfaces" "$f"
+has "dhcp: range" "dhcp-range=198.51.100.144,198.51.100.183,12h" "$f"
+has "dhcp: router" "dhcp-option=option:router,198.51.100.129" "$f"
+has "dhcp: DNS is Pi-hole" "dhcp-option=option:dns-server,192.0.2.121" "$f"
+has "dhcp: NTP is the gateway" "dhcp-option=option:ntp-server,198.51.100.129" "$f"
+f=$tmp/vlan-ntp-personal.conf
+has "ntp: its gateway only" "bindaddress 198.51.100.193" "$f"
+has "ntp: its subnet only" "allow 198.51.100.192/26" "$f"
+has "ntp: serves the host clock" "local stratum 10" "$f"
+has "ntp: no command socket" "bindcmdaddress /" "$f"
+u=ansible/roles/pve_vlans/templates
+for unit in vlan-dhcp@.service.j2 vlan-ntp@.service.j2; do
+  check "$unit: no dependency on pve-guests" "$(grep -cE '^[A-Za-z]+=.*pve-guests' "$u/$unit")" "0"
+done
+has "ntp unit: never sets the clock" " -x " "$u/vlan-ntp@.service.j2"
+
+# The role's checks refuse a DHCP range outside the subnet.
+cat >"$tmp/vcheck.yml" <<PLAY
+- name: VLAN checks
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - $PWD/ansible/inventory/group_vars/proxmox.yml
+    - $PWD/ansible/roles/pve_vlans/defaults/main.yml
+  vars:
+    site:
+      hosts: {apps: {ip: 192.0.2.121}}
+      sdn:
+        subnets:
+          servers: {cidr: 198.51.100.64/26, gateway: 198.51.100.65, dhcp_range: {start: 198.51.100.80, end: \$END}}
+          cameras: {cidr: 198.51.100.128/26, gateway: 198.51.100.129, dhcp_range: {start: 198.51.100.144, end: 198.51.100.183}}
+          personal: {cidr: 198.51.100.192/26, gateway: 198.51.100.193, dhcp_range: {start: 198.51.100.208, end: 198.51.100.247}}
+  tasks:
+    - name: Checks
+      ansible.builtin.include_tasks: $PWD/ansible/roles/pve_vlans/tasks/checks.yml
+PLAY
+sed 's/\$END/198.51.100.119/' "$tmp/vcheck.yml" >"$tmp/vcheck-ok.yml"
+sed 's/\$END/198.51.100.130/' "$tmp/vcheck.yml" >"$tmp/vcheck-bad.yml"
+ansible-playbook "$tmp/vcheck-ok.yml" >"$tmp/out-vc.log" 2>&1
+check "checks: a range inside the subnet passes" "$?" "0"
+ansible-playbook "$tmp/vcheck-bad.yml" >"$tmp/out-vc2.log" 2>&1
+check "checks: a range past the subnet is refused" "$?" "2"
+
 # 5. Set refresh script (stubbed dig/nft). Private addresses are built at run time (the
 # repo's gitleaks rule rejects private IPv4 literals).
 ten=$((5 * 2)); c168=$((84 * 2))
