@@ -20,8 +20,12 @@ check=false
 log() { echo "pulse-update: $*"; }
 die() { echo "pulse-update: $*" >&2; exit 1; }
 compose() { "$COMPOSE" "$@"; }
+trap 'echo "pulse-update: failed at line $LINENO" >&2' ERR
 
 mkdir -p "$DIR/state" "$DIR/backups" "$DIR/docs"
+# compose needs PULSE_IMAGE even to list containers. Before the first deploy there is no
+# release.env yet: the placeholder is replaced before anything is brought up.
+[ -f "$DIR/release.env" ] || printf 'PULSE_IMAGE=none\n' >"$DIR/release.env"
 exec 9>"$DIR/state/lock"
 flock -n 9 || die "another pulse-update is running"
 
@@ -68,7 +72,7 @@ deploy() {
   docker pull -q "$(image_of "$tag")" >/dev/null || die "cannot pull $(image_of "$tag")"
 
   # The running container's image, whatever put it there: the rollback target.
-  cid=$(compose ps -aq pulse 2>/dev/null | head -n 1)
+  cid=$(compose ps -aq pulse | head -n 1) || die "cannot list the project's containers"
   [ -z "$cid" ] || prev=$(docker inspect --format '{{ '{{' }}.Config.Image{{ '}}' }}' "$cid")
   if docker volume inspect "$DATA_VOLUME" >/dev/null 2>&1; then
     stamp=$(date -u +%Y%m%d-%H%M%S)

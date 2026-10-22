@@ -84,6 +84,8 @@ exit 0
 EOF
 cat >"$bin/compose" <<'EOF'
 #!/bin/bash
+# Like pulse-compose: it reads release.env, and fails without it.
+[ -f "$FAKE_DIR/release.env" ] || { echo "couldn't find env file: $FAKE_DIR/release.env" >&2; exit 1; }
 echo "compose $*" >>"$FAKE_LOG"
 [ "$1 $2" = "ps -aq" ] && echo cid1
 exit 0
