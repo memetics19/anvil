@@ -54,6 +54,10 @@ caddy_listen_ips:
 #   host_header        original (default) or upstream: send Host = the upstream's
 #                      address (apps that check Host, e.g. qBittorrent's CSRF check)
 #   home               path to redirect "/" to (e.g. /admin/)
+#   rewrite_location   true: a Location header that points at the upstream's own address
+#                      (or at this name over plain HTTP), any scheme, port and path, goes
+#                      back to https://<name>.<gateway domain> with the same path. For old
+#                      firmware that redirects to absolute URLs (the switch)
 #   enabled            false: keep the slot, but no route and no DNS record
 caddy_services: "{{ site.services | default([]) }}"
 caddy_domain: "{{ gateway_domain }}"
@@ -99,7 +103,7 @@ caddy_admin_sources: "{{ enclave_admin_sources | default([]) }}"
 # the Mac keeps LAN access to these pages. Never the Proxmox host's own addresses: VLAN
 # clients and NetBird peers behind its masquerade arrive as those (tasks/services.yml
 # refuses them).
-caddy_infra_routes: [pve, ceph, idrac, dns, home, qbit, frigate, threadfin]
+caddy_infra_routes: [pve, ceph, idrac, switch, dns, home, qbit, frigate, threadfin]
 caddy_infra_sources: "{{ (site.admin_sources | default([])) + (site.admin_vpn_sources | default([])) }}"
 
 # The secrets enclave, which only Caddy on this VM may reach (tasks/enclave_guard.yml): an

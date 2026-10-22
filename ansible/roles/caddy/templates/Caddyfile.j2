@@ -42,6 +42,11 @@
 {% if s.host_header | default('original') == 'upstream' %}
 			header_up Host {upstream_hostport}
 {% endif %}
+{% if s.rewrite_location | default(false) | bool %}
+			# Absolute redirects to the upstream's own address, or to this name over plain
+			# HTTP, come back to this name over HTTPS with the same path.
+			header_down Location "^https?://({{ s.addr | regex_replace('[.]', '[.]') }}|{{ s.fqdn | regex_replace('[.]', '[.]') }})(:[0-9]+)?(/.*)?$" "https://{{ s.fqdn }}$3"
+{% endif %}
 {% if s.stream | default(false) | bool %}
 			flush_interval -1
 {% endif %}

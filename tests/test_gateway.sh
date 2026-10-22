@@ -35,6 +35,7 @@ run() {
       admin_vpn_sources: [100.64.0.7/32]
       enclave: {vpn_only: ${GW_VPN_ONLY:-false}}
       pve: {ip: 192.0.2.10, uplink_ip: 198.51.100.250, idrac_ip: 192.0.2.123}
+      network: {switch_ip: 198.51.100.24}
       hosts:
         ragnarok: {ip: 192.0.2.119}
         vault: {ip: 192.0.2.120}
@@ -109,6 +110,7 @@ run '[
   {name: dns, container: pihole, port: 80, scheme: http, home: /admin/},
   {name: home, container: homepage, port: 3000, scheme: http},
   {name: docs, static: docs},
+  {name: switch, host: network.switch_ip, port: 80, scheme: http, rewrite_location: true},
   {name: pass, container: vaultwarden, port: 80, scheme: http, enabled: false}]'
 if [ "$?" -eq 0 ] && [ -s "$tmp/Caddyfile" ]; then ok "good services render"
 else bad_ "good services render"; tail -20 "$tmp/log"; exit 1; fi
@@ -128,6 +130,28 @@ block tv | grep -q 'response_header_timeout' && bad_ "tv: no response timeout" |
 block dns | grep -q 'reverse_proxy http://pihole:80 {' && ok "dns: container upstream" || bad_ "dns: container upstream"
 block dns | grep -q 'redir / /admin/' && ok "dns: / redirects to /admin/" || bad_ "dns: home redirect"
 hasnt "disabled entry has no route"        "@pass"
+# The switch: plain HTTP upstream on the home LAN, absolute redirects come back to the name.
+block switch | grep -qF 'reverse_proxy http://198.51.100.24:80 {' && ok "switch: upstream from the site dict" || bad_ "switch: upstream"
+loc='header_down Location "^https?://(198[.]51[.]100[.]24|switch[.]internal[.]example[.]com)(:[0-9]+)?(/.*)?$" "https://switch.internal.example.com$3"'
+block switch | grep -qF -- "$loc" && ok "switch: Location rewritten to the name over HTTPS" || bad_ "switch: Location rewrite"
+block pve | grep -q 'header_down' && bad_ "pve: Location left alone" || ok "pve: Location left alone"
+# The same pattern applied to sample headers (Python re; Go's regexp agrees on this one).
+got=$(block switch | grep -F 'header_down Location' | python3 -c '
+import re, shlex, sys
+_, _, pat, rep = shlex.split(sys.stdin.read())
+rep = re.sub(r"\$([0-9])", r"\\\1", rep)
+for loc in ["http://198.51.100.24/cs96c01466/", "https://198.51.100.24:443/a/b.htm?x=1",
+            "http://switch.internal.example.com/cs1/config/log_off_page.htm", "http://198.51.100.24",
+            "http://198.51.100.240/x", "https://other.example.com/y", "/relative/z"]:
+    print(re.sub(pat, rep, loc))')
+want='https://switch.internal.example.com/cs96c01466/
+https://switch.internal.example.com/a/b.htm?x=1
+https://switch.internal.example.com/cs1/config/log_off_page.htm
+https://switch.internal.example.com
+http://198.51.100.240/x
+https://other.example.com/y
+/relative/z'
+[ "$got" = "$want" ] && ok "switch: rewrite keeps the path, leaves other hosts alone" || { bad_ "switch: rewrite samples"; printf '%s\n' "$got"; }
 # Static site: files from the read-only mount, no upstream, open like the other routes.
 block docs | grep -q 'root \* /srv/docs' && block docs | grep -q 'file_server' && ok "docs: file_server from /srv/docs" || bad_ "docs: file_server"
 block docs | grep -q 'reverse_proxy' && bad_ "docs: no upstream" || ok "docs: no upstream"
@@ -158,12 +182,12 @@ then ok "networks: a missing network is left out"; else bad_ "networks partial: 
 if grep -q "@vault_denied not remote_ip 100.64.0.7/32 198.51.100.51/32 192.0.2.31/32" "$tmp/Caddyfile" \
    && grep -q "respond @vault_denied 403" "$tmp/Caddyfile"; then ok "vault: the operator's devices only (403 for others)"
 else bad_ "vault: admin-only matcher"; fi
-for r in pve qbit dns home; do
+for r in pve qbit dns home switch; do
   if grep -q "@${r}_denied not remote_ip 198.51.100.51/32 192.0.2.31/32 100.64.0.7/32$" "$tmp/Caddyfile" \
      && grep -q "respond @${r}_denied 403" "$tmp/Caddyfile"; then ok "$r: infra page, the operator's LAN and NetBird /32s only"
   else bad_ "$r: infra matcher"; fi
 done
-if [ "$(grep -c "_denied not remote_ip" "$tmp/Caddyfile")" = 5 ]; then ok "other routes (tv, docs) stay open to the LAN"
+if [ "$(grep -c "_denied not remote_ip" "$tmp/Caddyfile")" = 6 ]; then ok "other routes (tv, docs) stay open to the LAN"
 else bad_ "admin-only and infra matchers: $(grep -c "_denied not remote_ip" "$tmp/Caddyfile")"; fi
 if grep -A1 "^      gateway:" "$tmp/compose.yaml" | grep -q "gw_priority: 100"; then ok "networks: Caddy's own network carries its default route"
 else bad_ "networks: gw_priority on gateway"; fi
@@ -177,7 +201,8 @@ if [ "$(cat "$tmp/records" 2>/dev/null)" = "192.0.2.120 vault.lan.example.com
 198.51.100.249 tv.internal.example.com
 198.51.100.249 dns.internal.example.com
 198.51.100.249 home.internal.example.com
-198.51.100.249 docs.internal.example.com" ]; then ok "records: every enabled name at the gateway's home address, local records kept"
+198.51.100.249 docs.internal.example.com
+198.51.100.249 switch.internal.example.com" ]; then ok "records: every enabled name at the gateway's home address, local records kept"
 else bad_ "records"; cat "$tmp/records" 2>/dev/null; fi
 
 # No subdomain (empty or absent): the names sit directly under site.domain.
@@ -212,6 +237,9 @@ reject "unknown static site"    '[{name: a, static: other}]'
 reject "static with a port"     '[{name: a, static: docs, port: 80}]'
 reject "static with a scheme"   '[{name: a, static: docs, scheme: http}]'
 reject "static with a CA"       '[{name: a, static: docs, upstream_ca: vault}]'
+reject "static with rewrite_location" '[{name: a, static: docs, rewrite_location: true}]'
+reject "rewrite_location a word" '[{name: a, host: pve.ip, port: 1, scheme: http, rewrite_location: maybe}]'
+reject "rewrite_location a number" '[{name: a, host: pve.ip, port: 1, scheme: http, rewrite_location: 1}]'
 
 # Admin-only routes: the 403 comes first, inside a route block (kept in written order).
 good='[{name: vault, host: hosts.vault.ip, port: 8200, scheme: https, upstream_ca: vault, home: /ui/}]'
