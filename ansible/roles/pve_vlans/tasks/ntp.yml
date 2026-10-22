@@ -39,6 +39,14 @@
   loop: "{{ pve_vlans_enabled }}"
   register: pve_vlans_ntp_conf
 
+# A changed [Install] section needs its links redone.
+- name: Install the unit's links again after a unit change
+  ansible.builtin.command:
+    argv: [systemctl, reenable, "vlan-ntp@{{ item }}.service"]
+  loop: "{{ pve_vlans_enabled }}"
+  changed_when: true
+  when: pve_vlans_ntp_unit is changed and not ansible_check_mode
+
 - name: NTP runs on each enabled VLAN (restarted when its config changed)
   ansible.builtin.systemd_service:
     name: "vlan-ntp@{{ item.item }}.service"

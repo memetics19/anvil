@@ -1,12 +1,14 @@
 # Managed by Ansible (role pve_vlans): NTP for one VLAN, a chronyd that only serves the host
-# clock on that VLAN's gateway (see the config). Not tied to pve-guests in any way.
+# clock on that VLAN's gateway (see the config). It starts only when the segments firewall
+# table is loaded. Nothing here names pve-guests, and pve-guests names nothing here.
 [Unit]
 Description=NTP for VLAN %i (chronyd serving the host clock on its gateway only)
-After=chrony.service network-online.target
+After=chrony.service segments-firewall.service network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
+ExecStartPre=/bin/sh -c 'nft list table inet {{ pve_vlans_segments_table }} >/dev/null'
 ExecStart={{ pve_vlans_ntp_bin }} -4 -d -x -F 1 -f {{ pve_vlans_ntp_dir }}/%i.conf
 Restart=on-failure
 RestartSec=5

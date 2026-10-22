@@ -18,6 +18,10 @@
 # theirs.
 pve_vlans_enabled: "{{ vlans | map(attribute='name') | list }}"
 
+# The routed segments' nftables table (role pve_segments). DHCP and NTP start only when it
+# is loaded, so no VLAN gets an address or time without its firewall.
+pve_vlans_segments_table: segments
+
 # --- gateways (timed rollback, like pve_network) ----------------------------------------------
 pve_vlans_interfaces_file: /etc/network/interfaces.d/vlans
 pve_vlans_rollback_after: 120

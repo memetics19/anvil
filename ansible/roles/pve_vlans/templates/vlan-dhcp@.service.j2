@@ -1,16 +1,20 @@
 # Managed by Ansible (role pve_vlans): DHCP for one VLAN (dnsmasq, DHCP only, bound to the
-# vnet named by the instance). Not tied to pve-guests in any way.
+# vnet named by the instance). It runs only while that vnet exists, and starts only when the
+# segments firewall table is loaded (no lease without the firewall). Nothing here names
+# pve-guests, and pve-guests names nothing here.
 [Unit]
 Description=DHCP for VLAN %i (dnsmasq on vnet %i only)
-After=network-online.target
+BindsTo=sys-subsystem-net-devices-%i.device
+After=sys-subsystem-net-devices-%i.device segments-firewall.service network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
+ExecStartPre=/bin/sh -c 'nft list table inet {{ pve_vlans_segments_table }} >/dev/null'
 ExecStartPre=/usr/sbin/dnsmasq --test --conf-file={{ pve_vlans_dhcp_dir }}/%i.conf
 ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file={{ pve_vlans_dhcp_dir }}/%i.conf
 Restart=on-failure
 RestartSec=5
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=sys-subsystem-net-devices-%i.device multi-user.target
