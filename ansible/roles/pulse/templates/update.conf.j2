@@ -1,0 +1,13 @@
+# Managed by Ansible (role pulse). Settings for pulse-update.
+REPO={{ pulse_repo | quote }}
+TRACK={{ pulse_track | quote }}
+DOCS_REF={{ pulse_docs_ref | quote }}
+IMAGE={{ pulse_image | quote }}
+DIR={{ pulse_dir | quote }}
+COMPOSE=/usr/local/sbin/pulse-compose
+DATA_VOLUME={{ (pulse_project ~ '_pulse_data') | quote }}
+BASE_IMAGE={{ pulse_base_image | quote }}
+MKDOCS_IMAGE={{ pulse_mkdocs_image | quote }}
+HEALTH_URL=http://127.0.0.1/healthz
+HEALTH_TIMEOUT={{ pulse_health_timeout }}
+KEEP={{ pulse_backups_keep }}

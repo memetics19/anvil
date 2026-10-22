@@ -188,21 +188,28 @@ Check it on the VM with
   `redis.conf` is reported, not reverted.
 - `ntfy`: compose project `~/ntfy` on port 8081. Anonymous access is denied. Users and
   access rules live in its auth database, which is not templated.
-- `pulse`: a checkout of [memetics19/pulse](https://github.com/memetics19/pulse) at the
-  commit in `pulse_version`, run with the repo's own `deploy/docker-compose.prod.yml`
-  (Pulse, Caddy on port 80 and a one-shot docs builder). `.env` is rendered from Vault with
-  mode 600.
+- `pulse`: [memetics19/pulse](https://github.com/memetics19/pulse), the status page and its
+  docs site, in the compose project `/opt/pulse` (Pulse, and Caddy on port 80). `.env` is
+  rendered from Vault with mode 600.
 
-The Pulse image is built only when `pulse:latest` is not the image tagged for the current
-commit, which happens after a new `pulse_version` or a hand build. The whole project then
-comes up with `--build`. A Pulse container on some other image, for example after an
-interrupted build, is brought up on its own. Caddy and the docs builder are compared by
-config hash, and Caddy restarts when its Caddyfile is newer than the container. Don't run
-a plain `docker compose up` for this project, because it recreates the locally built
-container every time.
+The VM keeps Pulse current by itself. Nothing on GitHub can reach it. `pulse-update`, run
+every 10 minutes by `pulse-update.timer` and once by the role, does two things:
 
-The box was adopted once with `-e pulse_adopt_existing=true`, which tags the existing image
-instead of rebuilding. Don't pass it otherwise.
+- It deploys the newest `vX.Y.Z` tag of the repo as the image the release workflow pushed,
+  `ghcr.io/memetics19/pulse:X.Y.Z`. Before the switch it stops Pulse and copies its data
+  volume to `/opt/pulse/backups/` (the newest 5 are kept). If the new version does not
+  answer `/healthz` within 90 seconds, the image that ran before and that copy come back,
+  and the run fails.
+- It builds the docs site from the head of `main` with mkdocs into `/opt/pulse/docs/` and
+  moves the `current` link to it.
+
+Caddy sends names that start with `docs.` to the docs site and every other name to Pulse.
+The Cloudflare tunnel publishes both names.
+
+`sudo pulse-update --check` shows what the next run would do. To pin a release, set
+`pulse_track: v1.2.3` in `inventory/host_vars/netbird.yml` and run
+`make vm HOST=netbird ARGS="--tags pulse"`. `sudo pulse-compose ps` (or `logs`) runs
+docker compose for the project. `journalctl -u pulse-update` has the deploy history.
 
 PHP is kept off this VM. `php*`, `composer` and `jsonlint` were removed by hand on
 2026-10-21 (php2shell, CVE-2026-109618/109619), and the role purges them if they come back.

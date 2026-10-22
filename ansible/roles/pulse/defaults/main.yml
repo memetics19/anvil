@@ -1,34 +1,37 @@
-# Pulse (status page) on the netbird VM: a checkout of the public repository at a pinned
-# commit, run with the repository's own compose file (project "pulse": the locally built
-# pulse image, Caddy on port 80, and a one-shot mkdocs container that builds the docs site).
-pulse_repo: https://github.com/memetics19/pulse.git
-# Pinned commit (never a branch). Changing it rebuilds the image and brings the project up.
-pulse_version: 9619d66a2c0259e9f6e8cfc8659201040e2fb367
-pulse_dir: /home/ubuntu/pulse
-pulse_owner: ubuntu
-pulse_compose_file: deploy/docker-compose.prod.yml
+# Pulse (status page) on the netbird VM, kept current by the VM itself: pulse-update (a
+# systemd timer) deploys the newest release of the public repository and rebuilds the docs
+# site from its main branch. Nothing on GitHub can reach this host. The role writes the
+# compose project, Caddy, the settings and the timer, then runs pulse-update once.
+pulse_repo: https://github.com/memetics19/pulse
+# "latest" follows the newest vX.Y.Z tag. A tag such as v1.1.0 pins that release.
+pulse_track: latest
+# The docs site follows this branch.
+pulse_docs_ref: main
+# The release workflow pushes IMAGE:X.Y.Z for each tag vX.Y.Z (the package is public).
+pulse_image: ghcr.io/memetics19/pulse
+pulse_dir: /opt/pulse
+# The project name the box has always used: its volumes (pulse_pulse_data and the Caddy
+# volumes) carry over.
 pulse_project: pulse
-# The services the compose file builds locally: handled by the pinned-commit image tag,
-# not by the config hash, which compose ties to the build.
-pulse_built_services: [pulse]
-# The compose file's image name, and the extra tag that marks the image built from
-# pulse_version.
-pulse_image: pulse
-pulse_image_pin_tag: "git-{{ pulse_version[:12] }}"
-# One time only: tag an existing image as built from pulse_version instead of rebuilding
-# (-e pulse_adopt_existing=true, used when the box was adopted). Never leave it on.
-pulse_adopt_existing: false
-# Settings in .env. The production compose file reads only RESEND_API_KEY and
-# SLACK_WEBHOOK_URL from it (both unset today); the admin token is not passed to the
-# container. Secret: Vault kv/homelab/<host>/pulse admin_token (a placeholder today).
+pulse_update_interval: 10min
+# Seconds a new release has to answer /healthz before it is rolled back.
+pulse_health_timeout: 90
+# Data copies taken before each upgrade, newest first.
+pulse_backups_keep: 5
+pulse_memory_limit: 256m
+pulse_caddy_image: caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+pulse_mkdocs_image: squidfunk/mkdocs-material:9.7.7@sha256:51b87149d227691486b5f08993d28c65ca7e4990010664b697265b8e6fcd5287
+# For the data copies (cp in a throwaway container with the volume mounted).
+pulse_base_image: alpine:3.24@sha256:71e9b7bae160ba167fa17414401b94cbcdaf3c32feeab9298bd794a2a0614c35
+# Settings in .env, passed to the container. RESEND_API_KEY and SLACK_WEBHOOK_URL are unset
+# today. Secret: Vault kv/homelab/<host>/pulse admin_token (a placeholder today, not passed
+# to the container).
 pulse_vault_mount: kv
 pulse_vault_path: "homelab/{{ inventory_hostname }}/pulse"
 pulse_env:
-  DATABASE_URL: ""
   SQLITE_PATH: /data/pulse.db
   RESEND_API_KEY: ""
   SLACK_WEBHOOK_URL: ""
-  API_PORT: "8080"
   PULSE_SECURE_COOKIES: "true"
   PULSE_ALLOW_PRIVATE_MONITORS: "true"
 # Caddy publishes the status page here.

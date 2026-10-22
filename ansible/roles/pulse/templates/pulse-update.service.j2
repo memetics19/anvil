@@ -1,0 +1,11 @@
+# Managed by Ansible (role pulse).
+[Unit]
+Description=Deploy the newest Pulse release and docs
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pulse-update
+TimeoutStartSec=15min

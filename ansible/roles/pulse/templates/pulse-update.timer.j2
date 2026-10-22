@@ -1,0 +1,11 @@
+# Managed by Ansible (role pulse).
+[Unit]
+Description=Check for a new Pulse release or docs commit every {{ pulse_update_interval }}
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec={{ pulse_update_interval }}
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

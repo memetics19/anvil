@@ -1,8 +1,6 @@
-# Pulse on the netbird VM: a git checkout pinned to pulse_version and the repository's own
-# production compose file (not templated here). The image is built only when it is not the
-# one built from the pinned commit (tag pulse_image_pin_tag). Caddy and
-# the docs builder are compared by compose's config hash and brought up only if they
-# differ. Nothing here runs `docker compose down` or removes a container or volume.
+# Pulse on the netbird VM: the compose project, Caddy, .env from Vault and pulse-update
+# with its timer. Releases and docs are deployed by pulse-update (on the timer, and once
+# here), not by Ansible. Nothing here runs `docker compose down` or removes a volume.
 
 # --- secret ------------------------------------------------------------------------------------
 - name: Read the Pulse admin token from Vault
@@ -21,276 +19,111 @@
     fail_msg: "{{ pulse_vault_mount }}/{{ pulse_vault_path }} has no admin_token"
     quiet: true
 
-# --- checkout ----------------------------------------------------------------------------------
-- name: Install git
+# --- files -------------------------------------------------------------------------------------
+- name: Install git and curl
   ansible.builtin.apt:
-    name: git
+    name: [git, curl]
     state: present
 
-# HEAD and local changes to tracked files (untracked files are allowed). Read-only.
-- name: Read the checkout's commit and local changes
-  ansible.builtin.shell:
-    cmd: >-
-      set -o pipefail;
-      git -C {{ pulse_dir | quote }} rev-parse HEAD &&
-      git -C {{ pulse_dir | quote }} status --porcelain --untracked-files=no | wc -l
-    executable: /bin/bash
-  # The variable, not the keyword: group_vars set ansible_become, which wins over become.
-  vars:
-    ansible_become: false
-  register: pulse_head
-  changed_when: false
-  failed_when: false
-  check_mode: false
+- name: Pulse directory
+  ansible.builtin.file:
+    path: "{{ pulse_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
 
-- name: Note the checkout's commit
-  ansible.builtin.set_fact:
-    pulse_head_before: "{{ pulse_head.stdout_lines[0] if pulse_head.rc == 0 and pulse_head.stdout_lines | length == 2 else '' }}"
+- name: Compose file, Caddyfile and pulse-update settings
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ pulse_dir }}/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - {src: compose.yaml.j2, dest: compose.yaml}
+    - {src: Caddyfile.j2, dest: Caddyfile}
+    - {src: update.conf.j2, dest: update.conf}
+  register: pulse_files
 
-# The git module would refuse too (force false); this also covers a checkout at the pin.
-- name: No local changes to tracked files in the checkout
-  ansible.builtin.assert:
-    that: pulse_head_before | length == 0 or pulse_head.stdout_lines[1] | int == 0
-    fail_msg: "{{ pulse_dir }} has local changes to tracked files; commit or discard them by hand"
-    quiet: true
-
-# As the VM user, who owns the checkout. Skipped (no fetch) when HEAD is already the pin.
-- name: Pulse checkout at the pinned commit
-  ansible.builtin.git:
-    repo: "{{ pulse_repo }}"
-    dest: "{{ pulse_dir }}"
-    version: "{{ pulse_version }}"
-    update: true
-    force: false
-  # The variable, not the keyword: group_vars set ansible_become, which wins over become.
-  vars:
-    ansible_become: false
-  register: pulse_git
-  when: pulse_head_before != pulse_version
-
-# --- .env (the admin token from Vault) -------------------------------------------------------
-- name: Render .env
-  ansible.builtin.set_fact:
-    pulse_env_content: "{{ lookup('ansible.builtin.template', 'env.j2') }}"
-  no_log: true
-
-- name: Read the live .env
-  ansible.builtin.stat:
-    path: "{{ pulse_dir }}/.env"
-    checksum_algorithm: sha256
-  register: pulse_env_stat
-
-# Content and mode apart, so tightening the mode alone does not recreate Pulse.
 - name: Pulse .env (admin token from Vault)
-  ansible.builtin.copy:
-    content: "{{ pulse_env_content }}"
+  ansible.builtin.template:
+    src: env.j2
     dest: "{{ pulse_dir }}/.env"
-    owner: "{{ pulse_owner }}"
-    group: "{{ pulse_owner }}"
+    owner: root
+    group: root
     mode: "0600"
-  when: >-
-    not pulse_env_stat.stat.exists
-    or pulse_env_stat.stat.checksum != (pulse_env_content | hash('sha256'))
+  register: pulse_env_file
   no_log: true
   diff: false
-  notify: Recreate pulse
 
-- name: Pulse .env mode (it holds the admin token)
-  ansible.builtin.file:
-    path: "{{ pulse_dir }}/.env"
-    owner: "{{ pulse_owner }}"
-    group: "{{ pulse_owner }}"
-    mode: "0600"
-  when: pulse_env_stat.stat.exists or not ansible_check_mode
-
-# --- build (only for a new commit) ---------------------------------------------------------------
-# The image built from a commit also gets the tag pulse_image_pin_tag. Pulse is built when
-# "latest" is not that image: a new pinned commit, or an image built by hand from
-# something else.
-- name: Image IDs of the latest and the pinned-commit tags
-  ansible.builtin.command:
-    argv: [docker, image, inspect, --format, "{{ '{{' }}.Id{{ '}}' }}", "{{ item }}"]
+- name: The pulse-compose and pulse-update scripts
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/usr/local/sbin/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0755"
   loop:
-    - "{{ pulse_image }}:latest"
-    - "{{ pulse_image }}:{{ pulse_image_pin_tag }}"
-  register: pulse_image_ids
-  changed_when: false
-  failed_when: false
+    - {src: pulse-compose.j2, dest: pulse-compose}
+    - {src: pulse-update.sh.j2, dest: pulse-update}
+
+- name: Units of pulse-update
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [pulse-update.service, pulse-update.timer]
+  register: pulse_units
+
+# --- deploy ------------------------------------------------------------------------------------
+- name: What pulse-update would do
+  ansible.builtin.command:
+    argv: [/usr/local/sbin/pulse-update, --check]
+  register: pulse_plan
+  changed_when: "'would' in pulse_plan.stdout"
   check_mode: false
+  # In check mode on a new host the script is not there yet.
+  when: not (ansible_check_mode and pulse_files.changed)
 
-- name: Note the image IDs
-  ansible.builtin.set_fact:
-    pulse_image_latest: "{{ pulse_image_ids.results[0].stdout if pulse_image_ids.results[0].rc == 0 else '' }}"
-    pulse_image_pinned: "{{ pulse_image_ids.results[1].stdout if pulse_image_ids.results[1].rc == 0 else '' }}"
-
-# adopt (one time, only with -e pulse_adopt_existing=true): a box found with no
-# pinned-commit tag whose checkout was already at the pin before this run; the operator
-# vouches that the existing image was built from it, so it is tagged instead of rebuilt.
-- name: Set the build decision
-  ansible.builtin.set_fact:
-    pulse_adopt: >-
-      {{ pulse_adopt_existing | bool and pulse_image_latest | length > 0 and pulse_image_pinned | length == 0
-         and pulse_head_before == pulse_version }}
-    pulse_build: >-
-      {{ pulse_image_latest | length == 0 or pulse_image_latest != pulse_image_pinned }}
-
-- name: Pulse build
+- name: Report it
   ansible.builtin.debug:
-    msg: >-
-      pulse: {{ ('adopt the existing image as built from ' ~ pulse_version[:7]) if pulse_adopt
-      else ('build ' ~ pulse_version[:7]) if pulse_build
-      else 'image built from ' ~ pulse_version[:7] ~ ', no build' }}{{
-      ' (pulse_adopt_existing ignored: nothing to adopt)' if pulse_adopt_existing | bool and not pulse_adopt else '' }}
-  # The build below does not run in check mode; count it here instead.
-  changed_when: ansible_check_mode and (pulse_build | bool)
+    msg: "{{ pulse_plan.stdout_lines }}"
+  when: pulse_plan.stdout_lines is defined
 
-# As the repository documents: the whole project, built (Pulse is recreated with the new
-# image and the docs builder runs again).
-- name: Build and bring up Pulse
+- name: Deploy the newest release and docs
   ansible.builtin.command:
-    argv:
-      - docker
-      - compose
-      - --project-name
-      - "{{ pulse_project }}"
-      - --project-directory
-      - "{{ pulse_dir }}"
-      - --file
-      - "{{ pulse_dir }}/{{ pulse_compose_file }}"
-      - up
-      - --detach
-      - --build
-    chdir: "{{ pulse_dir }}"
-  changed_when: true
-  when: pulse_build and not pulse_adopt and not ansible_check_mode
+    argv: [/usr/local/sbin/pulse-update]
+  register: pulse_update
+  changed_when: "'deployed' in pulse_update.stdout or 'docs built' in pulse_update.stdout"
+  when: not ansible_check_mode
 
-# For the .env handler and the container check below: Pulse came up with everything new.
-- name: Pulse brought up in this run
-  ansible.builtin.set_fact:
-    pulse_up_now: "{{ pulse_build | bool and not pulse_adopt | bool and not ansible_check_mode }}"
-
-- name: Tag the image with the commit it was built from
+# A settings change with no new release: compose recreates what changed.
+- name: Apply a compose or .env change
   ansible.builtin.command:
-    argv: [docker, image, tag, "{{ pulse_image }}:latest", "{{ pulse_image }}:{{ pulse_image_pin_tag }}"]
-  changed_when: true
-  when: pulse_build or pulse_adopt
-
-# Not after a build in this run (its container is new), nor in check mode before a build.
-- name: Check the Pulse container's image
-  ansible.builtin.set_fact:
-    pulse_check_container: "{{ not pulse_up_now | bool and (not pulse_build | bool or pulse_adopt | bool) }}"
-
-# A build that stopped after tagging but before the container was replaced leaves the
-# container on an older image: bring up only Pulse on the pinned image.
-- name: Image of the Pulse container
-  ansible.builtin.shell:
-    cmd: >-
-      set -o pipefail;
-      docker ps -aq --filter label=com.docker.compose.project={{ pulse_project | quote }}
-      --filter label=com.docker.compose.service=pulse
-      | xargs -r docker inspect --format '{{ '{{' }}.Image{{ '}}' }}'
-    executable: /bin/bash
-  register: pulse_container_image
-  changed_when: false
-  check_mode: false
-  when: pulse_check_container | bool
-
-- name: Pulse container on the pinned image
-  ansible.builtin.debug:
-    msg: >-
-      pulse: {{ 'container on ' ~ (pulse_container_image.stdout_lines | join(',') | default('nothing', true))[:19]
-      ~ ', pinned image ' ~ pulse_image_latest[:19] ~ ': bring up pulse'
-      if pulse_container_stale else 'container on the pinned image' }}
-  changed_when: ansible_check_mode and pulse_container_stale
-  vars:
-    pulse_container_stale: "{{ pulse_container_image.stdout_lines != [pulse_image_latest] }}"
-  when: pulse_check_container | bool
-
-- name: Bring up Pulse on the pinned image
-  ansible.builtin.command:
-    argv:
-      - docker
-      - compose
-      - --project-name
-      - "{{ pulse_project }}"
-      - --project-directory
-      - "{{ pulse_dir }}"
-      - --file
-      - "{{ pulse_dir }}/{{ pulse_compose_file }}"
-      - up
-      - --detach
-      - --no-deps
-      - pulse
-    chdir: "{{ pulse_dir }}"
+    argv: [/usr/local/sbin/pulse-compose, up, --detach, pulse, caddy]
   changed_when: true
   when:
-    - pulse_check_container | bool
-    - pulse_container_image.stdout_lines != [pulse_image_latest]
     - not ansible_check_mode
+    - pulse_files.results[0].changed or pulse_env_file.changed
+    - "'deployed' not in pulse_update.stdout"
 
-- name: Pulse brought up in this run (container check)
-  ansible.builtin.set_fact:
-    pulse_up_now: true
-  when:
-    - pulse_check_container | bool
-    - pulse_container_image.stdout_lines != [pulse_image_latest]
-    - not ansible_check_mode
-
-# Caddy reads its Caddyfile (bind-mounted from the checkout) only at start; git sets the
-# file's mtime when a checkout changes it.
-- name: Caddyfile change time and Caddy start time
-  ansible.builtin.shell:
-    cmd: >-
-      set -eo pipefail;
-      started=$(docker inspect --format '{{ '{{' }}.State.StartedAt{{ '}}' }}' {{ (pulse_project ~ '-caddy-1') | quote }});
-      stat -c %Y {{ (pulse_dir ~ '/deploy/Caddyfile') | quote }};
-      date -d "$started" +%s
-    executable: /bin/bash
-  register: pulse_caddy_times
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-- name: Does Caddy need a restart
-  ansible.builtin.set_fact:
-    pulse_caddy_restart: >-
-      {{ pulse_caddy_times.rc == 0 and pulse_caddy_times.stdout_lines | length == 2
-         and pulse_caddy_times.stdout_lines[0] | int > pulse_caddy_times.stdout_lines[1] | int }}
-
-- name: Caddy restart pending
-  ansible.builtin.debug:
-    msg: "pulse: the Caddyfile is newer than the Caddy container: restart caddy"
-  changed_when: true
-  when: pulse_caddy_restart and ansible_check_mode
-
-- name: Restart Caddy for a newer Caddyfile
+# Caddy reads its Caddyfile only at start.
+- name: Restart Caddy for a new Caddyfile
   ansible.builtin.command:
-    argv:
-      - docker
-      - compose
-      - --project-name
-      - "{{ pulse_project }}"
-      - --project-directory
-      - "{{ pulse_dir }}"
-      - --file
-      - "{{ pulse_dir }}/{{ pulse_compose_file }}"
-      - restart
-      - caddy
-    chdir: "{{ pulse_dir }}"
+    argv: [/usr/local/sbin/pulse-compose, restart, caddy]
   changed_when: true
-  when: pulse_caddy_restart and not ansible_check_mode
+  when: not ansible_check_mode and pulse_files.results[1].changed
 
-# --- the other services: compose's config hash --------------------------------------------------
-- name: Pulse compose project
-  ansible.builtin.include_role:
-    name: compose_project
-  vars:
-    compose_project_dir: "{{ pulse_dir }}"
-    compose_project_file: "{{ pulse_dir }}/{{ pulse_compose_file }}"
-    compose_project_write_file: false
-    compose_project_skip_services: "{{ pulse_built_services }}"
-  # In check mode on a new host there is no checkout yet.
-  when: not (ansible_check_mode and pulse_head_before | length == 0)
+- name: Timer of pulse-update
+  ansible.builtin.systemd_service:
+    name: pulse-update.timer
+    enabled: true
+    state: started
+    daemon_reload: "{{ pulse_units.changed }}"
+  when: not (ansible_check_mode and pulse_units.changed)
 
 - name: Pulse answers through Caddy
   ansible.builtin.uri:
