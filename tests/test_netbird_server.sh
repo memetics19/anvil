@@ -36,7 +36,7 @@ cat >"$tmp/play.yml" <<PLAY
       email: admin@example.com
       lan_cidr: 192.0.2.0/24
       gateway: {subdomain: internal}
-      netbird_domain: netbird.example.com
+      netbird_domain: sync.example.com
       netbird_server: {network_range: 100.64.0.0/16}
       pve: {ip: 192.0.2.10, gateway_alias_ip: 192.0.2.1, uplink_ip: 198.51.100.250, uplink_prefix: 24, uplink_gw: 198.51.100.1}
       hosts:
@@ -88,8 +88,8 @@ fi
 
 # --- server configuration --------------------------------------------------------------------
 c=$tmp/config.yaml
-has "public address" 'exposedAddress: "https://netbird.example.com:443"' "$c"
-has "issuer on the public name" 'issuer: "https://netbird.example.com/oauth2"' "$c"
+has "public address" 'exposedAddress: "https://sync.example.com:443"' "$c"
+has "issuer on the public name" 'issuer: "https://sync.example.com/oauth2"' "$c"
 has "STUN: Cloudflare" 'uri: "stun:stun.cloudflare.com:3478"' "$c"
 has "STUN: Google" 'uri: "stun:stun.l.google.com:19302"' "$c"
 hasnt "no local STUN port" "stunPorts" "$c"
@@ -102,7 +102,7 @@ has "Caddy: relay, API and IdP paths" "@backend path /relay* /ws-proxy/* /api/* 
 has "Caddy: the rest to the dashboard" "reverse_proxy dashboard:80" "$f"
 has "Caddy: own TLS for the tunnel origin" "tls internal" "$f"
 has "Caddy: no Server header" "header -Server" "$f"
-has "Caddy: first party CSP for the dashboard" "header_down Content-Security-Policy \"default-src 'none'; connect-src 'self' https://netbird.example.com " "$f"
+has "Caddy: first party CSP for the dashboard" "header_down Content-Security-Policy \"default-src 'none'; connect-src 'self' https://sync.example.com " "$f"
 hasnt "Caddy: no vendor domain in the CSP" "netbird.io" "$f"
 
 d=$tmp/docker-compose.yaml

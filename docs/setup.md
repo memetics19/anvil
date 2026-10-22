@@ -394,13 +394,13 @@ whose connectors run on `frigate`, `netbird` and `ragnarok`. In the Cloudflare d
 
 1. Zero Trust, Networks, Tunnels: open that tunnel, Public hostnames, Add a public
    hostname.
-2. Subdomain `netbird`, domain `<domain>`, no path (the name is `site.netbird_domain`).
+2. Subdomain `sync`, domain `<domain>`, no path (the name is `site.netbird_domain`).
 3. Service type `HTTPS`, URL `<netbird-lab-address>:8443` (Caddy on the `netbird` VM).
 4. Additional application settings, TLS: turn on No TLS Verify and HTTP2 connection, and
-   set Origin Server Name to `netbird.<domain>`. Save. Cloudflare adds the DNS record.
+   set Origin Server Name to `sync.<domain>`. Save. Cloudflare adds the DNS record.
 5. In the `<domain>` zone, Network: turn gRPC on. Leave WebSockets on.
 
-Then check `https://netbird.<domain>` shows the login page, and run
+Then check `https://sync.<domain>` shows the login page, and run
 `make vm HOST=netbird ARGS="--tags netbird_home"`. It enrolls `netbird-home`, the routing
 peer. Native NetBird clients need gRPC through the tunnel. Cloudflare documents gRPC on
 public tunnel names as unsupported, so if `netbird-home` does not connect, see
@@ -419,7 +419,7 @@ day), `cloud` is NetBird's service (emergency). The login is `owner_email` and
 ```sh
 netbird profile add home
 netbird profile select home
-netbird up --management-url https://netbird.<domain>
+netbird up --management-url https://sync.<domain>
 netbird profile add cloud
 netbird profile select cloud
 netbird up --management-url https://api.netbird.io
