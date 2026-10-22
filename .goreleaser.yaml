@@ -99,19 +99,19 @@ nfpms:
 brews:
   - name: anvil
     # The tap is this repo: brew taps it by URL and reads Formula/. The release job's own
-    # GITHUB_TOKEN commits the formula to main, so no extra repo or token is needed.
+    # GITHUB_TOKEN (GoReleaser's token, the default here) commits the formula to main, so
+    # no extra repo or token is needed.
     repository:
       owner: memetics19
       name: anvil
       branch: main
-      token: '{{ envOrDefault "GITHUB_TOKEN" "" }}'
     directory: Formula
     commit_msg_template: "chore(brew): formula for {{ .ProjectName }} {{ .Tag }}"
     homepage: https://github.com/memetics19/anvil
     description: One command over the make targets of the anvil homelab repo
     license: MIT
     # Forks (another owner) build the formula but do not push it here.
-    skip_upload: '{{ if eq (envOrDefault "GITHUB_REPOSITORY_OWNER" "") "memetics19" }}false{{ else }}true{{ end }}'
+    skip_upload: '{{ if eq (index .Env "GITHUB_REPOSITORY_OWNER") "memetics19" }}false{{ else }}true{{ end }}'
     dependencies:
       - name: git
     install: |
