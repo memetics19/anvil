@@ -269,6 +269,7 @@ hasnt "no strict-source rule for the enclave" "saddr !=" "$tmp/e-strict.nft"
 check "the enclave's sets are unchanged" "$(awk '/set (admin|not_admin|enclave_smtp_relay) \{/,/^\t}/' "$v" | shasum)" \
   "$(awk '/set (admin|not_admin|enclave_smtp_relay) \{/,/^\t}/' "$tmp/e.nft" | shasum)"
 
+has "egress profiles: each vlans entry names its own" "egress: [dns, web, internet]" ansible/inventory/group_vars/proxmox.yml
 render_vlans "$tmp/v2.nft" false
 check "cameras_internet false: render rc" "$?" "0"
 chain cameras_out "$tmp/v2.nft" >"$tmp/c"

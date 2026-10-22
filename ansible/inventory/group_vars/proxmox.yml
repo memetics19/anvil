@@ -10,11 +10,16 @@ pve_segments_sets: "{{ pve_enclave_sets + vlan_sets }}"
 # one's router: its gateway address (site.sdn.subnets.<name>.gateway) on the vnet bridge,
 # DHCP and NTP (role pve_vlans, make vlans). The trunk to the switch carries the tags
 # (pve_network: bridge-vids on vmbr0; docs/cisco-switch.md).
+# egress: what each VLAN may open connections to, as names of vlan_egress_rules below
+# (dns: Pi-hole, web: the service gateway's web ports, internet: any public address).
 vlans:
-  - {name: servers, tag: 10}
-  - {name: cameras, tag: 20}
-  - {name: personal, tag: 30}
+  - {name: servers, tag: 10, egress: [dns, internet]}
+  - name: cameras
+    tag: 20
+    egress: "{{ ['dns'] + (['internet'] if cameras_internet | bool else []) }}"
+  - {name: personal, tag: 30, egress: [dns, web, internet]}
 # VLAN 20 may reach the internet (the camera vendor's app needs it). false: DNS and NTP only.
+# VLAN 20 stays NATed either way: its DNS queries to Pi-hole leave with the host's address.
 cameras_internet: true
 
 # Pi-hole (apps): the VLANs' resolver. DHCP hands out the first address.
@@ -66,6 +71,11 @@ _vlan_web:
     proto: tcp
     dport: "{{ vlan_gateway_ports }}"
 
+vlan_egress_rules:
+  dns: "{{ _vlan_dns }}"
+  web: "{{ _vlan_web }}"
+  internet: "{{ _vlan_internet }}"
+
 # One segment per VLAN. Lab hosts reach every VLAN. Each VLAN reaches the host for DHCP,
 # and NTP and ping on its own gateway address only (not the Proxmox UI or SSH). Only the
 # VLAN's own addresses may leave it (strict_source).
@@ -73,9 +83,7 @@ vlan_segments: >-
   {%- set out = [] -%}
   {%- for v in vlans -%}
   {%- set n = site.sdn.subnets[v.name] -%}
-  {%- set egress = {'servers': _vlan_dns + _vlan_internet,
-                    'cameras': _vlan_dns + (_vlan_internet if cameras_internet | bool else []),
-                    'personal': _vlan_dns + _vlan_web + _vlan_internet}[v.name] -%}
+  {%- set egress = v.egress | map('extract', vlan_egress_rules) | flatten -%}
   {%- set _ = out.append({'name': v.name, 'interface': v.name, 'subnet': n.cidr, 'gateway': n.gateway,
         'nat': true, 'strict_source': true, 'ingress': _vlan_from_lab, 'egress': egress,
         'host': [{'comment': 'DHCP (dnsmasq on this interface only)', 'proto': 'udp', 'dport': 67},
