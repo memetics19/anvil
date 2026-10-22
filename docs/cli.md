@@ -10,7 +10,8 @@ commands and runs nothing.
 
 ## Install
 
-Build it from the repo. You need Go. An older Go fetches the version that `cli/go.mod`
+[install.md](install.md) has Homebrew, the .deb and .rpm packages and the build from
+source. To build it from the repo, you need Go. An older Go fetches the version that `cli/go.mod`
 names on its own.
 
 ```sh
@@ -31,7 +32,7 @@ platform:
 
 ## anvil fetch and anvil update
 
-A packaged `anvil` (Homebrew, .deb or .rpm) comes without
+A packaged `anvil` (Homebrew, .deb or .rpm, see [install.md](install.md)) comes without
 the repo. Fetch it once:
 
 ```sh

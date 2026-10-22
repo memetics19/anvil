@@ -47,11 +47,15 @@ Install the tools listed in [docs/setup.md](docs/setup.md#operator-machine), and
 Keychain items and the site dict it describes. Then:
 
 ```sh
-git clone https://github.com/memetics19/anvil && cd anvil
-make cli && export PATH="$PWD/build:$PATH"
-anvil init    # tools, Keychain items and Vault, read-only, with a fix for each problem
+brew install memetics19/tap/anvil    # or the .deb or .rpm from Releases
+anvil fetch   # clones this repo into ~/.local/share/anvil/repo
+anvil doctor  # tools, Keychain items and Vault, read-only, with a fix for each problem
 anvil up      # the whole lab, in the order of the first build
 ```
+
+On Debian or Ubuntu, `sudo apt install ./anvil_<version>_amd64.deb` installs the package
+from [Releases](https://github.com/memetics19/anvil/releases). To build from a checkout,
+`make cli` builds `build/anvil`. [docs/install.md](docs/install.md) has every way.
 
 `anvil up` runs the steps of [First build](docs/setup.md#first-build) as stages. It checks
 each stage first and applies only what differs, so on a running lab it is a converge. A host that matches the code reports `changed=0`. One service at a time is
@@ -87,6 +91,8 @@ The docs are also published as a site: <https://memetics19.github.io/anvil/>. Bu
 locally with `make docs`. `make docs-publish` also serves it privately on the gateway as
 `https://docs.<gateway-domain>` ([usage](docs/usage.md#publishing-the-docs)).
 
+- [docs/install.md](docs/install.md): installing `anvil` with Homebrew, a .deb or .rpm, or
+  from source, and how releases are cut
 - [docs/setup.md](docs/setup.md): the operator Mac, Keychain items, the site dict, the
   first build, rebuilding on a new box, and the hand steps
 - [docs/usage.md](docs/usage.md): make targets, adding a service, secrets, backups, safety
@@ -140,19 +146,21 @@ vault/policies/
 - [ ] Bare-metal provisioning: Proxmox auto-install ISO, Redfish or IPMI, brand agnostic
   (in progress, [docs/provisioning.md](docs/provisioning.md))
 - [ ] Releases: semver tags and a changelog from conventional commits (release-please),
-  published as GitHub Releases
+  published as GitHub Releases (in progress: the workflows are in, the first release
+  PR cuts v0.1.0)
 - [ ] Split the generic core (roles, Terraform modules, scripts) from this lab's site
   layer, so it works on another Proxmox box
-- [ ] An `anvil` CLI over the make targets: `anvil up` for the whole lab or one service,
-  init, status, check, apply, backup and restore (in progress: checked against the running
-  lab, a fresh box run is untested, [docs/cli.md](docs/cli.md))
+- [x] An `anvil` CLI over the make targets: `anvil up` for the whole lab or one service,
+  doctor, status, check, apply, backup, restore, fetch, update and shell completion
+  ([docs/cli.md](docs/cli.md). A fresh box run is still untested)
 - [ ] OS agnostic operator machine: run from Linux, macOS or Windows (WSL), not only a Mac.
   Secrets move from the macOS Keychain to a pluggable backend (Vault plus an age-encrypted
   bootstrap file, the Linux secret service, or the macOS Keychain), and the scripts drop
   macOS-only commands (`security`, `networksetup`, `pbcopy`, BSD `sed` and `stat`)
-- [ ] Packages: a `.deb` built with nfpm on each release (the CLI and the repo under
-  /usr/share/anvil, depending on ansible, terraform, vault, jq and age) in an apt repo on
-  GitHub Pages, plus a Homebrew tap for macOS, all attached to the GitHub Release
+- [ ] Packages: .deb and .rpm built with nfpm and a Homebrew formula, from GoReleaser on
+  each release, attached to the GitHub Release ([docs/install.md](docs/install.md)). In
+  progress: the tap repo `memetics19/homebrew-tap` and its token are pending. A signed
+  apt repository comes later
 - [ ] The rebuild runbook, tested on a second server
 
 ## Known issues
