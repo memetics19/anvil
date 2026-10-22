@@ -81,9 +81,10 @@ if [ "$fetched" -eq 0 ] && [ -e "$DIR/site/current" ] && [ "$key_now" = "$key_bu
 fi
 
 # --- 2. build, sign, check and swap in ---------------------------------------------------------
-stamp=$(date -u +%Y%m%d-%H%M%S)
-tree="$DIR/site/$stamp"
-mkdir -p "$tree"
+# A fresh directory per build, even for two builds in the same second.
+tree=$(mktemp -d "$DIR/site/$(date -u +%Y%m%d-%H%M%S).XXXXXX")
+chmod 755 "$tree"
+stamp=$(basename "$tree")
 cp -al "$DIR/pool" "$tree/pool"
 dist="$tree/dists/$SUITE"
 for arch in $ARCHES; do
