@@ -29,6 +29,14 @@ network_switch_vault_path: homelab/network/switch
 network_switch_local_dir: "{{ playbook_dir }}/../../build/switch"
 network_switch_known_hosts: "{{ network_switch_local_dir }}/known_hosts"
 network_switch_cli: "{{ playbook_dir }}/../../scripts/switch-cli.sh"
+# What each exit code of switch-cli.sh means, for the failure messages.
+network_switch_cli_exits:
+  2: usage, or a line refused by --show-only
+  3: the switch rejected a command, or the save did not report Copy succeeded
+  4: timeout
+  5: no login after every try (connection, SSH or password)
+  6: a line was not echoed back intact, so it was cleared and not sent
+  7: the connection closed in the middle of the session
 
 # Reachability after the change, from the controller.
 network_switch_verify_seconds: 60

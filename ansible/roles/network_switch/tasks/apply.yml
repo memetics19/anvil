@@ -9,7 +9,15 @@
     SWITCH_KNOWN_HOSTS: "{{ network_switch_known_hosts }}"
   register: network_switch__running
   changed_when: false
+  failed_when: false
   no_log: true
+
+- name: The copy was read
+  ansible.builtin.include_tasks: check.yml
+  vars:
+    network_switch__result: "{{ network_switch__running }}"
+    network_switch__step: reading the running config
+    network_switch__show_stdout: false
 
 - name: Save it locally (mode 600, gitignored)
   ansible.builtin.copy:
@@ -29,7 +37,14 @@
         SWITCH_KNOWN_HOSTS: "{{ network_switch_known_hosts }}"
       register: network_switch__apply
       changed_when: true
+      failed_when: false
       no_log: true
+
+    - name: The plan was sent
+      ansible.builtin.include_tasks: check.yml
+      vars:
+        network_switch__result: "{{ network_switch__apply }}"
+        network_switch__step: sending the plan
 
     - name: Read the state again
       ansible.builtin.include_tasks: read.yml
@@ -64,7 +79,14 @@
         SWITCH_KNOWN_HOSTS: "{{ network_switch_known_hosts }}"
       register: network_switch__save
       changed_when: true
+      failed_when: false
       no_log: true
+
+    - name: The save reported Copy succeeded
+      ansible.builtin.include_tasks: check.yml
+      vars:
+        network_switch__result: "{{ network_switch__save }}"
+        network_switch__step: copying to startup-config
 
     - name: Saved
       ansible.builtin.debug:

@@ -50,6 +50,13 @@
     msg: "Dry run, nothing sent. To apply: make switch ARGS=\"-e network_switch_apply=true\""
   when: not (network_switch_apply | bool)
 
+- name: Nothing to apply
+  ansible.builtin.debug:
+    msg: The switch already matches. Nothing sent, nothing saved.
+  when:
+    - network_switch_apply | bool
+    - network_switch_plan | length == 0
+
 - name: Apply
   ansible.builtin.include_tasks: apply.yml
   when:

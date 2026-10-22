@@ -12,10 +12,10 @@
   no_log: true
 
 - name: The show commands ran
-  ansible.builtin.assert:
-    that: network_switch__read.rc == 0
-    fail_msg: "switch-cli.sh exit {{ network_switch__read.rc }}: {{ network_switch__read.stderr | default('') | replace(network_switch_host, '<switch>') }}"
-    quiet: true
+  ansible.builtin.include_tasks: check.yml
+  vars:
+    network_switch__result: "{{ network_switch__read }}"
+    network_switch__step: reading the state
 
 - name: Switch outputs by command
   ansible.builtin.set_fact:

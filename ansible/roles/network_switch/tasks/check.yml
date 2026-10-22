@@ -1,0 +1,14 @@
+# Fails with the exit code's meaning, stderr and the session transcript when a
+# switch-cli.sh run failed. The transcript is the command echo and the switch's answers.
+# It holds no secret (the password never reaches the switch's screen). The address is
+# masked anyway. network_switch__show_stdout: false for output that holds the config.
+- name: Switch session for {{ network_switch__step }}
+  ansible.builtin.fail:
+    msg:
+      - >-
+        switch-cli.sh exit {{ network_switch__result.rc }} while {{ network_switch__step }}:
+        {{ network_switch_cli_exits[network_switch__result.rc | int] | default('unexpected') }}
+      - "{{ network_switch__result.stderr | default('') | replace(network_switch_host, '<switch>') }}"
+      - "{{ (network_switch__result.stdout | default('') | replace(network_switch_host, '<switch>')).splitlines()
+            if network_switch__show_stdout | default(true) else 'transcript not shown: it holds the config' }}"
+  when: network_switch__result.rc != 0
