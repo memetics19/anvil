@@ -3,7 +3,7 @@ name: docs
 on:
   push:
     branches: [main]
-    paths: [README.md, docs/**, mkdocs.yml, scripts/docs-build.sh, .github/workflows/docs.yml]
+    paths: [README.md, docs/**, mkdocs.yml, scripts/docs-build.sh, scripts/install.sh, .github/workflows/docs.yml]
   workflow_dispatch:
 
 permissions:
