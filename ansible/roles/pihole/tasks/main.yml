@@ -193,6 +193,11 @@
   ansible.builtin.include_tasks: records_apply.yml
   when: not (ansible_check_mode and 'pihole' in compose_project_plan.up | default(['pihole']))
 
+# --- live FTL settings (the rate limit) -------------------------------------------------------
+- name: Apply the live FTL settings
+  ansible.builtin.include_tasks: settings_apply.yml
+  when: not (ansible_check_mode and 'pihole' in compose_project_plan.up | default(['pihole']))
+
 # --- blocklists ------------------------------------------------------------------------------
 - name: Blocklists in gravity
   ansible.builtin.include_tasks: blocklists.yml

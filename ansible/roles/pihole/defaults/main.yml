@@ -30,9 +30,20 @@ pihole_tz: Asia/Kolkata
 pihole_uid: 10002
 
 # Per-client limit: at most `count` queries per `interval` seconds (Pi-hole's dns.rateLimit).
-# Docker publishes the ports with DNAT, so Pi-hole sees each client's own address.
-pihole_rate_limit_count: 1000
+# Docker publishes the ports with DNAT, so Pi-hole sees each client's own address, except
+# where the Proxmox host masquerades: every VLAN client and every NetBird peer routed through
+# the host arrive as the host's address and share one limit. Hence 5000, not FTL's 1000.
+# Applied live (tasks/settings_apply.yml, pihole_ftl_live), never through the compose
+# environment, so a change does not recreate the container.
+pihole_rate_limit_count: 5000
 pihole_rate_limit_interval: 60
+
+# FTL settings applied to the running Pi-hole with `pihole-FTL --config` (no restart): read,
+# written only when they differ, read back. A key set here must not also be an FTLCONF_
+# variable in the compose file (FTL makes those read-only).
+pihole_ftl_live:
+  dns.rateLimit.count: "{{ pihole_rate_limit_count }}"
+  dns.rateLimit.interval: "{{ pihole_rate_limit_interval }}"
 
 # Local DNS records from site.dns.local_records (Vault): a list of {name, ref} or
 # {name, ip}. `name` is a label under pihole_local_zone; `ref` is a dotted path into the

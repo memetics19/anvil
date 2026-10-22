@@ -103,5 +103,15 @@ badnet "Docker's bridge"        "${p172}17.5.0/24"     "${p172}17.5.53"     "ove
 badnet "Unbound outside"        "${p172}31.53.0/24"    "${p172}31.54.53"    "not inside dns_subnet"
 badnet "too large a prefix"     "${p10}0.0.0/8"        "${p10}9.0.53"       "prefix must be"
 
+# Live FTL settings: the rate limit is applied with pihole-FTL --config, never through the
+# compose environment (a change there recreates Pi-hole, and FTL makes env values read-only).
+r=ansible/roles/pihole
+check "rate limit not in the compose environment" "$(grep -c 'FTLCONF_dns_rateLimit' "$r/templates/docker-compose.yaml.j2")" 0
+check "rate limit applied live" "$(grep -cE '^  dns\.rateLimit\.(count|interval): ' "$r/defaults/main.yml")" 2
+check "live settings: read, write only what differs, read back" \
+  "$(grep -cE 'pihole-FTL, --config' "$r/tasks/settings_apply.yml")" 3
+check "no live setting is also an FTLCONF_ variable" \
+  "$(sed -n 's/^  \([a-zA-Z.]*\): .*/\1/p' "$r/defaults/main.yml" | grep '\.' | tr '.' '_' | while read -r k; do grep -c "FTLCONF_$k" "$r/templates/docker-compose.yaml.j2"; done | sort -u | tr -d '\n')" 0
+
 [ "$fail" -eq 0 ] && echo "PASS: pihole records and DNS network"
 exit "$fail"

@@ -29,10 +29,9 @@ services:
       FTLCONF_dns_listeningMode: ALL
       # Unbound validates DNSSEC.
       FTLCONF_dns_dnssec: "false"
-      FTLCONF_dns_rateLimit_count: "{{ pihole_rate_limit_count }}"
-      FTLCONF_dns_rateLimit_interval: "{{ pihole_rate_limit_interval }}"
-      # Local records (dns.hosts) are not set here: the role applies them live
-      # (tasks/records_apply.yml), so a change never recreates the container.
+      # Local records (dns.hosts) and the rate limit are not set here: the role applies them
+      # live (tasks/records_apply.yml, tasks/settings_apply.yml), so a change never
+      # recreates the container.
       FTLCONF_dhcp_active: "false"
     # FTLCONF_webserver_api_password (from Vault).
     env_file: pihole.env
