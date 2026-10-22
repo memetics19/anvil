@@ -150,7 +150,7 @@ The list is `guest_base_absent_packages` in `inventory/host_vars/netbird.yml`, t
 ## apps
 
 `apps` is one small VM (1 vCPU, 1.5 GB) for the always-on services: Pi-hole, the service
-gateway and Homepage. Vaultwarden ran here first; it now runs on its own VM in the
+gateway and Homepage. Vaultwarden ran here first. It now runs on its own VM in the
 [secrets enclave](#secrets-enclave).
 
 It has two NICs on `vmbr0`, both set by cloud-init in `terraform/vm_apps.tf`. One has a lab
@@ -237,7 +237,7 @@ upstream Host header. They are documented in `ansible/roles/caddy/defaults/main.
 [Adding a service](usage.md#adding-a-service-behind-the-gateway).
 
 HTTP redirects to HTTPS. Names not in the list get the connection closed. Only HTTP/1.1
-and HTTP/2 are served; no UDP port is published.
+and HTTP/2 are served. No UDP port is published.
 
 The image is Caddy with the `caddy-dns/cloudflare` module, built by xcaddy from the pinned
 `caddy_*` versions and base-image digests. It is built on `ragnarok`, because a Go build
@@ -283,7 +283,7 @@ On a new site, run the first three before `make vm HOST=apps`. Each run checks e
 widget through Homepage's API. A widget with an error is a warning, because its app may be
 on another VM. `ARGS="-e homepage_strict_widgets=true"` makes it fail the run instead.
 
-Hardening: the image is pinned by tag and digest. No port is published; Caddy reaches it
+Hardening: the image is pinned by tag and digest. No port is published. Caddy reaches it
 on the project network `homepage_web`. Only `home.<gateway-domain>` is an allowed Host. It
 runs as its own uid with a read-only config directory and a 192 MB memory cap. Container
 status goes through a pinned Docker socket proxy on an internal network that only Homepage
@@ -311,14 +311,14 @@ extensions use it as a self-hosted server URL.
 It runs on the `vaultwarden` VM in the [secrets enclave](#secrets-enclave)
 (`make vm HOST=vaultwarden`). The container is `vaultwarden/server`, pinned by tag and
 digest. The VM has no registry access, so the image is pulled by digest on `ragnarok`,
-exported, copied through the Mac and loaded by tag (never pulled there); the run checks
+exported, copied through the Mac and loaded by tag (never pulled there). The run checks
 that its layer list equals the pulled image's. Docker comes from Ubuntu's archive
 (`docker.io`, `docker-compose-v2`) through the apt cache. The port is published on the VM's
 enclave address only, where the enclave firewall lets only Caddy (`apps`) in. It runs as
 uid 10004 on port 8080, with a read-only root file system, no capabilities and a 128 MB
 memory cap. Websocket notifications (`/notifications/hub`) go through the gateway on the
-same name. On a VM with no database the role refuses to start an empty Vaultwarden;
-`-e vaultwarden_allow_empty_start=true` is for a deliberate fresh install.
+same name. On a VM with no database the role refuses to start an empty Vaultwarden.
+The flag `-e vaultwarden_allow_empty_start=true` is for a deliberate fresh install.
 
 The Vault paths keep the name of the VM it was first set up on: `kv/homelab/apps/vaultwarden`
 and `kv/homelab/apps/vaultwarden-backup`.
@@ -354,7 +354,7 @@ sign up. To change the token, write a new `admin_token` to Vault and rerun
 #### Mail
 
 SMTP is set from `kv/homelab/apps/vaultwarden`. The pair `smtp_username` and
-`smtp_password` turns it on; with only one of the two, the run stops. With SMTP,
+`smtp_password` turns it on. With only one of the two, the run stops. With SMTP,
 invitations are mailed and `SIGNUPS_VERIFY` is on. `smtp_host`, `smtp_port`,
 `smtp_security` (starttls, force_tls or off) and `smtp_from` are optional. They default to
 `smtp.gmail.com`, 587, starttls and the username.
@@ -372,7 +372,7 @@ its port) is built from them.
 #### Two-step login
 
 With SMTP, every account registered from an invitation gets email two-step login
-(`EMAIL_2FA_ENFORCE_ON_VERIFIED_INVITE`; codes last 10 minutes, 3 tries). That is the only
+(`EMAIL_2FA_ENFORCE_ON_VERIFIED_INVITE`). Codes last 10 minutes, 3 tries. That is the only
 factor the server enforces. Add an authenticator app or a passkey as your main second
 factor and save the recovery code (Settings, Security, Two-step login). If you create an
 organization, turn on its "Require two-step login" policy.
@@ -412,8 +412,8 @@ user every night at about 03:30. The job:
 4. keeps the newest 14 of its objects and touches nothing else in the bucket
 
 The plaintext copy and the archive live on tmpfs in `/run/vaultwarden-backup` and are
-removed when the job ends. The job stops if there is less than twice the data free there
-(`/run` is about 50 MB on the 512 MB `vaultwarden` VM; the data is well under 1 MB).
+removed when the job ends. The job stops if there is less than twice the data free there.
+`/run` is about 50 MB on the 512 MB `vaultwarden` VM. The data is well under 1 MB.
 
 The bucket belongs to the S3 user `vaultwarden-backup`, made by `make ceph`. It may own no
 other bucket and cannot read any other. Its keys are in
@@ -447,10 +447,10 @@ The host's nftables table `inet segments` (role `pve_segments`) is built from da
 of segments in `inventory/group_vars/proxmox.yml` (`pve_segments_list`) and named sets.
 Each segment has:
 
-- a name, its interface, subnet and gateway;
-- a `nat` flag (masquerade the whole segment);
+- a name, its interface, subnet and gateway.
+- a `nat` flag (masquerade the whole segment).
 - three rule lists: `ingress` (new connections into it), `egress` (out of it) and `host`
-  (to the Proxmox host);
+  (to the Proxmox host).
 - `nat_out`, for single flows of a segment without NAT that leave source-NATed.
 
 A rule is saddr/daddr (an address, a list or `@set`), proto and dport. A rule whose address
@@ -458,9 +458,9 @@ is empty (a host not in the site dict yet) is left out.
 
 The forward chain:
 
-1. accepts established traffic;
-2. drops a segment's addresses arriving on any other interface;
-3. jumps to `<name>_out`, where allowed connections go on;
+1. accepts established traffic.
+2. drops a segment's addresses arriving on any other interface.
+3. jumps to `<name>_out`, where allowed connections go on.
 4. jumps to `<name>_in`, which accepts.
 
 So a connection between two segments passes both. The input chain works the same way with
@@ -474,13 +474,13 @@ empty or oversized lookup changes nothing.
 The ruleset is checked with `nft -c`, shown with addresses masked, and applied under a
 120 s rollback. It loads at boot before the network and the guests
 (`segments-firewall.service`). The lab SNAT, the IPTV DNAT and NetBird's rules are separate
-and unchanged. The enclave is the first segment; the VLANs are added as more entries.
+and unchanged. The enclave is the first segment. The VLANs are added as more entries.
 
 The enclave's rules (`pve_enclave_segment` in `ansible/roles/pve_enclave/defaults/main.yml`):
 
 | Direction | Allowed |
 |---|---|
-| Into the enclave | Caddy (the `apps` lab address; on `apps` only Caddy's own network may use it, see below) to Vault 8200 and Vaultwarden 8080. Operators to Vault 8200, and SSH and ping on both VMs. Operators are the operator's own devices only (`inventory/group_vars/all/enclave.yml`): the Mac's LAN /32s (`site.admin_sources`) and the operator's NetBird peers (`site.admin_vpn_sources`), or only the NetBird peers with `site.enclave.vpn_only: true`. Each is a single address (/32; wider prefixes are refused). Every address of every host in the site dict (VMs, their lab and home addresses, the Proxmox host's) is dropped before those rules, so no VM is an operator, monitoring included (no scrape rules). |
+| Into the enclave | Caddy (the `apps` lab address) to Vault 8200 and Vaultwarden 8080. On `apps` only Caddy's own network may use it, see below. Operators to Vault 8200, and SSH and ping on both VMs. Operators are the operator's own devices only (`inventory/group_vars/all/enclave.yml`): the Mac's LAN /32s (`site.admin_sources`) and the operator's NetBird peers (`site.admin_vpn_sources`), or only the NetBird peers with `site.enclave.vpn_only: true`. Each is a single address (/32). Wider prefixes are refused. Every address of every host in the site dict (VMs, their lab and home addresses, the Proxmox host's) is dropped before those rules, so no VM is an operator, monitoring included (no scrape rules). |
 | Out of the enclave | Vaultwarden only: DNS to Pi-hole, and the SMTP port to the set `enclave_smtp_relay`, source-NATed to the host's home address. That is the only translated flow. Vault: nothing. |
 | To the host | NTP and the apt cache on the gateway address, and ping. Vaultwarden also reaches the Ceph S3 gateway (backups). |
 
@@ -503,7 +503,7 @@ Vaultwarden) pass as established. The guard and drops everything else from that 
 drops everything else from that VM to the enclave (other containers, the host). It is not
 required by Docker, so a failed guard never keeps
 Pi-hole down. In Caddy, the `pass` and `vault` routes (`caddy_admin_only_routes`) answer
-only the same operator addresses, matched on the real client address; any other client
+only the same operator addresses, matched on the real client address. Any other client
 gets 403.
 
 NetBird: both routing peers for the lab's /16, the Proxmox host (which masquerades only
@@ -514,7 +514,7 @@ make this reliable.
 
 The mail hole: `smtp_host` and `smtp_port` come from `kv/homelab/apps/vaultwarden`. The
 timer resolves the host through Pi-hole, the resolver Vaultwarden uses, every 10 minutes,
-and keeps each address for 24 h. The set holds at most 64; an answer that would not fit
+and keeps each address for 24 h. The set holds at most 64. An answer that would not fit
 next to the kept ones replaces the set (never more than 64, nothing but the answer). No
 expected-range list (`refresh.expect`) is set for it: the relay (Resend) answers from AWS
 load balancers in us-east-1 whose addresses come from Amazon's whole regional EC2 pool, so
@@ -522,7 +522,7 @@ the only published range would be thousands of shared AWS addresses, which would
 anything. Without an SMTP login in Vault the set stays empty. Not done: Vaultwarden may ask Pi-hole
 for any name, not only the relay's (a narrow DNS channel out through Pi-hole's own
 recursion). Closing it needs a Pi-hole client group for Vaultwarden that allows only the
-relay's name, or a resolver of its own; neither is managed here yet.
+relay's name, or a resolver of its own. Neither is managed here yet.
 
 The lab SNAT rule on the host also matches lab-to-enclave traffic, so the enclave VMs see
 lab clients (Caddy included) as the host's home address. The firewall decides on the real
@@ -531,7 +531,7 @@ source, before that translation.
 ### Turning on VPN-only
 
 `site.enclave.vpn_only: true` admits only the NetBird peers in `site.admin_vpn_sources`, at
-the enclave firewall and in Caddy's `pass` and `vault` routes; the Mac's LAN /32s no longer
+the enclave firewall and in Caddy's `pass` and `vault` routes. The Mac's LAN /32s no longer
 count. A LAN address proves nothing on this network (the lab and home share one L2 segment:
 any VM or home device can take over the Mac's addresses, ARP included). In this order:
 
@@ -551,7 +551,7 @@ rerun the same two commands.
 
 ### Guests didn't start at boot (enclave firewall failed to load)
 
-Symptom: after a reboot no VM runs; `systemctl status pve-guests` shows its `ExecStartPre`
+Symptom: after a reboot no VM runs. `systemctl status pve-guests` shows its `ExecStartPre`
 (`nft list table inet segments`) failed, and `systemctl status segments-firewall` shows why
 (`nft -f /etc/segments/segments.nft`). This is deliberate: without the table the segments
 would be open.
@@ -570,7 +570,7 @@ the home), start only `apps` with `qm start`, and fix the table before starting 
 `vaultwarden`.
 
 Shutdown is unaffected: stopping `pve-guests` (shutdown, reboot) runs Proxmox's stopall as
-usual; nothing ties it to the firewall unit. Never `systemctl restart` or `stop` a unit that
+usual. Nothing ties it to the firewall unit. Never `systemctl restart` or `stop` a unit that
 `pve-guests` is ordered against, and never link one to it with Requires, RequiredBy,
 Requisite, BindsTo or PartOf: a restart of such a unit stops every guest (it happened once).
 
@@ -592,10 +592,10 @@ systemd-timesyncd with that server only.
   is its only working one. Its first NIC, on the lab network, is retired
   (`site.hosts.vault.lab_nic_retired: true`, 2026-10-22): its link is down in Proxmox
   (`disconnected`) and the netplan keeps it with no address. `site.hosts.vault.ip` is the
-  enclave address; `lab_ip` and `mac` record the old NIC.
+  enclave address. `lab_ip` and `mac` record the old NIC.
 - **Netplan.** `guest_base` owns it in enclave mode, under a timed rollback: the enclave NIC
   has the default route and no DNS, and cloud-init no longer writes the network.
-- **Listener.** Vault listens on the enclave address only; `api_addr`, `cluster_addr` and
+- **Listener.** Vault listens on the enclave address only. The `api_addr`, `cluster_addr` and
   the certificate's address are the enclave one.
 - **Reaching it.** Ansible connects through the Proxmox host (`group_vars/enclave.yml`).
   From the Mac: through the gateway (`https://vault.<gateway-domain>`, operator addresses
@@ -612,7 +612,7 @@ systemd-timesyncd with that server only.
 
 Vault now reaches nothing but the host's NTP and apt cache: no DNS, no lab host, no
 internet. Removing the retired NIC from the VM altogether is a later, separate change
-(Terraform `network_device` list; it reorders the NICs, so plan it with care).
+(Terraform `network_device` list). It reorders the NICs, so plan it with care.
 
 The Raft configuration still names the node by its first cluster address. On a single node
 that is only a label, because the node elects itself by ID. A second node would need it

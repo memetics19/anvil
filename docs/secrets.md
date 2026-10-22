@@ -47,7 +47,7 @@ writing them to a file. Each write is checked by reading the SHA-256 digests bac
 | `kv/homelab/ragnarok/arr` | `sonarr_api_key`, `radarr_api_key`, `prowlarr_api_key` | `make vm HOST=ragnarok ARGS="--tags homepage"` (arr_stack role, read from each app's `config.xml` and compared by SHA-256) | Homepage widgets. The apps keep their own copy. |
 | `kv/homelab/apps/vaultwarden` | `admin_token` | `make vm HOST=apps` (vaultwarden role, `openssl rand`) | Vaultwarden admin page (`/admin`) |
 | `kv/homelab/apps/vaultwarden` | `admin_token_hash` | `make vm HOST=apps` (vaultwarden role, `argon2` on the VM with the token on stdin) | The Argon2id hash of that token, the only form Vaultwarden gets (`/opt/vaultwarden/vaultwarden.env`, mode 600) |
-| `kv/homelab/apps/vaultwarden` | `smtp_username`, `smtp_password`; optional `smtp_host`, `smtp_port`, `smtp_security`, `smtp_from` | you (`vault kv patch ... <key>=-`) | Vaultwarden mail (a Gmail App Password or a Resend API key), rendered into `/opt/vaultwarden/vaultwarden.env` |
+| `kv/homelab/apps/vaultwarden` | `smtp_username`, `smtp_password`. Optional: `smtp_host`, `smtp_port`, `smtp_security`, `smtp_from` | you (`vault kv patch ... <key>=-`) | Vaultwarden mail (a Gmail App Password or a Resend API key), rendered into `/opt/vaultwarden/vaultwarden.env` |
 | `kv/homelab/apps/vaultwarden-backup` | `s3_access_key`, `s3_secret_key` | `make ceph` (S3 user `vaultwarden-backup`) | Nightly Vaultwarden backup upload and `make backup`. Owns only the bucket `vaultwarden-backups`. |
 | `kv/homelab/frigate/frigate` | `homepage_password` | `make vm HOST=frigate ARGS="--tags homepage"` (frigate_stack role, `openssl rand`, set through Frigate's API) | Frigate viewer login `homepage` for the Homepage widget |
 
@@ -65,8 +65,8 @@ its key back, so these are new keys. Write each from stdin:
 
 ## Not imported
 
-- Services with no secret in their config: on `frigate` Mosquitto, Gotify, nginx and Home
-  Assistant; on `netbird` ntfy and Redis; on `ragnarok` qBittorrent, Jackett,
+- Services with no secret in their config. On `frigate`: Mosquitto, Gotify, nginx and Home
+  Assistant. On `netbird`: ntfy and Redis. On `ragnarok`: qBittorrent, Jackett,
   FlareSolverr and iptv-epg. The ARR API keys are copied for the dashboard only.
 - App data, such as user databases and app config directories, stays with each app.
 - NetBird client state. A rebuilt host enrolls again with a setup key.

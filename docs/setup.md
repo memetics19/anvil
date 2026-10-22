@@ -52,14 +52,14 @@ bootstrap. Only `pve-ip` is required.
 | Account | Holds | Created by | Read by |
 |---|---|---|---|
 | `pve-ip` | Proxmox host lab address | you | `env.sh` (`PVE_IP`, `PROXMOX_VE_ENDPOINT`, the S3 backend) |
-| `vault-ip` | Vault VM address (its enclave address, `site.hosts.vault.ip`; the Mac needs the enclave route) | you | `env.sh` (`VAULT_ADDR`) |
+| `vault-ip` | Vault VM address, its enclave address `site.hosts.vault.ip`. The Mac needs the enclave route. | you | `env.sh` (`VAULT_ADDR`) |
 | `site-bootstrap` | Bootstrap copy of the site dict | you, later `scripts/site-to-keychain.sh` | `env.sh`, the Ansible inventory, `scripts/site-to-vault.sh` |
 | `pve-root-password` | Proxmox root password | you | `make bootstrap-ssh` |
 | `vm-sudo-password` | Password of the `ubuntu` user on the guests | you | `make bootstrap-ssh`, `env.sh` (`ANSIBLE_BECOME_PASSWORD`) |
 | `pve-api-token` | Terraform's Proxmox API token | `make host` | `env.sh` (`PROXMOX_VE_API_TOKEN`) |
 | `ceph-osd-disk-id` | `/dev/disk/by-id/` name of the Ceph OSD disk | you | `make ceph`, unless `site.pve.ceph_osd_disk_id` is set |
 | `ceph-s3-access-key`, `ceph-s3-secret-key` | S3 keys for the state bucket | you, after `make ceph` | `env.sh` (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) |
-| `ceph-dashboard-password` | Ceph dashboard `admin` password | you, after `make ceph` (optional) | nothing; a copy for you |
+| `ceph-dashboard-password` | Ceph dashboard `admin` password | you, after `make ceph` (optional) | nothing. A copy is for you |
 | `vault-init-json` | Vault unseal keys and root token | `scripts/vault-init.sh` | `env.sh` (`VAULT_TOKEN`), `scripts/vault-unseal.sh` |
 | `backup-age-recipient` | age public key for backups | `scripts/backup-key-init.sh` | `scripts/backup.sh`, the `vaultwarden` role |
 | `backup-age-identity` | age private key for backups | `scripts/backup-key-init.sh` | `scripts/backup-restore-tfstate.sh`, `make vaultwarden-drill` |
@@ -185,7 +185,7 @@ Run each step with `ARGS="--check --diff"` first, then without.
    unset keys
    ```
 
-   Copying the dashboard password is optional; see [Ceph dashboard](services.md#ceph-dashboard).
+   Copying the dashboard password is optional. See [Ceph dashboard](services.md#ceph-dashboard).
 
 5. Run Terraform. It creates the `vault` and `apps` VMs and the SDN zone and VNets. It
    adopts `frigate`, `netbird` and `ragnarok` with the `import` blocks in
@@ -373,14 +373,14 @@ exists:
 2. Distribution groups: the peer groups that should use it, for example All.
 3. Match domains: leave them empty to send every query to Pi-hole, so remote devices get
    filtering too, or set `lan.<domain>` and `<gateway-domain>` for local and gateway names
-   only. Leave it enabled and save. Peers pick it up within a minute; check with
+   only. Leave it enabled and save. Peers pick it up within a minute. Check with
    `netbird status -d`.
 
 ### The Mac's route to the secrets enclave
 
 Vault and Vaultwarden are on the enclave network, which only the Proxmox host routes. The
 Mac reaches it through the host's home address, on the Wi-Fi service (this replaces the
-service's additional routes; it had none, so add any you use to the same command):
+service's additional routes. It had none, so add any you use to the same command):
 
 ```sh
 networksetup -getadditionalroutes "Wi-Fi"        # note the existing ones first
@@ -394,7 +394,7 @@ in the router's DHCP, its USB LAN and Wi-Fi alias lab addresses) and its NetBird
 `site.admin_vpn_sources`. `site.enclave.vpn_only: true` keeps only the NetBird ones (a
 LAN address is no proof of the device: the lab and home networks share one L2 segment, so any
 VM or home device can take over the Mac's LAN addresses, ARP included, and finish a TCP
-connection as the Mac; a NetBird address arrives only through the operator's WireGuard
+connection as the Mac. A NetBird address arrives only through the operator's WireGuard
 tunnel). See [Turning on VPN-only](services.md#turning-on-vpn-only). Then point the Keychain at Vault's
 enclave address and check:
 
@@ -421,7 +421,7 @@ the enclave firewall sees the peer's own NetBird address, so only the peers list
 NetBird dashboard:
 
 1. Groups: make a group (for example `operator`) with only your own devices (today the
-   Mac's peers; remove the stale duplicates of it), and list their NetBird addresses in
+   Mac's peers). Remove the stale duplicates of it. List their NetBird addresses in
    `site.admin_vpn_sources`.
 2. Access control: the policy that opens the lab's /16 route today also admits the GitHub
    Actions runner peers. Limit it to the `operator` group, or add a policy for the enclave
