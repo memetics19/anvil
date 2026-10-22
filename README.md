@@ -131,6 +131,10 @@ vault/policies/
 - [ ] Split the generic core (roles, Terraform modules, scripts) from this lab's site
   layer, so it works on another Proxmox box
 - [ ] An `anvil` CLI (init, check, apply, backup, restore) over the make targets
+- [ ] OS agnostic operator machine: run from Linux, macOS or Windows (WSL), not only a Mac.
+  Secrets move from the macOS Keychain to a pluggable backend (Vault plus an age-encrypted
+  bootstrap file, the Linux secret service, or the macOS Keychain), and the scripts drop
+  macOS-only commands (`security`, `networksetup`, `pbcopy`, BSD `sed` and `stat`)
 - [ ] Packages: a `.deb` built with nfpm on each release (the CLI and the repo under
   /usr/share/anvil, depending on ansible, terraform, vault, jq and age) in an apt repo on
   GitHub Pages, plus a Homebrew tap for macOS, all attached to the GitHub Release
