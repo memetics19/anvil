@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0](https://github.com/memetics19/anvil/compare/v0.2.0...v0.3.0) (2026-10-22)
+
+
+### Features
+
+* **apt_repo:** a signed apt repository for the anvil .deb packages ([b50f489](https://github.com/memetics19/anvil/commit/b50f48997b4a519a94d22d3169b644ecee5ec099))
+* **apt_repo:** a signed apt repository for the anvil .deb packages, on the netbird VM ([553c5ec](https://github.com/memetics19/anvil/commit/553c5ec36f3deea904b03f976c84aaa817dbe590))
+
+
+### Bug Fixes
+
+* **apt_repo:** a fresh tree directory per build, even within one second ([3ab58d1](https://github.com/memetics19/anvil/commit/3ab58d1265d5e94c6cf5903d94895d08a3901ba1))
+* **apt_repo:** compose_project writes the compose file, so a dry run works on a new host ([e77e80f](https://github.com/memetics19/anvil/commit/e77e80fba9c85fb408f6fa0a5446fd44f1449afd))
+* **cli:** build with Go 1.27.3 (CVE-2026-111943, crypto/x509) ([e4c19c7](https://github.com/memetics19/anvil/commit/e4c19c73641387c2ee61e80a3d2c73b1300e3989))
+* **pulse:** the first pulse-update run works before release.env exists ([49598b9](https://github.com/memetics19/anvil/commit/49598b9ec5611f72d0c05c0e99e7374437523dc7))
+* **pulse:** the first pulse-update run works before release.env exists ([483eeb1](https://github.com/memetics19/anvil/commit/483eeb14eb06a9242d17479b8e23276fa13e69f5))
+
 ## [0.2.0](https://github.com/memetics19/anvil/compare/v0.1.0...v0.2.0) (2026-10-22)
 
 
