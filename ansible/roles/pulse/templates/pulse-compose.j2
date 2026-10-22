@@ -1,0 +1,5 @@
+#!/bin/sh
+# Managed by Ansible (role pulse). docker compose for the Pulse project, with its settings
+# (.env, from Vault) and the running release (release.env, from pulse-update).
+exec docker compose --project-directory {{ pulse_dir | quote }} --file {{ (pulse_dir ~ '/compose.yaml') | quote }} \
+  --env-file {{ (pulse_dir ~ '/.env') | quote }} --env-file {{ (pulse_dir ~ '/release.env') | quote }} "$@"

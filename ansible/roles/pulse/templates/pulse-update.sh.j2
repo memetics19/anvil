@@ -1,0 +1,131 @@
+#!/bin/bash
+# Managed by Ansible (role pulse). Keeps Pulse and its docs site current, pulling from GitHub
+# (nothing on GitHub can reach this host). Run by pulse-update.timer and by the role.
+#   app:  the newest vX.Y.Z tag of the repo (or the pinned tag in TRACK), as the image the
+#         release workflow pushed, IMAGE:X.Y.Z. Before the switch Pulse stops and its data
+#         volume is copied to backups/. If the new version is not healthy within
+#         HEALTH_TIMEOUT seconds, the previous image and that copy come back.
+#   docs: the head of DOCS_REF, built with mkdocs into docs/<commit>, then the
+#         docs/current link moves to it in one rename.
+# Usage: pulse-update [--check]   (--check prints what it would do and changes nothing)
+# Settings come from CONF (update.conf, written by the role).
+set -euo pipefail
+
+conf=${PULSE_UPDATE_CONF:-{{ pulse_dir }}/update.conf}
+# shellcheck source=/dev/null
+. "$conf"
+check=false
+[ "${1:-}" = --check ] && check=true
+
+log() { echo "pulse-update: $*"; }
+die() { echo "pulse-update: $*" >&2; exit 1; }
+compose() { "$COMPOSE" "$@"; }
+
+mkdir -p "$DIR/state" "$DIR/backups" "$DIR/docs"
+exec 9>"$DIR/state/lock"
+flock -n 9 || die "another pulse-update is running"
+
+current=$(cat "$DIR/state/version" 2>/dev/null || true)
+docs_current=$(cat "$DIR/state/docs" 2>/dev/null || true)
+
+# --- what to run ---------------------------------------------------------------------------------
+if [ "$TRACK" = latest ]; then
+  want=$(git ls-remote --tags --refs "$REPO" 'v*' | awk '{sub("refs/tags/", "", $2); print $2}' |
+    grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1) || true
+  [ -n "$want" ] || die "no vX.Y.Z tag in $REPO"
+else
+  want=$TRACK
+fi
+docs_want=$(git ls-remote "$REPO" "refs/heads/$DOCS_REF" | cut -f1)
+[ -n "$docs_want" ] || die "no branch $DOCS_REF in $REPO"
+
+if $check; then
+  if [ "$want" = "$current" ]; then log "app: $current, up to date"; else log "app: would deploy $want (running: ${current:-nothing})"; fi
+  if [ "$docs_want" = "$docs_current" ]; then log "docs: ${docs_current:0:7}, up to date"; else log "docs: would build ${docs_want:0:7} (built: ${docs_current:0:7})"; fi
+  exit 0
+fi
+
+healthy() {
+  local i
+  for ((i = 0; i < HEALTH_TIMEOUT; i += 3)); do
+    curl -fsS -m 3 -o /dev/null "$HEALTH_URL" && return 0
+    sleep 3
+  done
+  return 1
+}
+
+volume_copy() { # volume_copy <from> <to>: from and to are /data or /backup/<dir>
+  docker run --rm -v "$DATA_VOLUME:/data" -v "$DIR/backups:/backup" "$BASE_IMAGE" \
+    sh -c "rm -rf '$2' && mkdir -p '$2' && cp -a '$1/.' '$2/'"
+}
+
+image_of() { echo "$IMAGE:${1#v}"; }
+use_image() { printf 'PULSE_IMAGE=%s\n' "$1" >"$DIR/release.env"; }
+
+# --- app -------------------------------------------------------------------------------------------
+deploy() {
+  local tag=$1 stamp backup="" cid prev=""
+  docker pull -q "$(image_of "$tag")" >/dev/null || die "cannot pull $(image_of "$tag")"
+
+  # The running container's image, whatever put it there: the rollback target.
+  cid=$(compose ps -aq pulse 2>/dev/null | head -n 1)
+  [ -z "$cid" ] || prev=$(docker inspect --format '{{ '{{' }}.Config.Image{{ '}}' }}' "$cid")
+  if docker volume inspect "$DATA_VOLUME" >/dev/null 2>&1; then
+    stamp=$(date -u +%Y%m%d-%H%M%S)
+    backup="$stamp-${current:-first}"
+    [ -z "$cid" ] || compose stop pulse
+    volume_copy /data "/backup/$backup" || { [ -z "$cid" ] || compose start pulse; die "data backup failed, nothing changed"; }
+    log "data copied to $DIR/backups/$backup"
+  fi
+  use_image "$(image_of "$tag")"
+  compose up -d pulse caddy
+  if healthy; then
+    echo "$tag" >"$DIR/state/version"
+    log "deployed $tag (was ${current:-${prev:-nothing}})"
+    return 0
+  fi
+
+  log "$tag is not healthy after ${HEALTH_TIMEOUT}s"
+  [ -n "$prev" ] || die "$tag is not healthy and there is no earlier image to go back to"
+  compose stop pulse
+  [ -z "$backup" ] || volume_copy "/backup/$backup" /data
+  use_image "$prev"
+  compose up -d pulse caddy
+  if healthy; then die "rolled back to $prev, data restored from ${backup:-nothing}"; fi
+  die "rolled back to $prev, data restored from ${backup:-nothing}, and it is not healthy either"
+}
+
+drop_old() { # keep the running and the previous image, and the newest KEEP backups
+  local t
+  for t in $(docker image ls --format '{{ '{{' }}.Tag{{ '}}' }}' "$IMAGE"); do
+    case $t in "${want#v}" | "${current#v}" | '<none>') ;; *) docker image rm "$IMAGE:$t" >/dev/null 2>&1 || true ;; esac
+  done
+  # Backup names start with a UTC timestamp, so the glob's name order is time order.
+  local all=("$DIR"/backups/*/) d n
+  n={% raw %}${#all[@]}{% endraw %} # backups, oldest first
+  if [ -d "${all[0]}" ] && [ "$n" -gt "$KEEP" ]; then
+    for d in "${all[@]:0:n-KEEP}"; do rm -r -- "$d"; done
+  fi
+}
+
+if [ "$want" != "$current" ]; then
+  deploy "$want"
+  drop_old
+fi
+
+# --- docs ------------------------------------------------------------------------------------------
+if [ "$docs_want" != "$docs_current" ]; then
+  src="$DIR/docs-src"
+  [ -d "$src/.git" ] || git clone -q --filter=blob:none --no-checkout "$REPO" "$src"
+  git -C "$src" fetch -q origin "$docs_want"
+  git -C "$src" checkout -q --force --detach "$docs_want"
+  out="$DIR/docs/$docs_want"
+  rm -rf "$out.tmp"
+  docker run --rm -v "$src:/workspace:ro" -v "$DIR/docs:/out" "$MKDOCS_IMAGE" \
+    build --quiet -f /workspace/mkdocs.yml -d "/out/$docs_want.tmp" || die "docs build failed for ${docs_want:0:7}"
+  rm -rf "$out" && mv "$out.tmp" "$out"
+  ln -sfn "$docs_want" "$DIR/docs/current.new" && mv -T "$DIR/docs/current.new" "$DIR/docs/current"
+  echo "$docs_want" >"$DIR/state/docs"
+  log "docs built from ${docs_want:0:7} (was ${docs_current:0:7})"
+  find "$DIR/docs" -mindepth 1 -maxdepth 1 -type d ! -name "$docs_want" ! -name "${docs_current:-none}" -exec rm -r -- {} +
+fi

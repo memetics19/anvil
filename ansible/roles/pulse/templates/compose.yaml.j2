@@ -1,0 +1,38 @@
+# Managed by Ansible (role pulse). Project "{{ pulse_project }}": Pulse and Caddy on port 80,
+# which serves the status page and the docs site (built by pulse-update into docs/current).
+# The volume names are the ones the project has always used, so data carries over.
+# Run it through pulse-compose, which adds .env and release.env (PULSE_IMAGE).
+name: {{ pulse_project }}
+
+services:
+  pulse:
+    image: ${PULSE_IMAGE:?release.env sets PULSE_IMAGE, written by pulse-update}
+    environment:
+{% for k, v in pulse_env.items() %}
+      {{ k }}: ${{ '{' }}{{ k }}:-{{ '}' }}
+{% endfor %}
+    # Unprivileged ICMP (ping monitors) without privileged mode.
+    sysctls:
+      - net.ipv4.ping_group_range=0 2147483647
+    volumes:
+      - pulse_data:/data
+    mem_limit: {{ pulse_memory_limit }}
+    restart: unless-stopped
+
+  caddy:
+    image: {{ pulse_caddy_image }}
+    depends_on: [pulse]
+    ports:
+      - "80:80"
+    volumes:
+      - {{ pulse_dir }}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - {{ pulse_dir }}/docs:/srv/docs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: 128m
+    restart: unless-stopped
+
+volumes:
+  pulse_data:
+  caddy_data:
+  caddy_config:

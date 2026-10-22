@@ -1,0 +1,18 @@
+# Managed by Ansible (role pulse). Plain HTTP on port 80: the Cloudflare tunnel terminates
+# TLS. A name that starts with "docs." gets the docs site, any other name the status page.
+{
+	auto_https off
+	admin off
+}
+
+:80 {
+	@docs header_regexp Host ^docs\.
+	handle @docs {
+		root * /srv/docs/current
+		encode gzip
+		file_server
+	}
+	handle {
+		reverse_proxy pulse:8080
+	}
+}

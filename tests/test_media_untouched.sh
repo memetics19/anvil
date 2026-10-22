@@ -42,6 +42,14 @@ exceptions=(
   # netboot payload, both its own fixed paths under /run and /var/tmp/anvil-provision
   'scripts/provision.py|rm -rf "/run/$unit"'
   'scripts/provision.py|rm -rf "/var/tmp/anvil-provision/pxe-$1"'
+  # pulse-update (netbird VM, Pulse's own volume and /opt/pulse only): the data copy into a
+  # fresh backups/<name> and, on a rollback, back into Pulse's data volume; the oldest data
+  # copies beyond KEEP; the docs site's previous builds under /opt/pulse/docs
+  'ansible/roles/pulse/templates/pulse-update.sh.j2|sh -c "rm -rf '"'"'$2'"'"' && mkdir -p '"'"'$2'"'"' && cp -a '"'"'$1/.'"'"' '"'"'$2/'"'"'"'
+  'ansible/roles/pulse/templates/pulse-update.sh.j2|for d in "${all[@]:0:n-KEEP}"; do rm -r -- "$d"; done'
+  'ansible/roles/pulse/templates/pulse-update.sh.j2|rm -rf "$out.tmp"'
+  'ansible/roles/pulse/templates/pulse-update.sh.j2|rm -rf "$out" && mv "$out.tmp" "$out"'
+  'ansible/roles/pulse/templates/pulse-update.sh.j2|find "$DIR/docs" -mindepth 1 -maxdepth 1 -type d ! -name "$docs_want" ! -name "${docs_current:-none}" -exec rm -r -- {} +'
   # install.sh: its mktemp download directory on the machine installing anvil, removed on exit
   'scripts/install.sh|trap '"'"'rm -rf "$tmp"'"'"' EXIT INT TERM'
 )

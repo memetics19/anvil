@@ -67,6 +67,8 @@ jobs:
         run: tests/test_provision.sh
       - name: One-line installer test
         run: tests/test_install.sh
+      - name: Pulse deploy test
+        run: tests/test_pulse.sh
 
   cli:
     runs-on: ubuntu-latest
