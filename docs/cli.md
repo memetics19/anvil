@@ -196,13 +196,14 @@ seconds apart. When one does not answer, anvil stops with a plain message and ru
 nothing. Check that you are on the home or lab network, or on the VPN, then rerun. It
 never prints the address.
 
-## anvil init
+## anvil doctor and anvil init
 
 ```sh
-anvil init
+anvil doctor    # the same as anvil init
 ```
 
-It checks, read-only, that this Mac can run the lab:
+`anvil doctor` and `anvil init` run the same checks. It checks, read-only, that this Mac
+can run the lab:
 
 - the tools at the minimum versions in [setup.md](setup.md#operator-machine), and `hvac`
   in the Python that runs Ansible
@@ -210,6 +211,10 @@ It checks, read-only, that this Mac can run the lab:
 - the Keychain items of service `homelab`. It shows their names and whether each is there.
   It never reads a value.
 - that Vault answers and is unsealed
+- that this binary's version matches the repo checkout. A release binary wants the
+  repo at its tag, a dev build wants the commit it was built from. A mismatch is a
+  warning, with the fix: `anvil update` for the fetched copy, `make cli` or a
+  `git checkout` for your own
 
 Each problem prints its fix. It exits 1 when something is missing.
 

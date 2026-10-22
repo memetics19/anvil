@@ -15,9 +15,13 @@ import (
 	"time"
 )
 
-const initUsage = `usage: anvil init
+const (
+	initUsage   = "usage: anvil init\n       anvil doctor\n" + checksUsage
+	doctorUsage = "usage: anvil doctor\n       anvil init\n" + checksUsage
+)
 
-Checks, read-only, that this Mac can run the lab:
+const checksUsage = `
+Checks, read-only, that this Mac can run the lab. doctor and init are the same:
 
   tools      installed, at the minimum versions in docs/setup.md, and hvac in the
              Python that runs Ansible
@@ -25,12 +29,14 @@ Checks, read-only, that this Mac can run the lab:
   keychain   the items of service homelab (docs/setup.md, Keychain items): only
              their names and whether each is there, never a value
   vault      reachable and unsealed
+  version    this binary's version matches the repo checkout (a warning)
 
 Each problem comes with its fix. Exit 1 when something is missing.
 `
 
 func init() {
 	register(command{"init", "check the tools, the Keychain items and Vault (read-only)", initUsage, cmdInit, 10})
+	register(command{"doctor", "the same checks as init, by its future name", doctorUsage, cmdInit, 10})
 }
 
 type level int
@@ -308,7 +314,39 @@ func (a *app) initFindings(r *runner) []finding {
 	all = append(all, a.fileFindings()...)
 	all = append(all, a.keychainFindings()...)
 	all = append(all, vaultFinding(parseVaultStatus(r.quiet(vaultStatusScript))))
-	return all
+	return append(all, a.versionFinding(r.root))
+}
+
+// versionFinding compares this binary with the repo it runs. A mismatch is a warning: an
+// older binary may not know a newer repo's stages, and the other way round.
+func (a *app) versionFinding(root string) finding {
+	f := finding{group: "version", lv: lvWarn}
+	fix := "git -C " + shellQuote(tildePath(a.getenv, root)) + " checkout " + wantRef()
+	if root == dataRepo(a.getenv) {
+		fix = "anvil update"
+	}
+	head, code := a.git(root, false, "rev-parse", "HEAD")
+	switch {
+	case code != 0:
+		f.text = "the repo is not a git checkout, so its version is unknown"
+		f.fix = ""
+	case isRelease():
+		tags, _ := a.git(root, false, "tag", "--points-at", "HEAD")
+		desc, _ := a.git(root, false, "describe", "--tags", "--always")
+		if contains(strings.Fields(tags), "v"+version) {
+			f.lv, f.text = lvOK, "anvil "+version+" matches the repo (v"+version+")"
+		} else {
+			f.text, f.fix = "anvil is "+version+", the repo is at "+desc, fix
+		}
+	case commit == "":
+		f.lv, f.text = lvOK, "anvil "+version+", a build without a commit, not compared"
+	case strings.HasPrefix(head, commit) || strings.HasPrefix(commit, head):
+		f.lv, f.text = lvOK, "anvil "+version+" was built from the repo's commit"
+	default:
+		f.text = fmt.Sprintf("anvil was built from %.7s, the repo is at %.7s", commit, head)
+		f.fix = "make cli rebuilds it from this checkout"
+	}
+	return f
 }
 
 func printFindings(w io.Writer, p palette, all []finding) {
@@ -328,8 +366,16 @@ func printFindings(w io.Writer, p palette, all []finding) {
 }
 
 func cmdInit(a *app, args []string) int {
-	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	if _, code, ok := a.flags(fs, initUsage, args); !ok {
+	name := "init"
+	if a.cmd != "" {
+		name = a.cmd
+	}
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	usage := initUsage
+	if name == "doctor" {
+		usage = doctorUsage
+	}
+	if _, code, ok := a.flags(fs, usage, args); !ok {
 		return code
 	}
 	r, ok := a.runner(false)
@@ -341,10 +387,10 @@ func cmdInit(a *app, args []string) int {
 	printFindings(a.stdout, p, all)
 	for _, f := range all {
 		if f.lv == lvFail {
-			fmt.Fprintln(a.stdout, p.fail("init: not ready, fix the FAIL lines above"))
+			fmt.Fprintln(a.stdout, p.fail(name+": not ready, fix the FAIL lines above"))
 			return 1
 		}
 	}
-	fmt.Fprintln(a.stdout, p.ok("init: ready"))
+	fmt.Fprintln(a.stdout, p.ok(name+": ready"))
 	return 0
 }

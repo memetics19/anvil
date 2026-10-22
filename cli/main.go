@@ -42,6 +42,8 @@ type app struct {
 	cwd            string
 	// env is the environment for child processes. nil inherits anvil's own.
 	env []string
+	// cmd is the command being run, as typed (init or doctor).
+	cmd string
 	// tty: stdout is a terminal. noColor: --no-color was given. See color.go.
 	tty, noColor bool
 	// preflight and status are anvil up's first and last steps. nil: the real ones.
@@ -126,6 +128,7 @@ func (a *app) run(args []string) int {
 		a.printHelp(a.stderr)
 		return 2
 	}
+	a.cmd = c.name
 	return c.run(a, args[1:])
 }
 
