@@ -48,6 +48,14 @@ is never on a command line and never logged. The script sends one line at a time
 for the prompt after each, stops at the first error and leaves config mode before it
 logs out.
 
+The switch drops typed characters while it is busy, for example right after it creates
+VLANs. So the script types each line one character at a time and presses Enter only when
+the switch has echoed the whole line back. Otherwise it clears the line with Ctrl-U and
+types it again. It can also refuse new SSH sessions for a while. A login that fails is
+tried again, three times, 20 s apart. When a session fails, the run prints the exit
+code's meaning and the session's transcript (the commands and the switch's answers, with
+the address masked). The transcript of the running config is never printed.
+
 1. It reads the state with `show vlan`, `show interfaces protected-ports` and
    `show interfaces switchport <port>` for each listed port.
 2. It works out the commands that are missing and prints them. Nothing else is sent.
@@ -69,9 +77,11 @@ The apply goes in this order:
 2. Send the plan.
 3. Read the state again. The plan must now be empty.
 4. Check for 60 s from the Mac that the Proxmox host, Pi-hole DNS and the internet answer.
-5. Only then `copy running-config startup-config`.
+5. Only then `copy running-config startup-config`. It must print `Copy succeeded`. This
+   firmware asks no (Y/N) question. If another one does, the script answers Y.
 
-A second run prints nothing to change. The host key is pinned in `build/switch/known_hosts`
+A second run prints nothing to change. An apply with nothing to change sends nothing
+and does not save. The host key is pinned in `build/switch/known_hosts`
 on first use. `tests/test_switch.sh` renders the plan from example output and checks that
 it names only the listed ports. It also runs the script against a fake switch.
 
