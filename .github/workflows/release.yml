@@ -17,9 +17,6 @@ on:
         description: The release tag to build, for example v0.1.0
         type: string
         required: true
-    secrets:
-      HOMEBREW_TAP_GITHUB_TOKEN:
-        required: false
 
 permissions:
   contents: read
@@ -57,6 +54,5 @@ jobs:
           version: v2.18.2
           args: release --clean
         env:
+          # Publishes the release and commits the Homebrew formula to Formula/ on main.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Without it (forks), the formula is built but not pushed to the tap.
-          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

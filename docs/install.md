@@ -8,8 +8,12 @@ the repo. A packaged `anvil` comes without the repo, so fetch that once afterwar
 On macOS, and on Linux with Homebrew:
 
 ```sh
-brew install memetics19/tap/anvil
+brew tap memetics19/anvil https://github.com/memetics19/anvil
+brew install anvil
 ```
+
+The tap is this repo. Its `Formula/` directory holds the formula, which each release
+updates. The first command is needed once.
 
 The formula installs the bash, zsh and fish completions too. `brew upgrade anvil` gets a
 new release.
@@ -78,7 +82,7 @@ Versions follow semver and start at 0.1.0. release-please reads the conventional
 on `main` and keeps a release pull request with the next version and `CHANGELOG.md`.
 Merging it tags `vX.Y.Z` and creates the GitHub Release. GoReleaser
 (`.goreleaser.yaml`) then builds the archives, checksums, .deb and .rpm packages, adds
-them to the release and pushes the formula to `memetics19/homebrew-tap`.
+them to the release and commits the formula to `Formula/` in this repo.
 
 Every pull request and push to `main` runs the same build as a snapshot that publishes
 nothing. Run it locally with:

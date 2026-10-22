@@ -47,7 +47,7 @@ Install the tools listed in [docs/setup.md](docs/setup.md#operator-machine), and
 Keychain items and the site dict it describes. Then:
 
 ```sh
-brew install memetics19/tap/anvil    # or the .deb or .rpm from Releases
+brew tap memetics19/anvil https://github.com/memetics19/anvil && brew install anvil   # or the .deb or .rpm from Releases
 anvil fetch   # clones this repo into ~/.local/share/anvil/repo
 anvil doctor  # tools, Keychain items and Vault, read-only, with a fix for each problem
 anvil up      # the whole lab, in the order of the first build
@@ -158,9 +158,9 @@ vault/policies/
   bootstrap file, the Linux secret service, or the macOS Keychain), and the scripts drop
   macOS-only commands (`security`, `networksetup`, `pbcopy`, BSD `sed` and `stat`)
 - [ ] Packages: .deb and .rpm built with nfpm and a Homebrew formula, from GoReleaser on
-  each release, attached to the GitHub Release ([docs/install.md](docs/install.md)). In
-  progress: the tap repo `memetics19/homebrew-tap` and its token are pending. A signed
-  apt repository comes later
+  each release, attached to the GitHub Release, with this repo as the Homebrew tap
+  ([docs/install.md](docs/install.md)). In progress until the first release. A signed apt
+  repository comes later
 - [ ] The rebuild runbook, tested on a second server
 
 ## Known issues
