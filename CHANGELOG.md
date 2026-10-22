@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0](https://github.com/memetics19/anvil/compare/v0.1.0...v0.2.0) (2026-10-22)
+
+
+### Features
+
+* **pulse:** the VM deploys each Pulse release and the docs from main by itself ([59be7b5](https://github.com/memetics19/anvil/commit/59be7b53af20586b3a276163df82d5d5787e24ae))
+* **pulse:** the VM deploys each Pulse release and the docs from main by itself ([d8dba0f](https://github.com/memetics19/anvil/commit/d8dba0fcc47cd5eabfbd544683e24f522191ef89))
+
+
+### Bug Fixes
+
+* **pulse:** install pulse-update from its .sh template ([d57dd71](https://github.com/memetics19/anvil/commit/d57dd71218740eb43c569a24b2e4311bd037ae35))
+
 ## [0.1.0](https://github.com/memetics19/anvil/releases/tag/v0.1.0) (2026-10-22)
 
 The first release. Everything before it is in the git history.
