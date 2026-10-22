@@ -47,15 +47,14 @@ Install the tools listed in [docs/setup.md](docs/setup.md#operator-machine), and
 Keychain items and the site dict it describes. Then:
 
 ```sh
-brew tap memetics19/anvil https://github.com/memetics19/anvil && brew install anvil   # or the .deb or .rpm from Releases
+curl -fsSL https://memetics19.github.io/anvil/install.sh | sh   # installs anvil from the latest release
 anvil fetch   # clones this repo into ~/.local/share/anvil/repo
 anvil doctor  # tools, Keychain items and Vault, read-only, with a fix for each problem
 anvil up      # the whole lab, in the order of the first build
 ```
 
-On Debian or Ubuntu, `sudo apt install ./anvil_<version>_amd64.deb` installs the package
-from [Releases](https://github.com/memetics19/anvil/releases). To build from a checkout,
-`make cli` builds `build/anvil`. [docs/install.md](docs/install.md) has every way.
+Homebrew, a .deb or .rpm from [Releases](https://github.com/memetics19/anvil/releases),
+and `make cli` in a checkout work too. [docs/install.md](docs/install.md) has every way.
 
 `anvil up` runs the steps of [First build](docs/setup.md#first-build) as stages. It checks
 each stage first and applies only what differs, so on a running lab it is a converge. A host that matches the code reports `changed=0`. One service at a time is
@@ -91,8 +90,8 @@ The docs are also published as a site: <https://memetics19.github.io/anvil/>. Bu
 locally with `make docs`. `make docs-publish` also serves it privately on the gateway as
 `https://docs.<gateway-domain>` ([usage](docs/usage.md#publishing-the-docs)).
 
-- [docs/install.md](docs/install.md): installing `anvil` with Homebrew, a .deb or .rpm, or
-  from source, and how releases are cut
+- [docs/install.md](docs/install.md): installing `anvil` with one command, Homebrew, a
+  .deb or .rpm, or from source, and how releases are cut
 - [docs/setup.md](docs/setup.md): the operator Mac, Keychain items, the site dict, the
   first build, rebuilding on a new box, and the hand steps
 - [docs/usage.md](docs/usage.md): make targets, adding a service, secrets, backups, safety

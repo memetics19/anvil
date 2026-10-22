@@ -1,7 +1,36 @@
 # Installing anvil
 
-`anvil` is one binary. Install it with Homebrew, a .deb or .rpm package, or build it from
-the repo. A packaged `anvil` comes without the repo, so fetch that once afterwards.
+`anvil` is one binary. Install it with one command, Homebrew, a .deb or .rpm package, or
+build it from the repo. A packaged `anvil` comes without the repo, so fetch that once
+afterwards.
+
+## One command
+
+On macOS and Linux, amd64 or arm64:
+
+```sh
+curl -fsSL https://memetics19.github.io/anvil/install.sh | sh
+```
+
+The script is [scripts/install.sh](../scripts/install.sh), served with these docs. It
+downloads the archive for your machine from the latest release, checks it against the
+release's `checksums.txt`, and puts `anvil` in `/usr/local/bin`, or in `~/.local/bin` when
+`/usr/local/bin` is not writable. It needs `curl`, `tar` and `sha256sum` or `shasum`.
+
+To pick a version or a place, set these before `sh`:
+
+```sh
+curl -fsSL https://memetics19.github.io/anvil/install.sh | ANVIL_VERSION=v0.1.0 ANVIL_INSTALL_DIR=~/bin sh
+```
+
+Run the same command again to upgrade. To read the script before running it, download it
+first:
+
+```sh
+curl -fsSLO https://memetics19.github.io/anvil/install.sh
+less install.sh
+sh install.sh
+```
 
 ## Homebrew
 
