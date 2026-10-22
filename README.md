@@ -160,7 +160,11 @@ vault/policies/
 - [x] Packages: .deb and .rpm built with nfpm, a Homebrew formula and a one-line
   installer, from GoReleaser on each release, with this repo as the Homebrew tap
   ([docs/install.md](docs/install.md))
-- [ ] A signed apt repository for the .deb
+- [x] A signed apt repository for the .deb, `apt.shreeda.xyz`, published by the homelab
+  from each release ([docs/install.md](docs/install.md#debian-and-ubuntu))
+- [ ] cloudflared pinned to one version in code and upgraded on all three tunnel
+  connectors, one at a time so the tunnel stays up. Today it installs whatever
+  Cloudflare's apt repository has, so the connectors drifted apart (2025.11.1 and 2026.3.0)
 - [ ] The rebuild runbook, tested on a second server
 
 ## Known issues

@@ -1,0 +1,9 @@
+# Managed by Ansible (role apt_repo). Settings for apt-publish.
+REPO_URL={{ ('https://github.com/' ~ apt_repo_github) | quote }}
+RELEASES={{ ('https://github.com/' ~ apt_repo_github ~ '/releases') | quote }}
+PACKAGE={{ apt_repo_package | quote }}
+ARCHES={{ apt_repo_arches | join(' ') | quote }}
+SUITE={{ apt_repo_suite | quote }}
+COMPONENT={{ apt_repo_component | quote }}
+DIR={{ apt_repo_dir | quote }}
+GNUPGHOME={{ (apt_repo_dir ~ '/gnupg') | quote }}

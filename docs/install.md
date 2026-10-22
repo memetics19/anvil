@@ -49,16 +49,30 @@ new release.
 
 ## Debian and Ubuntu
 
-Download the .deb for your machine from the
-[Releases](https://github.com/memetics19/anvil/releases) page, then install it with apt,
-which also installs `git`:
+The apt repository at `apt.shreeda.xyz` has every release for amd64 and arm64, signed. Add
+it once, and `apt upgrade` brings new releases:
+
+```sh
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://apt.shreeda.xyz/anvil.gpg | sudo tee /etc/apt/keyrings/anvil.gpg >/dev/null
+echo "deb [signed-by=/etc/apt/keyrings/anvil.gpg] https://apt.shreeda.xyz stable main" |
+  sudo tee /etc/apt/sources.list.d/anvil.list
+sudo apt update && sudo apt install anvil
+```
+
+The signing key's fingerprint is `E583 2FE9 662C 5F40 21A7 D4A5 2DE3 AD52 8436 9C1D`. Check
+it with `gpg --show-keys /etc/apt/keyrings/anvil.gpg`.
+
+Or download the .deb for your machine from the
+[Releases](https://github.com/memetics19/anvil/releases) page and install it:
 
 ```sh
 sudo apt install ./anvil_<version>_amd64.deb      # or _arm64.deb
 ```
 
-apt also suggests `ansible`, `terraform`, `vault`, `jq` and `age`. The lab needs them.
-Terraform and Vault come from the HashiCorp apt repository.
+Both ways install `git` too. apt also installs the recommended `ansible`, `terraform`,
+`vault`, `jq` and `age` when it can find them, because the lab needs them. Terraform and
+Vault come from the HashiCorp apt repository. Add `--no-install-recommends` to skip them.
 
 ## Fedora and RHEL
 
@@ -67,8 +81,7 @@ sudo dnf install ./anvil-<version>-1.x86_64.rpm   # or .aarch64.rpm
 ```
 
 Both packages put the binary in `/usr/bin/anvil` and the completions where bash, zsh and
-fish look for them. A signed apt repository is planned. Until then, each release lists the
-packages as files.
+fish look for them.
 
 ## Check the download
 

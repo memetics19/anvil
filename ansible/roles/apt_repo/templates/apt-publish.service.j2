@@ -1,0 +1,10 @@
+# Managed by Ansible (role apt_repo).
+[Unit]
+Description=Publish new {{ apt_repo_package }} releases to the apt repository
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/apt-publish
+TimeoutStartSec=15min

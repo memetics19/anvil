@@ -50,6 +50,12 @@ exceptions=(
   'ansible/roles/pulse/templates/pulse-update.sh.j2|rm -rf "$out.tmp"'
   'ansible/roles/pulse/templates/pulse-update.sh.j2|rm -rf "$out" && mv "$out.tmp" "$out"'
   'ansible/roles/pulse/templates/pulse-update.sh.j2|find "$DIR/docs" -mindepth 1 -maxdepth 1 -type d ! -name "$docs_want" ! -name "${docs_current:-none}" -exec rm -r -- {} +'
+  # apt-publish (netbird VM, /opt/apt-repo only): its mktemp fetch directory, removed on
+  # exit, and the repository trees older than the live one and the one before it
+  'ansible/roles/apt_repo/templates/apt-publish.sh.j2|trap '"'"'rm -rf "$work"'"'"' EXIT'
+  'ansible/roles/apt_repo/templates/apt-publish.sh.j2|find "$DIR/site" -mindepth 1 -maxdepth 1 -type d ! -name "$stamp" ! -name "${old:-none}" -exec rm -r -- {} +'
+  # apt-key-init.sh: its throwaway GNUPGHOME on the operator's Mac, removed on exit
+  'scripts/apt-key-init.sh|trap '"'"'gpgconf --kill gpg-agent 2>/dev/null; rm -rf "$GNUPGHOME"'"'"' EXIT'
   # install.sh: its mktemp download directory on the machine installing anvil, removed on exit
   'scripts/install.sh|trap '"'"'rm -rf "$tmp"'"'"' EXIT INT TERM'
 )
