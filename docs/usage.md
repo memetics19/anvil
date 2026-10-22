@@ -317,7 +317,7 @@ recreate.
 | Caddy | `caddy_version`, `caddy_cloudflare_version`, `caddy_xcaddy_version`, `caddy_go_version`, `caddy_builder_image`, `caddy_base_image` | Builds a new image on `ragnarok` and loads it on `apps`. Read the Go note in the defaults before you change Go. |
 | Vault | `vault_server_version` | Restarts and seals Vault. Use `ARGS="-e vault_server_allow_restart=true"`, then `make vault-unseal`. |
 | NetBird client | `netbird_peer_version` | The package is held. Bumping this is the upgrade, and it restarts the client. |
-| Pulse | `pulse_version` (a commit) | Rebuilds the image on `netbird`. |
+| Pulse | Nothing: `pulse-update` deploys each new release by itself. `pulse_track` pins one | A failed release is rolled back. Images for its Caddy, mkdocs and data copies are `pulse_*_image`. |
 | Self-hosted NetBird | `netbird_server_image`, `netbird_server_dashboard_image`, `netbird_server_caddy_image` | Pinned as `tag@sha256:digest`. Read NetBird's release notes first. `make vm HOST=netbird ARGS="--tags netbird_server"` |
 | IPTV tools | `iptv_streamlink_version`, `iptv_mpegts_version`, `iptv_threadfin_db_version` | `make vm HOST=ragnarok ARGS="--tags iptv"` |
 | node_exporter | `node_exporter_version` | |
