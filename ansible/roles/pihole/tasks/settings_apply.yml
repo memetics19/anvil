@@ -1,0 +1,37 @@
+# FTL settings (pihole_ftl_live) applied to the running Pi-hole, live, like the local records
+# (records_apply.yml): `pihole-FTL --config <key>` reads a value, `--config <key> <value>`
+# writes pihole.toml and FTL picks it up without a restart. Written only when it differs,
+# then read back.
+- name: FTL settings now
+  ansible.builtin.command:
+    argv: [docker, exec, pihole, pihole-FTL, --config, "{{ item }}"]
+  loop: "{{ pihole_ftl_live | list }}"
+  register: pihole_ftl_have
+  changed_when: false
+  check_mode: false
+
+- name: FTL settings that differ
+  ansible.builtin.set_fact:
+    pihole_ftl_todo: >-
+      {%- set have = dict(pihole_ftl_have.results | map(attribute='item')
+                          | zip(pihole_ftl_have.results | map(attribute='stdout') | map('trim'))) -%}
+      {%- set out = {} -%}
+      {%- for k in pihole_ftl_live if have[k] != (pihole_ftl_live[k] | string) -%}
+      {%- set _ = out.update({k: pihole_ftl_live[k] | string}) -%}
+      {%- endfor -%}
+      {{ out }}
+
+- name: Write them (live, no restart)
+  ansible.builtin.command:
+    argv: [docker, exec, pihole, pihole-FTL, --config, "{{ item.key }}", "{{ item.value }}"]
+  loop: "{{ pihole_ftl_todo | dict2items }}"
+  changed_when: true
+
+- name: Read them back
+  ansible.builtin.command:
+    argv: [docker, exec, pihole, pihole-FTL, --config, "{{ item.key }}"]
+  loop: "{{ pihole_ftl_todo | dict2items }}"
+  register: pihole_ftl_after
+  changed_when: false
+  failed_when: pihole_ftl_after.stdout | trim != item.value
+  when: not ansible_check_mode
