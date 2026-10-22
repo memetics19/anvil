@@ -17,8 +17,18 @@ site:
     idrac_ip: 192.0.2.123
   # Devices on the home network that are not hosts. switch_ip: the managed switch's web UI
   # (gateway name switch). Reserve it for the switch's MAC in the router's DHCP.
+  # switch: the desired state of the switch's ports (make switch, role network_switch).
+  # ports: {<port>: [roles]}, roles trunk (native VLAN 1 untagged, the vlans of
+  # group_vars/proxmox.yml tagged) and protected (no traffic to another protected port).
+  # Ports not listed are never touched. keep_ports: ports the plan must never name and that
+  # must not be protected, such as the router uplink and the access point.
   network:
     switch_ip: 198.51.100.24
+    switch:
+      ports:
+        gi10: [trunk, protected]
+        gi11: [protected]
+      keep_ports: [gi1, gi2]
   hosts:
     frigate: {ip: 192.0.2.114, vmid: 9001, mac: "02:00:00:00:00:01"}
     netbird: {ip: 192.0.2.115, vmid: 9002, mac: "02:00:00:00:00:02"}
