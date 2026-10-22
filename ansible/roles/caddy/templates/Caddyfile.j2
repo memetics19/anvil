@@ -47,6 +47,12 @@
 			# HTTP, come back to this name over HTTPS with the same path.
 			header_down Location "^https?://({{ s.addr | regex_replace('[.]', '[.]') }}|{{ s.fqdn | regex_replace('[.]', '[.]') }})(:[0-9]+)?(/.*)?$" "https://{{ s.fqdn }}$3"
 {% endif %}
+{% if s.strip_cookies | default(false) | bool %}
+			# Some old embedded web servers echo the request's Cookie header back into the
+			# response without a line break, which breaks the reply. Browsers hold cookies
+			# for other names under the domain (analytics, for example), so none are sent on.
+			header_up -Cookie
+{% endif %}
 {% if s.stream | default(false) | bool %}
 			flush_interval -1
 {% endif %}

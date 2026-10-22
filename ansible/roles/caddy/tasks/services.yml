@@ -57,6 +57,7 @@
       - caddy_routes | map(attribute='host_header', default='original') | reject('in', ['original', 'upstream']) | list | length == 0
       - caddy_routes | map(attribute='home', default='/') | reject('match', '^/[A-Za-z0-9/_.-]*$') | list | length == 0
       - caddy_routes | selectattr('rewrite_location', 'defined') | map(attribute='rewrite_location') | reject('boolean') | list | length == 0
+      - caddy_routes | selectattr('strip_cookies', 'defined') | map(attribute='strip_cookies') | reject('boolean') | list | length == 0
       # A static site is a known key of caddy_static_sites and has no upstream fields.
       - caddy_static | map(attribute='static') | map('string') | reject('in', caddy_static_sites) | list | length == 0
       - >-
@@ -65,7 +66,7 @@
       - >-
         caddy_static | map('dict2items') | flatten | map(attribute='key')
         | select('in', ['port', 'scheme', 'insecure_upstream', 'upstream_ca', 'host_header', 'stream', 'websocket',
-                       'rewrite_location'])
+                       'rewrite_location', 'strip_cookies'])
         | list | length == 0
       # Admin-only routes need operator addresses (a.b.c.d or a.b.c.d/n).
       - >-
@@ -92,7 +93,7 @@
       dotted path to an IPv4 address in the site dict), `container` or `static` (one of
       {{ caddy_static_sites | list }}, with no port, scheme or other upstream field). host and
       container entries need a `port` and a `scheme` (http|https); insecure_upstream / upstream_ca (one of {{ caddy_upstream_cas | list }})
-      only with https and not both; host_header original|upstream; home a path; rewrite_location true|false;
+      only with https and not both; host_header original|upstream; home a path; rewrite_location and strip_cookies true|false;
       site.gateway.subdomain a lower-case label; admin-only routes ({{ caddy_admin_only_routes }})
       and infra routes ({{ caddy_infra_routes }}) need operator addresses, each a single
       a.b.c.d/32 (site.admin_sources / admin_vpn_sources), never one of the Proxmox host's

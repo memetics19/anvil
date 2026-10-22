@@ -110,7 +110,7 @@ run '[
   {name: dns, container: pihole, port: 80, scheme: http, home: /admin/},
   {name: home, container: homepage, port: 3000, scheme: http},
   {name: docs, static: docs},
-  {name: switch, host: network.switch_ip, port: 80, scheme: http, rewrite_location: true},
+  {name: switch, host: network.switch_ip, port: 80, scheme: http, rewrite_location: true, strip_cookies: true},
   {name: pass, container: vaultwarden, port: 80, scheme: http, enabled: false}]'
 if [ "$?" -eq 0 ] && [ -s "$tmp/Caddyfile" ]; then ok "good services render"
 else bad_ "good services render"; tail -20 "$tmp/log"; exit 1; fi
@@ -135,6 +135,8 @@ block switch | grep -qF 'reverse_proxy http://198.51.100.24:80 {' && ok "switch:
 loc='header_down Location "^https?://(198[.]51[.]100[.]24|switch[.]internal[.]example[.]com)(:[0-9]+)?(/.*)?$" "https://switch.internal.example.com$3"'
 block switch | grep -qF -- "$loc" && ok "switch: Location rewritten to the name over HTTPS" || bad_ "switch: Location rewrite"
 block pve | grep -q 'header_down' && bad_ "pve: Location left alone" || ok "pve: Location left alone"
+block switch | grep -qF -- "header_up -Cookie" && ok "switch: cookies not sent on" || bad_ "switch: strip_cookies"
+block pve | grep -qF -- "header_up -Cookie" && bad_ "pve: cookies kept" || ok "pve: cookies kept"
 # The same pattern applied to sample headers (Python re; Go's regexp agrees on this one).
 got=$(block switch | grep -F 'header_down Location' | python3 -c '
 import re, shlex, sys
@@ -239,6 +241,7 @@ reject "static with a scheme"   '[{name: a, static: docs, scheme: http}]'
 reject "static with a CA"       '[{name: a, static: docs, upstream_ca: vault}]'
 reject "static with rewrite_location" '[{name: a, static: docs, rewrite_location: true}]'
 reject "rewrite_location a word" '[{name: a, host: pve.ip, port: 1, scheme: http, rewrite_location: maybe}]'
+reject "strip_cookies a word" '[{name: a, host: pve.ip, port: 1, scheme: http, strip_cookies: maybe}]'
 reject "rewrite_location a number" '[{name: a, host: pve.ip, port: 1, scheme: http, rewrite_location: 1}]'
 
 # Admin-only routes: the 403 comes first, inside a route block (kept in written order).
