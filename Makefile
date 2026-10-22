@@ -6,7 +6,7 @@ HVAC_CHECK := py=$$(ansible-playbook --version | sed -n 's/^  python version = .
 	"$${py:-python3}" -c 'import hvac' 2>/dev/null || { \
 	  echo "hvac is missing in the Python that runs Ansible; fix: \"$$py\" -m pip install hvac" >&2; exit 1; }
 
-.PHONY: lint secrets-scan bootstrap-ssh host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply docs docs-publish
+.PHONY: lint secrets-scan bootstrap-ssh host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply provision-iso provision-clean docs docs-publish
 
 lint:
 	@set -eu -o pipefail; \
@@ -148,6 +148,16 @@ tf-apply:
 	applyable=$$(terraform -chdir=terraform show -json homelab.tfplan | jq -r '.applyable'); \
 	[ "$$applyable" = true ] || { echo "tf-apply: the saved plan has nothing to apply"; exit 0; }; \
 	terraform -chdir=terraform apply -input=false homelab.tfplan
+
+# Bare-metal provisioning (docs/provisioning.md). The ISO holds the root password hash:
+# build/provision/<name>.iso, mode 600, deleted by make provision after the install.
+provision-iso:
+	@set -eu -o pipefail; [ -n "$(NAME)" ] || { echo "usage: make provision-iso NAME=<name>" >&2; exit 1; }; \
+	$(ENV); scripts/provision-iso.sh "$(NAME)"
+
+provision-clean:
+	@[ -n "$(NAME)" ] || { echo "usage: make provision-clean NAME=<name>" >&2; exit 1; }; \
+	rm -f "build/provision/$(NAME).iso"; echo "removed build/provision/$(NAME).iso"
 
 # Build the docs site into build/site (pip install -r docs/requirements.txt first).
 docs:
