@@ -73,6 +73,18 @@ cat >"$tmp/play.yml" <<PLAY
         iptv_threadfin_port: 34400
         iptv_streams_port: 34401
         pve_network_trunk_vids: []
+        pve_network_netbird_return_route: true
+    - name: The Proxmox host's interfaces without the return route switch
+      ansible.builtin.template:
+        src: $PWD/ansible/roles/pve_network/templates/interfaces.j2
+        dest: "$tmp/interfaces.off"
+        mode: "0600"
+      vars:
+        iptv_host: frigate
+        iptv_threadfin_port: 34400
+        iptv_streams_port: 34401
+        pve_network_trunk_vids: []
+        pve_network_netbird_return_route: false
     - name: Desired state as JSON
       ansible.builtin.copy:
         content: "{{ netbird_server_desired | to_json }}"
@@ -140,6 +152,7 @@ has "home: memory cap" "MemoryMax=256M" "$u"
 i=$tmp/interfaces
 has "pve: the network range routed to the netbird VM" "$(printf '\tpost-up ip route replace 100.64.0.0/16 via 192.0.2.115 dev vmbr0')" "$i"
 has "pve: and removed on down" "$(printf '\tpost-down ip route del 100.64.0.0/16 via 192.0.2.115 dev vmbr0 2>/dev/null || true')" "$i"
+hasnt "pve: no return route while the switch is off" "ip route replace" "$tmp/interfaces.off"
 
 # --- desired state --------------------------------------------------------------------------------
 j=$tmp/desired.json

@@ -408,8 +408,9 @@ public tunnel names as unsupported, so if `netbird-home` does not connect, see
 
 **2. The Proxmox host's return route.** The `home-gateway` route keeps the peer's own
 address (masquerade off). `apps` answers such a peer through the Proxmox host, which needs a
-route for `site.netbird_server.network_range` to the `netbird` VM. Dry run, then apply it
-on its own, never with a `netbird` VM change:
+route for `site.netbird_server.network_range` to the `netbird` VM. It is off until
+`pve_network_netbird_return_route: true` is set in `inventory/group_vars/proxmox.yml`. Then
+dry run and apply it on its own, never with a `netbird` VM change:
 `make host-network ARGS="--check --diff"`, then `make host-network`.
 
 **3. Your devices, with two NetBird profiles.** `home` is the self-hosted network (day to

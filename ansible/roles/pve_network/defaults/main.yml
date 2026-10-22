@@ -17,7 +17,9 @@ pve_network_rollback_target: ""
 # network's peer addresses to the netbird VM (its routing peer netbird-home). Hosts that
 # answer such a peer through their default gateway, this host, then reach it. That is the
 # return path of the home-gateway route, which keeps the peer's own address (masquerade
-# off) so the service gateway's allowlist sees it.
+# off) so the service gateway's allowlist sees it. Off until pve_network_netbird_return_route
+# is true (a host network change of its own, approved separately).
+pve_network_netbird_return_route: false
 
 # VLAN IDs the uplink port (eno1) carries tagged, for the switch trunk (inventory
 # group_vars/proxmox.yml `vlans`, docs/cisco-switch.md). The lab and home networks stay
