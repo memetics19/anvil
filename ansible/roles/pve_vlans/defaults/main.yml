@@ -1,0 +1,47 @@
+# The VLANs on the Proxmox host (make vlans, playbooks/vlans.yml): the vnets of the SDN VLAN
+# zone (terraform/sdn.tf) become routed networks. The VLAN list, the firewall data and
+# cameras_internet live in inventory group_vars/proxmox.yml, because the one firewall table
+# (role pve_segments, run through pve_enclave by make enclave and make vlans) holds every
+# segment. This role does the rest:
+#   - gateways (tag gateways): the host's address on each vnet bridge, written to
+#     /etc/network/interfaces.d/vlans (ifupdown2 merges it into SDN's stanza of the same
+#     name) and applied under the timed rollback of pve_network (net-rollback.sh);
+#   - dhcp (tag dhcp): one dnsmasq per VLAN, DHCP only (no DNS), bound to that vnet alone;
+#     router and NTP = the gateway, DNS = Pi-hole;
+#   - ntp (tag ntp): one chronyd per VLAN that serves the host clock (kept by the host's
+#     own chrony) on that gateway address alone.
+# Nothing here touches vmbr0, the lab, the home network or the enclave. The home router
+# stays the home network's only DHCP server: no dnsmasq listens anywhere but a VLAN vnet.
+
+# Which VLANs get a gateway, DHCP and NTP. All by default. Narrow it to bring them up one
+# at a time: make vlans ARGS="-e '{\"pve_vlans_enabled\": [\"servers\"]}'". The others lose
+# theirs.
+pve_vlans_enabled: "{{ vlans | map(attribute='name') | list }}"
+
+# --- gateways (timed rollback, like pve_network) ----------------------------------------------
+pve_vlans_interfaces_file: /etc/network/interfaces.d/vlans
+pve_vlans_rollback_after: 120
+# Empty: the Ansible controller as the host sees it over SSH (SSH_CLIENT). No fallback.
+pve_vlans_rollback_target: ""
+pve_vlans_backup_dir: /var/backups/pve-network
+# Installed by pve_network (make host-network).
+pve_vlans_net_rollback_script: /usr/local/sbin/net-rollback.sh
+
+# --- DHCP -------------------------------------------------------------------------------------
+# Ranges: site.sdn.subnets.<name>.dhcp_range {start, end}, inside the subnet. The gateway
+# and the rest of the subnet outside the range are for static addresses.
+pve_vlans_dhcp_dir: /etc/vlan-dhcp
+pve_vlans_lease_dir: /var/lib/vlan-dhcp
+pve_vlans_lease_time: 12h
+# The resolver handed out: Pi-hole's lab address.
+pve_vlans_dns: "{{ vlan_pihole | first }}"
+
+# --- NTP --------------------------------------------------------------------------------------
+# chrony allows one bind address per instance, and the host's chronyd is bound to the
+# enclave's gateway (role pve_enclave). So each VLAN gets its own small instance: -x (it
+# never sets the clock, the host's chronyd does), `local stratum 10` (it serves the host
+# clock), IPv4 only, no command socket. It runs as /usr/local/sbin/chronyd-vlan, a link to chronyd:
+# AppArmor still confines it (the profile follows the link), and the process has its own
+# name, so the enclave's check of the host's chronyd sees only that one.
+pve_vlans_ntp_dir: /etc/chrony/vlan
+pve_vlans_ntp_bin: /usr/local/sbin/chronyd-vlan

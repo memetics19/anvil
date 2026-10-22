@@ -6,7 +6,7 @@ HVAC_CHECK := py=$$(ansible-playbook --version | sed -n 's/^  python version = .
 	"$${py:-python3}" -c 'import hvac' 2>/dev/null || { \
 	  echo "hvac is missing in the Python that runs Ansible; fix: \"$$py\" -m pip install hvac" >&2; exit 1; }
 
-.PHONY: lint secrets-scan bootstrap-ssh host host-network enclave ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply docs docs-publish
+.PHONY: lint secrets-scan bootstrap-ssh host host-network enclave vlans ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply docs docs-publish
 
 lint:
 	@set -eu -o pipefail; \
@@ -45,6 +45,15 @@ host-network:
 enclave:
 	@set -eu -o pipefail; $(ENV); $(HVAC_CHECK); \
 	cd ansible && ansible-playbook playbooks/enclave.yml $(ARGS)
+
+# VLANs 10/20/30 on the Proxmox host: first the routed segments firewall (one table for the
+# enclave and the VLANs, playbooks/enclave.yml --tags firewall), then the gateway addresses
+# on the vnets (timed rollback), DHCP and NTP per VLAN (playbooks/vlans.yml).
+# Dry-run first: make vlans ARGS="--check --diff".
+vlans:
+	@set -eu -o pipefail; $(ENV); $(HVAC_CHECK); \
+	cd ansible && ansible-playbook playbooks/enclave.yml --tags firewall $(ARGS) && \
+	ansible-playbook playbooks/vlans.yml $(ARGS)
 
 # Single-node Ceph + S3 gateway. The first real run wipes the OSD disk: dry-run first.
 ceph:

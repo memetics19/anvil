@@ -1,0 +1,231 @@
+# The host's address on each VLAN vnet (interfaces.d/vlans). A change goes through the timed
+# rollback of pve_network, as the enclave's SDN apply does: back up the file, arm
+# net-rollback.sh on it, write, ifreload, confirm, disarm.
+- name: The vnets exist (SDN, Terraform sdn.tf)
+  ansible.builtin.command:
+    argv: [ip, -br, link, show, dev, "{{ item }}"]
+  loop: "{{ pve_vlans_enabled }}"
+  changed_when: false
+  check_mode: false
+
+- name: Stage and compare
+  block:
+    - name: Staging directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: vlans-net.
+      register: pve_vlans_stage
+      changed_when: false
+      check_mode: false
+
+    - name: Render the file into the staging directory
+      ansible.builtin.template:
+        src: vlans.interfaces.j2
+        dest: "{{ pve_vlans_stage.path }}/vlans"
+        owner: root
+        group: root
+        mode: "0644"
+      changed_when: false
+      check_mode: false
+      diff: false
+
+    - name: Staged file
+      ansible.builtin.stat:
+        path: "{{ pve_vlans_stage.path }}/vlans"
+      register: pve_vlans_new
+
+    - name: Live file
+      ansible.builtin.stat:
+        path: "{{ pve_vlans_interfaces_file }}"
+      register: pve_vlans_live
+
+    - name: Note whether the gateways would change
+      ansible.builtin.set_fact:
+        pve_vlans_net_pending: >-
+          {{ not pve_vlans_live.stat.exists
+             or pve_vlans_live.stat.checksum != pve_vlans_new.stat.checksum }}
+
+    - name: Gateway change (addresses masked)
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          diff -u {{ (pve_vlans_interfaces_file if pve_vlans_live.stat.exists else '/dev/null') | quote }}
+          {{ (pve_vlans_stage.path ~ '/vlans') | quote }}
+          | sed -E 's/[0-9]+(\.[0-9]+){3}(\/[0-9]+)?/<addr>/g' || true
+        executable: /bin/bash
+      register: pve_vlans_diff
+      changed_when: false
+      check_mode: false
+      when: pve_vlans_net_pending | bool
+
+    - name: Show the change
+      ansible.builtin.debug:
+        msg: "{{ pve_vlans_diff.stdout_lines }}"
+      changed_when: ansible_check_mode
+      when: pve_vlans_net_pending | bool
+
+    - name: Apply with timed rollback
+      when: pve_vlans_net_pending | bool and not ansible_check_mode
+      block:
+        - name: The rollback script is there (pve_network, make host-network)
+          ansible.builtin.stat:
+            path: "{{ pve_vlans_net_rollback_script }}"
+          register: pve_vlans_rb_script
+          failed_when: not pve_vlans_rb_script.stat.exists
+
+        - name: Backup directory
+          ansible.builtin.file:
+            path: "{{ pve_vlans_backup_dir }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0700"
+
+        - name: Back up the file (empty when there is none)
+          ansible.builtin.shell:
+            cmd: >-
+              umask 077; f={{ (pve_vlans_backup_dir ~ '/vlans.' ~ ansible_date_time.epoch) | quote }};
+              if [ -f {{ pve_vlans_interfaces_file | quote }} ]; then cp {{ pve_vlans_interfaces_file | quote }} "$f"; else : >"$f"; fi;
+              echo "$f"
+          register: pve_vlans_backup
+          changed_when: true
+
+        - name: Stop a leftover rollback timer
+          ansible.builtin.systemd_service:
+            name: net-rollback.timer
+            state: stopped
+          failed_when: false
+
+        - name: Clear a stale rollback unit
+          ansible.builtin.command: systemctl reset-failed net-rollback.service net-rollback.timer
+          changed_when: false
+          failed_when: false
+
+        - name: Arm the timed rollback
+          ansible.builtin.command:
+            argv:
+              - systemd-run
+              - --unit=net-rollback
+              - --on-active={{ pve_vlans_rollback_after }}
+              - "{{ pve_vlans_net_rollback_script }}"
+              - "{{ pve_vlans_backup.stdout | trim }}"
+              - --wait
+              - "0"
+              - --target
+              - "{{ pve_vlans_target }}"
+              - --interfaces-file
+              - "{{ pve_vlans_interfaces_file }}"
+          changed_when: true
+          no_log: true  # the command line holds the controller address
+
+        - name: Write, reload, confirm
+          block:
+            - name: Install the file
+              ansible.builtin.copy:
+                src: "{{ pve_vlans_stage.path }}/vlans"
+                dest: "{{ pve_vlans_interfaces_file }}"
+                remote_src: true
+                owner: root
+                group: root
+                mode: "0644"
+              diff: false
+
+            - name: Reload the network (ifupdown2 applies only what changed)
+              ansible.builtin.command: ifreload -a
+              changed_when: true
+              async: 60
+              poll: 0
+              register: pve_vlans_reload
+
+            - name: Wait for the host to answer again
+              ansible.builtin.wait_for_connection:
+                delay: 5
+                timeout: 60
+
+            - name: Wait for ifreload to finish successfully
+              ansible.builtin.async_status:
+                jid: "{{ pve_vlans_reload.ansible_job_id }}"
+              register: pve_vlans_reload_job
+              until: pve_vlans_reload_job.finished
+              retries: 10
+              delay: 3
+
+            - name: Each enabled vnet holds its gateway address
+              ansible.builtin.command:
+                argv: [ip, -4, -o, addr, show, dev, "{{ item }}"]
+              loop: "{{ pve_vlans_enabled }}"
+              register: pve_vlans_addr
+              changed_when: false
+              retries: 10
+              delay: 3
+              until: >-
+                (' ' ~ site.sdn.subnets[item].gateway ~ '/' ~ site.sdn.subnets[item].cidr.split('/')[1] ~ ' ')
+                in pve_vlans_addr.stdout
+              no_log: true
+
+            - name: Confirm the host still answers
+              ansible.builtin.wait_for_connection:
+                delay: 0
+                timeout: 20
+
+            - name: Disarm the rollback
+              ansible.builtin.systemd_service:
+                name: net-rollback.timer
+                state: stopped
+          rescue:
+            - name: Restore the file
+              ansible.builtin.copy:
+                src: "{{ pve_vlans_backup.stdout | trim }}"
+                dest: "{{ pve_vlans_interfaces_file }}"
+                remote_src: true
+                owner: root
+                group: root
+                mode: "0644"
+
+            - name: Reload the restored network configuration
+              ansible.builtin.command: ifreload -a
+              changed_when: true
+
+            - name: Stop the rollback timer
+              ansible.builtin.systemd_service:
+                name: net-rollback.timer
+                state: stopped
+              failed_when: false
+
+            - name: Fail after rolling back
+              ansible.builtin.fail:
+                msg: The VLAN gateway change failed and the previous interfaces.d/vlans was restored
+  always:
+    - name: Remove the staging directory
+      ansible.builtin.file:
+        path: "{{ pve_vlans_stage.path }}"
+        state: absent
+      changed_when: false
+      check_mode: false
+      when: pve_vlans_stage.path is defined
+
+# Every run: each enabled vnet holds its gateway address, the others hold none.
+- name: Vnet addresses now
+  ansible.builtin.command:
+    argv: [ip, -4, -o, addr, show, dev, "{{ item.name }}"]
+  loop: "{{ vlans }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: pve_vlans_addr_now
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when: not (ansible_check_mode and pve_vlans_net_pending | bool)
+
+- name: Each enabled vnet holds exactly its gateway address
+  ansible.builtin.assert:
+    that: >-
+      (item.stdout_lines | length == 1
+       and (' ' ~ site.sdn.subnets[item.item.name].gateway ~ '/' ~ site.sdn.subnets[item.item.name].cidr.split('/')[1] ~ ' ') in item.stdout)
+      if item.item.name in pve_vlans_enabled else item.stdout_lines | length == 0
+    fail_msg: "vnet {{ item.item.name }} does not hold exactly its gateway address (or holds one while not enabled)"
+    quiet: true
+  loop: "{{ pve_vlans_addr_now.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when: not (ansible_check_mode and pve_vlans_net_pending | bool)

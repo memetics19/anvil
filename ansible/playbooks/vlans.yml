@@ -1,0 +1,13 @@
+# The VLANs on the Proxmox host (role pve_vlans): the gateway addresses on the vnets (timed
+# rollback), DHCP and NTP per VLAN. make vlans runs the routed segments firewall first
+# (playbooks/enclave.yml --tags firewall: one table for the enclave and the VLANs).
+# Dry-run first: make vlans ARGS="--check --diff". Never in the same run as a netbird VM change.
+- name: VLANs (Proxmox host)
+  hosts: proxmox
+  force_handlers: true
+  pre_tasks:
+    - name: Resolve the site dict once for this run
+      ansible.builtin.import_tasks: tasks/site.yml
+      tags: [always]
+  roles:
+    - pve_vlans

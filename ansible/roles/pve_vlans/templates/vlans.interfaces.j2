@@ -1,0 +1,8 @@
+# Managed by Ansible (role pve_vlans, make vlans): the Proxmox host's gateway address on
+# each VLAN vnet. The vnets themselves are SDN's (interfaces.d/sdn, VLAN zone vlanzone);
+# ifupdown2 merges these stanzas into them. Changed only under the timed rollback.
+{% for v in vlans if v.name in pve_vlans_enabled %}
+
+iface {{ v.name }}
+	address {{ site.sdn.subnets[v.name].gateway }}/{{ site.sdn.subnets[v.name].cidr.split('/')[1] }}
+{% endfor %}

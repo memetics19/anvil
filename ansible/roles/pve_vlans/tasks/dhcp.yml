@@ -1,0 +1,98 @@
+# One dnsmasq per VLAN (vlan-dhcp@<vnet>): DHCP only, on that vnet only. dnsmasq-base has the
+# binary and no service of its own, so nothing else ever listens.
+- name: Dnsmasq without its own service
+  ansible.builtin.apt:
+    name: dnsmasq-base
+    state: present
+
+- name: The full dnsmasq package (a DNS service on every interface) is not installed
+  ansible.builtin.command:
+    argv: [dpkg-query, -W, "-f=${db:Status-Abbrev}", dnsmasq]
+  register: pve_vlans_dnsmasq_pkg
+  changed_when: false
+  check_mode: false
+  failed_when: pve_vlans_dnsmasq_pkg.stdout is match('ii')
+
+- name: Config and lease directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ pve_vlans_dhcp_dir }}"
+    - "{{ pve_vlans_lease_dir }}"
+
+- name: The DHCP unit
+  ansible.builtin.template:
+    src: vlan-dhcp@.service.j2
+    dest: /etc/systemd/system/vlan-dhcp@.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: pve_vlans_dhcp_unit
+  notify: Reload systemd
+
+- name: Apply a pending systemd reload
+  ansible.builtin.meta: flush_handlers
+
+- name: Config per enabled VLAN
+  ansible.builtin.template:
+    src: vlan-dhcp.conf.j2
+    dest: "{{ pve_vlans_dhcp_dir }}/{{ item }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ pve_vlans_enabled }}"
+  register: pve_vlans_dhcp_conf
+
+- name: DHCP runs on each enabled VLAN (restarted when its config changed)
+  ansible.builtin.systemd_service:
+    name: "vlan-dhcp@{{ item.item }}.service"
+    enabled: true
+    state: "{{ 'restarted' if (item is changed or pve_vlans_dhcp_unit is changed) else 'started' }}"
+  loop: "{{ pve_vlans_dhcp_conf.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: not ansible_check_mode or item is not changed
+
+- name: No DHCP on a VLAN that is not enabled
+  ansible.builtin.systemd_service:
+    name: "vlan-dhcp@{{ item }}.service"
+    enabled: false
+    state: stopped
+  loop: "{{ vlans | map(attribute='name') | reject('in', pve_vlans_enabled) | list }}"
+  failed_when: false
+
+- name: No config for a VLAN that is not enabled
+  ansible.builtin.file:
+    path: "{{ pve_vlans_dhcp_dir }}/{{ item }}.conf"
+    state: absent
+  loop: "{{ vlans | map(attribute='name') | reject('in', pve_vlans_enabled) | list }}"
+
+# Read back: every dnsmasq socket is DHCP on an enabled vnet (0.0.0.0%<vnet>:67), one each,
+# and there is no other (no DNS, nothing on vmbr0 or the home network).
+- name: Dnsmasq's sockets
+  ansible.builtin.shell:
+    cmd: set -o pipefail; ss -Hlnup | grep -F '"dnsmasq"' | awk '{print $4}' | sort
+    executable: /bin/bash
+  register: pve_vlans_dnsmasq_listen
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  until: pve_vlans_dnsmasq_listen.stdout_lines | length == pve_vlans_enabled | length
+  retries: 5
+  delay: 2
+  when: not ansible_check_mode
+
+- name: Dnsmasq listens for DHCP on the enabled vnets only
+  ansible.builtin.assert:
+    that: >-
+      pve_vlans_dnsmasq_listen.stdout_lines
+      == (pve_vlans_enabled | map('regex_replace', '^', '0.0.0.0%') | map('regex_replace', '$', ':67') | sort | list)
+    fail_msg: >-
+      dnsmasq listens elsewhere than DHCP on the enabled vnets:
+      {{ pve_vlans_dnsmasq_listen.stdout_lines | map('regex_replace', '[0-9]+([.][0-9]+){3}', '<addr>') | list }}
+    quiet: true
+  when: not ansible_check_mode

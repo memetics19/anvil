@@ -1,0 +1,15 @@
+# Managed by Ansible (role pve_vlans): NTP for one VLAN, a chronyd that only serves the host
+# clock on that VLAN's gateway (see the config). Not tied to pve-guests in any way.
+[Unit]
+Description=NTP for VLAN %i (chronyd serving the host clock on its gateway only)
+After=chrony.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart={{ pve_vlans_ntp_bin }} -4 -d -x -F 1 -f {{ pve_vlans_ntp_dir }}/%i.conf
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

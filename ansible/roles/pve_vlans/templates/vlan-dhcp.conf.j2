@@ -1,0 +1,15 @@
+{% set n = site.sdn.subnets[item] %}
+# Managed by Ansible (role pve_vlans): DHCP for VLAN {{ item }} only. No DNS (port=0).
+# Bound to this one interface (SO_BINDTODEVICE): it never sees the lab or home network.
+port=0
+interface={{ item }}
+bind-interfaces
+no-resolv
+no-hosts
+dhcp-authoritative
+dhcp-range={{ n.dhcp_range.start }},{{ n.dhcp_range.end }},{{ pve_vlans_lease_time }}
+dhcp-option=option:router,{{ n.gateway }}
+dhcp-option=option:dns-server,{{ pve_vlans_dns }}
+dhcp-option=option:ntp-server,{{ n.gateway }}
+dhcp-leasefile={{ pve_vlans_lease_dir }}/{{ item }}.leases
+pid-file=/run/vlan-dhcp-{{ item }}.pid

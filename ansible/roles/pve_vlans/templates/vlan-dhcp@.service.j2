@@ -1,0 +1,16 @@
+# Managed by Ansible (role pve_vlans): DHCP for one VLAN (dnsmasq, DHCP only, bound to the
+# vnet named by the instance). Not tied to pve-guests in any way.
+[Unit]
+Description=DHCP for VLAN %i (dnsmasq on vnet %i only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStartPre=/usr/sbin/dnsmasq --test --conf-file={{ pve_vlans_dhcp_dir }}/%i.conf
+ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file={{ pve_vlans_dhcp_dir }}/%i.conf
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

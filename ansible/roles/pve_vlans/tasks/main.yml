@@ -1,0 +1,36 @@
+# See defaults/main.yml. The firewall comes first (make vlans runs make enclave's firewall
+# step before this play), so a vnet is filtered from the moment it gets its address.
+- name: Site values for the VLANs
+  ansible.builtin.include_tasks:
+    file: checks.yml
+    apply:
+      tags: [always]
+  tags: [always]
+
+- name: Rollback target (the controller)
+  ansible.builtin.include_tasks:
+    file: target.yml
+    apply:
+      tags: [gateways]
+  tags: [gateways]
+
+- name: Gateway addresses on the vnets
+  ansible.builtin.include_tasks:
+    file: gateways.yml
+    apply:
+      tags: [gateways]
+  tags: [gateways]
+
+- name: DHCP per VLAN
+  ansible.builtin.include_tasks:
+    file: dhcp.yml
+    apply:
+      tags: [dhcp]
+  tags: [dhcp]
+
+- name: NTP per VLAN
+  ansible.builtin.include_tasks:
+    file: ntp.yml
+    apply:
+      tags: [ntp]
+  tags: [ntp]

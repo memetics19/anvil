@@ -1,0 +1,40 @@
+- name: The VLANs to bring up are known
+  ansible.builtin.assert:
+    that:
+      - vlans | length > 0
+      - vlans | map(attribute='name') | select('match', '^[a-z][a-z0-9]{0,7}$') | list | length == vlans | length
+      - pve_vlans_enabled | reject('in', vlans | map(attribute='name') | list) | list | length == 0
+      - pve_vlans_dns is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
+    fail_msg: >-
+      vlans (inventory group_vars/proxmox.yml) needs lower-case vnet names, pve_vlans_enabled
+      may name only those, and site.hosts.apps.ip (Pi-hole) must be set
+    quiet: true
+
+# Addresses as integers, so the gateway and the DHCP range can be checked against the subnet.
+- name: Each VLAN's subnet, gateway and DHCP range fit together
+  ansible.builtin.assert:
+    that:
+      - _n.cidr | default('') is match('^([0-9]{1,3}\.){3}[0-9]{1,3}/(1[6-9]|2[0-9]|30)$')
+      - _n.gateway | default('') is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
+      - (_n.dhcp_range | default({})).start | default('') is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
+      - (_n.dhcp_range | default({})).end | default('') is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
+      - _net | int % _size | int == 0
+      - _gw | int // _size | int == _net | int // _size | int
+      - _start | int // _size | int == _net | int // _size | int
+      - _end | int // _size | int == _net | int // _size | int
+      - _net | int < _start | int <= _end | int < _net | int + _size | int - 1
+      - _gw | int < _start | int or _gw | int > _end | int
+    fail_msg: >-
+      site.sdn.subnets.{{ item.name }} needs cidr (a network, /16 to /30), gateway (in it) and
+      dhcp_range {start, end} (in it, start <= end, not the network, broadcast or gateway address)
+    quiet: true
+  loop: "{{ vlans }}"
+  loop_control:
+    label: "{{ item.name }}"
+  vars:
+    _n: "{{ site.sdn.subnets[item.name] | default({}) }}"
+    _size: "{{ 2 ** (32 - (_n.cidr.split('/')[1] | int)) }}"
+    _net: "{% set o = _n.cidr.split('/')[0].split('.') | map('int') | list %}{{ o[0] * 16777216 + o[1] * 65536 + o[2] * 256 + o[3] }}"
+    _gw: "{% set o = _n.gateway.split('.') | map('int') | list %}{{ o[0] * 16777216 + o[1] * 65536 + o[2] * 256 + o[3] }}"
+    _start: "{% set o = _n.dhcp_range.start.split('.') | map('int') | list %}{{ o[0] * 16777216 + o[1] * 65536 + o[2] * 256 + o[3] }}"
+    _end: "{% set o = _n.dhcp_range.end.split('.') | map('int') | list %}{{ o[0] * 16777216 + o[1] * 65536 + o[2] * 256 + o[3] }}"

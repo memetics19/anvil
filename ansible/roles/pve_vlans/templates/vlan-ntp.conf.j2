@@ -1,0 +1,10 @@
+{% set n = site.sdn.subnets[item] %}
+# Managed by Ansible (role pve_vlans): NTP for VLAN {{ item }} only. This chronyd never sets
+# the clock (-x): the host's own chronyd does. It serves the host clock (local stratum 10)
+# on this VLAN's gateway address, to this VLAN's subnet. No command socket.
+bindaddress {{ n.gateway }}
+allow {{ n.cidr }}
+local stratum 10
+cmdport 0
+bindcmdaddress /
+pidfile /run/chrony/vlan-{{ item }}.pid

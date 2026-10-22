@@ -1,0 +1,89 @@
+# One small chronyd per VLAN (vlan-ntp@<vnet>), see defaults/main.yml. The host's chronyd and
+# its enclave config are not touched.
+- name: Chronyd under its own process name (a link, so AppArmor's chronyd profile still applies)
+  ansible.builtin.file:
+    src: /usr/sbin/chronyd
+    dest: "{{ pve_vlans_ntp_bin }}"
+    state: link
+    owner: root
+    group: root
+
+- name: Config directory (outside chrony's conf.d, so the host's chronyd never reads it)
+  ansible.builtin.file:
+    path: "{{ pve_vlans_ntp_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: The NTP unit
+  ansible.builtin.template:
+    src: vlan-ntp@.service.j2
+    dest: /etc/systemd/system/vlan-ntp@.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: pve_vlans_ntp_unit
+  notify: Reload systemd
+
+- name: Apply a pending systemd reload
+  ansible.builtin.meta: flush_handlers
+
+- name: Config per enabled VLAN
+  ansible.builtin.template:
+    src: vlan-ntp.conf.j2
+    dest: "{{ pve_vlans_ntp_dir }}/{{ item }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ pve_vlans_enabled }}"
+  register: pve_vlans_ntp_conf
+
+- name: NTP runs on each enabled VLAN (restarted when its config changed)
+  ansible.builtin.systemd_service:
+    name: "vlan-ntp@{{ item.item }}.service"
+    enabled: true
+    state: "{{ 'restarted' if (item is changed or pve_vlans_ntp_unit is changed) else 'started' }}"
+  loop: "{{ pve_vlans_ntp_conf.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: not ansible_check_mode or item is not changed
+
+- name: No NTP instance for a VLAN that is not enabled
+  ansible.builtin.systemd_service:
+    name: "vlan-ntp@{{ item }}.service"
+    enabled: false
+    state: stopped
+  loop: "{{ vlans | map(attribute='name') | reject('in', pve_vlans_enabled) | list }}"
+  failed_when: false
+
+- name: No config for a VLAN that is not enabled
+  ansible.builtin.file:
+    path: "{{ pve_vlans_ntp_dir }}/{{ item }}.conf"
+    state: absent
+  loop: "{{ vlans | map(attribute='name') | reject('in', pve_vlans_enabled) | list }}"
+
+# Read back: the VLAN instances' IPv4 NTP sockets are exactly the enabled gateways.
+- name: The VLAN NTP sockets
+  ansible.builtin.shell:
+    cmd: set -o pipefail; ss -Hlunp | grep -F '"chronyd-vlan"' | awk '{print $4}' | sort
+    executable: /bin/bash
+  register: pve_vlans_ntp_listen
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  until: pve_vlans_ntp_listen.stdout_lines | length == pve_vlans_enabled | length
+  retries: 5
+  delay: 2
+  when: not ansible_check_mode
+  no_log: true
+
+- name: NTP answers on the enabled VLAN gateways only
+  ansible.builtin.assert:
+    that: >-
+      pve_vlans_ntp_listen.stdout_lines
+      == (pve_vlans_enabled | map('extract', site.sdn.subnets) | map(attribute='gateway')
+          | map('regex_replace', '$', ':123') | sort | list)
+    fail_msg: the VLAN chronyd instances do not listen on exactly the enabled gateways (port 123)
+    quiet: true
+  when: not ansible_check_mode
