@@ -36,6 +36,10 @@ iface vmbr0 inet static
 	post-up iptables -C FORWARD -i vmbr0 -d {{ site.hosts[iptv_host].ip }}/32 -p tcp -m multiport --dports {{ iptv_threadfin_port }},{{ iptv_streams_port }} -m conntrack --ctstate DNAT -j ACCEPT 2>/dev/null || iptables -A FORWARD -i vmbr0 -d {{ site.hosts[iptv_host].ip }}/32 -p tcp -m multiport --dports {{ iptv_threadfin_port }},{{ iptv_streams_port }} -m conntrack --ctstate DNAT -j ACCEPT
 	post-down while iptables -t nat -C PREROUTING -d {{ site.pve.uplink_ip }}/32 -p tcp -m multiport --dports {{ iptv_threadfin_port }},{{ iptv_streams_port }} -j DNAT --to-destination {{ site.hosts[iptv_host].ip }} 2>/dev/null; do iptables -t nat -D PREROUTING -d {{ site.pve.uplink_ip }}/32 -p tcp -m multiport --dports {{ iptv_threadfin_port }},{{ iptv_streams_port }} -j DNAT --to-destination {{ site.hosts[iptv_host].ip }}; done
 	post-down while iptables -C FORWARD -i vmbr0 -d {{ site.hosts[iptv_host].ip }}/32 -p tcp -m multiport --dports {{ iptv_threadfin_port }},{{ iptv_streams_port }} -m conntrack --ctstate DNAT -j ACCEPT 2>/dev/null; do iptables -D FORWARD -i vmbr0 -d {{ site.hosts[iptv_host].ip }}/32 -p tcp -m multiport --dports {{ iptv_threadfin_port }},{{ iptv_streams_port }} -m conntrack --ctstate DNAT -j ACCEPT; done
+{% if (site.netbird_server | default({}, true)).network_range | default('') | length > 0 %}
+	post-up ip route replace {{ site.netbird_server.network_range }} via {{ site.hosts.netbird.ip }} dev vmbr0
+	post-down ip route del {{ site.netbird_server.network_range }} via {{ site.hosts.netbird.ip }} dev vmbr0 2>/dev/null || true
+{% endif %}
 
 auto vmbr1
 iface vmbr1 inet manual

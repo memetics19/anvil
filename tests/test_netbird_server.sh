@@ -5,6 +5,7 @@
 #   lab address and loopback only, pinned images, a memory cap on every service, no secret
 #   in the compose file;
 # - the netbird-home unit: kept apart from the cloud client;
+# - the Proxmox host's return route for the network's peer addresses;
 # - the API helper against an in-memory API stub: setup, reconcile (and a second run with
 #   nothing to do), check mode without writes, the setup key.
 # Uses documentation-range addresses and example.com only.
@@ -62,6 +63,16 @@ cat >"$tmp/play.yml" <<PLAY
         - {src: $PWD/ansible/roles/netbird_server/templates/Caddyfile.j2, dest: Caddyfile}
         - {src: $PWD/ansible/roles/netbird_server/templates/docker-compose.yaml.j2, dest: docker-compose.yaml}
         - {src: $PWD/ansible/roles/netbird_peer/templates/netbird-home.service.j2, dest: netbird-home.service}
+    - name: The Proxmox host's interfaces
+      ansible.builtin.template:
+        src: $PWD/ansible/roles/pve_network/templates/interfaces.j2
+        dest: "$tmp/interfaces"
+        mode: "0600"
+      vars:
+        iptv_host: frigate
+        iptv_threadfin_port: 34400
+        iptv_streams_port: 34401
+        pve_network_trunk_vids: []
     - name: Desired state as JSON
       ansible.builtin.copy:
         content: "{{ netbird_server_desired | to_json }}"
@@ -121,6 +132,11 @@ has "home: own socket, not under /var/run/netbird/" "--daemon-addr unix:///var/r
 has "home: after Docker and the cloud client" "After=network-online.target docker.service netbird.service" "$u"
 has "home: only with the ip filter table" "nft list table ip filter" "$u"
 has "home: memory cap" "MemoryMax=256M" "$u"
+
+# --- return route on the Proxmox host ----------------------------------------------------------
+i=$tmp/interfaces
+has "pve: the network range routed to the netbird VM" "$(printf '\tpost-up ip route replace 100.64.0.0/16 via 192.0.2.115 dev vmbr0')" "$i"
+has "pve: and removed on down" "$(printf '\tpost-down ip route del 100.64.0.0/16 via 192.0.2.115 dev vmbr0 2>/dev/null || true')" "$i"
 
 # --- desired state --------------------------------------------------------------------------------
 j=$tmp/desired.json
