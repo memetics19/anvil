@@ -123,7 +123,7 @@ still connected. Routes, groups and ACLs stay in the NetBird dashboard.
 ### Self-hosted NetBird server
 
 The `netbird_server` role runs a NetBird server on this VM next to the cloud client. It
-runs only when `site.netbird_domain` is set (for example `netbird.<domain>`). Compose
+runs only when `site.netbird_domain` is set (for example `sync.<domain>`, a neutral name). Compose
 project `/opt/netbird-server` has three containers, each with a memory cap:
 
 - `netbird-server`: NetBird's combined server (management, signal, relay and the built in
@@ -134,6 +134,11 @@ project `/opt/netbird-server` has three containers, each with a memory cap:
   the Cloudflare tunnel's origin for `site.netbird_domain` and sends gRPC (HTTP/2
   cleartext), the relay, the API and the identity provider to the server, and everything
   else to the dashboard.
+
+The public name is neutral. Caddy drops the `Server` and `Via` headers and replaces the
+dashboard's Content-Security-Policy, which lists the vendor's domains and trackers, with one
+that names only this host. The page titles of the dashboard and the login page still say
+NetBird. Neither is configurable.
 
 STUN uses public servers only (Cloudflare and Google). The server opens no UDP port. When
 hole punching fails the relay carries the connection, over WebSocket through the tunnel.

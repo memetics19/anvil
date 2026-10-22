@@ -6,7 +6,7 @@
       - site.hosts.apps.home_ip | default('') | length > 0
       - site.email | default('') | length > 0
     fail_msg: >-
-      site.netbird_domain must be a lower-case host name (for example netbird.<domain>), and
+      site.netbird_domain must be a lower-case host name (for example sync.<domain>), and
       site.hosts.apps.home_ip and site.email must be set
     quiet: true
 

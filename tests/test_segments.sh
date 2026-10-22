@@ -282,6 +282,7 @@ f=$tmp/vlans.interfaces
 check "gateways: one stanza per VLAN" "$(grep -c '^iface ' "$f")" "3"
 has "gateways: the servers gateway on its vnet" "$(printf '\taddress 198.51.100.65/26')" "$f"
 has "trunk: the VLAN tags on vmbr0's uplink" "$(printf '\tbridge-vids 10 20 30')" "$tmp/interfaces"
+hasnt "no NetBird return route without site.netbird_server" "ip route replace" "$tmp/interfaces"
 f=$tmp/vlan-dhcp-cameras.conf
 has "dhcp: no DNS" "port=0" "$f"
 has "dhcp: its vnet only" "interface=cameras" "$f"

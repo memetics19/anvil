@@ -5,6 +5,7 @@
 #   lab address and loopback only, pinned images, a memory cap on every service, no secret
 #   in the compose file;
 # - the netbird-home unit: kept apart from the cloud client;
+# - the Proxmox host's return route for the network's peer addresses;
 # - the API helper against an in-memory API stub: setup, reconcile (and a second run with
 #   nothing to do), check mode without writes, the setup key.
 # Uses documentation-range addresses and example.com only.
@@ -35,7 +36,7 @@ cat >"$tmp/play.yml" <<PLAY
       email: admin@example.com
       lan_cidr: 192.0.2.0/24
       gateway: {subdomain: internal}
-      netbird_domain: netbird.example.com
+      netbird_domain: sync.example.com
       netbird_server: {network_range: 100.64.0.0/16}
       pve: {ip: 192.0.2.10, gateway_alias_ip: 192.0.2.1, uplink_ip: 198.51.100.250, uplink_prefix: 24, uplink_gw: 198.51.100.1}
       hosts:
@@ -62,6 +63,28 @@ cat >"$tmp/play.yml" <<PLAY
         - {src: $PWD/ansible/roles/netbird_server/templates/Caddyfile.j2, dest: Caddyfile}
         - {src: $PWD/ansible/roles/netbird_server/templates/docker-compose.yaml.j2, dest: docker-compose.yaml}
         - {src: $PWD/ansible/roles/netbird_peer/templates/netbird-home.service.j2, dest: netbird-home.service}
+    - name: The Proxmox host's interfaces
+      ansible.builtin.template:
+        src: $PWD/ansible/roles/pve_network/templates/interfaces.j2
+        dest: "$tmp/interfaces"
+        mode: "0600"
+      vars:
+        iptv_host: frigate
+        iptv_threadfin_port: 34400
+        iptv_streams_port: 34401
+        pve_network_trunk_vids: []
+        pve_network_netbird_return_route: true
+    - name: The Proxmox host's interfaces without the return route switch
+      ansible.builtin.template:
+        src: $PWD/ansible/roles/pve_network/templates/interfaces.j2
+        dest: "$tmp/interfaces.off"
+        mode: "0600"
+      vars:
+        iptv_host: frigate
+        iptv_threadfin_port: 34400
+        iptv_streams_port: 34401
+        pve_network_trunk_vids: []
+        pve_network_netbird_return_route: false
     - name: Desired state as JSON
       ansible.builtin.copy:
         content: "{{ netbird_server_desired | to_json }}"
@@ -77,8 +100,8 @@ fi
 
 # --- server configuration --------------------------------------------------------------------
 c=$tmp/config.yaml
-has "public address" 'exposedAddress: "https://netbird.example.com:443"' "$c"
-has "issuer on the public name" 'issuer: "https://netbird.example.com/oauth2"' "$c"
+has "public address" 'exposedAddress: "https://sync.example.com:443"' "$c"
+has "issuer on the public name" 'issuer: "https://sync.example.com/oauth2"' "$c"
 has "STUN: Cloudflare" 'uri: "stun:stun.cloudflare.com:3478"' "$c"
 has "STUN: Google" 'uri: "stun:stun.l.google.com:19302"' "$c"
 hasnt "no local STUN port" "stunPorts" "$c"
@@ -90,6 +113,9 @@ has "Caddy: gRPC over h2c" "reverse_proxy @grpc h2c://netbird-server:80" "$f"
 has "Caddy: relay, API and IdP paths" "@backend path /relay* /ws-proxy/* /api/* /oauth2/*" "$f"
 has "Caddy: the rest to the dashboard" "reverse_proxy dashboard:80" "$f"
 has "Caddy: own TLS for the tunnel origin" "tls internal" "$f"
+has "Caddy: no Server header" "header -Server" "$f"
+has "Caddy: first party CSP for the dashboard" "header_down Content-Security-Policy \"default-src 'none'; connect-src 'self' https://sync.example.com " "$f"
+hasnt "Caddy: no vendor domain in the CSP" "netbird.io" "$f"
 
 d=$tmp/docker-compose.yaml
 has "server API on loopback only" '"127.0.0.1:8089:80"' "$d"
@@ -121,6 +147,12 @@ has "home: own socket, not under /var/run/netbird/" "--daemon-addr unix:///var/r
 has "home: after Docker and the cloud client" "After=network-online.target docker.service netbird.service" "$u"
 has "home: only with the ip filter table" "nft list table ip filter" "$u"
 has "home: memory cap" "MemoryMax=256M" "$u"
+
+# --- return route on the Proxmox host ----------------------------------------------------------
+i=$tmp/interfaces
+has "pve: the network range routed to the netbird VM" "$(printf '\tpost-up ip route replace 100.64.0.0/16 via 192.0.2.115 dev vmbr0')" "$i"
+has "pve: and removed on down" "$(printf '\tpost-down ip route del 100.64.0.0/16 via 192.0.2.115 dev vmbr0 2>/dev/null || true')" "$i"
+hasnt "pve: no return route while the switch is off" "ip route replace" "$tmp/interfaces.off"
 
 # --- desired state --------------------------------------------------------------------------------
 j=$tmp/desired.json

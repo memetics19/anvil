@@ -17,6 +17,16 @@ netbird_server_caddy_mem_limit: 96m
 netbird_server_https_port: 8443
 # The server's plain HTTP port, on the VM's loopback only: the role's API calls.
 netbird_server_api_port: 8089
+# The dashboard's Content-Security-Policy as Caddy sends it: the image's own rules with only
+# this host as a source (no vendor or tracker domains). The script hash is the dashboard's
+# inline script (from its image, /usr/local/init_react_envs.sh). Check it after a bump.
+netbird_server_dashboard_csp: >-
+  default-src 'none';
+  connect-src 'self' https://{{ site.netbird_domain }} https://{{ site.netbird_domain }}/oauth2 wss://{{ site.netbird_domain }};
+  frame-src 'self' https://{{ site.netbird_domain }} https://{{ site.netbird_domain }}/oauth2;
+  script-src 'self' 'wasm-unsafe-eval' 'sha256-7knV6EIjKUvCpYWE2rCYx8dYV2WCNb2bpTuitFXzBcA=';
+  font-src 'self'; img-src * data:; manifest-src 'self'; style-src 'self' 'unsafe-inline';
+  frame-ancestors 'self'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;
 # Public STUN only. Without local STUN the server opens no UDP port. The relay (WebSocket
 # through the tunnel) carries a connection when hole punching fails.
 netbird_server_stuns:

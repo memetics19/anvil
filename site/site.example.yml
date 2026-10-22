@@ -79,10 +79,11 @@ site:
   admin_vpn_sources: [100.64.0.7/32]
   enclave: {vpn_only: false}
   # Self-hosted NetBird (roles netbird_server and netbird_peer, docs/services.md): the
-  # public name, routed by the Cloudflare tunnel (a hand step, docs/setup.md), and the
+  # public name, routed by the Cloudflare tunnel (a hand step, docs/setup.md), a neutral
+  # name that does not say what runs behind it, and the
   # network's peer address range, a /16 in 100.64.0.0/10 that differs from the cloud
   # network's. Without netbird_domain neither the server nor its client is set up.
-  netbird_domain: netbird.example.com
+  netbird_domain: sync.example.com
   netbird_server: {network_range: 100.64.0.0/16}
   # Addresses the frigate stack's config refers to (frigate_stack role).
   frigate_stack:
