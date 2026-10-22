@@ -101,6 +101,9 @@ has "Caddy: gRPC over h2c" "reverse_proxy @grpc h2c://netbird-server:80" "$f"
 has "Caddy: relay, API and IdP paths" "@backend path /relay* /ws-proxy/* /api/* /oauth2/*" "$f"
 has "Caddy: the rest to the dashboard" "reverse_proxy dashboard:80" "$f"
 has "Caddy: own TLS for the tunnel origin" "tls internal" "$f"
+has "Caddy: no Server header" "header -Server" "$f"
+has "Caddy: first party CSP for the dashboard" "header_down Content-Security-Policy \"default-src 'none'; connect-src 'self' https://netbird.example.com " "$f"
+hasnt "Caddy: no vendor domain in the CSP" "netbird.io" "$f"
 
 d=$tmp/docker-compose.yaml
 has "server API on loopback only" '"127.0.0.1:8089:80"' "$d"

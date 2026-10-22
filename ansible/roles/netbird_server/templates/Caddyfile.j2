@@ -9,12 +9,19 @@
 
 {{ site.netbird_domain }}:443 {
 	tls internal
+	# The public name does not say what runs behind it: no Server header from Caddy or
+	# the upstreams (deletions apply to proxied responses too).
+	header -Server
+	header -Via
 	# Management and signal gRPC (HTTP/2 cleartext to the server)
 	@grpc header Content-Type application/grpc*
 	reverse_proxy @grpc h2c://netbird-server:80
 	# Relay and the WebSocket proxy, the REST API and the identity provider
 	@backend path /relay* /ws-proxy/* /api/* /oauth2/*
 	reverse_proxy @backend netbird-server:80
-	# Everything else: the dashboard
-	reverse_proxy dashboard:80
+	# Everything else: the dashboard. Its own CSP lists the vendor's domains and trackers:
+	# replaced with a first party one (same rules, this host only).
+	reverse_proxy dashboard:80 {
+		header_down Content-Security-Policy "{{ netbird_server_dashboard_csp }}"
+	}
 }
