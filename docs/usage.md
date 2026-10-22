@@ -282,6 +282,18 @@ directory, or `sudo docker restart <container>`. For Pulse on `netbird`, don't r
   the media library.
 - Secrets travel through pipes and stdin. They never go on argv and are never logged.
 
+### Self-hosted NetBird
+
+The server runs next to NetBird's cloud service on the `netbird` VM
+([services.md](services.md#self-hosted-netbird-server)). If a client of the self-hosted
+network does not connect while the dashboard loads, gRPC is not getting through the
+Cloudflare tunnel. Check the hand steps in [setup.md](setup.md#self-hosted-netbird) (HTTP2
+connection on the route, gRPC on in the zone). `docker logs netbird-caddy` on `netbird`
+shows whether gRPC requests arrive. Until it works, use the `cloud` profile.
+
+Status of the routing peer on the VM:
+`sudo netbird status -d --daemon-addr unix:///var/run/netbird-home.sock`.
+
 ## Upgrading pinned versions
 
 Edit the pin, dry-run, then apply. Check mode lists the containers a new image would
@@ -294,6 +306,7 @@ recreate.
 | Vault | `vault_server_version` | Restarts and seals Vault. Use `ARGS="-e vault_server_allow_restart=true"`, then `make vault-unseal`. |
 | NetBird client | `netbird_peer_version` | The package is held. Bumping this is the upgrade, and it restarts the client. |
 | Pulse | `pulse_version` (a commit) | Rebuilds the image on `netbird`. |
+| Self-hosted NetBird | `netbird_server_image`, `netbird_server_dashboard_image`, `netbird_server_caddy_image` | Pinned as `tag@sha256:digest`. Read NetBird's release notes first. `make vm HOST=netbird ARGS="--tags netbird_server"` |
 | IPTV tools | `iptv_streamlink_version`, `iptv_mpegts_version`, `iptv_threadfin_db_version` | `make vm HOST=ragnarok ARGS="--tags iptv"` |
 | node_exporter | `node_exporter_version` | |
 | Proxmox provider | `terraform/versions.tf` | `make tf-init ARGS=-upgrade`, then `make tf-plan` |

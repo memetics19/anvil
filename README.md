@@ -32,7 +32,7 @@ It is a work in progress. See the [Roadmap](#roadmap).
 |------------|------|
 | `pve`      | Proxmox VE 8.4, LAN gateway and NAT, NetBird, Ceph |
 | `frigate`  | Frigate, Mosquitto, Gotify, nginx, cloudflared |
-| `netbird`  | NetBird routing peer, Redis, ntfy, Pulse, cloudflared |
+| `netbird`  | NetBird routing peers (cloud and self-hosted), the self-hosted NetBird server, Redis, ntfy, Pulse, cloudflared |
 | `ragnarok` | ARR stack, IPTV, Filestash, cloudflared |
 | `vault`    | HashiCorp Vault, in the secrets enclave (no internet) |
 | `vaultwarden` | Vaultwarden, in the secrets enclave (no internet, one mail hole) |

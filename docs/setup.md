@@ -372,9 +372,9 @@ The tunnels and their public hostnames, and the API token Caddy uses for DNS-01.
 
 ### NetBird
 
-Routes, groups, ACLs and setup keys live in the NetBird dashboard. Also add Pi-hole as a
-nameserver on each NetBird network, the cloud one now and the self-hosted one once it
-exists:
+On the cloud network, routes, groups, ACLs and setup keys live in the NetBird dashboard.
+The self-hosted network gets its Pi-hole nameserver from the netbird_server role. On the
+cloud one, add it by hand:
 
 1. DNS, Nameservers, Add nameserver: custom, IP `<apps-address>`, port 53, UDP. The lab
    network must be a route the peers use, through the `netbird` routing peer.
@@ -383,6 +383,67 @@ exists:
    filtering too, or set `lan.<domain>` and `<gateway-domain>` for local and gateway names
    only. Leave it enabled and save. Peers pick it up within a minute. Check with
    `netbird status -d`.
+
+### Self-hosted NetBird
+
+`make vm HOST=netbird` runs the server and sets it up (groups, policy, networks, DNS). Four
+things stay by hand.
+
+**1. The Cloudflare route.** The server's public name goes through the existing tunnel,
+whose connectors run on `frigate`, `netbird` and `ragnarok`. In the Cloudflare dashboard:
+
+1. Zero Trust, Networks, Tunnels: open that tunnel, Public hostnames, Add a public
+   hostname.
+2. Subdomain `netbird`, domain `<domain>`, no path (the name is `site.netbird_domain`).
+3. Service type `HTTPS`, URL `<netbird-lab-address>:8443` (Caddy on the `netbird` VM).
+4. Additional application settings, TLS: turn on No TLS Verify and HTTP2 connection, and
+   set Origin Server Name to `netbird.<domain>`. Save. Cloudflare adds the DNS record.
+5. In the `<domain>` zone, Network: turn gRPC on. Leave WebSockets on.
+
+Then check `https://netbird.<domain>` shows the login page, and run
+`make vm HOST=netbird ARGS="--tags netbird_home"`. It enrolls `netbird-home`, the routing
+peer. Native NetBird clients need gRPC through the tunnel. Cloudflare documents gRPC on
+public tunnel names as unsupported, so if `netbird-home` does not connect, see
+[docs/usage.md](usage.md#self-hosted-netbird).
+
+**2. The Proxmox host's return route.** The `home-gateway` route keeps the peer's own
+address (masquerade off). `apps` answers such a peer through the Proxmox host, which needs a
+route for `site.netbird_server.network_range` to the `netbird` VM. Dry run, then apply it
+on its own, never with a `netbird` VM change:
+`make host-network ARGS="--check --diff"`, then `make host-network`.
+
+**3. Your devices, with two NetBird profiles.** `home` is the self-hosted network (day to
+day), `cloud` is NetBird's service (emergency). The login is `owner_email` and
+`owner_password` in `kv/homelab/netbird-srv`. On the Mac:
+
+```sh
+netbird profile add home
+netbird profile select home
+netbird up --management-url https://netbird.<domain>
+netbird profile add cloud
+netbird profile select cloud
+netbird up --management-url https://api.netbird.io
+netbird profile select home
+```
+
+Each `up` opens a browser login. On the phone, add the self-hosted server as a second
+profile in the NetBird app (or Settings, Change server, on an app without profiles).
+Every device you log in to the self-hosted server joins group `operator`.
+
+**4. Your new peer addresses.** The self-hosted network gives your devices other 100.x
+addresses than the cloud one. Add each device's self-hosted address as a /32 to
+`site.admin_vpn_sources` (find it with `netbird status` on the Mac, and in the app on the
+phone), then run `make enclave` and `make vm HOST=apps ARGS="--tags caddy"`. Until then the
+enclave and the `pass` and `vault` names refuse them.
+
+Failure drills, with the user at hand:
+
+1. Stop the self-hosted stack (`sudo docker stop netbird-server` on `netbird`), select the
+   `cloud` profile on the Mac, and reach the lab.
+2. Start it again. Stop the cloud client on `netbird` (`sudo systemctl stop netbird`),
+   select `home`, and reach the lab. The Proxmox host still routes the lab on the cloud
+   network meanwhile.
+3. Start both again (`sudo systemctl start netbird`, `sudo docker start netbird-server`).
 
 ### The Mac's route to the secrets enclave
 
