@@ -28,6 +28,7 @@ run() {
       domain: example.com
       gateway: {subdomain: internal}
       email: admin@example.com
+      admin_sources: [198.51.100.51/32]
       pve: {ip: 192.0.2.10}
       hosts:
         frigate: {ip: 192.0.2.114}

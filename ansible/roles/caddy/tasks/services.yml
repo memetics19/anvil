@@ -70,6 +70,19 @@
         caddy_routes | selectattr('name', 'in', caddy_admin_only_routes) | list | length == 0
         or (caddy_admin_sources | length > 0
             and caddy_admin_sources | reject('match', '^([0-9]{1,3}[.]){3}[0-9]{1,3}/32$') | list | length == 0)
+      # Infra routes need operator addresses too, single /32s, and never one of the Proxmox
+      # host's own addresses: VLAN clients and NetBird peers behind its masquerade arrive as
+      # those, so admitting one would let every VLAN client in.
+      - >-
+        caddy_routes | selectattr('name', 'in', caddy_infra_routes) | list | length == 0
+        or (caddy_infra_sources | length > 0
+            and caddy_infra_sources | reject('match', '^([0-9]{1,3}[.]){3}[0-9]{1,3}/32$') | list | length == 0)
+      - >-
+        (caddy_infra_sources + caddy_admin_sources)
+        | select('in', [(site.pve | default({})).ip | default(''), (site.pve | default({})).gateway_alias_ip | default(''),
+                        (site.pve | default({})).uplink_ip | default('')]
+                       | select | map('regex_replace', '$', '/32') | list)
+        | list | length == 0
       # The gateway domain (site.domain, or site.gateway.subdomain under it) is a host name.
       - caddy_domain is match('^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z][a-z0-9-]*[a-z0-9]$')
     fail_msg: >-
@@ -79,6 +92,7 @@
       container entries need a `port` and a `scheme` (http|https); insecure_upstream / upstream_ca (one of {{ caddy_upstream_cas | list }})
       only with https and not both; host_header original|upstream; home a path;
       site.gateway.subdomain a lower-case label; admin-only routes ({{ caddy_admin_only_routes }})
-      need operator addresses, each a single a.b.c.d/32 (site.admin_sources / admin_vpn_sources)
+      and infra routes ({{ caddy_infra_routes }}) need operator addresses, each a single
+      a.b.c.d/32 (site.admin_sources / admin_vpn_sources), never one of the Proxmox host's
       ({{ caddy_services | length }} entries)
     quiet: true

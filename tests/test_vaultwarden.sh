@@ -186,7 +186,7 @@ check "enclave: published on the VM's address only" '[ "$(grep -A1 "^    ports:"
 check "enclave: image by tag, never pulled"   'grep -qx "    image: vaultwarden/server:1.37.4" "$c" && grep -qx "    pull_policy: never" "$c"'
 check "enclave: Caddy proxies to the VM"      'grep -q "reverse_proxy http://198.51.100.21:8080" "$out/Caddyfile"'
 check "enclave: pass is for the operator only" 'grep -q "@pass_denied not remote_ip 100.64.0.7/32 198.51.100.51/32 192.0.2.31/32" "$out/Caddyfile" && grep -q "respond @pass_denied 403" "$out/Caddyfile"'
-check "enclave: dns is open to the LAN"        '! grep -q "@dns_denied" "$out/Caddyfile"'
+check "enclave: dns is an infra page (operator /32s, vpn_only ignored)" 'grep -q "@dns_denied not remote_ip 198.51.100.51/32 192.0.2.31/32 100.64.0.7/32" "$out/Caddyfile"'
 s=$(grep -v '^#' "$out/services.yaml" | jq -c .) || s='[]'
 check "enclave: dashboard entry without container status" '[ "$(jq -c ".[] | select(has(\"Security\")) | .Security[0].Vaultwarden | has(\"container\")" <<<"$s")" = "false" ]'
 VW_HOST=vaultwarden VW_EXTRA=$xv run "$good"; rc=$?

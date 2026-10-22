@@ -91,6 +91,17 @@ caddy_container_networks:
 caddy_admin_only_routes: [pass, vault]
 caddy_admin_sources: "{{ enclave_admin_sources | default([]) }}"
 
+# Infrastructure pages (admin UIs and dashboards that show or change the lab): only the
+# operator's devices may use them too, every other client gets 403. Applied to each name
+# that is in site.services. Left open: the ARR apps, Filestash (`files`), Gotify and the others
+# with a login of their own, the live TV streams (`tv`) and the docs.
+# The sources are the operator's LAN and NetBird /32s, ignoring site.enclave.vpn_only, so
+# the Mac keeps LAN access to these pages. Never the Proxmox host's own addresses: VLAN
+# clients and NetBird peers behind its masquerade arrive as those (tasks/services.yml
+# refuses them).
+caddy_infra_routes: [pve, ceph, idrac, dns, home, qbit, frigate, threadfin]
+caddy_infra_sources: "{{ (site.admin_sources | default([])) + (site.admin_vpn_sources | default([])) }}"
+
 # The secrets enclave, which only Caddy on this VM may reach (tasks/enclave_guard.yml): an
 # nftables table here lets only Caddy's own network (gateway, its default route, no other
 # container on it) open connections to Vault and Vaultwarden, and nothing else on this VM

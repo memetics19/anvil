@@ -158,8 +158,13 @@ then ok "networks: a missing network is left out"; else bad_ "networks partial: 
 if grep -q "@vault_denied not remote_ip 100.64.0.7/32 198.51.100.51/32 192.0.2.31/32" "$tmp/Caddyfile" \
    && grep -q "respond @vault_denied 403" "$tmp/Caddyfile"; then ok "vault: the operator's devices only (403 for others)"
 else bad_ "vault: admin-only matcher"; fi
-if [ "$(grep -c "_denied not remote_ip" "$tmp/Caddyfile")" = 1 ]; then ok "other routes stay open to the LAN"
-else bad_ "admin-only matchers: $(grep -c "_denied not remote_ip" "$tmp/Caddyfile")"; fi
+for r in pve qbit dns home; do
+  if grep -q "@${r}_denied not remote_ip 198.51.100.51/32 192.0.2.31/32 100.64.0.7/32$" "$tmp/Caddyfile" \
+     && grep -q "respond @${r}_denied 403" "$tmp/Caddyfile"; then ok "$r: infra page, the operator's LAN and NetBird /32s only"
+  else bad_ "$r: infra matcher"; fi
+done
+if [ "$(grep -c "_denied not remote_ip" "$tmp/Caddyfile")" = 5 ]; then ok "other routes (tv, docs) stay open to the LAN"
+else bad_ "admin-only and infra matchers: $(grep -c "_denied not remote_ip" "$tmp/Caddyfile")"; fi
 if grep -A1 "^      gateway:" "$tmp/compose.yaml" | grep -q "gw_priority: 100"; then ok "networks: Caddy's own network carries its default route"
 else bad_ "networks: gw_priority on gateway"; fi
 if [ "$(cat "$tmp/unchecked")" = "home" ]; then ok "routes to a container on a missing network are not checked"
@@ -222,8 +227,17 @@ then ok "network: pinned bridge and subnet"; else bad_ "network: pinned bridge a
 GW_VPN_ONLY=true run "$good"
 if grep -q "@vault_denied not remote_ip 100.64.0.7/32$" "$tmp/Caddyfile"; then ok "vpn_only: NetBird peers only"
 else bad_ "vpn_only: $(grep "_denied not remote_ip" "$tmp/Caddyfile")"; fi
+# vpn_only leaves the infra pages to the LAN /32s too (the Mac keeps them).
+infra='[{name: pve, host: pve.ip, port: 8006, scheme: https, insecure_upstream: true}]'
+GW_VPN_ONLY=true run "$infra"
+if grep -q "@pve_denied not remote_ip 198.51.100.51/32 192.0.2.31/32 100.64.0.7/32$" "$tmp/Caddyfile"; then ok "vpn_only: infra pages keep the LAN /32s"
+else bad_ "vpn_only infra: $(grep "_denied not remote_ip" "$tmp/Caddyfile")"; fi
 # An operator is one device: a wider prefix is refused.
 GW_ADMIN='[198.51.100.0/24]' reject "a range as an operator" "$good"
+GW_ADMIN='[198.51.100.0/24]' reject "a range for the infra pages" "$infra"
+# The Proxmox host's own addresses are never operators (VLAN clients arrive as them).
+GW_ADMIN='[192.0.2.10/32]' reject "the host's lab address as an operator" "$infra"
+GW_ADMIN='[198.51.100.250/32]' reject "the host's home address as an operator" "$good"
 
 [ "$fail" -eq 0 ] && echo "PASS: gateway routes and records"
 exit "$fail"
