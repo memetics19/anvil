@@ -132,8 +132,14 @@ tf-init:
 # tf-plan, when the guard rejects it, and after tf-apply. Its JSON is never written to disk.
 TF_PLAN := terraform/homelab.tfplan
 
+# A fresh checkout (or a new worktree) has no .terraform yet: initialise it first, the same
+# way tf-init does, so a plan never fails on "Backend initialization required".
 tf-plan:
 	@set -eu -o pipefail; $(ENV); umask 077; \
+	if [ ! -f terraform/.terraform/terraform.tfstate ]; then \
+	  echo "terraform: not initialised here, running tf-init first"; \
+	  terraform -chdir=terraform init -input=false -backend-config="endpoints={s3=\"http://$${PVE_IP}:7480\"}" >/dev/null; \
+	fi; \
 	rm -f $(TF_PLAN); trap 'rm -f $(TF_PLAN)' ERR; \
 	echo "site source: $${HOMELAB_SITE_USED:-none}"; \
 	terraform -chdir=terraform plan -input=false -out=homelab.tfplan $(ARGS); \
