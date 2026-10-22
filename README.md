@@ -141,12 +141,13 @@ vault/policies/
 - [ ] Patch tracking: [PatchMon](https://github.com/PatchMon/PatchMon) for pending and security
   updates on every host (on the second server)
 - [ ] Single sign-on (Authelia) in front of the gateway
-- [ ] Self-hosted NetBird next to the hosted one
-- [ ] Bare-metal provisioning: Proxmox auto-install ISO, Redfish or IPMI, brand agnostic
-  (in progress, [docs/provisioning.md](docs/provisioning.md))
-- [ ] Releases: semver tags and a changelog from conventional commits (release-please),
-  published as GitHub Releases (in progress: the workflows are in, the first release
-  PR cuts v0.1.0)
+- [ ] Self-hosted NetBird next to the hosted one (the server and dashboard run. The
+  routing peer waits for a route that passes gRPC, which the Cloudflare tunnel does not)
+- [x] Bare-metal provisioning: Proxmox auto-install ISO, delivered by Redfish, IPMI or PXE,
+  brand agnostic ([docs/provisioning.md](docs/provisioning.md). Tested end to end on VMs,
+  the first real server is the next one)
+- [x] Releases: semver tags and a changelog from conventional commits (release-please),
+  published as GitHub Releases, starting with v0.1.0
 - [ ] Split the generic core (roles, Terraform modules, scripts) from this lab's site
   layer, so it works on another Proxmox box
 - [x] An `anvil` CLI over the make targets: `anvil up` for the whole lab or one service,
@@ -156,10 +157,10 @@ vault/policies/
   Secrets move from the macOS Keychain to a pluggable backend (Vault plus an age-encrypted
   bootstrap file, the Linux secret service, or the macOS Keychain), and the scripts drop
   macOS-only commands (`security`, `networksetup`, `pbcopy`, BSD `sed` and `stat`)
-- [ ] Packages: .deb and .rpm built with nfpm and a Homebrew formula, from GoReleaser on
-  each release, attached to the GitHub Release, with this repo as the Homebrew tap
-  ([docs/install.md](docs/install.md)). In progress until the first release. A signed apt
-  repository comes later
+- [x] Packages: .deb and .rpm built with nfpm, a Homebrew formula and a one-line
+  installer, from GoReleaser on each release, with this repo as the Homebrew tap
+  ([docs/install.md](docs/install.md))
+- [ ] A signed apt repository for the .deb
 - [ ] The rebuild runbook, tested on a second server
 
 ## Known issues
