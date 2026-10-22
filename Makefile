@@ -6,7 +6,7 @@ HVAC_CHECK := py=$$(ansible-playbook --version | sed -n 's/^  python version = .
 	"$${py:-python3}" -c 'import hvac' 2>/dev/null || { \
 	  echo "hvac is missing in the Python that runs Ansible; fix: \"$$py\" -m pip install hvac" >&2; exit 1; }
 
-.PHONY: lint secrets-scan bootstrap-ssh host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply provision-iso provision-clean docs docs-publish
+.PHONY: lint secrets-scan bootstrap-ssh host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply provision-iso provision provision-clean docs docs-publish
 
 lint:
 	@set -eu -o pipefail; \
@@ -154,6 +154,12 @@ tf-apply:
 provision-iso:
 	@set -eu -o pipefail; [ -n "$(NAME)" ] || { echo "usage: make provision-iso NAME=<name>" >&2; exit 1; }; \
 	$(ENV); scripts/provision-iso.sh "$(NAME)"
+
+# A dry run: the guard, read-only BMC reads and the planned Redfish or IPMI calls.
+# Install: make provision NAME=<name> ARGS="-e provision_confirm=<name>".
+provision:
+	@set -eu -o pipefail; [ -n "$(NAME)" ] || { echo "usage: make provision NAME=<name>" >&2; exit 1; }; \
+	$(ENV); python3 scripts/provision.py run --name "$(NAME)" $(ARGS)
 
 provision-clean:
 	@[ -n "$(NAME)" ] || { echo "usage: make provision-clean NAME=<name>" >&2; exit 1; }; \

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # scripts/provision.py, run locally on site/site.example.yml (documentation addresses only):
 # the answer file has the right fields and only a password hash, a disk is required and a
-# filter may not match any disk, and the guard refuses the current server.
+# filter may not match any disk, and the guard refuses the current server. make provision's
+# dry run and install run against a fake Redfish BMC on 127.0.0.1: the dry run only reads,
+# the current server is refused before any request, and the ISO is served with byte ranges.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
@@ -101,6 +103,215 @@ p.live_guard(SITE, "pve2", m, ["EXAMPLE2", None]); ok("BMC reporting the expecte
 sys.exit(1 if fails else 0)
 PY
 rc=$?
+
+# --- make provision against a fake Redfish BMC ---------------------------------------------------
+python3 - scripts/provision.py site/site.example.yml <<'PY2' || rc=1
+import base64, copy, http.server, importlib.util, json, os, subprocess, sys, tempfile, threading, urllib.request, yaml
+spec = importlib.util.spec_from_file_location("provision", sys.argv[1])
+p = importlib.util.module_from_spec(spec); spec.loader.exec_module(p)
+with open(sys.argv[2]) as f:
+    SITE = yaml.safe_load(f)["site"]
+fails = 0
+def ok(name, cond):
+    global fails
+    print(("ok   " if cond else "FAIL ") + name)
+    fails += 0 if cond else 1
+
+USER, PW = "bmc-user", "test-only-" + "bmc-secret"
+AUTH = "Basic " + base64.b64encode(f"{USER}:{PW}".encode()).decode()
+CD = "/redfish/v1/Managers/1/VirtualMedia/CD"
+
+class Fake:
+    def reset(self, power="Off", serial="EXAMPLE2", insert=True):
+        self.power, self.serial, self.insert, self.inserted = power, serial, insert, False
+        self.log, self.fetched, self.system_gets = [], None, 0
+
+def system():
+    F.system_gets += 1
+    if F.power == "On" and F.fetched and F.system_gets > 3:
+        F.power = "Off"   # the installer is done and powers off
+    return {"PowerState": F.power, "SerialNumber": F.serial, "SKU": "",
+            "Boot": {"BootSourceOverrideTarget@Redfish.AllowableValues": ["Pxe", "Cd", "Hdd"]},
+            "Actions": {"#ComputerSystem.Reset": {"target": "/redfish/v1/Systems/1/Actions/ComputerSystem.Reset",
+                                                   "ResetType@Redfish.AllowableValues": ["On", "ForceOff"]}},
+            "Links": {"ManagedBy": [{"@odata.id": "/redfish/v1/Managers/1"}]}}
+
+def cd():
+    d = {"MediaTypes": ["CD", "DVD"], "Inserted": F.inserted}
+    if F.insert:
+        d["Actions"] = {"#VirtualMedia.InsertMedia": {"target": CD + "/Actions/VirtualMedia.InsertMedia"},
+                        "#VirtualMedia.EjectMedia": {"target": CD + "/Actions/VirtualMedia.EjectMedia"}}
+    return d
+
+GETS = {"/redfish/v1": lambda: {"Systems": {"@odata.id": "/redfish/v1/Systems"}, "Managers": {"@odata.id": "/redfish/v1/Managers"}},
+        "/redfish/v1/Systems": lambda: {"Members": [{"@odata.id": "/redfish/v1/Systems/1"}]},
+        "/redfish/v1/Systems/1": system,
+        "/redfish/v1/Managers/1": lambda: {"VirtualMedia": {"@odata.id": "/redfish/v1/Managers/1/VirtualMedia"}},
+        "/redfish/v1/Managers/1/VirtualMedia": lambda: {"Members": [{"@odata.id": "/redfish/v1/Managers/1/VirtualMedia/RemovableDisk"}, {"@odata.id": CD}]},
+        "/redfish/v1/Managers/1/VirtualMedia/RemovableDisk": lambda: {"MediaTypes": ["USBStick"]},
+        CD: cd}
+
+class H(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def reply(self, code, body=None):
+        data = json.dumps(body or {}).encode()
+        self.send_response(code); self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+    def handle_any(self, method):
+        n = int(self.headers.get("Content-Length") or 0)
+        body = json.loads(self.rfile.read(n) or b"null")
+        F.log.append((method, self.path, body))
+        if self.headers.get("Authorization") != AUTH:
+            return self.reply(401)
+        if method == "GET":
+            return self.reply(200, GETS[self.path]()) if self.path in GETS else self.reply(404)
+        if self.path.endswith("VirtualMedia.InsertMedia"):
+            req = urllib.request.Request(body["Image"], headers={"Range": "bytes=10-19"})
+            with urllib.request.urlopen(req) as r:
+                F.fetched = (r.status, r.headers.get("Content-Range"), r.read())
+            F.inserted = True
+        elif self.path.endswith("VirtualMedia.EjectMedia"):
+            F.inserted = False
+        elif self.path.endswith("ComputerSystem.Reset") and body.get("ResetType") == "On":
+            F.power = "On"; F.system_gets = 0
+        self.reply(204)
+    def do_GET(self): self.handle_any("GET")
+    def do_POST(self): self.handle_any("POST")
+    def do_PATCH(self): self.handle_any("PATCH")
+
+F = Fake(); F.reset()
+srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+threading.Thread(target=srv.serve_forever, daemon=True).start()
+tmp = tempfile.mkdtemp()
+creds = os.path.join(tmp, "creds.json")
+with open(creds, "w") as f:
+    json.dump({"username": USER, "password": PW}, f)
+isodir = os.path.join(tmp, "iso"); os.mkdir(isodir)
+ISO = bytes(range(256)) * 4096
+
+def site_file(**machine):
+    s = copy.deepcopy(SITE)
+    s["provision"]["machines"]["pve2"].update({"bmc": {"type": "redfish", "address": "127.0.0.1"}}, **machine)
+    path = os.path.join(tmp, "site.json")
+    with open(path, "w") as f:
+        json.dump({"site": s}, f)
+    return path
+
+def cli(site, *extra, creds_file=creds):
+    env = dict(os.environ, PROVISION_SITE_FILE=site, PROVISION_BMC_CREDENTIALS_FILE=creds_file,
+               PROVISION_TEST_REDFISH_URL=f"http://127.0.0.1:{srv.server_address[1]}",
+               PROVISION_ISO_DIR=isodir, PROVISION_TEST_POLL_SCALE="0.01")
+    r = subprocess.run([sys.executable, sys.argv[1], "run", "--name", "pve2", *extra], env=env, capture_output=True, text=True, timeout=120)
+    return r.returncode, r.stdout, r.stderr
+
+def writes():
+    return [(m, path, b) for m, path, b in F.log if m != "GET"]
+
+# dry run: reads, then the plan in a fixed shape, no secrets, no writes
+F.reset()
+code, out, err = cli(site_file())
+lines = out.splitlines()
+ok("dry run exits 0", code == 0)
+ok("dry run header", lines[0] == "provision pve2: dry run, nothing changes. Apply with -e provision_confirm=pve2")
+ok("dry run guard line", lines[1].startswith("guard: ok"))
+ok("dry run reads are GETs", [l for l in lines if l.startswith("read: GET ")][:3] == ["read: GET /redfish/v1", "read: GET /redfish/v1/Systems", "read: GET /redfish/v1/Systems/1"])
+plan = [l for l in lines if l.startswith("plan: ")]
+want = ["plan: serve " , "plan: POST " + CD + "/Actions/VirtualMedia.InsertMedia {\"Image\": \"http://<this Mac's LAN address>:<port>/<random>/pve2.iso\", \"Inserted\": true, \"WriteProtected\": true}",
+        'plan: PATCH /redfish/v1/Systems/1 {"Boot": {"BootSourceOverrideEnabled": "Once", "BootSourceOverrideTarget": "Cd"}}',
+        'plan: POST /redfish/v1/Systems/1/Actions/ComputerSystem.Reset {"ResetType": "On"}',
+        "plan: wait for the installer to power the server off (up to 90 min)",
+        "plan: POST " + CD + "/Actions/VirtualMedia.EjectMedia {}",
+        "plan: stop serving and delete ",
+        'plan: POST /redfish/v1/Systems/1/Actions/ComputerSystem.Reset {"ResetType": "On"}',
+        "plan: wait for SSH on 192.0.2.12:22"]
+ok("dry run plan shape", len(plan) == len(want) and all(a.startswith(b) for a, b in zip(plan, want)))
+ok("dry run sends only GETs", F.log and not writes())
+ok("dry run prints no password", PW not in out + err and "bmc-user" not in out + err)
+
+# the current server: refused before any request
+F.reset()
+code, out, err = cli(site_file(bmc={"type": "redfish", "address": SITE["pve"]["idrac_ip"]}))
+ok("current server refused (exit 3)", code == 3 and "refused" in err and "current server" in err)
+ok("current server: no request sent", F.log == [])
+F.reset()
+code, out, err = cli(site_file(network=dict(SITE["provision"]["machines"]["pve2"]["network"], mac=SITE["provision"]["refuse"]["macs"][0])))
+ok("current server MAC refused, no request", code == 3 and F.log == [])
+F.reset(serial="EXAMPLE0")
+code, out, err = cli(site_file())
+ok("BMC reporting the current serial refused, reads only", code == 3 and "current server" in err and not writes())
+
+# no standard InsertMedia: refused cleanly
+F.reset(insert=False)
+code, out, err = cli(site_file())
+ok("no InsertMedia refused", code == 3 and "InsertMedia" in err and not writes())
+F.reset(insert=False)
+code, out, err = cli(site_file(media="manual"))
+ok("no InsertMedia with media manual: dry run ok", code == 0 and "plan: POST /redfish/v1/Systems/1/Actions/ComputerSystem.Reset" in out and "InsertMedia" not in out)
+
+# confirm must match, the ISO must exist, a running server is never reset
+F.reset()
+code, out, err = cli(site_file(), "-e", "provision_confirm=other")
+ok("wrong confirm refused", code == 3 and "provision_confirm must be pve2" in err and F.log == [])
+code, out, err = cli(site_file(), "-e", "provision_confirm=pve2")
+ok("missing ISO refused", code == 3 and "make provision-iso" in err and not writes())
+with open(os.path.join(isodir, "pve2.iso"), "wb") as f:
+    f.write(ISO)
+F.reset(power="On")
+code, out, err = cli(site_file(), "-e", "provision_confirm=pve2")
+ok("powered-on target refused, reads only", code == 3 and "Shut it down first" in err and not writes())
+F.reset()
+code, out, err = cli(site_file(media="manual"), "-e", "provision_confirm=pve2")
+ok("manual media needs provision_media_ready", code == 3 and "provision_media_ready" in err and not writes())
+
+# the install run, network dhcp so it does not wait for SSH
+F.reset()
+code, out, err = cli(site_file(network="dhcp"), "-e", "provision_confirm=pve2")
+ok("install run exits 0", code == 0)
+seq = [(m, path.rsplit("/", 1)[-1]) for m, path, b in writes()]
+ok("install run call order", seq == [("POST", "VirtualMedia.InsertMedia"), ("PATCH", "1"), ("POST", "ComputerSystem.Reset"),
+                                     ("POST", "VirtualMedia.EjectMedia"), ("POST", "ComputerSystem.Reset")])
+ins = writes()[0][2]
+ok("InsertMedia body", ins["Inserted"] is True and ins["WriteProtected"] is True and ins["Image"].startswith("http://127.0.0.1:") and ins["Image"].endswith("/pve2.iso"))
+ok("ISO served with byte ranges", F.fetched == (206, f"bytes 10-19/{len(ISO)}", ISO[10:20]))
+ok("ISO deleted after the install", not os.path.exists(os.path.join(isodir, "pve2.iso")))
+try:
+    urllib.request.urlopen(ins["Image"], timeout=2); ok("server stopped after the install", False)
+except Exception:
+    ok("server stopped after the install", True)
+ok("install run prints no password", PW not in out + err)
+
+# the ISO server alone
+path = os.path.join(tmp, "x.iso")
+with open(path, "wb") as f:
+    f.write(ISO)
+s2, url = p.serve_iso(path, "127.0.0.1")
+def fetch(u, rng=None, method="GET"):
+    req = urllib.request.Request(u, method=method, headers={"Range": rng} if rng else {})
+    try:
+        with urllib.request.urlopen(req) as r:
+            return r.status, r.headers.get("Content-Range"), r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers.get("Content-Range"), b""
+ok("whole file", fetch(url)[0] == 200 and fetch(url)[2] == ISO)
+ok("suffix range", fetch(url, "bytes=-5") == (206, f"bytes {len(ISO) - 5}-{len(ISO) - 1}/{len(ISO)}", ISO[-5:]))
+ok("open range", fetch(url, f"bytes={len(ISO) - 3}-")[2] == ISO[-3:])
+ok("range past the end -> 416", fetch(url, f"bytes={len(ISO)}-")[0] == 416)
+ok("HEAD has the length", fetch(url, method="HEAD")[0] == 200)
+ok("other paths -> 404", fetch(url.rsplit("/", 2)[0] + "/x.iso")[0] == 404)
+s2.shutdown()
+
+# IPMI and no-BMC plans
+nocreds = os.path.join(tmp, "nocreds.json")
+with open(nocreds, "w") as f:
+    f.write("{}")
+code, out, err = cli(site_file(bmc={"type": "ipmi", "address": "127.0.0.1"}, media="manual"), creds_file=nocreds)
+ok("IPMI dry run plan", code == 0 and "plan: ipmitool -I lanplus -H <bmc> -U <user> -E chassis bootdev cdrom options=efiboot" in out
+   and "plan: ipmitool -I lanplus -H <bmc> -U <user> -E chassis power on" in out)
+code, out, err = cli(site_file(bmc={"type": "none"}, media="manual"))
+ok("no BMC: manual steps only", code == 0 and "manual: " in out and "plan: POST" not in out and "ipmitool" not in out)
+srv.shutdown()
+import shutil; shutil.rmtree(tmp)
+sys.exit(1 if fails else 0)
+PY2
 
 # The CLI exits 3 on a refusal and never echoes the password.
 out=$(printf 'test-only-cli-value\n' | PROVISION_SITE_FILE=site/site.example.yml python3 scripts/provision.py answer --name pve2 --ssh-key /dev/null 2>&1)
