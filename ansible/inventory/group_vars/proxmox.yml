@@ -67,7 +67,8 @@ _vlan_web:
     dport: "{{ vlan_gateway_ports }}"
 
 # One segment per VLAN. Lab hosts reach every VLAN. Each VLAN reaches the host for DHCP,
-# and NTP and ping on its own gateway address only (not the Proxmox UI or SSH).
+# and NTP and ping on its own gateway address only (not the Proxmox UI or SSH). Only the
+# VLAN's own addresses may leave it (strict_source).
 vlan_segments: >-
   {%- set out = [] -%}
   {%- for v in vlans -%}
@@ -76,7 +77,7 @@ vlan_segments: >-
                     'cameras': _vlan_dns + (_vlan_internet if cameras_internet | bool else []),
                     'personal': _vlan_dns + _vlan_web + _vlan_internet}[v.name] -%}
   {%- set _ = out.append({'name': v.name, 'interface': v.name, 'subnet': n.cidr, 'gateway': n.gateway,
-        'nat': true, 'ingress': _vlan_from_lab, 'egress': egress,
+        'nat': true, 'strict_source': true, 'ingress': _vlan_from_lab, 'egress': egress,
         'host': [{'comment': 'DHCP (dnsmasq on this interface only)', 'proto': 'udp', 'dport': 67},
                  {'comment': 'NTP and ping on its own gateway', 'daddr': n.gateway, 'proto': 'udp', 'dport': 123},
                  {'daddr': n.gateway, 'proto': 'icmp'}]}) -%}

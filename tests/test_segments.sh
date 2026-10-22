@@ -147,9 +147,12 @@ hasnt "the apply never restarts the unit" "state: restarted" ansible/roles/pve_s
 # enclave, rendered with the real data and a fixture site dict (documentation ranges:
 # the lab 192.0.2.0/25, home 203.0.113.0/24, enclave and VLANs /26s of 198.51.100.0/24).
 # render_vlans <out> <cameras_internet> [enclave-only]
+# The lists go in as extra vars: group_vars/proxmox.yml is a vars_file, which would win over
+# play vars.
 render_vlans() {
   local list='{{ [pve_enclave_segment] + vlan_segments }}' sets='{{ pve_enclave_sets + vlan_sets }}'
   if [ -n "${3:-}" ]; then list='{{ [pve_enclave_segment] }}'; sets='{{ pve_enclave_sets }}'; fi
+  printf '{"pve_segments_list": "%s", "pve_segments_sets": "%s", "cameras_internet": %s}' "$list" "$sets" "$2" >"$tmp/ev.json"
   cat >"$tmp/vlans.yml" <<PLAY
 - name: VLAN segments test
   hosts: localhost
@@ -161,8 +164,6 @@ render_vlans() {
     - $PWD/ansible/roles/pve_vlans/defaults/main.yml
   vars:
     pve_segments_table: segments
-    pve_segments_list: "$list"
-    pve_segments_sets: "$sets"
     pve_enclave_smtp_enabled: true
     pve_enclave_smtp_host: smtp.example.com
     pve_enclave_smtp_port: "587"
@@ -215,7 +216,7 @@ render_vlans() {
         mode: "0600"
       loop: [servers, cameras, personal]
 PLAY
-  ansible-playbook -e "{\"cameras_internet\": $2}" "$tmp/vlans.yml" >"$tmp/out-vlans.log" 2>&1
+  ansible-playbook -e "@$tmp/ev.json" "$tmp/vlans.yml" >"$tmp/out-vlans.log" 2>&1
 }
 chain() { awk -v c="chain $1 {" '$0 ~ c {f=1} f {print} f && /^\t}$/ {exit}' "$2"; }
 
@@ -229,6 +230,8 @@ for n in servers cameras personal; do
   check "$n: the lab reaches everything, nothing else gets in" "$(chain "${n}_in" "$v" | grep -cE 'accept$')" "1"
   chain "${n}_in" "$v" >"$tmp/c"; has "$n: ingress from the lab" "ip saddr 192.0.2.0/25 accept" "$tmp/c"
   chain "${n}_out" "$v" >"$tmp/c"
+  check "$n: the first rule drops a source outside its subnet" "$(sed -n 2p "$tmp/c" | tr -d '\t')" "# Only its own addresses leave it: a spoofed source is dropped."
+  check "$n: strict source rule" "$(sed -n 3p "$tmp/c" | tr -d '\t')" "ip saddr != $(sed -n "s/.*ip saddr \([0-9./]*\) iifname != \"$n\" counter drop/\1/p" "$v" | head -1) counter drop"
   has "$n: DNS to Pi-hole (udp)" "ip daddr { 192.0.2.121, 203.0.113.249 } udp dport 53 return" "$tmp/c"
   has "$n: DNS to Pi-hole (tcp)" "ip daddr { 192.0.2.121, 203.0.113.249 } tcp dport 53 return" "$tmp/c"
   check "$n: nothing private before the internet" "$(grep -nE '@vlan_nonpublic counter drop|^		return$' "$tmp/c" | cut -d: -f2 | tr -d '\t' | tr '\n' '|')" \
@@ -249,9 +252,20 @@ has "not the internet: multicast and reserved" "224.0.0.0/3" "$v"
 check "three VLAN masquerades, the mail hole still the only snat" "$(grep -c masquerade "$v") $(grep -c 'snat ip to' "$v")" "3 1"
 render_vlans "$tmp/e.nft" true only
 check "enclave-only render rc" "$?" "0"
+hasnt "enclave-only render: no VLAN" "servers" "$tmp/e.nft"
 for c in enclave_in enclave_out enclave_host; do
   check "the enclave's $c is unchanged by the VLANs" "$(chain "$c" "$v" | shasum)" "$(chain "$c" "$tmp/e.nft" | shasum)"
 done
+# strict_source adds nothing to a segment without it: the enclave-only ruleset is the same
+# with the template minus that block.
+sed '/strict_source/,/endif/d' ansible/roles/pve_segments/templates/segments.nft.j2 >"$tmp/nostrict.j2"
+check "the strict_source block was cut out" "$(grep -c 'saddr !=' "$tmp/nostrict.j2")" "0"
+cp "$tmp/e.nft" "$tmp/e-strict.nft"
+sed -i.bak "s#$PWD/ansible/roles/pve_segments/templates/segments.nft.j2#$tmp/nostrict.j2#" "$tmp/vlans.yml"
+ansible-playbook -e "@$tmp/ev.json" "$tmp/vlans.yml" >"$tmp/out-ns.log" 2>&1
+check "enclave-only render without the block: rc" "$?" "0"
+check "the enclave's ruleset is byte-identical with and without strict_source" "$(shasum <"$tmp/e-strict.nft" | cut -c1-40)" "$(shasum <"$tmp/e.nft" | cut -c1-40)"
+hasnt "no strict-source rule for the enclave" "saddr !=" "$tmp/e-strict.nft"
 check "the enclave's sets are unchanged" "$(awk '/set (admin|not_admin|enclave_smtp_relay) \{/,/^\t}/' "$v" | shasum)" \
   "$(awk '/set (admin|not_admin|enclave_smtp_relay) \{/,/^\t}/' "$tmp/e.nft" | shasum)"
 

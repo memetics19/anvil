@@ -93,6 +93,10 @@ table inet {{ pve_segments_table }} {
 
 	# New connections out of it: allowed ones go on (the destination's rules still apply).
 	chain {{ g.name }}_out {
+{% if g.strict_source | default(false) %}
+		# Only its own addresses leave it: a spoofed source is dropped.
+		ip saddr != {{ g.subnet }} counter drop
+{% endif %}
 		ct state invalid counter drop
 {% for r in g.egress | default([]) %}
 {{ rule(r, 'return') }}{% endfor %}

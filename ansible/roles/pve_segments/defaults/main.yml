@@ -7,6 +7,9 @@
 #   interface  the host's interface for it (an SDN vnet bridge, a VLAN interface)
 #   subnet     its CIDR, gateway the host's address on it (site values)
 #   nat        true: masquerade what it sends out of other interfaces (false for the enclave)
+#   strict_source  true: a new connection out of it must come from its own subnet (the first
+#              rule of <name>_out drops any other source). The VLANs set it. The enclave
+#              does not need it: its egress rules all name a source address.
 #   ingress    rules for new connections forwarded INTO the segment (accept)
 #   egress     rules for new connections forwarded OUT of it (allowed; the destination
 #              segment's ingress still applies)
