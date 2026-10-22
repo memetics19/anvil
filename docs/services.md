@@ -184,11 +184,19 @@ Its only upstream is Unbound, at a fixed address on the project's own Docker net
 from the root servers and validates DNSSEC, and has a healthcheck. Either container can
 restart on its own and resolution comes back without a run.
 
-Each client may send 1000 queries per 60 seconds. The limit counts per client address, so
-hand Pi-hole out to devices directly through the router's DHCP. If the router forwards its
-own DNS to Pi-hole instead, every device shows up as the router and shares one limit.
-NetBird clients behind the routing peer also share the `netbird` VM's address. Raise
-`pihole_rate_limit_count` if that is your setup.
+Each client may send 5000 queries per 60 seconds (`pihole_rate_limit_count` and
+`pihole_rate_limit_interval`). The limit counts per client address. Every VLAN client and
+every NetBird peer routed through the Proxmox host arrive as the host's address (it
+masquerades them), so they all share one limit. That is why it is 5000 and not FTL's 1000.
+NetBird clients behind the `netbird` VM share that VM's address too. Hand Pi-hole out to
+devices directly through the router's DHCP. If the router forwards its own DNS to Pi-hole
+instead, every device shows up as the router and shares one limit.
+
+The role applies the rate limit live (`tasks/settings_apply.yml`, `pihole_ftl_live`): it
+reads each FTL setting with `pihole-FTL --config`, writes only what differs and reads it
+back. Like the local records, it is not in the compose environment, so changing it never
+recreates the container. A setting listed in `pihole_ftl_live` must not also be an
+`FTLCONF_` variable, because FTL makes those read-only.
 
 Local records come from `site.dns.local_records` in Vault. An entry with `name` is served
 as `<name>.lan.<domain>`, and the `lan` sub-zone keeps it from shadowing a public name. An
@@ -768,11 +776,10 @@ on port 123.
   per-client statistics lump them together.
 - Lab clients reach VLAN devices with the host's home address as their source. The lab
   SNAT rule matches that traffic too. The firewall still decides on the real source.
-- Pi-hole's rate limit (`pihole_rate_limit_count`, 1000 queries per 60 s per client) counts
-  every VLAN client and every masqueraded NetBird peer as one client, the host. A busy VLAN
-  could hit it. Raising it means a new value in Pi-hole's compose environment, which
-  recreates the Pi-hole container (a home DNS gap), so it is not changed yet. Later, the
-  VLANs' DNS could skip the masquerade so Pi-hole sees each client.
+- Pi-hole's rate limit counts every VLAN client and every masqueraded NetBird peer as one
+  client, the host. It is 5000 queries per 60 s for that reason ([Pi-hole](#pi-hole)). A
+  later improvement: let the VLANs' DNS skip the masquerade, so Pi-hole sees and limits
+  each client.
 - IPv6 is not routed for the VLANs. The firewall drops it.
 - Devices on the same VLAN reach each other directly (layer 2). The firewall sees only
   traffic that the host routes. That holds while `net.bridge.bridge-nf-call-iptables` is
