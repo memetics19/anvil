@@ -1,9 +1,15 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net"
+	"net/url"
+	"os/exec"
+	"runtime"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -14,6 +20,16 @@ const (
 		"Check you're on the home or lab network, or connected to the VPN, then rerun."
 	msgVault = "Vault (in the secrets enclave) is not reachable from this machine. " +
 		"Check you're on the home or lab network, or connected to the VPN, then rerun."
+	// msgLocalNetwork: macOS 15 and later give a binary started from a terminal app without
+	// the Local Network permission "no route to host" for LAN addresses. terraform, vault
+	// and anvil itself are such binaries. /usr/bin/ssh (so Ansible) and /sbin/ping are not.
+	msgLocalNetwork = "macOS is blocking local network access for this terminal app. Open System Settings, " +
+		"Privacy & Security, Local Network, and turn it on for your terminal (Terminal, iTerm, Warp, " +
+		"Ghostty or your editor), then rerun."
+	// msgMaybeLocalNetwork is added when anvil cannot tell the two causes apart.
+	msgMaybeLocalNetwork = "If you are on that network, macOS may be blocking local network access for this " +
+		"terminal app: open System Settings, Privacy & Security, Local Network, and turn it on for your " +
+		"terminal (Terminal, iTerm, Warp, Ghostty or your editor), then rerun."
 )
 
 // reachTries and reachPause: an endpoint gets this many tries, this far apart. Tests
@@ -41,9 +57,10 @@ func needsOf(makeTarget string) needs {
 	return n
 }
 
-// reachScript prints PVE_IP, and yes when the run reads the site dict from Vault.
+// reachScript prints PVE_IP, VAULT_ADDR, and yes when the run reads the site dict from
+// Vault. anvil keeps them to itself.
 const reachScript = `source scripts/env.sh >/dev/null 2>&1 || exit 90
-printf '%s\n' "${PVE_IP:-}"
+printf '%s\n%s\n' "${PVE_IP:-}" "${VAULT_ADDR:-}"
 if [ -n "${VAULT_TOKEN:-}" ] && [ "${HOMELAB_SITE_SOURCE:-}" != keychain ]; then echo yes; fi`
 
 // retry runs ok up to reachTries times, reachPause apart.
@@ -59,13 +76,49 @@ func retry(ok func() bool) bool {
 	return false
 }
 
-func tcpOpen(addr string) bool {
-	c, err := net.DialTimeout("tcp", addr, 3*time.Second)
-	if err != nil {
-		return false
+// The parts of the check that touch the system. Tests replace them.
+var (
+	dialTCP = func(addr string) error {
+		c, err := net.DialTimeout("tcp", addr, 3*time.Second)
+		if err == nil {
+			c.Close()
+		}
+		return err
 	}
-	c.Close()
-	return true
+	// pingOK asks /sbin/ping, which macOS lets through, whether host answers.
+	pingOK = func(host string) bool {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return exec.CommandContext(ctx, "/sbin/ping", "-c", "1", "-t", "2", host).Run() == nil
+	}
+	goos = runtime.GOOS
+)
+
+// unreachable is the message for an endpoint that did not answer. On macOS, "no route to
+// host" while ping reaches the host is the Local Network permission. When ping does not
+// answer either, it may still be, so the message has both hints.
+func unreachable(base, addr string, err error) string {
+	if goos != "darwin" || !errors.Is(err, syscall.EHOSTUNREACH) {
+		return base
+	}
+	host, _, splitErr := net.SplitHostPort(addr)
+	if splitErr == nil && pingOK(host) {
+		return msgLocalNetwork
+	}
+	return base + " " + msgMaybeLocalNetwork
+}
+
+// hostPort is the host and port of a Vault address, or "".
+func hostPort(addr string) string {
+	u, err := url.Parse(addr)
+	if err != nil || u.Hostname() == "" {
+		return ""
+	}
+	port := u.Port()
+	if port == "" {
+		port = "8200"
+	}
+	return net.JoinHostPort(u.Hostname(), port)
 }
 
 // reachable checks the endpoints n names, and prints the plain message for the first
@@ -86,19 +139,28 @@ func reachable(a *app, r *runner, n needs) bool {
 		// env.sh failed (no Keychain pve-ip). make reports that itself.
 		return true
 	}
-	lines := strings.Split(out, "\n")
-	pve := strings.TrimSpace(lines[0])
-	vaultInUse := len(lines) > 1 && strings.TrimSpace(lines[1]) == "yes"
+	lines := append(strings.Split(out, "\n"), "", "", "")
+	pve, vaultAddr := strings.TrimSpace(lines[0]), strings.TrimSpace(lines[1])
+	vaultInUse := strings.TrimSpace(lines[2]) == "yes"
 	if n.state && !a.reached["state"] && pve != "" {
-		if !retry(func() bool { return tcpOpen(net.JoinHostPort(pve, stateStorePort)) }) {
-			fmt.Fprintln(a.stderr, "anvil: "+a.pal().fail(msgStateStore))
+		// A Go dial from anvil is a third-party binary like terraform, so macOS treats it
+		// the same way.
+		addr := net.JoinHostPort(pve, stateStorePort)
+		var err error
+		if !retry(func() bool { err = dialTCP(addr); return err == nil }) {
+			fmt.Fprintln(a.stderr, "anvil: "+a.pal().fail(unreachable(msgStateStore, addr, err)))
 			return false
 		}
 		a.reached["state"] = true
 	}
 	if n.vault && !a.reached["vault"] && vaultInUse {
+		// The vault binary, as the stages use it.
 		if !retry(func() bool { return parseVaultStatus(r.quiet(vaultStatusScript)).reachable }) {
-			fmt.Fprintln(a.stderr, "anvil: "+a.pal().fail(msgVault))
+			msg := msgVault
+			if addr := hostPort(vaultAddr); addr != "" {
+				msg = unreachable(msgVault, addr, dialTCP(addr))
+			}
+			fmt.Fprintln(a.stderr, "anvil: "+a.pal().fail(msg))
 			return false
 		}
 		a.reached["vault"] = true

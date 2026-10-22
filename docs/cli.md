@@ -194,7 +194,8 @@ connects to the state store, Ceph S3 on port 7480 of the Proxmox host. Before a 
 reads the site dict from Vault, it checks that Vault answers. Each gets three tries, three
 seconds apart. When one does not answer, anvil stops with a plain message and runs
 nothing. Check that you are on the home or lab network, or on the VPN, then rerun. It
-never prints the address.
+never prints the address. On macOS the cause can also be the Local Network permission of
+your terminal app, see [No route to host on macOS](#no-route-to-host-on-macos).
 
 ## anvil doctor and anvil init
 
@@ -341,6 +342,28 @@ On a terminal, anvil colors its own status words: `ok`, `warn` and `FAIL`, the s
 results of `anvil up` and the problems of `anvil status`. Piped output stays plain.
 `NO_COLOR=1`, `TERM=dumb` or `--no-color` anywhere on the command line turn colors off.
 The output of make and Ansible is passed on as it is.
+
+## Troubleshooting
+
+### No route to host on macOS
+
+On macOS 15 and later, a program started from a terminal app needs the Local Network
+permission to reach addresses on your network. Without it, `terraform`, `vault` and
+`anvil` itself get `no route to host`, while Ansible still works, because it connects
+through `/usr/bin/ssh`, which macOS lets through. So `anvil check` may fail at `tf-init`
+while `anvil check apps` works.
+
+anvil checks the state store and Vault the way the stages reach them, from a program like
+`terraform`. When that fails with `no route to host` but `/sbin/ping` reaches the host,
+anvil says macOS is blocking local network access. When ping does not answer either, the
+message has both hints. The fix:
+
+1. Open System Settings, Privacy & Security, Local Network.
+2. Turn it on for your terminal app: Terminal, iTerm, Warp, Ghostty or your editor.
+3. Quit and reopen the terminal app if the switch was already on, then rerun.
+
+When the message names the network or the VPN instead, the host did not answer at all.
+Check that you are on the home or lab network, or connected to the VPN.
 
 ## Exit codes
 

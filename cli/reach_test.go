@@ -2,7 +2,9 @@ package main
 
 import (
 	"net"
+	"os"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -71,5 +73,65 @@ func TestUnreachableEndpointsStopBeforeMake(t *testing.T) {
 	l.resetCalls()
 	if code := l.run("", "check", "apps"); code != 0 || len(l.makeCalls()) != 1 {
 		t.Fatalf("vault open: exit %d, calls %q:\n%s", code, l.makeCalls(), l.output())
+	}
+}
+
+func TestLocalNetworkPermissionHint(t *testing.T) {
+	oldDial, oldPing, oldOS := dialTCP, pingOK, goos
+	t.Cleanup(func() { dialTCP, pingOK, goos = oldDial, oldPing, oldOS })
+	noRoute := &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.EHOSTUNREACH)}
+	refused := &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}
+	var pinged string
+	cases := []struct {
+		os   string
+		err  error
+		ping bool
+		want string
+	}{
+		// macOS, no route, but ping answers: the Local Network permission.
+		{"darwin", noRoute, true, msgLocalNetwork},
+		// macOS, no route, and ping does not answer either: both hints.
+		{"darwin", noRoute, false, msgStateStore + " " + msgMaybeLocalNetwork},
+		// Refused is the endpoint itself, not the permission.
+		{"darwin", refused, true, msgStateStore},
+		// Linux has no such permission.
+		{"linux", noRoute, true, msgStateStore},
+	}
+	for _, tc := range cases {
+		goos = tc.os
+		pingOK = func(h string) bool { pinged = h; return tc.ping }
+		if got := unreachable(msgStateStore, "192.0.2.10:7480", tc.err); got != tc.want {
+			t.Errorf("%s %v ping=%v:\n got %q\nwant %q", tc.os, tc.err, tc.ping, got, tc.want)
+		}
+	}
+	if pinged != "192.0.2.10" {
+		t.Errorf("pinged %q", pinged)
+	}
+
+	// Through anvil: the dial fails with no route, ping answers. Vault too, from VAULT_ADDR.
+	l := newTestLab(t)
+	fakeTools(l)
+	l.realReach = true
+	l.write("scripts/env.sh", "export PVE_IP=192.0.2.10 VAULT_ADDR=https://192.0.2.20:8200\n")
+	oldPause := reachPause
+	t.Cleanup(func() { reachPause = oldPause })
+	reachPause = time.Millisecond
+	goos = "darwin"
+	var dialed []string
+	dialTCP = func(addr string) error { dialed = append(dialed, addr); return noRoute }
+	pingOK = func(string) bool { return true }
+	if code := l.run("", "check", "tf"); code == 0 || l.makeCalls() != nil || !strings.Contains(l.output(), msgLocalNetwork) {
+		t.Fatalf("state store: exit %d, calls %q:\n%s", code, l.makeCalls(), l.output())
+	}
+	if len(dialed) != 3 || dialed[0] != "192.0.2.10:7480" {
+		t.Errorf("dialed %q", dialed)
+	}
+	l.env["FAKE_VAULT_RC"], l.env["FAKE_VAULT_JSON"] = "1", ""
+	dialed = nil
+	if code := l.run("", "check", "apps"); code == 0 || !strings.Contains(l.output(), msgLocalNetwork) || !contains(dialed, "192.0.2.20:8200") {
+		t.Fatalf("vault: exit %d, dialed %q:\n%s", code, dialed, l.output())
+	}
+	if strings.Contains(l.output(), "192.0.2") {
+		t.Errorf("printed an address:\n%s", l.output())
 	}
 }
