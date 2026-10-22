@@ -285,6 +285,9 @@ func (a *app) runStage(r *runner, s stage, st *upState, yes bool) int {
 				return 0
 			}
 		}
+		if !a.canReach(r, s.cmd.target) {
+			return 1
+		}
 		return r.make(s.cmd, nil)
 	case skStatus:
 		return a.status(a, r)

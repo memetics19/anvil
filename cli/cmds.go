@@ -129,8 +129,12 @@ func (a *app) setup(dryRun bool) (*runner, *catalog, bool) {
 
 // runCheck runs one target's dry run and returns its exit code and summary.
 func (a *app) runCheck(r *runner, t target, o targetOpts) (int, summary) {
+	m := t.checkCmd(o.tags, o.args)
+	if !a.canReach(r, m.target) {
+		return 1, summary{}
+	}
 	var out bytes.Buffer
-	code := r.make(t.checkCmd(o.tags, o.args), &out)
+	code := r.make(m, &out)
 	if code != 0 || r.dryRun {
 		return code, summary{}
 	}

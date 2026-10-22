@@ -143,6 +143,15 @@ the checkout. A fresh clone or worktree has no `.terraform`, so anvil runs `tf-i
 When a collection in `ansible/requirements.yml` is missing, anvil installs them. Then it
 goes on.
 
+## Reachability
+
+Before Terraform runs (`tf-init`, `tf` and the Terraform stages of `anvil up`), anvil
+connects to the state store, Ceph S3 on port 7480 of the Proxmox host. Before a run that
+reads the site dict from Vault, it checks that Vault answers. Each gets three tries, three
+seconds apart. When one does not answer, anvil stops with a plain message and runs
+nothing. Check that you are on the home or lab network, or on the VPN, then rerun. It
+never prints the address.
+
 ## anvil init
 
 ```sh

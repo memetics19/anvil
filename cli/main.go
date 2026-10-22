@@ -40,6 +40,18 @@ type app struct {
 	// Tests replace them.
 	preflight func(a *app, r *runner) bool
 	status    func(a *app, r *runner) int
+	// reach checks the lab endpoints a run needs (reach.go). nil: the real one.
+	reach func(a *app, r *runner, n needs) bool
+	// reached are the endpoints that answered in this run.
+	reached map[string]bool
+}
+
+// canReach checks the endpoints of one make target before it runs.
+func (a *app) canReach(r *runner, makeTarget string) bool {
+	if a.reach == nil {
+		a.reach = reachable
+	}
+	return a.reach(a, r, needsOf(makeTarget))
 }
 
 type command struct {

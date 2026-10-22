@@ -38,7 +38,9 @@ type testLab struct {
 	log      string
 	checkOut string
 	env      map[string]string
-	out, err bytes.Buffer
+	// realReach keeps the real endpoint checks (reach_test.go).
+	realReach bool
+	out, err  bytes.Buffer
 }
 
 // newTestLab makes a repo with the real playbook and inventory, a scripts/env.sh that
@@ -117,6 +119,9 @@ func (l *testLab) run(stdin string, args ...string) int {
 		env:    env,
 	}
 	setTestHooks(a)
+	if l.realReach {
+		a.reach = reachable
+	}
 	return a.run(args)
 }
 
@@ -147,8 +152,9 @@ apps                       : ok=42   changed=2    unreachable=0    failed=0    s
 `
 
 // setTestHooks replaces the parts of app that reach outside the test lab: anvil up's
-// init checks pass, and its status stage prints a marker.
+// init checks pass, every lab endpoint answers, and its status stage prints a marker.
 func setTestHooks(a *app) {
+	a.reach = func(*app, *runner, needs) bool { return true }
 	a.preflight = func(*app, *runner) bool { return true }
 	a.status = func(a *app, _ *runner) int {
 		fmt.Fprintln(a.stdout, "STATUS-RAN")

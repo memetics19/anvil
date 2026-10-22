@@ -26,6 +26,9 @@ func (a *app) prepareTerraform(r *runner) bool {
 	if !r.dryRun {
 		fmt.Fprintln(a.stderr, "anvil: this checkout has no Terraform setup yet, running tf-init first")
 	}
+	if !a.canReach(r, "tf-init") {
+		return false
+	}
 	if code := r.make(newMake("tf-init"), nil); code != 0 {
 		fmt.Fprintf(a.stderr, "anvil: tf-init failed (exit %d)\n", code)
 		return false
