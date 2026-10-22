@@ -50,6 +50,8 @@ func newTestLab(t *testing.T) *testLab {
 		log: filepath.Join(dir, "make.log"), checkOut: filepath.Join(dir, "check.out")}
 	l.write("Makefile", "")
 	l.write("scripts/env.sh", "export PVE_IP="+sentinelSource+"\n")
+	// An initialised checkout, so commands do not run tf-init first (TestPrepareTerraform).
+	l.write(tfState, "{}")
 	for _, p := range []string{playbookPath, inventoryPath} {
 		b, err := os.ReadFile(filepath.Join(realRoot, p))
 		if err != nil {

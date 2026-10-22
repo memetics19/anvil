@@ -136,6 +136,12 @@ When two meanings share a name, the lab target wins, then the VM. `vault` is the
 server (`make vault`). The guest plays on the `vault` VM are `anvil check vm --host vault`.
 A name anvil does not know is refused, with the names close to it.
 
+## Setup of a new checkout
+
+You never run make yourself. Before `check`, `apply` and `up` do anything, anvil sets up
+the checkout. Today that means Terraform: a fresh clone or worktree has no `.terraform`,
+so anvil runs `tf-init` once and then goes on.
+
 ## anvil init
 
 ```sh

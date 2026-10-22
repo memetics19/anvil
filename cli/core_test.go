@@ -366,3 +366,32 @@ func TestHelp(t *testing.T) {
 		t.Errorf("unknown command: exit %d", code)
 	}
 }
+
+const tfState = "terraform/.terraform/terraform.tfstate"
+
+// A checkout without Terraform setup gets tf-init before the first check, once.
+func TestPrepareTerraform(t *testing.T) {
+	l := newTestLab(t)
+	fakeTools(l)
+	l.setCheckOutput(recapNoChanges)
+	if err := os.Remove(filepath.Join(l.root, tfState)); err != nil {
+		t.Fatal(err)
+	}
+	if code := l.run("", "check", "vms"); code != 0 {
+		t.Fatalf("exit %d: %s", code, l.output())
+	}
+	got := l.makeCalls()
+	if len(got) < 2 || got[0] != "tf-init" || strings.Count(strings.Join(got, "\n"), "tf-init") != 1 {
+		t.Fatalf("calls %q, want tf-init first, once", got)
+	}
+	l.resetCalls()
+	l.write(tfState, "{}")
+	if code := l.run("", "check", "vms"); code != 0 {
+		t.Fatalf("exit %d: %s", code, l.output())
+	}
+	for _, c := range l.makeCalls() {
+		if c == "tf-init" {
+			t.Fatalf("tf-init ran on an initialised checkout: %q", l.makeCalls())
+		}
+	}
+}
