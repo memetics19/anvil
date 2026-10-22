@@ -2,6 +2,9 @@
 
 Running a lab that is already built. To build one, see [setup.md](setup.md).
 
+The `anvil` CLI runs these make targets for you, from `anvil up` for the whole lab to a
+single service. See [cli.md](cli.md).
+
 Placeholders: `<apps-address>` (the `apps` VM's lab address), `<apps-home-address>`,
 `<domain>`, `<gateway-domain>`.
 
@@ -30,11 +33,12 @@ Placeholders: `<apps-address>` (the `apps` VM's lab address), `<apps-home-addres
 | `make tf-apply` | Applies only the saved plan, after running the guard again, then deletes the plan. |
 | `make backup` | Encrypted Terraform state, a Vault Raft snapshot and the newest Vaultwarden backup, into `~/homelab-backups`. |
 | `make vaultwarden-drill` | Restores the newest Vaultwarden backup into a temporary container on the `vaultwarden` VM, checks it, then removes it. |
-| `make provision-iso NAME=<box>` | Builds the Proxmox VE automated install ISO for `site.provision.machines.<box>` into `build/provision/<box>.iso`, mode 600 ([provisioning.md](provisioning.md)). |
+| `make provision-iso NAME=<box>` | Builds the Proxmox VE automated install ISO for `site.provision.machines.<box>` into `build/provision/<box>.iso`, mode 600, or for `media: pxe` the netboot payload on the Proxmox host ([provisioning.md](provisioning.md)). |
 | `make provision NAME=<box>` | A dry run: the guard, read only BMC reads and every planned Redfish or IPMI call. `ARGS="-e provision_confirm=<box>"` installs. |
-| `make provision-clean NAME=<box>` | Deletes the ISO, which holds the root password hash. |
+| `make provision-clean NAME=<box>` | Deletes the ISO and the netboot payload on the Proxmox host. Both hold the root password hash. |
 | `make docs` | Builds this documentation into `build/site` with the `mkdocs` on your PATH. |
 | `make docs-publish` | Builds the same site in a throwaway venv and publishes it at `https://docs.<gateway-domain>`. |
+| `make cli` | Builds the `anvil` CLI into `build/anvil` ([cli.md](cli.md)). |
 
 ## Daily commands
 
@@ -326,11 +330,13 @@ Docker on the guests is not pinned. apt and unattended-upgrades keep it current.
 
 ## Tests
 
-CI runs `make lint secrets-scan` and every `tests/test_*.sh`. To run them locally:
+CI runs `make lint secrets-scan`, every `tests/test_*.sh` and the CLI's Go tests. To run
+them locally:
 
 ```sh
 make lint secrets-scan
 for t in tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
+(cd cli && go vet ./... && go test ./...)
 ```
 
 `tests/test_vaultwarden.sh` needs `age` and `sqlite3`.
