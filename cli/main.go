@@ -217,7 +217,7 @@ func (a *app) flags(fs *flag.FlagSet, usage string, args []string) ([]string, in
 
 // runner returns a runner for the repo, or prints why there is none.
 func (a *app) runner(dryRun bool) (*runner, bool) {
-	root, err := findRoot(a.cwd, a.getenv("ANVIL_REPO"))
+	root, err := a.repoRoot()
 	if err != nil {
 		fmt.Fprintf(a.stderr, "anvil: %v\n", err)
 		return nil, false

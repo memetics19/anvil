@@ -27,7 +27,29 @@ platform:
 `GOOS=linux GOARCH=amd64 make cli ANVIL_OUT=build/anvil-linux-amd64`.
 
 `anvil` finds the repo by walking up from the current directory. From anywhere else, set
-`ANVIL_REPO` to the repo's path.
+`ANVIL_REPO` to the repo's path. Without either, it uses the copy that `anvil fetch` made.
+
+## anvil fetch and anvil update
+
+A packaged `anvil` (Homebrew, .deb or .rpm) comes without
+the repo. Fetch it once:
+
+```sh
+anvil fetch     # clones the repo into ~/.local/share/anvil/repo
+anvil doctor
+```
+
+`anvil fetch` clones `https://github.com/memetics19/anvil` into
+`~/.local/share/anvil/repo`, or `$XDG_DATA_HOME/anvil/repo` when that is set. A release
+binary checks out its own tag, `v0.1.0` for anvil 0.1.0. A dev build checks out `main`.
+`ANVIL_REPO_URL` clones a fork instead.
+
+`anvil update` moves that copy to the binary's version: the new tag after an upgrade, or
+the newest `main` for a dev build. It refuses when the copy has local changes.
+
+Both work only on that copy. They never touch a checkout of yours. The copy lives in your
+home, not in `/usr/share`, because runs write `build/` and `terraform/.terraform` inside
+the repo.
 
 ## anvil up
 

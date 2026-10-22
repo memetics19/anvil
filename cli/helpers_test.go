@@ -41,7 +41,9 @@ type testLab struct {
 	// realReach keeps the real endpoint checks (reach_test.go).
 	realReach bool
 	// tty makes anvil believe stdout is a terminal (color_test.go).
-	tty      bool
+	tty bool
+	// dir is where anvil runs. Empty: the repo root.
+	dir      string
 	out, err bytes.Buffer
 }
 
@@ -105,22 +107,34 @@ func (l *testLab) setCheckOutput(s string) {
 	}
 }
 
-// run runs anvil with stdin as the user's answers.
-func (l *testLab) run(stdin string, args ...string) int {
-	l.out.Reset()
-	l.err.Reset()
+// app is anvil as the next run sees it.
+func (l *testLab) app() *app {
 	var env []string
 	for k, v := range l.env {
 		env = append(env, k+"="+v)
 	}
-	a := &app{
+	cwd := l.dir
+	if cwd == "" {
+		cwd = l.root
+	}
+	return &app{
 		stdout: &l.out, stderr: &l.err,
-		stdin:  bufio.NewReader(strings.NewReader(stdin)),
 		getenv: func(k string) string { return l.env[k] },
-		cwd:    l.root,
+		cwd:    cwd,
 		env:    env,
 		tty:    l.tty,
 	}
+}
+
+// cwd makes the next runs start in dir.
+func (l *testLab) cwd(dir string) { l.dir = dir }
+
+// run runs anvil with stdin as the user's answers.
+func (l *testLab) run(stdin string, args ...string) int {
+	l.out.Reset()
+	l.err.Reset()
+	a := l.app()
+	a.stdin = bufio.NewReader(strings.NewReader(stdin))
 	setTestHooks(a)
 	if l.realReach {
 		a.reach = reachable

@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
+
+var errNoRepo = errors.New("not inside the anvil repo")
 
 // isRepoRoot reports whether dir looks like the anvil repo: a Makefile next to
 // scripts/env.sh.
@@ -44,8 +47,42 @@ func findRoot(start, override string) (string, error) {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", errors.New("not inside the anvil repo; cd into it or set ANVIL_REPO")
+			return "", errNoRepo
 		}
 		dir = parent
 	}
+}
+
+// dataRepo is where anvil fetch keeps its copy of the repo: $XDG_DATA_HOME/anvil/repo, or
+// ~/.local/share/anvil/repo. It is in the user's home, not /usr/share, because runs write
+// build/ and terraform/.terraform inside the repo.
+func dataRepo(getenv func(string) string) string {
+	base := getenv("XDG_DATA_HOME")
+	if base == "" {
+		base = filepath.Join(getenv("HOME"), ".local", "share")
+	}
+	return filepath.Join(base, "anvil", "repo")
+}
+
+// tildePath shows a path under $HOME with ~.
+func tildePath(getenv func(string) string, p string) string {
+	if home := getenv("HOME"); home != "" && strings.HasPrefix(p, home+string(filepath.Separator)) {
+		return "~" + p[len(home):]
+	}
+	return p
+}
+
+// repoRoot finds the repo: ANVIL_REPO, else the current directory upwards, else the copy
+// anvil fetch made. Without any, the error says how to get one.
+func (a *app) repoRoot() (string, error) {
+	root, err := findRoot(a.cwd, a.getenv("ANVIL_REPO"))
+	if !errors.Is(err, errNoRepo) {
+		return root, err
+	}
+	if d := dataRepo(a.getenv); isRepoRoot(d) {
+		return d, nil
+	}
+	return "", fmt.Errorf("no anvil repo found: not inside a checkout, ANVIL_REPO is unset, and %s is empty.\n"+
+		"Run anvil fetch to clone it there (then anvil doctor), cd into a checkout, or set ANVIL_REPO",
+		tildePath(a.getenv, dataRepo(a.getenv)))
 }
