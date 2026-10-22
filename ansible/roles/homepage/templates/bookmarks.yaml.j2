@@ -1,2 +1,13 @@
-# Managed by Ansible (role homepage). No bookmarks: every link is a service (services.yaml).
+{% set groups = homepage_bookmarks | map(attribute='group') | unique | list %}
+{% if groups | length == 0 %}
 []
+{% else %}
+{% for g in groups %}
+- {{ g | to_json }}:
+{% for b in homepage_bookmarks | selectattr('group', 'equalto', g) %}
+    - {{ b.name | to_json }}:
+        - href: {{ b.href | to_json }}
+          icon: {{ b.icon | default('mdi-link') | to_json }}
+{% endfor %}
+{% endfor %}
+{% endif %}

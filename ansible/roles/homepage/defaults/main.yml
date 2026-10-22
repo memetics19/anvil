@@ -60,7 +60,6 @@ homepage_catalog:
   pulse: {title: Pulse, group: Home, icon: pulse.png, description: Proxmox monitoring}
   grafana: {title: Grafana, group: Monitoring, icon: grafana.png, description: Dashboards}
   pass: {title: Vaultwarden, group: Security, icon: vaultwarden.png, description: Passwords}
-  netbird: {title: NetBird, group: Security, icon: netbird.png, description: VPN}
 
 # Read-only Proxmox API token (role pve_host, tag homepage: user with PVEAuditor, privilege-
 # separated token with PVEAuditor). Not secret; the token's secret is HOMEPAGE_VAR_PVE_TOKEN.
@@ -133,3 +132,4 @@ homepage_secrets:
 # Homepage shares. Containers on other VMs have no status: a proxy there would have to
 # listen on the lab network, where Docker-published ports bypass ufw.
 homepage_docker_server: "{{ inventory_hostname }}"
+homepage_bookmarks: "{{ (site.homepage | default({})).bookmarks | default([]) }}"

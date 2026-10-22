@@ -117,3 +117,7 @@ site:
     - {name: home, container: homepage, port: 3000, scheme: http}
     - {name: pass, host: hosts.vaultwarden.ip, port: 8080, scheme: http, websocket: true}
     - {name: switch, host: network.switch_ip, port: 80, scheme: http, rewrite_location: true}
+
+  homepage:
+    bookmarks:
+      - {group: Security, name: VPN, href: "https://sync.example.com", icon: netbird.png}
