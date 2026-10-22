@@ -319,6 +319,22 @@ anvil provision pve2 --install       # the dry run, the name typed, then the ins
 `-e provision_media_ready=true` for manual media. The guard in `scripts/provision.py`
 still refuses the current server. See [provisioning.md](provisioning.md).
 
+## Shell completion
+
+```sh
+source <(anvil completion bash)          # bash
+source <(anvil completion zsh)           # zsh
+anvil completion fish | source           # fish
+```
+
+It completes the commands and their options, the targets and services of `check`,
+`apply` and `up`, the stages after `--from`, `--only` and `--skip`, and the parts of
+`restore` and `help`. The names come from the catalog, so a new role tag shows up on its
+own. The script asks `anvil completion names` at completion time and falls back to the
+names it was made with. The Homebrew, .deb and .rpm packages install the scripts for you.
+To keep one yourself, save it where your shell looks, for example as `_anvil` in a
+directory of `$fpath` for zsh.
+
 ## Colors
 
 On a terminal, anvil colors its own status words: `ok`, `warn` and `FAIL`, the stage
