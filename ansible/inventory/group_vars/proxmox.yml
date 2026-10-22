@@ -1,5 +1,84 @@
 ansible_user: root
-# Routed segments behind the host (role pve_segments, run by make enclave): one firewall
-# table for all of them. The secrets enclave is the first; VLANs are added as entries here.
-pve_segments_list: "{{ [pve_enclave_segment] }}"
-pve_segments_sets: "{{ pve_enclave_sets }}"
+# Routed segments behind the host (role pve_segments): one firewall table for all of them,
+# applied by make enclave (tag firewall) and make vlans. The secrets enclave is the first
+# segment (role pve_enclave), then the VLANs below.
+pve_segments_list: "{{ [pve_enclave_segment] + vlan_segments }}"
+pve_segments_sets: "{{ pve_enclave_sets + vlan_sets }}"
+
+# --- VLANs 10, 20 and 30 --------------------------------------------------------------------
+# The vnets of the SDN VLAN zone `vlanzone` on vmbr0 (terraform/sdn.tf). The host is each
+# one's router: its gateway address (site.sdn.subnets.<name>.gateway) on the vnet bridge,
+# DHCP and NTP (role pve_vlans, make vlans). The trunk to the switch carries the tags
+# (pve_network: bridge-vids on vmbr0; docs/cisco-switch.md).
+vlans:
+  - {name: servers, tag: 10}
+  - {name: cameras, tag: 20}
+  - {name: personal, tag: 30}
+# VLAN 20 may reach the internet (the camera vendor's app needs it). false: DNS and NTP only.
+cameras_internet: true
+
+# Pi-hole (apps): the VLANs' resolver. DHCP hands out the first address.
+vlan_pihole: "{{ [site.hosts.apps.ip, site.hosts.apps.home_ip | default('')] | select | list }}"
+# The service gateway (Caddy on apps) and its web ports.
+vlan_gateway_web: "{{ vlan_pihole }}"
+vlan_gateway_ports: [80, 443]
+
+# Everything that is not the internet: private, shared (NetBird), loopback, link-local,
+# documentation, benchmark, multicast and reserved ranges. That covers the lab, the home
+# network, the enclave and the other VLANs.
+vlan_sets:
+  - name: vlan_nonpublic
+    interval: true
+    elements:
+      - 0.0.0.0/8
+      - 10.0.0.0/8
+      - 100.64.0.0/10
+      - 127.0.0.0/8
+      - 169.254.0.0/16
+      - 172.16.0.0/12
+      - 192.0.0.0/24
+      - 192.0.2.0/24
+      - 192.168.0.0/16
+      - 198.18.0.0/15
+      - 198.51.100.0/24
+      - 203.0.113.0/24
+      - 224.0.0.0/3
+
+_vlan_from_lab:
+  - comment: "the lab network: everything"
+    saddr: "{{ site.lan_cidr }}"
+_vlan_dns:
+  - comment: "DNS: Pi-hole"
+    daddr: "{{ vlan_pihole }}"
+    proto: udp
+    dport: 53
+  - daddr: "{{ vlan_pihole }}"
+    proto: tcp
+    dport: 53
+_vlan_internet:
+  - comment: "the internet: nothing private (lab, home, VPN, enclave, other VLANs)"
+    daddr: "@vlan_nonpublic"
+    action: drop
+  - comment: "the internet: any public address"
+_vlan_web:
+  - comment: "the service gateway's web ports (Caddy on apps)"
+    daddr: "{{ vlan_gateway_web }}"
+    proto: tcp
+    dport: "{{ vlan_gateway_ports }}"
+
+# One segment per VLAN. Lab hosts reach every VLAN. Each VLAN reaches the host for DHCP,
+# and NTP and ping on its own gateway address only (not the Proxmox UI or SSH).
+vlan_segments: >-
+  {%- set out = [] -%}
+  {%- for v in vlans -%}
+  {%- set n = site.sdn.subnets[v.name] -%}
+  {%- set egress = {'servers': _vlan_dns + _vlan_internet,
+                    'cameras': _vlan_dns + (_vlan_internet if cameras_internet | bool else []),
+                    'personal': _vlan_dns + _vlan_web + _vlan_internet}[v.name] -%}
+  {%- set _ = out.append({'name': v.name, 'interface': v.name, 'subnet': n.cidr, 'gateway': n.gateway,
+        'nat': true, 'ingress': _vlan_from_lab, 'egress': egress,
+        'host': [{'comment': 'DHCP (dnsmasq on this interface only)', 'proto': 'udp', 'dport': 67},
+                 {'comment': 'NTP and ping on its own gateway', 'daddr': n.gateway, 'proto': 'udp', 'dport': 123},
+                 {'daddr': n.gateway, 'proto': 'icmp'}]}) -%}
+  {%- endfor -%}
+  {{ out }}

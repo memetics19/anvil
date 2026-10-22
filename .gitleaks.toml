@@ -40,6 +40,14 @@ condition = "AND"
 paths = ['''(^|/)site/site\.example\.yml$''']
 regexes = ['''^172\.31\.25[45]\.''']
 
+# The VLANs' "not the internet" set (inventory group_vars/proxmox.yml) lists the RFC 1918
+# blocks themselves. Only those three network addresses, only in that file.
+[[rules.allowlists]]
+description = "RFC 1918 blocks in the VLAN firewall data"
+condition = "AND"
+paths = ['''(^|/)ansible/inventory/group_vars/proxmox\.yml$''']
+regexes = ['''^(10\.0\.0\.0|172\.16\.0\.0|192\.168\.0\.0)$''']
+
 [allowlist]
 description = "Gitignored scratch dirs (never published)"
 paths = [

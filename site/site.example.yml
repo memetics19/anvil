@@ -44,8 +44,16 @@ site:
       gateway_subnet: 172.31.254.0/28
   # The secrets enclave (Terraform sdn.tf, roles pve_enclave and pve_segments): a vnet with
   # no physical port; the Proxmox host is its gateway and does no NAT for it.
+  # subnets: VLANs 10, 20 and 30 (the vnets servers, cameras and personal, Terraform sdn.tf
+  # and role pve_vlans). The Proxmox host holds each gateway and runs DHCP on each, handing
+  # out dhcp_range. Keep static addresses outside the range. Real sites use a /24 each; the
+  # example splits one documentation /24 so the ranges do not overlap.
   sdn:
-    enclave: {subnet: 203.0.113.0/24, gateway: 203.0.113.1}
+    enclave: {subnet: 203.0.113.0/26, gateway: 203.0.113.1}
+    subnets:
+      servers: {cidr: 203.0.113.64/26, gateway: 203.0.113.65, dhcp_range: {start: 203.0.113.80, end: 203.0.113.119}}
+      cameras: {cidr: 203.0.113.128/26, gateway: 203.0.113.129, dhcp_range: {start: 203.0.113.144, end: 203.0.113.183}}
+      personal: {cidr: 203.0.113.192/26, gateway: 203.0.113.193, dhcp_range: {start: 203.0.113.208, end: 203.0.113.247}}
   # The operator's own devices, the only sources that may open connections to the enclave
   # (Vault, Vaultwarden) and use the gateway's pass and vault names; no VM ever is one.
   # admin_sources: the Mac's LAN addresses (/32s: home Wi-Fi, reserved in the router's DHCP;
