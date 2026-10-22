@@ -161,9 +161,14 @@ provision:
 	@set -eu -o pipefail; [ -n "$(NAME)" ] || { echo "usage: make provision NAME=<name>" >&2; exit 1; }; \
 	$(ENV); python3 scripts/provision.py run --name "$(NAME)" $(ARGS)
 
+# Deletes the ISO on the Mac and the netboot payload (media pxe) on the Proxmox host.
 provision-clean:
-	@[ -n "$(NAME)" ] || { echo "usage: make provision-clean NAME=<name>" >&2; exit 1; }; \
-	rm -f "build/provision/$(NAME).iso"; echo "removed build/provision/$(NAME).iso"
+	@set -eu -o pipefail; [ -n "$(NAME)" ] || { echo "usage: make provision-clean NAME=<name>" >&2; exit 1; }; \
+	case "$(NAME)" in *[!a-z0-9-]*) echo "provision-clean: bad name" >&2; exit 1 ;; esac; \
+	rm -f "build/provision/$(NAME).iso"; echo "removed build/provision/$(NAME).iso"; \
+	$(ENV); ssh -o BatchMode=yes "$${PROVISION_NETBOOT_HOST:-root@$$PVE_IP}" \
+	  'rm -f /var/tmp/anvil-provision/pxe-$(NAME)/linux26 /var/tmp/anvil-provision/pxe-$(NAME)/initrd; rmdir /var/tmp/anvil-provision/pxe-$(NAME) 2>/dev/null; true'; \
+	echo "removed the netboot payload pxe-$(NAME) on the Proxmox host, if any"
 
 # Build the docs site into build/site (pip install -r docs/requirements.txt first).
 docs:

@@ -6,6 +6,8 @@
 # the current server is refused before any request, and the ISO is served with byte ranges.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
+# No scripts/__pycache__: the media test scans scripts/.
+export PYTHONDONTWRITEBYTECODE=1
 
 python3 - scripts/provision.py site/site.example.yml <<'PY'
 import copy, importlib.util, subprocess, sys, tomllib, yaml
@@ -203,6 +205,18 @@ def cli(site, *extra, creds_file=creds):
     r = subprocess.run([sys.executable, sys.argv[1], "run", "--name", "pve2", *extra], env=env, capture_output=True, text=True, timeout=120)
     return r.returncode, r.stdout, r.stderr
 
+def _raises(fn):
+    try:
+        fn()
+    except p.Refused as e:
+        return e
+    return None
+
+def site_with_m(s, **machine):
+    s = copy.deepcopy(s)
+    s["provision"]["machines"]["pve2"].update(machine)
+    return s
+
 def writes():
     return [(m, path, b) for m, path, b in F.log if m != "GET"]
 
@@ -308,6 +322,39 @@ ok("IPMI dry run plan", code == 0 and "plan: ipmitool -I lanplus -H <bmc> -U <us
    and "plan: ipmitool -I lanplus -H <bmc> -U <user> -E chassis power on" in out)
 code, out, err = cli(site_file(bmc={"type": "none"}, media="manual"))
 ok("no BMC: manual steps only", code == 0 and "manual: " in out and "plan: POST" not in out and "ipmitool" not in out)
+# media pxe: the dry run plans the netboot service, boot once from the network and power on
+F.reset()
+code, out, err = cli(site_file(media="pxe"))
+plan = [l for l in out.splitlines() if l.startswith(("plan: ", "manual: "))]
+want = ["plan: on the Proxmox host, start anvil-netboot-pve2-dhcp: dnsmasq proxyDHCP (no addresses, no DNS) and TFTP on the bridge with the uplink address, PXE answers for 02:00:00:00:00:20 only",
+        "plan: on the Proxmox host, start anvil-netboot-pve2-http: the installer kernel and initrd over HTTP on the uplink address, port 18199, at a random path",
+        'plan: PATCH /redfish/v1/Systems/1 {"Boot": {"BootSourceOverrideEnabled": "Once", "BootSourceOverrideTarget": "Pxe"}}',
+        'plan: POST /redfish/v1/Systems/1/Actions/ComputerSystem.Reset {"ResetType": "On"}',
+        "plan: wait for the installer kernel and initrd to be served",
+        "plan: stop and remove anvil-netboot-pve2-dhcp and anvil-netboot-pve2-http, delete the netboot payload",
+        "plan: wait for the installer to power the server off (up to 90 min)",
+        'plan: POST /redfish/v1/Systems/1/Actions/ComputerSystem.Reset {"ResetType": "On"}',
+        "plan: wait for SSH on 192.0.2.12:22"]
+ok("pxe dry run with Redfish: plan shape", code == 0 and plan == want)
+ok("pxe dry run sends only GETs and needs no ISO", not writes() and "make provision-iso" not in out)
+code, out, err = cli(site_file(media="pxe", bmc={"type": "ipmi", "address": "127.0.0.1"}), creds_file=nocreds)
+ok("pxe dry run with IPMI", code == 0 and "plan: ipmitool -I lanplus -H <bmc> -U <user> -E chassis bootdev pxe options=efiboot" in out
+   and "plan: ipmitool -I lanplus -H <bmc> -U <user> -E chassis power on" in out)
+code, out, err = cli(site_file(media="pxe", bmc={"type": "none"}))
+ok("pxe dry run without a BMC", code == 0 and "manual: power the server on and pick network boot (PXE) in its boot menu" in out
+   and "plan: wait for the installer kernel and initrd to be served" in out and "PATCH" not in out and "ipmitool" not in out)
+code, out, err = cli(site_file(media="pxe", network="dhcp"))
+ok("pxe needs the booting MAC", code == 3 and "MAC" in err)
+code, out, err = cli(site_file(media="pxe", network="dhcp", mac="02:00:00:00:00:21"))
+ok("pxe with network dhcp and mac", code == 0 and "PXE answers for 02:00:00:00:00:21 only" in out)
+F.reset()
+code, out, err = cli(site_file(media="pxe", network="dhcp", mac=SITE["provision"]["refuse"]["macs"][1]))
+ok("pxe with the current server's MAC refused, no request", code == 3 and "current server" in err and F.log == [])
+s = copy.deepcopy(SITE); del s["pve"]["uplink_prefix"]
+ok("pxe needs the uplink network", "uplink" in str(_raises(lambda: p.pxe_steps(s, "pve2", p.machine(site_with_m(s, media="pxe"), "pve2"), None, None, None, None, False, "plan", lambda l: None))))
+ok("netboot scripts: proxy only, target MAC only, no DNS, MAC-named TFTP root",
+   all(x in p.NETBOOT_START for x in ("dhcp-range=$net,proxy", "port=0", "dhcp-host=$mac,set:anvil", "dhcp-ignore=tag:!anvil", "tftp-unique-root=mac", "bind-interfaces", "vmbr[0-9]*", "RuntimeMaxSec")))
+
 srv.shutdown()
 import shutil; shutil.rmtree(tmp)
 sys.exit(1 if fails else 0)

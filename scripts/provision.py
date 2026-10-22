@@ -12,6 +12,13 @@ driven only through standard DMTF Redfish or plain IPMI.
       Redfish or IPMI call (no secrets). With provision_confirm equal to the name it runs:
       serve the ISO over HTTP, insert it (media redfish), boot once from CD, power on, wait
       for the installer to power off, eject, power on, wait for SSH, delete the ISO.
+      media pxe: a temporary proxyDHCP, TFTP and HTTP netboot service on the Proxmox host
+      answers only the target's MAC, boots it once from the network into the installer,
+      and is stopped and removed at the end, also when the run fails.
+  provision.py serve --bind <addr> --port <n> --token <t> --file <name>=<path> ...
+      the netboot HTTP server (run on the Proxmox host by media pxe)
+  provision.py get --name <box> --key <key>
+      prints one field of the checked machine entry, for scripts
 
 The site dict comes from $PROVISION_SITE_FILE (JSON or YAML, with or without a top-level
 `site` key) or else from $TF_VAR_site_json (scripts/env.sh). Nothing secret is printed:
@@ -25,7 +32,9 @@ import json
 import os
 import re
 import secrets
+import shlex
 import shutil
+import signal
 import socket
 import ssl
 import subprocess
@@ -95,8 +104,8 @@ def machine(site, name):
     if bmc["type"] != "none" and not bmc.get("address"):
         raise Refused(f"{name}: bmc.address is required for bmc.type {bmc['type']}")
     m["bmc"] = bmc
-    if m["media"] not in ("redfish", "manual"):
-        raise Refused(f"{name}: media is redfish or manual")
+    if m["media"] not in ("redfish", "manual", "pxe"):
+        raise Refused(f"{name}: media is redfish, manual or pxe")
     if m["media"] == "redfish" and bmc["type"] != "redfish":
         raise Refused(f"{name}: media redfish needs bmc.type redfish")
     if m["boot_mode"] not in ("uefi", "bios"):
@@ -121,6 +130,11 @@ def machine(site, name):
         raise Refused(f"{name}: network is dhcp or a dict with cidr, gateway, dns and mac")
     m["network"] = net
     m["disk_setup"] = disk_setup(name, m.get("disks"))
+    # The NIC that boots from the network: network.mac, or mac for a DHCP network.
+    boot_mac = m.get("mac") or (net.get("mac") if isinstance(net, dict) else None)
+    m["boot_mac"] = norm_mac(boot_mac) if boot_mac else None
+    if m["media"] == "pxe" and not m["boot_mac"]:
+        raise Refused(f"{name}: media pxe needs the booting NIC's MAC (network.mac, or mac with network: dhcp)")
     return m
 
 
@@ -178,6 +192,8 @@ def static_guard(site, name, m):
     bmc = m["bmc"]
     if bmc["type"] != "none" and str(bmc["address"]).strip().lower() in addrs:
         raise Refused(f"{name}: bmc.address is the current server's (refused)")
+    if m["boot_mac"] and m["boot_mac"] in macs:
+        raise Refused(f"{name}: mac is one of the current server's NICs (refused)")
     if isinstance(m["network"], dict):
         if m["network"]["mac"] in macs:
             raise Refused(f"{name}: network.mac is one of the current server's NICs (refused)")
@@ -423,7 +439,8 @@ class Ipmi:
 # --- serving the ISO --------------------------------------------------------------------------
 
 class IsoHandler(http.server.BaseHTTPRequestHandler):
-    """Serves one file at one path, with single byte ranges (BMCs read the ISO in ranges)."""
+    """Serves fixed files at fixed paths, with single byte ranges (BMCs read the ISO in
+    ranges). Prints "served <name>" when a whole file was sent."""
     server_version = "anvil-provision"
 
     def log_message(self, *args):
@@ -437,10 +454,12 @@ class IsoHandler(http.server.BaseHTTPRequestHandler):
 
     def serve(self, body):
         srv = self.server
-        if self.path != srv.url_path:
+        if self.path not in srv.files:
             self.send_error(404)
             return
-        size, start, end, status = srv.size, 0, srv.size - 1, 200
+        label, path = srv.files[self.path]
+        size = os.path.getsize(path)
+        start, end, status = 0, size - 1, 200
         rng = self.headers.get("Range")
         if rng:
             m = re.fullmatch(r"bytes=(\d*)-(\d*)", rng.strip())
@@ -467,7 +486,7 @@ class IsoHandler(http.server.BaseHTTPRequestHandler):
             return
         left = end - start + 1
         try:
-            with open(srv.file, "rb") as f:
+            with open(path, "rb") as f:
                 f.seek(start)
                 while left > 0:
                     chunk = f.read(min(left, 1 << 20))
@@ -476,20 +495,29 @@ class IsoHandler(http.server.BaseHTTPRequestHandler):
                     self.wfile.write(chunk)
                     left -= len(chunk)
             srv.requests += 1
+            if srv.announce and start == 0 and end == size - 1 and left == 0:
+                print(f"served {label}", flush=True)
         except (BrokenPipeError, ConnectionResetError):
             pass
 
 
-def serve_iso(path, bind, port=0):
-    """Start serving `path` on bind:port at a random path. Returns the server and its URL."""
+def serve_files(files, bind, port=0, token=None):
+    """Serve {name: path} at /<token>/<name> on bind:port in a thread. Returns the server."""
     srv = http.server.ThreadingHTTPServer((bind, port), IsoHandler)
     srv.daemon_threads = True
-    srv.file = path
-    srv.size = os.path.getsize(path)
+    srv.token = token or secrets.token_urlsafe(16)
+    srv.files = {f"/{srv.token}/{n}": (n, pth) for n, pth in files.items()}
     srv.requests = 0
-    srv.url_path = f"/{secrets.token_urlsafe(16)}/{os.path.basename(path)}"
+    srv.announce = False
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    return srv, f"http://{bind}:{srv.server_address[1]}{srv.url_path}"
+    return srv
+
+
+def serve_iso(path, bind, port=0):
+    """Start serving `path` on bind:port at a random path. Returns the server and its URL."""
+    name = os.path.basename(path)
+    srv = serve_files({name: path}, bind, port)
+    return srv, f"http://{bind}:{srv.server_address[1]}/{srv.token}/{name}"
 
 
 def local_address_towards(address):
@@ -560,12 +588,15 @@ def run(site, name, opts, out=print):
     word = "do" if apply else "plan"
     out(f"provision {name}: " + ("APPLY" if apply else f"dry run, nothing changes. Apply with -e provision_confirm={name}"))
     out("guard: ok (BMC address, NIC MAC and serial are not the current server's)")
-    if apply and not os.path.exists(iso):
+    pxe = m["media"] == "pxe"
+    if apply and not pxe and not os.path.exists(iso):
         raise Refused(f"{rel} is missing: make provision-iso NAME={name}")
-    if not os.path.exists(iso):
+    if not pxe and not os.path.exists(iso):
         out(f"note: {rel} does not exist yet (make provision-iso NAME={name})")
     static_ip = None if m["network"] == "dhcp" else str(ipaddress.ip_interface(m["network"]["cidr"]).ip)
 
+    if bmc["type"] == "none" and pxe:
+        return pxe_steps(site, name, m, None, None, None, static_ip, apply, word, out)
     if bmc["type"] == "none":
         out("manual: no BMC. By hand:")
         manual_media_steps(name, rel, out)
@@ -611,7 +642,7 @@ def run(site, name, opts, out=print):
                 raise Refused(msg)
             out("note: " + msg)
 
-    want_boot = "Usb" if m.get("boot_device") == "usb" else "Cd"
+    want_boot = "Pxe" if pxe else "Usb" if m.get("boot_device") == "usb" else "Cd"
     if bmc["type"] == "redfish":
         sysp = info["system"] if info else "<system>"
         reset = info["reset"] if info and info["reset"] else f"{sysp}/Actions/ComputerSystem.Reset"
@@ -621,6 +652,9 @@ def run(site, name, opts, out=print):
             if info["boot_targets"] and want_boot not in info["boot_targets"]:
                 raise Refused(f"the BMC does not offer BootSourceOverrideTarget {want_boot}")
         cd = info["cd"] if info else None
+        if pxe:
+            ops = RedfishPower(rf if info else None, sysp, reset, apply, word, out)
+            return pxe_steps(site, name, m, ops, ops.boot_once_pxe, ops.power_on, static_ip, apply, word, out)
         if m["media"] == "redfish":
             if info and not (cd and cd["insert"] and cd["eject"]):
                 raise Refused("this BMC has no standard VirtualMedia.InsertMedia and EjectMedia for a CD. Set media: manual")
@@ -629,6 +663,9 @@ def run(site, name, opts, out=print):
             if cd and cd["inserted"]:
                 raise Refused("the virtual CD already holds media. Eject it first")
         return redfish_steps(name, m, rf if info else None, info, cd, sysp, reset, want_boot, iso, rel, static_ip, apply, media_ready, word, out)
+    if pxe:
+        ops = IpmiPower(m, ip if info else None, apply, word, out)
+        return pxe_steps(site, name, m, ops, ops.boot_once_pxe, ops.power_on, static_ip, apply, word, out)
     return ipmi_steps(name, m, ip if info else None, iso, rel, static_ip, apply, media_ready, word, out)
 
 
@@ -735,7 +772,226 @@ def ipmi_steps(name, m, ip, iso, rel, static_ip, apply, media_ready, word, out):
     return 0
 
 
+# --- media pxe: a temporary netboot service on the Proxmox host --------------------------------
+
+NETBOOT_BASE = "/var/tmp/anvil-provision"
+
+# Starts the netboot service. Args: name mac addr prefix port token max_seconds.
+# dnsmasq: proxyDHCP only (dhcp-range ... proxy, no DNS), on the vmbr bridge that holds the
+# uplink address, answering only the target MAC. TFTP serves iPXE and boot.ipxe from a
+# directory named after that MAC (tftp-unique-root=mac), so no other client gets them.
+NETBOOT_START = r"""set -euo pipefail
+name=$1 mac=$2 addr=$3 prefix=$4 port=$5 token=$6 maxsec=$7
+unit=anvil-netboot-$name
+payload=/var/tmp/anvil-provision/pxe-$name
+ipxe=/var/tmp/anvil-provision/ipxe
+run=/run/$unit
+die() { echo "netboot: $*" >&2; exit 3; }
+[ -s "$payload/linux26" ] && [ -s "$payload/initrd" ] || die "no netboot payload for $name: make provision-iso NAME=$name"
+[ -s "$ipxe/ipxe.efi" ] && [ -s "$ipxe/undionly.kpxe" ] || die "no iPXE binaries: make provision-iso NAME=$name"
+[ -s "$run/provision.py" ] || die "provision.py was not copied"
+ifc=$(ip -o -4 addr show | awk -v a="$addr" '{split($4, p, "/"); if (p[1] == a) print $2}' | head -n 1)
+[ -n "$ifc" ] || die "no interface holds the uplink address"
+case $ifc in vmbr[0-9]*) ;; *) die "the uplink address is on $ifc, not a vmbr bridge: refused" ;; esac
+if ip -d link show "$ifc" | grep -qw vlan; then die "$ifc is a VLAN interface: refused"; fi
+net=$(python3 -c 'import ipaddress, sys; print(ipaddress.ip_interface(sys.argv[1]).network.network_address)' "$addr/$prefix")
+for u in "$unit-dhcp" "$unit-http"; do
+  if systemctl is-active --quiet "$u"; then die "$u is already running"; fi
+done
+if ss -Hlnt "sport = :$port" | grep -q .; then die "TCP port $port is in use"; fi
+if ss -Hlnu "sport = :69" | grep -q .; then die "UDP port 69 (TFTP) is in use"; fi
+macdir=$(printf '%s' "$mac" | tr ':' '-')
+install -d -m 755 "$run/tftp" "$run/tftp/$macdir"
+install -m 644 "$ipxe/ipxe.efi" "$ipxe/undionly.kpxe" "$run/tftp/$macdir/"
+cat >"$run/tftp/$macdir/boot.ipxe" <<EOF
+#!ipxe
+echo anvil: Proxmox VE automated installer over HTTP
+kernel http://$addr:$port/$token/linux26 initrd=initrd ro ramdisk_size=16777216 rw quiet splash=silent proxmox-start-auto-installer
+initrd http://$addr:$port/$token/initrd
+boot
+EOF
+chmod 644 "$run/tftp/$macdir/boot.ipxe"
+cat >"$run/dnsmasq.conf" <<EOF
+port=0
+interface=$ifc
+bind-interfaces
+pid-file=$run/dnsmasq.pid
+dhcp-leasefile=$run/dnsmasq.leases
+log-dhcp
+dhcp-range=$net,proxy
+dhcp-host=$mac,set:anvil
+dhcp-ignore=tag:!anvil
+dhcp-userclass=set:ipxe,iPXE
+pxe-service=tag:!ipxe,x86PC,"anvil",undionly.kpxe
+pxe-service=tag:!ipxe,x86-64_EFI,"anvil",ipxe.efi
+pxe-service=tag:!ipxe,BC_EFI,"anvil",ipxe.efi
+pxe-service=tag:ipxe,x86PC,"anvil",boot.ipxe
+pxe-service=tag:ipxe,x86-64_EFI,"anvil",boot.ipxe
+pxe-service=tag:ipxe,BC_EFI,"anvil",boot.ipxe
+enable-tftp
+tftp-root=$run/tftp
+tftp-unique-root=mac
+EOF
+systemd-run --quiet --collect --unit="$unit-http" -p RuntimeMaxSec="$maxsec" \
+  /usr/bin/python3 -I "$run/provision.py" serve --bind "$addr" --port "$port" --token "$token" \
+  --file "linux26=$payload/linux26" --file "initrd=$payload/initrd"
+systemd-run --quiet --collect --unit="$unit-dhcp" -p RuntimeMaxSec="$maxsec" \
+  /usr/sbin/dnsmasq --keep-in-foreground --conf-file="$run/dnsmasq.conf"
+sleep 2
+if ! systemctl is-active --quiet "$unit-http" || ! systemctl is-active --quiet "$unit-dhcp"; then
+  journalctl -u "$unit-dhcp" -u "$unit-http" -o cat -n 20 --no-pager >&2 || true
+  die "the netboot service did not start"
+fi
+echo "$ifc"
+"""
+
+# Stops and removes the netboot service. Args: name.
+NETBOOT_STOP = r"""name=$1
+unit=anvil-netboot-$name
+systemctl stop "$unit-dhcp" "$unit-http" 2>/dev/null || true
+systemctl reset-failed "$unit-dhcp" "$unit-http" 2>/dev/null || true
+rm -rf "/run/$unit"
+if systemctl is-active --quiet "$unit-dhcp" || systemctl is-active --quiet "$unit-http"; then exit 1; fi
+"""
+
+# Deletes the payload (kernel, and the initrd with the ISO and its password hash). Args: name.
+NETBOOT_DELETE = r"""rm -rf "/var/tmp/anvil-provision/pxe-$1"
+"""
+
+
+def netboot_host(site):
+    host = os.environ.get("PROVISION_NETBOOT_HOST")
+    if host:
+        return host
+    return "root@" + str((site.get("pve") or {}).get("ip") or os.environ.get("PVE_IP"))
+
+
+def remote(host, script, *args, input_text=None, check=True):
+    cmd = ["ssh", "-o", "BatchMode=yes", host, "bash -s -- " + " ".join(shlex.quote(str(a)) for a in args)]
+    r = subprocess.run(cmd, input=script if input_text is None else input_text, capture_output=True, text=True, timeout=300, check=False)
+    if check and r.returncode != 0:
+        raise Refused(f"on {host}: " + (r.stderr.strip().splitlines() or [f"exit {r.returncode}"])[-1])
+    return r
+
+
+class RedfishPower:
+    def __init__(self, rf, sysp, reset, apply, word, out):
+        self.rf, self.sysp, self.reset, self.apply, self.word, self.out = rf, sysp, reset, apply, word, out
+
+    def act(self, method, path, body):
+        self.out(f"{self.word}: {method} {path} {json.dumps(body, sort_keys=True)}")
+        if self.apply:
+            self.rf.request(method, path, body)
+
+    def boot_once_pxe(self):
+        self.act("PATCH", self.sysp, {"Boot": {"BootSourceOverrideEnabled": "Once", "BootSourceOverrideTarget": "Pxe"}})
+        self.act("POST", self.reset, {"ResetType": "On"})
+
+    def power_on(self):
+        self.act("POST", self.reset, {"ResetType": "On"})
+
+    def power(self):
+        return self.rf.get(self.sysp).get("PowerState")
+
+
+class IpmiPower:
+    def __init__(self, m, ip, apply, word, out):
+        self.m, self.ip, self.apply, self.word, self.out = m, ip, apply, word, out
+        self.shown = Ipmi("", "", "").shown
+
+    def act(self, args):
+        self.out(f"{self.word}: " + self.shown(args))
+        if self.apply:
+            self.ip.call(args)
+
+    def boot_once_pxe(self):
+        self.act(["chassis", "bootdev", "pxe"] + (["options=efiboot"] if self.m["boot_mode"] == "uefi" else []))
+        self.act(["chassis", "power", "on"])
+
+    def power_on(self):
+        self.act(["chassis", "power", "on"])
+
+    def power(self):
+        return self.ip.power()
+
+
+def pxe_steps(site, name, m, ops, boot_once, power_on, static_ip, apply, word, out):
+    """ops: RedfishPower, IpmiPower, or None (bmc.type none: the operator powers on)."""
+    pve = site.get("pve") or {}
+    addr, prefix = pve.get("uplink_ip"), pve.get("uplink_prefix")
+    if not addr or not prefix:
+        raise Refused("media pxe needs site.pve.uplink_ip and uplink_prefix (the home network the ONT serves)")
+    host = netboot_host(site)
+    port = int(os.environ.get("PROVISION_NETBOOT_PORT", "18199"))
+    unit = f"anvil-netboot-{name}"
+    mac = m["boot_mac"]
+    out(f"{word}: on the Proxmox host, start {unit}-dhcp: dnsmasq proxyDHCP (no addresses, no DNS) and TFTP on the bridge with the uplink address, PXE answers for {mac} only")
+    out(f"{word}: on the Proxmox host, start {unit}-http: the installer kernel and initrd over HTTP on the uplink address, port {port}, at a random path")
+    started = False
+    payload_kept = True
+    try:
+        if apply:
+            here = os.path.abspath(__file__)
+            with open(here, encoding="utf-8") as f:
+                r = subprocess.run(["ssh", "-o", "BatchMode=yes", host,
+                                    f"install -d -m 755 /run/{unit} && cat > /run/{unit}/provision.py"],
+                                   stdin=f, capture_output=True, text=True, timeout=120, check=False)
+            if r.returncode != 0:
+                raise Refused(f"on {host}: could not copy provision.py")
+            since = int(time.time()) - 5
+            started = True
+            ifc = remote(host, NETBOOT_START, name, mac, addr, prefix, port, secrets.token_urlsafe(16), 4 * 3600).stdout.strip()
+            out(f"do: netboot is up on {ifc}")
+        if ops:
+            boot_once()
+        else:
+            out("manual: power the server on and pick network boot (PXE) in its boot menu")
+
+        def served():
+            r = remote(host, f'journalctl -u {unit}-http --since @{since} -o cat --no-pager | grep -cx "served initrd" || true\n', check=False)
+            return r.stdout.strip() not in ("", "0")
+
+        if apply:
+            wait_for("the installer kernel and initrd to be served", served, (30 if ops else 120) * 60, 10, out)
+        else:
+            out("plan: wait for the installer kernel and initrd to be served")
+        out(f"{word}: stop and remove {unit}-dhcp and {unit}-http, delete the netboot payload")
+        if apply:
+            remote(host, NETBOOT_STOP, name)
+            started = False
+            remote(host, NETBOOT_DELETE, name)
+            payload_kept = False
+        if ops:
+            if apply:
+                wait_for("the installer to power the server off", lambda: ops.power() == "Off", 90 * 60, 30, out)
+            else:
+                out("plan: wait for the installer to power the server off (up to 90 min)")
+            power_on()
+        else:
+            out("manual: the installer powers the server off when it is done. Then power it on")
+        if static_ip:
+            if apply:
+                wait_for(f"SSH on {static_ip}:22", lambda: ssh_open(static_ip), (30 if ops else 150) * 60, 15, out)
+            else:
+                out(f"plan: wait for SSH on {static_ip}:22")
+        handoff(name, m, out)
+    finally:
+        if apply and started:
+            out("cleanup: stop and remove the netboot service")
+            if remote(host, NETBOOT_STOP, name, check=False).returncode != 0:
+                out(f"cleanup: FAILED. On the Proxmox host: systemctl stop {unit}-dhcp {unit}-http")
+        if apply and payload_kept:
+            out("cleanup: delete the netboot payload")
+            if remote(host, NETBOOT_DELETE, name, check=False).returncode != 0:
+                out(f"cleanup: FAILED. Delete {NETBOOT_BASE}/pxe-{name} on the Proxmox host")
+    return 0
+
+
 # --- CLI --------------------------------------------------------------------------------------
+
+def _interrupt(signum, frame):
+    raise KeyboardInterrupt
+
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="provision.py", description=__doc__.split("\n\n")[0])
@@ -745,12 +1001,33 @@ def main(argv=None):
     a.add_argument("--ssh-key", default="~/.ssh/id_ed25519.pub")
     c = sub.add_parser("check", help="check the machine entry and the guard, no network")
     c.add_argument("--name", required=True)
+    g = sub.add_parser("get", help="print one field of the checked machine entry")
+    g.add_argument("--name", required=True)
+    g.add_argument("--key", required=True)
+    sv = sub.add_parser("serve", help="serve files over HTTP at /<token>/<name> until stopped")
+    sv.add_argument("--bind", required=True)
+    sv.add_argument("--port", type=int, required=True)
+    sv.add_argument("--token", required=True)
+    sv.add_argument("--file", action="append", required=True, metavar="NAME=PATH")
     r = sub.add_parser("run", help="a dry run, or the install with -e provision_confirm=<name>")
     r.add_argument("--name", required=True)
     r.add_argument("-e", dest="opts", action="append", default=[], metavar="KEY=VALUE")
     args = ap.parse_args(argv)
     try:
+        if args.cmd == "serve":
+            files = dict(f.split("=", 1) for f in args.file)
+            for pth in files.values():
+                if not os.path.isfile(pth):
+                    raise Refused(f"no such file: {pth}")
+            srv = serve_files(files, args.bind, args.port, args.token)
+            srv.announce = True
+            print(f"serving {len(files)} files on {args.bind}:{srv.server_address[1]}", flush=True)
+            threading.Event().wait()
         site = load_site()
+        if args.cmd == "get":
+            v = machine(site, args.name).get(args.key)
+            print(v if isinstance(v, str) else json.dumps(v))
+            return 0
         if args.cmd == "answer":
             plain = sys.stdin.readline().rstrip("\n")
             text = answer(site, args.name, hash_password(plain), read_ssh_keys(args.ssh_key))
@@ -761,6 +1038,9 @@ def main(argv=None):
             static_guard(site, args.name, m)
             print(f"{args.name}: ok (bmc {m['bmc']['type']}, media {m['media']}, {m['disk_setup']['filesystem']})")
         elif args.cmd == "run":
+            # Ctrl-C, a closed terminal or a kill all run the cleanup (finally blocks).
+            for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+                signal.signal(sig, _interrupt)
             opts = {}
             for o in args.opts:
                 k, sep, v = o.partition("=")

@@ -38,6 +38,10 @@ exceptions=(
   # on the build host, removed on exit
   'scripts/provision-iso.sh|rm -rf "$tmp"'
   'scripts/provision-iso.sh|ssh_b rm -rf "$rdir"'
+  # provision.py media pxe, on the Proxmox host: the netboot service's run directory and the
+  # netboot payload, both its own fixed paths under /run and /var/tmp/anvil-provision
+  'scripts/provision.py|rm -rf "/run/$unit"'
+  'scripts/provision.py|rm -rf "/var/tmp/anvil-provision/pxe-$1"'
 )
 
 destructive_re='recurse:|(^|[^A-Za-z_-])prune([^A-Za-z_-]|$)|compose[^#]*[[:space:]]down([[:space:]]|$)|^[[:space:]]*-[[:space:]]*["'"'"']?down["'"'"']?[[:space:]]*$|["'"'"']down["'"'"']|down[^#]*[[:space:]]-v([[:space:]]|$)|--volumes|remove-orphans|(^|[^A-Za-z_])rm[[:space:]]+(-[A-Za-z]*[rR]|--recursive)'

@@ -94,8 +94,10 @@ site:
   # <hostname>.<domain>). network: dhcp, or a static cidr, gateway and dns on the NIC with
   # mac. disks: one disk (ext4 on LVM), a udev filter such as {ID_SERIAL: ...} or a kernel
   # name, or two kernel names for a ZFS mirror. A filter value may not be only wildcards.
-  # bmc.type: redfish, ipmi or none (power and boot by hand). media: redfish (standard
-  # VirtualMedia.InsertMedia over HTTP) or manual (USB stick or the BMC web UI).
+  # bmc.type: redfish, ipmi or none (power and boot by hand). media: pxe (a temporary
+  # proxyDHCP netboot on the Proxmox host that answers only this machine's MAC), redfish
+  # (standard VirtualMedia.InsertMedia over HTTP) or manual (USB stick or the BMC web UI).
+  # mac: the NIC that boots from the network, when network is dhcp (else network.mac).
   # boot_mode: uefi or bios (IPMI boot device option). serial: optional, the serial its BMC
   # must report before anything changes. Credentials: kv/homelab/<name>/bmc.
   provision:
