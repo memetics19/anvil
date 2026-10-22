@@ -47,6 +47,25 @@ matches the code, every check shows `changed=0` and nothing is applied.
 3. It asks once. You type `up`. `--yes` skips this, for unattended runs.
 4. It runs the stages in order. Each one runs its check first and applies only when the
    check shows changes. The first failure stops the run and prints the command to resume.
+5. It prints a summary table, also after a failure.
+
+Each stage starts with a header such as `stage 3/24: host-network` and ends with its
+result and time, for example `stage 3/24: host-network unchanged in 41.2s`. The summary
+lists every stage with its result and time:
+
+```
+anvil up: summary
+  host-network  unchanged  41.2s
+  ceph          applied    3m12s
+  s3-keys       skipped    0.3s
+  tf-init       applied    6.1s
+  tf            failed     58.0s
+  vault         not run
+  total                    4m58s  (1 unchanged, 2 applied, 1 skipped, 1 failed, 1 not run)
+```
+
+A result is `unchanged` (the check showed no changes), `applied`, `skipped` (already
+done), `failed`, `stopped` (a step that needs you) or `not run` (after a stop).
 
 | Stage | What it does | Commands |
 |---|---|---|
@@ -114,7 +133,7 @@ anvil up gateway iptv
 ```
 
 With names, `anvil up` deploys only those. Each one runs its check, then applies only when
-the check shows changes. It asks y/N once, and `--yes` skips that. A risky target, such as
+the check shows changes. The same headers and summary table show each one. It asks y/N once, and `--yes` skips that. A risky target, such as
 `vlans`, still needs its name typed.
 
 A name is a service, a VM or a lab target. `anvil services` lists them all.

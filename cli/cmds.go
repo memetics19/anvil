@@ -142,30 +142,34 @@ func (a *app) runCheck(r *runner, t target, o targetOpts) (int, summary) {
 }
 
 // checkThenApply runs the check, prints its summary and, when it shows changes and
-// confirm agrees, the real run. A nil confirm applies without asking.
-func (a *app) checkThenApply(r *runner, t target, o targetOpts, confirm func(target) bool) int {
+// confirm agrees, the real run. A nil confirm applies without asking. It returns the exit
+// code and what happened.
+func (a *app) checkThenApply(r *runner, t target, o targetOpts, confirm func(target) bool) (int, outcome) {
 	if r.dryRun {
 		fmt.Fprintf(a.stdout, "# %s: check\n", t.name)
 		r.make(t.checkCmd(o.tags, o.args), nil)
 		fmt.Fprintf(a.stdout, "# %s: apply, only when the check shows changes\n", t.name)
 		r.make(t.applyCmd(o.tags, o.args), nil)
-		return 0
+		return 0, outSkipped
 	}
 	code, s := a.runCheck(r, t, o)
 	if code != 0 {
 		fmt.Fprintf(a.stderr, "anvil: the check of %s failed (exit %d); nothing applied\n", t.name, code)
-		return code
+		return code, outFailed
 	}
 	fmt.Fprintf(a.stdout, "anvil: %s check: %s\n", t.name, s)
 	if s.known && !s.changes {
 		fmt.Fprintf(a.stdout, "anvil: %s has nothing to apply\n", t.name)
-		return 0
+		return 0, outUnchanged
 	}
 	if confirm != nil && !confirm(t) {
 		fmt.Fprintf(a.stdout, "anvil: %s not applied\n", t.name)
-		return 1
+		return 1, outSkipped
 	}
-	return r.make(t.applyCmd(o.tags, o.args), nil)
+	if code := r.make(t.applyCmd(o.tags, o.args), nil); code != 0 {
+		return code, outFailed
+	}
+	return 0, outApplied
 }
 
 func cmdCheck(a *app, args []string) int {
@@ -242,7 +246,8 @@ func cmdApply(a *app, args []string) int {
 		fmt.Fprintf(a.stderr, "anvil: %v\n", err)
 		return 2
 	}
-	return a.checkThenApply(r, t, o, func(t target) bool { return confirmApply(a.stdin, a.stdout, t, o.yes) })
+	code, _ = a.checkThenApply(r, t, o, func(t target) bool { return confirmApply(a.stdin, a.stdout, t, o.yes) })
+	return code
 }
 
 func cmdServices(a *app, args []string) int {

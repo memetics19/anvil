@@ -24,6 +24,8 @@ check shows changed=0 and nothing is applied.
   3. one confirmation: type "up" (--yes skips it, for unattended runs)
   4. the stages in order. Each runs its check first and applies only when the check
      shows changes. The first failure stops the run and prints the resume command.
+  5. a summary: every stage with its result (unchanged, applied, skipped, failed,
+     stopped or not run) and its time
 
 Stages a person must do (Vault's unseal keys on a fresh box, Keychain writes, the
 Cloudflare and NetBird dashboards) pause with the exact steps and wait for Enter. They
@@ -274,7 +276,7 @@ func printPlan(w io.Writer, stages []stage, all int) {
 // exitNeedsYou is a stop that waits for a person, not a failure of make.
 const exitNeedsYou = 3
 
-func (a *app) runStage(r *runner, s stage, st *upState, yes bool) int {
+func (a *app) runStage(r *runner, s stage, st *upState, yes bool) (int, outcome) {
 	switch s.kind {
 	case skCheckApply:
 		return a.checkThenApply(r, s.t, targetOpts{}, nil)
@@ -282,15 +284,21 @@ func (a *app) runStage(r *runner, s stage, st *upState, yes bool) int {
 		if s.done != "" {
 			if _, code := r.quiet(s.done); code == 0 {
 				fmt.Fprintf(a.stdout, "anvil: %s: already done (%s)\n", s.name, s.doneText)
-				return 0
+				return 0, outSkipped
 			}
 		}
 		if !a.canReach(r, s.cmd.target) {
-			return 1
+			return 1, outFailed
 		}
-		return r.make(s.cmd, nil)
+		if code := r.make(s.cmd, nil); code != 0 {
+			return code, outFailed
+		}
+		return 0, outApplied
 	case skStatus:
-		return a.status(a, r)
+		if code := a.status(a, r); code != 0 {
+			return code, outFailed
+		}
+		return 0, outUnchanged
 	}
 	// skHuman
 	isDone := func() bool {
@@ -302,29 +310,56 @@ func (a *app) runStage(r *runner, s stage, st *upState, yes bool) int {
 	}
 	if isDone() {
 		fmt.Fprintf(a.stdout, "anvil: %s: already done (%s)\n", s.name, s.doneText)
-		return 0
+		return 0, outSkipped
 	}
 	fmt.Fprintf(a.stdout, "anvil: %s needs you: %s\n\n%s\n\n", s.name, s.touches, s.steps)
 	hint := fmt.Sprintf("Do the steps above, then resume: anvil up --from %s", s.name)
 	if yes {
 		fmt.Fprintf(a.stderr, "anvil: stopped at %s (--yes never waits). %s\n", s.name, hint)
-		return exitNeedsYou
+		return exitNeedsYou, outStopped
 	}
 	fmt.Fprint(a.stdout, "Press Enter when done, or type q to stop: ")
 	ans, ok := readLine(a.stdin)
 	if !ok || ans == "q" {
 		fmt.Fprintf(a.stderr, "\nanvil: stopped at %s. %s\n", s.name, hint)
-		return exitNeedsYou
+		return exitNeedsYou, outStopped
 	}
 	if s.ack {
 		st.Acknowledged = append(st.Acknowledged, s.name)
-		return 0
+		return 0, outApplied
 	}
 	if !isDone() {
 		fmt.Fprintf(a.stderr, "anvil: %s is still not done (%s is not true). %s\n", s.name, s.doneText, hint)
-		return exitNeedsYou
+		return exitNeedsYou, outStopped
 	}
-	return 0
+	return 0, outApplied
+}
+
+// runAll runs steps in order with a header and a timed footer for each, and prints the
+// summary table at the end, also when a step stops the run. It returns the index of the
+// step that stopped it (or len(names)) and its exit code.
+func (a *app) runAll(names []string, step func(i int) (int, outcome)) (int, int) {
+	p := a.pal()
+	start := time.Now()
+	var rs []stageResult
+	stop, code := len(names), 0
+	for i, n := range names {
+		stageHeader(a.stdout, p, i+1, len(names), n)
+		t0 := time.Now()
+		c, out := step(i)
+		r := stageResult{name: n, out: out, dur: since(t0)}
+		rs = append(rs, r)
+		stageFooter(a.stdout, p, i+1, len(names), r)
+		if c != 0 {
+			stop, code = i, c
+			for _, rest := range names[i+1:] {
+				rs = append(rs, stageResult{name: rest, out: outNotRun})
+			}
+			break
+		}
+	}
+	printSummary(a.stdout, p, rs, since(start))
+	return stop, code
 }
 
 func preflightChecks(a *app, r *runner) bool {
@@ -393,22 +428,28 @@ func cmdUp(a *app, args []string) int {
 		st.Completed = nil
 		st.Started = time.Now().UTC().Format(time.RFC3339)
 	}
+	names := make([]string, len(stages))
 	for i, s := range stages {
-		fmt.Fprintf(a.stdout, "\n=== anvil up %d/%d: %s\n", i+1, len(stages), s.name)
-		code := a.runStage(r, s, &st, yes)
+		names[i] = s.name
+	}
+	stop, code := a.runAll(names, func(i int) (int, outcome) {
+		s := stages[i]
+		code, out := a.runStage(r, s, &st, yes)
 		if code == 0 && !contains(st.Completed, s.name) {
 			st.Completed = append(st.Completed, s.name)
 		}
 		if err := saveState(r.root, st); err != nil {
 			fmt.Fprintf(a.stderr, "anvil: cannot write %s: %v\n", stateFile, err)
 		}
-		if code == exitNeedsYou {
-			return code
-		}
-		if code != 0 {
-			fmt.Fprintf(a.stderr, "anvil up: stage %s failed (exit %d). Fix it, then resume: anvil up --from %s\n", s.name, code, s.name)
-			return code
-		}
+		return code, out
+	})
+	switch {
+	case code == exitNeedsYou:
+		return code
+	case code != 0:
+		n := stages[stop].name
+		fmt.Fprintf(a.stderr, "anvil up: stage %s failed (exit %d). Fix it, then resume: anvil up --from %s\n", n, code, n)
+		return code
 	}
 	fmt.Fprintf(a.stdout, "\nanvil up: done, %d stages\n", len(stages))
 	return 0
@@ -431,7 +472,7 @@ func (a *app) upServices(names []string, yes, dry bool) int {
 	}
 	if dry {
 		for _, t := range ts {
-			a.checkThenApply(r, t, targetOpts{}, nil)
+			_, _ = a.checkThenApply(r, t, targetOpts{}, nil)
 		}
 		return 0
 	}
@@ -451,12 +492,14 @@ func (a *app) upServices(names []string, yes, dry bool) int {
 		fmt.Fprintln(a.stdout, "anvil: nothing run")
 		return 1
 	}
+	confirm := func(t target) bool { return !t.risky || confirmApply(a.stdin, a.stdout, t, yes) }
+	tnames := make([]string, len(ts))
 	for i, t := range ts {
-		confirm := func(t target) bool { return !t.risky || confirmApply(a.stdin, a.stdout, t, yes) }
-		if code := a.checkThenApply(r, t, targetOpts{}, confirm); code != 0 {
-			fmt.Fprintf(a.stderr, "anvil up: %s stopped (exit %d). Resume: anvil up %s\n", t.name, code, strings.Join(names[i:], " "))
-			return code
-		}
+		tnames[i] = t.name
 	}
-	return 0
+	stop, code := a.runAll(tnames, func(i int) (int, outcome) { return a.checkThenApply(r, ts[i], targetOpts{}, confirm) })
+	if code != 0 {
+		fmt.Fprintf(a.stderr, "anvil up: %s stopped (exit %d). Resume: anvil up %s\n", ts[stop].name, code, strings.Join(names[stop:], " "))
+	}
+	return code
 }
