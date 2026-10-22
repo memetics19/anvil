@@ -289,6 +289,8 @@ new VMs to create. Do not apply that plan.
 
 1. Install Proxmox VE with the same addresses as before. If they change, update `pve-ip`,
    `vault-ip` and the Keychain copy of the site dict.
+   [provisioning.md](provisioning.md) installs it unattended from an ISO with the answer
+   file inside.
 2. Set the new OSD disk in `ceph-osd-disk-id` or `site.pve.ceph_osd_disk_id`.
 3. Run steps 1 to 4 of [First build](#first-build). The new S3 user has new keys, so
    delete the old `ceph-s3-access-key` and `ceph-s3-secret-key` items before you copy the

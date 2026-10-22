@@ -81,6 +81,8 @@ locally with `make docs`. `make docs-publish` also serves it privately on the ga
   first build, rebuilding on a new box, and the hand steps
 - [docs/usage.md](docs/usage.md): make targets, adding a service, secrets, backups, safety
   rails, upgrades, tests, troubleshooting
+- [docs/provisioning.md](docs/provisioning.md): installing Proxmox VE on a new server with
+  the automated installer ISO, Redfish or IPMI
 - [docs/services.md](docs/services.md): what each host and role does
 - [docs/secrets.md](docs/secrets.md): every Vault path and key
 
@@ -122,7 +124,8 @@ vault/policies/
   updates on every host (on the second server)
 - [ ] Single sign-on (Authelia) in front of the gateway
 - [ ] Self-hosted NetBird next to the hosted one
-- [ ] Bare-metal provisioning of the second server (iDRAC virtual media or Tinkerbell)
+- [ ] Bare-metal provisioning: Proxmox auto-install ISO, Redfish or IPMI, brand agnostic
+  (in progress, [docs/provisioning.md](docs/provisioning.md))
 - [ ] Releases: semver tags and a changelog from conventional commits (release-please),
   published as GitHub Releases
 - [ ] Split the generic core (roles, Terraform modules, scripts) from this lab's site

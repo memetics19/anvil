@@ -49,6 +49,7 @@ writing them to a file. Each write is checked by reading the SHA-256 digests bac
 | `kv/homelab/apps/vaultwarden` | `admin_token_hash` | `make vm HOST=apps` (vaultwarden role, `argon2` on the VM with the token on stdin) | The Argon2id hash of that token, the only form Vaultwarden gets (`/opt/vaultwarden/vaultwarden.env`, mode 600) |
 | `kv/homelab/netbird-srv` | `relay_secret`, `datastore_key`, `idp_session_key` | `make vm HOST=netbird` (netbird_server role, `openssl rand`) | The self-hosted NetBird server: the relay's shared secret, the store's encryption key and the identity provider's session cookie key, rendered into `/opt/netbird-server/config.yaml` (mode 600) |
 | `kv/homelab/netbird-srv` | `owner_email`, `owner_password` | `make vm HOST=netbird` (netbird_server role, `site.email` and `openssl rand`) | The self-hosted dashboard's owner login (`https://<netbird_domain>`) |
+| `kv/homelab/<box>/install` | `root_password` | `make provision-iso NAME=<box>` (generated once, never printed) | The root password of a server installed with the automated installer. Only its hash goes into the ISO. |
 | `kv/homelab/netbird-srv` | `api_token` | `make vm HOST=netbird` (netbird_server role, from the server's setup API, renewed before it expires) | The owner's personal access token, for the role's API calls |
 | `kv/homelab/apps/vaultwarden` | `smtp_username`, `smtp_password`. Optional: `smtp_host`, `smtp_port`, `smtp_security`, `smtp_from` | you (`vault kv patch ... <key>=-`) | Vaultwarden mail (a Gmail App Password or a relay's API key), rendered into `/opt/vaultwarden/vaultwarden.env` |
 | `kv/homelab/apps/vaultwarden-backup` | `s3_access_key`, `s3_secret_key` | `make ceph` (S3 user `vaultwarden-backup`) | Nightly Vaultwarden backup upload and `make backup`. Owns only the bucket `vaultwarden-backups`. |
@@ -60,6 +61,8 @@ writing them to a file. Each write is checked by reading the SHA-256 digests bac
 |---|---|---|
 | `kv/homelab/pve/apt-cacher-ng` | `admin_password` | `make enclave` (pve_enclave role, `openssl rand`) | Login `admin` for the apt cache's report page and maintenance jobs (AdminAuth) |
 | `kv/homelab/pve/netbird` | `setup_key` | Enrolling the Proxmox host in NetBird |
+| `kv/homelab/pve/idrac` | `username`, `password` | The current server's BMC login. Only read only checks use it. |
+| `kv/homelab/<box>/bmc` | `username`, `password` | The BMC login of a server to install ([provisioning.md](provisioning.md)) |
 | `kv/homelab/netbird/netbird` | `setup_key` | Enrolling the `netbird` VM. The netbird_peer role reads it only for a client that needs a login. |
 
 Create both as reusable setup keys in the NetBird dashboard. An enrolled client can't give

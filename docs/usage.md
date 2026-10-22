@@ -30,6 +30,9 @@ Placeholders: `<apps-address>` (the `apps` VM's lab address), `<apps-home-addres
 | `make tf-apply` | Applies only the saved plan, after running the guard again, then deletes the plan. |
 | `make backup` | Encrypted Terraform state, a Vault Raft snapshot and the newest Vaultwarden backup, into `~/homelab-backups`. |
 | `make vaultwarden-drill` | Restores the newest Vaultwarden backup into a temporary container on the `vaultwarden` VM, checks it, then removes it. |
+| `make provision-iso NAME=<box>` | Builds the Proxmox VE automated install ISO for `site.provision.machines.<box>` into `build/provision/<box>.iso`, mode 600 ([provisioning.md](provisioning.md)). |
+| `make provision NAME=<box>` | A dry run: the guard, read only BMC reads and every planned Redfish or IPMI call. `ARGS="-e provision_confirm=<box>"` installs. |
+| `make provision-clean NAME=<box>` | Deletes the ISO, which holds the root password hash. |
 | `make docs` | Builds this documentation into `build/site` with the `mkdocs` on your PATH. |
 | `make docs-publish` | Builds the same site in a throwaway venv and publishes it at `https://docs.<gateway-domain>`. |
 
