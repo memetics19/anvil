@@ -27,6 +27,7 @@ matching keys are left alone, a different value is refused unless you pass `--fo
 | `kv/homelab/frigate/frigate` | `compose_rtsp_password` | `/home/docker-compose.yml`: `services.frigate.environment.FRIGATE_RTSP_PASSWORD` | Stale, kept for reference. Not the camera login. |
 | `kv/homelab/frigate/frigate-notify` | `gotify_token` | `/home/frigate-notify/config.yml`: `alerts.gotify.token` (was `GOTIFY_TOKEN` in `/home/docker-compose.yml`) | Gotify app token for frigate-notify |
 | `kv/homelab/netbird/pulse` | `admin_token` | `/opt/pulse/.env`: `PULSE_ADMIN_TOKEN` | A placeholder. The pulse role writes it into `.env`, but the compose file does not pass it to the container. |
+| `kv/homelab/apt/signing` | `private_key`, `public_key`, `fingerprint` | `/opt/apt-repo/gnupg` on `netbird` (the private key, imported) | The apt repository's signing key, made once by `scripts/apt-key-init.sh`. No passphrase: the VM signs unattended. |
 
 The three cloudflared units currently run the same tunnel token.
 
