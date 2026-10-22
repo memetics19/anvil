@@ -43,15 +43,27 @@ It is a work in progress. See the [Roadmap](#roadmap).
 ## Quick start
 
 You need a Mac, because the scripts keep secrets in its Keychain, and a Proxmox VE host.
-Install the tools listed in [docs/setup.md](docs/setup.md#operator-machine), then check
-the repo. These two targets need no secrets:
+Install the tools listed in [docs/setup.md](docs/setup.md#operator-machine), and add the
+Keychain items and the site dict it describes. Then:
+
+```sh
+git clone https://github.com/memetics19/anvil && cd anvil
+make cli && export PATH="$PWD/build:$PATH"
+anvil init    # tools, Keychain items and Vault, read-only, with a fix for each problem
+anvil up      # the whole lab, in the order of the first build
+```
+
+`anvil up` runs the steps of [First build](docs/setup.md#first-build) as stages. It checks
+each stage first and applies only what differs, so on a running lab it is a converge. A host that matches the code reports `changed=0`. One service at a time is
+`anvil up pihole`. [docs/cli.md](docs/cli.md) describes every command.
+
+The make targets underneath work on their own too. These two need no secrets:
 
 ```sh
 make lint secrets-scan
 ```
 
-To build the lab, follow [First build](docs/setup.md#first-build). Once it runs, most work
-is a dry run followed by the real run:
+Most work is a dry run followed by the real run:
 
 ```sh
 make vm HOST=apps ARGS="--check --diff"
@@ -60,8 +72,6 @@ make tf-plan
 make tf-apply
 make backup
 ```
-
-A host that matches the code reports `changed=0`.
 
 ## Configuration
 
@@ -81,6 +91,8 @@ locally with `make docs`. `make docs-publish` also serves it privately on the ga
   first build, rebuilding on a new box, and the hand steps
 - [docs/usage.md](docs/usage.md): make targets, adding a service, secrets, backups, safety
   rails, upgrades, tests, troubleshooting
+- [docs/cli.md](docs/cli.md): the `anvil` CLI, from `anvil up` for the whole lab to one
+  service, check, apply, status and restore
 - [docs/provisioning.md](docs/provisioning.md): installing Proxmox VE on a new server with
   the automated installer ISO, Redfish or IPMI
 - [docs/services.md](docs/services.md): what each host and role does
@@ -93,6 +105,7 @@ ansible/
   inventory/      hosts by name; group_vars/all/site.yml resolves `site`
   playbooks/
   roles/
+cli/              the anvil CLI (Go), make cli builds build/anvil
 scripts/          env.sh, plan-guard.sh, backup and Keychain helpers
 site/             site.example.yml
 terraform/        VMs, SDN, import blocks
@@ -130,7 +143,9 @@ vault/policies/
   published as GitHub Releases
 - [ ] Split the generic core (roles, Terraform modules, scripts) from this lab's site
   layer, so it works on another Proxmox box
-- [ ] An `anvil` CLI (init, check, apply, backup, restore) over the make targets
+- [ ] An `anvil` CLI over the make targets: `anvil up` for the whole lab or one service,
+  init, status, check, apply, backup and restore (in progress: checked against the running
+  lab, a fresh box run is untested, [docs/cli.md](docs/cli.md))
 - [ ] OS agnostic operator machine: run from Linux, macOS or Windows (WSL), not only a Mac.
   Secrets move from the macOS Keychain to a pluggable backend (Vault plus an age-encrypted
   bootstrap file, the Linux secret service, or the macOS Keychain), and the scripts drop

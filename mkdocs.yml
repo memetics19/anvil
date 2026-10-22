@@ -21,6 +21,7 @@ nav:
   - Overview: index.md
   - Setup: setup.md
   - Usage: usage.md
+  - CLI: cli.md
   - Provisioning: provisioning.md
   - Services: services.md
   - Secrets: secrets.md
