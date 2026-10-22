@@ -98,8 +98,10 @@ resource "proxmox_virtual_environment_vm" "netbird" {
     type    = "host"
   }
 
+  # 3 GB: the cloud routing peer, Redis, ntfy, Pulse and the self-hosted NetBird server
+  # with its routing peer (Task 13c).
   memory {
-    dedicated = 2048
+    dedicated = 3072
   }
 
   disk {
