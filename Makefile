@@ -6,7 +6,7 @@ HVAC_CHECK := py=$$(ansible-playbook --version | sed -n 's/^  python version = .
 	"$${py:-python3}" -c 'import hvac' 2>/dev/null || { \
 	  echo "hvac is missing in the Python that runs Ansible; fix: \"$$py\" -m pip install hvac" >&2; exit 1; }
 
-.PHONY: lint secrets-scan bootstrap-ssh host host-network enclave vlans ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply docs docs-publish
+.PHONY: lint secrets-scan bootstrap-ssh host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply docs docs-publish
 
 lint:
 	@set -eu -o pipefail; \
@@ -54,6 +54,12 @@ vlans:
 	@set -eu -o pipefail; $(ENV); $(HVAC_CHECK); \
 	cd ansible && ansible-playbook playbooks/enclave.yml --tags firewall $(ARGS) && \
 	ansible-playbook playbooks/vlans.yml $(ARGS)
+
+# The Cisco switch (playbooks/switch.yml, role network_switch), from the controller over SSH.
+# A dry run: it prints the planned commands. Apply: make switch ARGS="-e network_switch_apply=true".
+switch:
+	@set -eu -o pipefail; $(ENV); $(HVAC_CHECK); \
+	cd ansible && ansible-playbook playbooks/switch.yml $(ARGS)
 
 # Single-node Ceph + S3 gateway. The first real run wipes the OSD disk: dry-run first.
 ceph:
