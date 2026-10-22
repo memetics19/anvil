@@ -1,0 +1,163 @@
+name: security
+
+# Trivy, on pull requests, on main and weekly (new advisories appear after a merge):
+#   repo     the repository: Go and Python dependencies, Terraform, committed secrets
+#   binary   the anvil binary as a release builds it (Go's standard library is inside it)
+#   images   every container image the roles pin (tag@sha256), as the lab runs them
+# repo and binary fail on a fixable HIGH or CRITICAL finding. images only reports, because
+# upstream images gain advisories all the time: the run's summary lists the counts and the
+# Security tab has the details, so a role's pin can be bumped.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TRIVY_VERSION: v0.76.1
+
+jobs:
+  repo:
+    name: Trivy (repository)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report to the Security tab
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          format: sarif
+          output: trivy-repo.sarif
+          exit-code: "0"
+      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370  # v4.39.1
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        with:
+          sarif_file: trivy-repo.sarif
+          category: trivy-repo
+      - name: Fail on fixable HIGH or CRITICAL findings
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          skip-setup-trivy: true
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: "1"
+
+  binary:
+    name: Trivy (anvil binary)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+      - name: Build anvil as a release does
+        run: cd cli && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../build/anvil .
+      - name: Report to the Security tab
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          scan-type: rootfs
+          scan-ref: build/anvil
+          scanners: vuln
+          format: sarif
+          output: trivy-binary.sarif
+          exit-code: "0"
+      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370  # v4.39.1
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        with:
+          sarif_file: trivy-binary.sarif
+          category: trivy-binary
+      - name: Fail on fixable HIGH or CRITICAL findings
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          skip-setup-trivy: true
+          scan-type: rootfs
+          scan-ref: build/anvil
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: "1"
+
+  list-images:
+    name: Pinned images
+    runs-on: ubuntu-latest
+    outputs:
+      images: ${{ steps.list.outputs.images }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        name: Every tag@sha256 a role pins
+        run: |
+          images=$(grep -rhoE '[a-z0-9./_-]+:[A-Za-z0-9._-]+@sha256:[a-f0-9]{64}' ansible/roles/*/defaults/main.yml |
+            sort -u | jq -Rnc '[inputs]')
+          echo "images=$images" >>"$GITHUB_OUTPUT"
+          echo "$images" | jq -r '.[]'
+
+  images:
+    name: Trivy (${{ matrix.image }})
+    needs: list-images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.list-images.outputs.images) }}
+    steps:
+      - name: A name for the report
+        id: name
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          short=${IMAGE%%@*}
+          echo "short=$short" >>"$GITHUB_OUTPUT"
+          echo "category=trivy-image-$(echo "$short" | tr '/:' '--')" >>"$GITHUB_OUTPUT"
+      - name: Scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: ${{ matrix.image }}
+          scanners: vuln
+          format: sarif
+          output: trivy-image.sarif
+          exit-code: "0"
+      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370  # v4.39.1
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        with:
+          sarif_file: trivy-image.sarif
+          category: ${{ steps.name.outputs.category }}
+      - name: Count by severity
+        env:
+          SHORT: ${{ steps.name.outputs.short }}
+        run: |
+          {
+            echo "| image | findings by severity |"
+            echo "|---|---|"
+            jq -r --arg img "$SHORT" '
+              [.runs[].results[]? | (.message.text | capture("Severity: (?<s>[A-Z]+)").s // "UNKNOWN")]
+              | group_by(.) | map("\(.[0])=\(length)") | join(" ")
+              | "| `\($img)` | \(if . == "" then "none" else . end) |"' trivy-image.sarif
+          } >>"$GITHUB_STEP_SUMMARY"
