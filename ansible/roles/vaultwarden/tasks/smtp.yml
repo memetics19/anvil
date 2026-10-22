@@ -2,8 +2,8 @@
 # vaultwarden_vault_path the required pair smtp_username and smtp_password, and optionally
 # smtp_host, smtp_port, smtp_security and smtp_from (defaults: vaultwarden_smtp_defaults,
 # Gmail with STARTTLS; the sender defaults to smtp_username). Gmail: the address and a
-# Google App Password. Resend: smtp_host smtp.resend.com, smtp_username resend, the API
-# key as smtp_password and an address on the verified domain as smtp_from.
+# Google App Password. Another relay: set smtp_host, smtp_username, smtp_password and an
+# address on its verified domain as smtp_from.
 # Pair absent: no SMTP (an invited email registers directly, without a mail). Only one of
 # the pair: the run stops.
 

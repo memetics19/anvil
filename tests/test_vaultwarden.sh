@@ -196,37 +196,42 @@ VW_HOST=vaultwarden VW_EXTRA=$xv run '[{name: pass, host: hosts.apps.ip, port: 8
 if [ "$rc" -ne 0 ] && grep -q 'site.services needs the enabled entry' "$tmp/log"; then ok "enclave: rejects another host's address"
 else bad_ "enclave: rejects another host's address"; fi
 
-# SMTP from Vault: Gmail defaults with only the pair; every setting overridable (Resend).
+# SMTP from Vault: Gmail defaults with only the pair; every setting overridable (another relay).
 tfa="EMAIL_2FA_ENFORCE_ON_VERIFIED_INVITE='true' EMAIL_ATTEMPTS_LIMIT='3' EMAIL_EXPIRATION_TIME='600'"
+# Test passwords and hashes are generated per run: no secret-looking literals in the repo.
+pw_gmail="$(openssl rand -hex 2) $(openssl rand -hex 2) $(openssl rand -hex 2) $(openssl rand -hex 2)"
+pw_relay="$(openssl rand -hex 8)"
+pw_plain="$(openssl rand -hex 6)"
+hash_val="$(openssl rand -hex 8)"
 envv() { grep -v '^#' "$out/vaultwarden.env" | grep -v '^ADMIN_TOKEN=' | LC_ALL=C sort | tr '\n' ' '; }
-run "$good" '{smtp_username: someone@example.com, smtp_password: abcd efgh ijkl mnop}'
-check "smtp: Gmail defaults, sender = login"  '[ "$(envv)" = "$tfa SIGNUPS_VERIFY='"'"'true'"'"' SMTP_FROM='"'"'someone@example.com'"'"' SMTP_FROM_NAME='"'"'Vaultwarden'"'"' SMTP_HOST='"'"'smtp.gmail.com'"'"' SMTP_PASSWORD='"'"'abcd efgh ijkl mnop'"'"' SMTP_PORT='"'"'587'"'"' SMTP_SECURITY='"'"'starttls'"'"' SMTP_USERNAME='"'"'someone@example.com'"'"' _ENABLE_EMAIL_2FA='"'"'true'"'"' " ]'
-run "$good" '{smtp_host: smtp.resend.com, smtp_port: 465, smtp_security: force_tls, smtp_username: resend, smtp_password: re_fakekey123456, smtp_from: vault@example.com}'
-check "smtp: Resend, every setting from Vault" '[ "$(envv)" = "$tfa SIGNUPS_VERIFY='"'"'true'"'"' SMTP_FROM='"'"'vault@example.com'"'"' SMTP_FROM_NAME='"'"'Vaultwarden'"'"' SMTP_HOST='"'"'smtp.resend.com'"'"' SMTP_PASSWORD='"'"'re_fakekey123456'"'"' SMTP_PORT='"'"'465'"'"' SMTP_SECURITY='"'"'force_tls'"'"' SMTP_USERNAME='"'"'resend'"'"' _ENABLE_EMAIL_2FA='"'"'true'"'"' " ]'
+run "$good" '{smtp_username: someone@example.com, smtp_password: '"$pw_gmail"'}'
+check "smtp: Gmail defaults, sender = login"  '[ "$(envv)" = "$tfa SIGNUPS_VERIFY='"'"'true'"'"' SMTP_FROM='"'"'someone@example.com'"'"' SMTP_FROM_NAME='"'"'Vaultwarden'"'"' SMTP_HOST='"'"'smtp.gmail.com'"'"' SMTP_PASSWORD='"'"'$pw_gmail'"'"' SMTP_PORT='"'"'587'"'"' SMTP_SECURITY='"'"'starttls'"'"' SMTP_USERNAME='"'"'someone@example.com'"'"' _ENABLE_EMAIL_2FA='"'"'true'"'"' " ]'
+run "$good" '{smtp_host: smtp.example.net, smtp_port: 465, smtp_security: force_tls, smtp_username: relay, smtp_password: '"$pw_relay"', smtp_from: vault@example.com}'
+check "smtp: another relay, every setting from Vault" '[ "$(envv)" = "$tfa SIGNUPS_VERIFY='"'"'true'"'"' SMTP_FROM='"'"'vault@example.com'"'"' SMTP_FROM_NAME='"'"'Vaultwarden'"'"' SMTP_HOST='"'"'smtp.example.net'"'"' SMTP_PASSWORD='"'"'$pw_relay'"'"' SMTP_PORT='"'"'465'"'"' SMTP_SECURITY='"'"'force_tls'"'"' SMTP_USERNAME='"'"'relay'"'"' _ENABLE_EMAIL_2FA='"'"'true'"'"' " ]'
 reject_smtp() {
   run "$good" "$2"; rc=$?
   if [ "$rc" -ne 0 ] && grep -q "$3" "$tmp/log"; then ok "smtp rejects $1"; else bad_ "smtp rejects $1"; fi
 }
 reject_smtp "a username alone"    '{smtp_username: someone@example.com}' 'holds only one of smtp_username and smtp_password'
-reject_smtp "a password alone"    '{smtp_password: abcdefghijkl}' 'holds only one of smtp_username and smtp_password'
-reject_smtp "a non-numeric port"  '{smtp_username: a@example.com, smtp_password: abcdefghijkl, smtp_port: "58x"}' 'smtp_port must be a port number'
-reject_smtp "an unknown security" '{smtp_username: a@example.com, smtp_password: abcdefghijkl, smtp_security: ssl}' 'smtp_security must be starttls, force_tls or off'
+reject_smtp "a password alone"    '{smtp_password: '"$pw_plain"'}' 'holds only one of smtp_username and smtp_password'
+reject_smtp "a non-numeric port"  '{smtp_username: a@example.com, smtp_password: '"$pw_plain"', smtp_port: "58x"}' 'smtp_port must be a port number'
+reject_smtp "an unknown security" '{smtp_username: a@example.com, smtp_password: '"$pw_plain"', smtp_security: ssl}' 'smtp_security must be starttls, force_tls or off'
 reject_smtp "a quote in the password" "{smtp_username: a@example.com, smtp_password: \"abc'defghij\"}" 'smtp_from (default smtp_username) an email address'
-reject_smtp "no sender address"   '{smtp_username: resend, smtp_password: re_fakekey123456}' 'smtp_from (default smtp_username) an email address'
-check "smtp: the password never in the log"  '! grep -rq "re_fakekey123456\|abcdefghijkl" "$tmp/log"'
+reject_smtp "no sender address"   '{smtp_username: relay, smtp_password: '"$pw_relay"'}' 'smtp_from (default smtp_username) an email address'
+check "smtp: the password never in the log"  '! grep -rqF -e "$pw_relay" -e "$pw_plain" -e "$pw_gmail" "$tmp/log"'
 
 # Admin-page config.json: shadowing keys are listed by name, weakening ones stop the run
 # (names only, never values), and the file is left as it was.
 cfg_check() {
   run "$good" "$2" "$3"; rc=$?
   if [ "$rc" -ne 0 ] && grep -q "data/config.json (saved from the admin page) overrides $4; open /admin → Reset defaults" "$tmp/log" \
-     && [ "$(cat "$tmp/vw/data/config.json")" = "$3" ] && ! grep -q "s3cr3t-hash-value" "$tmp/log"; then ok "config.json: $1"
+     && [ "$(cat "$tmp/vw/data/config.json")" = "$3" ] && ! grep -qF "$hash_val" "$tmp/log"; then ok "config.json: $1"
   else bad_ "config.json: $1"; grep -m1 "overrides" "$tmp/log"; fi
 }
-smtp='{smtp_username: a@example.com, smtp_password: abcdefghijkl}'
+smtp='{smtp_username: a@example.com, smtp_password: '"$pw_plain"'}'
 cfg_check "open sign-ups stop the run" '' '{"signups_allowed": true}' 'signups_allowed'
 cfg_check "the UI's full save stops the run (names only)" "$smtp" \
-  '{"signups_allowed": true, "signups_verify": false, "_enable_email_2fa": false, "email_2fa_enforce_on_verified_invite": false, "admin_token": "s3cr3t-hash-value", "domain": "https://pass.internal.example.com", "smtp_port": 587}' \
+  '{"signups_allowed": true, "signups_verify": false, "_enable_email_2fa": false, "email_2fa_enforce_on_verified_invite": false, "admin_token": "'"$hash_val"'", "domain": "https://pass.internal.example.com", "smtp_port": 587}' \
   '_enable_email_2fa, admin_token, email_2fa_enforce_on_verified_invite, signups_allowed, signups_verify'
 cfg_check "another domain, hints, no admin token" '' '{"domain": "https://other.example.com", "show_password_hint": true, "disable_admin_token": true}' \
   'disable_admin_token, domain, show_password_hint'
