@@ -566,7 +566,7 @@ def ssh_open(ip):
 
 def handoff(name, m, out):
     out("next: the install is done. Hand it to the repo (docs/provisioning.md, After the install):")
-    out("next:   add the host to the inventory, then make bootstrap-ssh and make host for it")
+    out("next:   add the host to the inventory, then make bootstrap-ssh and make host for it, or anvil up")
     if m["network"] == "dhcp":
         out("next:   it took a DHCP address; find it in the router's lease table")
 
