@@ -17,10 +17,13 @@
 # copy running-config startup-config must print "Copy succeeded". A (Y/N) question after
 # it, which some firmware asks, is answered Y. Any other question fails the run.
 # SWITCH_KNOWN_HOSTS: the known hosts file (default build/switch/known_hosts, the file the
-# network_switch role uses). The key is pinned on first use and a changed key is refused. SWITCH_CLI_TIMEOUT: seconds per command (default 60).
+# network_switch role uses). The key is pinned on first use and a changed key is refused.
+# It must be a regular file ssh can write, or a new one in a writable directory. /dev/null,
+# none, or a file ssh cannot write would accept any key every time, so they are refused.
+# SWITCH_CLI_TIMEOUT: seconds per command (default 60).
 # Exit codes:
 #   0 ok
-#   2 usage, or a line refused by --show-only
+#   2 usage, a line refused by --show-only, or a SWITCH_KNOWN_HOSTS that turns pinning off
 #   3 the switch rejected a command, or the save did not report success
 #   4 timeout
 #   5 no login (connection, SSH or password) after every try
@@ -58,6 +61,18 @@ export SWITCH_CLI_LINES
 if [ -z "${SWITCH_KNOWN_HOSTS:-}" ]; then
   SWITCH_KNOWN_HOSTS="$(cd "$(dirname "$0")/.." && pwd)/build/switch/known_hosts"
   mkdir -p "$(dirname "$SWITCH_KNOWN_HOSTS")"
+fi
+kh=$SWITCH_KNOWN_HOSTS
+if [ "$kh" = none ] || [ "$kh" = /dev/null ]; then
+  pin=0
+elif [ -e "$kh" ]; then
+  [ -f "$kh" ] && [ -w "$kh" ] && pin=1 || pin=0
+else
+  [ -d "$(dirname "$kh")" ] && [ -w "$(dirname "$kh")" ] && pin=1 || pin=0
+fi
+if [ "$pin" = 0 ]; then
+  echo "switch-cli: SWITCH_KNOWN_HOSTS ($kh) is not a file ssh can write, so host key pinning would be off. Unset it to use build/switch/known_hosts." >&2
+  exit 2
 fi
 export SWITCH_KNOWN_HOSTS
 export SWITCH_CLI_TIMEOUT="${SWITCH_CLI_TIMEOUT:-60}"

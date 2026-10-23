@@ -31,7 +31,7 @@ network_switch_known_hosts: "{{ network_switch_local_dir }}/known_hosts"
 network_switch_cli: "{{ playbook_dir }}/../../scripts/switch-cli.sh"
 # What each exit code of switch-cli.sh means, for the failure messages.
 network_switch_cli_exits:
-  2: usage, or a line refused by --show-only
+  2: usage, a line refused by --show-only, or a known hosts file that turns pinning off
   3: the switch rejected a command, or the save did not report Copy succeeded
   4: timeout
   5: no login after every try (connection, SSH or password)
