@@ -23,7 +23,9 @@ services:
     image: {{ pulse_caddy_image }}
     depends_on: [pulse]
     ports:
-      - "80:80"
+      # The tunnel connectors and the gateway (lab address), pulse-update's health check (loopback).
+      - "127.0.0.1:80:80"
+      - "{{ site.hosts[inventory_hostname].ip }}:80:80"
     volumes:
       - {{ pulse_dir }}/Caddyfile:/etc/caddy/Caddyfile:ro
       - {{ pulse_dir }}/docs:/srv/docs:ro

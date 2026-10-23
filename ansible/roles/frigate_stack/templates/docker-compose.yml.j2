@@ -2,11 +2,9 @@ version: "3.9"
 
 services:
   mqtt:
-    image: eclipse-mosquitto:2
+    image: {{ frigate_stack_mosquitto_image }}
     container_name: mqtt
     restart: unless-stopped
-    ports:
-      - "1883:1883"
     volumes:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data
@@ -14,7 +12,7 @@ services:
       - frigate-network
 
   frigate:
-    image: ghcr.io/blakeblackshear/frigate:stable
+    image: {{ frigate_stack_frigate_image }}
     container_name: frigate
     shm_size: "256m"
     privileged: true
@@ -26,8 +24,11 @@ services:
       - ./recordings:/media/frigate
       - /etc/localtime:/etc/localtime:ro
     ports:
-      - "5000:5000"
-      - "8971:8971"
+      # 5000 is Frigate's unauthenticated internal API: loopback only, for this role.
+      - "127.0.0.1:5000:5000"
+      # 8971 is the authenticated UI: the gateway (lab address) and the host's nginx (loopback).
+      - "127.0.0.1:8971:8971"
+      - "{{ site.hosts[inventory_hostname].ip }}:8971:8971"
     devices:
       - /dev/bus/usb:/dev/bus/usb
     environment:
@@ -36,7 +37,7 @@ services:
       - frigate-network
 
   frigate-notify:
-    image: ghcr.io/0x2142/frigate-notify:latest
+    image: {{ frigate_stack_notify_image }}
     container_name: frigate-notify
     shm_size: "256m"
     restart: unless-stopped
@@ -54,11 +55,11 @@ services:
     networks:
       - frigate-network
   gotify:
-    image: gotify/server
+    image: {{ frigate_stack_gotify_image }}
     container_name: gotify
     restart: unless-stopped
     ports:
-      - "8080:80"
+      - "{{ site.hosts[inventory_hostname].ip }}:8080:80"
     volumes:
       - ./gotify/data:/app/data
     networks:
