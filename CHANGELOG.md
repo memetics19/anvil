@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.1](https://github.com/memetics19/anvil/compare/v0.4.0...v0.4.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **pulse:** build the docs from the repository root ([bd1fb06](https://github.com/memetics19/anvil/commit/bd1fb06dcfcb564da5c2bcf0f9389b525dd6a6af))
+* **pulse:** build the docs from the repository root ([ad91dde](https://github.com/memetics19/anvil/commit/ad91dde684003f20d662e987b6faf3caa3e32b64))
+* **pulse:** pass PULSE_DB, the Pulse 3 name for the database path ([e69599e](https://github.com/memetics19/anvil/commit/e69599e2469b620533a8324181c00f99a11b23d9))
+
 ## [0.4.0](https://github.com/memetics19/anvil/compare/v0.3.0...v0.4.0) (2026-10-23)
 
 
