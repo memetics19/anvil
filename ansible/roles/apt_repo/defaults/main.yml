@@ -1,10 +1,27 @@
-# The signed apt repository for the anvil .deb packages, on the netbird VM. apt-publish (a
-# systemd timer) picks up each new vX.Y.Z release of the repository, checks its .deb files
-# against the release's checksums.txt, rebuilds and signs the index, and swaps the new tree
-# in. Caddy serves it read-only on apt_repo_port, which the Cloudflare tunnel publishes. The
-# whole tree can be rebuilt from the releases and the key, so nothing here needs a backup.
-apt_repo_github: memetics19/anvil
-apt_repo_package: anvil
+# The signed apt repository for the .deb packages of anvil and pulse, on the netbird VM.
+# apt-publish (a systemd timer) picks up each new vX.Y.Z release of every source, checks its
+# .deb files against the release's checksum file, rebuilds and signs the index, and swaps
+# the new tree in. Caddy serves it read-only on apt_repo_port, which the Cloudflare tunnel
+# publishes. The whole tree can be rebuilt from the releases and the key, so nothing here
+# needs a backup.
+# Each source: a GitHub repository, the packages its releases carry as
+# <package>_<version>_<arch>.deb, and the release file that lists their sha256 sums.
+apt_repo_sources:
+  - repo: memetics19/anvil
+    packages: [anvil]
+    checksums: checksums.txt
+  - repo: memetics19/pulse
+    packages: [pulse, pulse-agent, pulse-cli]
+    checksums: SHA256SUMS
+apt_repo_github_url: https://github.com
+# Kept as the first repository's name: changing a published Origin or Label makes every
+# client's apt update stop until someone accepts the change by hand.
+apt_repo_origin: anvil
+# The signing key is published as key.gpg and key.asc, and also under this name, which the
+# first install instructions used.
+apt_repo_keyname: anvil
+# The keyring and sources.list.d name the index page suggests to clients.
+apt_repo_list_name: memetics19
 apt_repo_arches: [amd64, arm64]
 apt_repo_suite: stable
 apt_repo_component: main

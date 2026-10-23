@@ -1,13 +1,15 @@
 #!/bin/bash
 # Managed by Ansible (role apt_repo). Keeps the signed apt repository current, pulling from
 # GitHub. Run by apt-publish.timer and once by the role.
-#   1. Every vX.Y.Z tag of REPO gets its <package>_<version>_<arch>.deb files from the
-#      release, checked against the release's checksums.txt, into pool/ (kept, never
-#      fetched again). A release without .deb files is noted and skipped from then on.
+#   1. For each source (a GitHub repository, its packages and its checksum file), every
+#      vX.Y.Z tag gets its <package>_<version>_<arch>.deb files from the release, checked
+#      against that checksum file, into pool/ (kept, never fetched again). A package a
+#      release does not have is noted and skipped for that release from then on.
 #   2. When pool/ or the signing key changed, a new tree is built next to the live one:
 #      Packages for each architecture, Release, InRelease and Release.gpg signed with KEY,
-#      and the public key as <package>.asc. The signature is checked with gpgv against that
-#      public key, then the site/current link moves to the new tree in one rename.
+#      and the public key as key.gpg and key.asc (and under KEYNAME, for clients set up
+#      before). The signature is checked with gpgv against that public key, then the
+#      site/current link moves to the new tree in one rename.
 # Usage: apt-publish [--check]   (--check prints what it would do and changes nothing)
 # Settings come from CONF (publish.conf, written by the role).
 set -euo pipefail
@@ -23,23 +25,29 @@ log() { echo "apt-publish: $*"; }
 die() { echo "apt-publish: $*" >&2; exit 1; }
 trap 'echo "apt-publish: failed at line $LINENO" >&2' ERR
 
-pool="$DIR/pool/$COMPONENT/${PACKAGE:0:1}/$PACKAGE"
-mkdir -p "$pool" "$DIR/state" "$DIR/site"
+mkdir -p "$DIR/pool" "$DIR/state/no-deb" "$DIR/site"
 exec 9>"$DIR/state/lock"
 flock -n 9 || die "another apt-publish is running"
 
-tags=$(git ls-remote --tags --refs "$REPO_URL" 'v*' | awk '{sub("refs/tags/", "", $2); print $2}' |
-  grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V) || true
-[ -n "$tags" ] || die "no vX.Y.Z tag in $REPO_URL"
+pool_of() { echo "$DIR/pool/$COMPONENT/${1:0:1}/$1"; }
 
-# --- 1. fetch what is missing ----------------------------------------------------------------
+# --- 1. what is missing --------------------------------------------------------------------
+# SOURCES: one "owner/repo|package package ...|checksum file" per line.
 missing=()
-for tag in $tags; do
-  [ -e "$DIR/state/no-deb-$tag" ] && continue
-  for arch in $ARCHES; do
-    [ -f "$pool/${PACKAGE}_${tag#v}_$arch.deb" ] || missing+=("$tag/$arch")
+while IFS='|' read -r repo packages sums; do
+  [ -n "$repo" ] || continue
+  tags=$(git ls-remote --tags --refs "$GITHUB/$repo" 'v*' | awk '{sub("refs/tags/", "", $2); print $2}' |
+    grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V) || true
+  [ -n "$tags" ] || { log "no vX.Y.Z tag in $repo yet"; continue; }
+  for tag in $tags; do
+    for pkg in $packages; do
+      [ -e "$DIR/state/no-deb/${repo//\//_}_${tag}_$pkg" ] && continue
+      for arch in $ARCHES; do
+        [ -f "$(pool_of "$pkg")/${pkg}_${tag#v}_$arch.deb" ] || missing+=("$repo|$tag|$pkg|$arch|$sums")
+      done
+    done
   done
-done
+done <<<"$SOURCES"
 
 key_now=$(gpg --homedir "$GNUPGHOME" --batch --with-colons --list-secret-keys 2>/dev/null |
   awk -F: '$1 == "fpr" {print $10; exit}')
@@ -47,7 +55,16 @@ key_now=$(gpg --homedir "$GNUPGHOME" --batch --with-colons --list-secret-keys 2>
 key_built=$(cat "$DIR/state/key" 2>/dev/null || true)
 
 if $check; then
-  if [ ${#missing[@]} -gt 0 ]; then log "would fetch ${missing[*]}"; else log "pool: up to date"; fi
+  if [ ${#missing[@]} -gt 0 ]; then
+    names=()
+    for item in "${missing[@]}"; do
+      IFS='|' read -r _ tag pkg arch _ <<<"$item"
+      names+=("${pkg}_${tag#v}_$arch")
+    done
+    log "would fetch ${names[*]}"
+  else
+    log "pool: up to date"
+  fi
   if [ ! -e "$DIR/site/current" ] || [ "$key_now" != "$key_built" ]; then log "would rebuild and sign the index"; fi
   exit 0
 fi
@@ -56,22 +73,27 @@ work=$(mktemp -d "$DIR/state/fetch.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 fetched=0
 for item in "${missing[@]}"; do
-  tag=${item%/*} arch=${item#*/}
-  deb="${PACKAGE}_${tag#v}_$arch.deb"
-  base="$RELEASES/download/$tag"
-  if [ ! -f "$work/$tag.sums" ] && ! curl -fsSL -o "$work/$tag.sums" "$base/checksums.txt"; then
-    log "$tag has no checksums.txt, skipped from now on"
-    touch "$DIR/state/no-deb-$tag"
+  IFS='|' read -r repo tag pkg arch sums <<<"$item"
+  deb="${pkg}_${tag#v}_$arch.deb"
+  base="$GITHUB/$repo/releases/download/$tag"
+  list="$work/${repo//\//_}_$tag.sums"
+  skip="$DIR/state/no-deb/${repo//\//_}_${tag}_$pkg"
+  [ -e "$skip" ] && continue
+  if [ ! -f "$list" ] && ! curl -fsSL -o "$list" "$base/$sums"; then
+    log "$repo $tag has no $sums, skipped from now on"
+    read -ra all <<<"$(awk -F'|' -v r="$repo" '$1 == r {print $2}' <<<"$SOURCES")"
+    for p in "${all[@]}"; do touch "$DIR/state/no-deb/${repo//\//_}_${tag}_$p"; done
     continue
   fi
-  if ! grep -qE "  $deb\$" "$work/$tag.sums"; then
-    log "$tag has no $deb, skipped from now on"
-    touch "$DIR/state/no-deb-$tag"
+  if ! grep -qE "  $deb\$" "$list"; then
+    log "$repo $tag has no $pkg packages, skipped from now on"
+    touch "$skip"
     continue
   fi
   curl -fsSL -o "$work/$deb" "$base/$deb" || die "cannot download $deb"
-  (cd "$work" && grep -E "  $deb\$" "$tag.sums" | sha256sum -c --status) || die "checksum mismatch for $deb"
-  mv "$work/$deb" "$pool/$deb"
+  (cd "$work" && grep -E "  $deb\$" "$list" | sha256sum -c --status) || die "checksum mismatch for $deb"
+  mkdir -p "$(pool_of "$pkg")"
+  mv "$work/$deb" "$(pool_of "$pkg")/$deb"
   fetched=$((fetched + 1))
   log "added $deb"
 done
@@ -93,7 +115,7 @@ for arch in $ARCHES; do
   gzip -9nk "$dist/$COMPONENT/binary-$arch/Packages"
 done
 apt-ftparchive \
-  -o "APT::FTPArchive::Release::Origin=$PACKAGE" -o "APT::FTPArchive::Release::Label=$PACKAGE" \
+  -o "APT::FTPArchive::Release::Origin=$ORIGIN" -o "APT::FTPArchive::Release::Label=$ORIGIN" \
   -o "APT::FTPArchive::Release::Suite=$SUITE" -o "APT::FTPArchive::Release::Codename=$SUITE" \
   -o "APT::FTPArchive::Release::Architectures=$ARCHES" \
   -o "APT::FTPArchive::Release::Components=$COMPONENT" \
@@ -101,14 +123,15 @@ apt-ftparchive \
 mv "$tree/Release.tmp" "$dist/Release"
 gpg --homedir "$GNUPGHOME" --batch --yes --local-user "$key_now" --clearsign -o "$dist/InRelease" "$dist/Release"
 gpg --homedir "$GNUPGHOME" --batch --yes --local-user "$key_now" --armor --detach-sign -o "$dist/Release.gpg" "$dist/Release"
-gpg --homedir "$GNUPGHOME" --batch --armor --export "$key_now" >"$tree/$PACKAGE.asc"
-gpg --homedir "$GNUPGHOME" --batch --export "$key_now" >"$tree/$PACKAGE.gpg"
+gpg --homedir "$GNUPGHOME" --batch --armor --export "$key_now" >"$tree/key.asc"
+gpg --homedir "$GNUPGHOME" --batch --export "$key_now" >"$tree/key.gpg"
+for ext in gpg asc; do ln "$tree/key.$ext" "$tree/$KEYNAME.$ext"; done
 [ ! -f "$DIR/index.html" ] || cp "$DIR/index.html" "$tree/index.html"
 
 # What a client sees: the published key must verify both signatures.
-gpgv --keyring "$tree/$PACKAGE.gpg" "$dist/InRelease" 2>/dev/null || die "InRelease does not verify with $PACKAGE.gpg"
-gpgv --keyring "$tree/$PACKAGE.gpg" "$dist/Release.gpg" "$dist/Release" 2>/dev/null ||
-  die "Release.gpg does not verify with $PACKAGE.gpg"
+gpgv --keyring "$tree/key.gpg" "$dist/InRelease" 2>/dev/null || die "InRelease does not verify with key.gpg"
+gpgv --keyring "$tree/key.gpg" "$dist/Release.gpg" "$dist/Release" 2>/dev/null ||
+  die "Release.gpg does not verify with key.gpg"
 
 old=$(readlink "$DIR/site/current" 2>/dev/null || true)
 ln -sfn "$stamp" "$DIR/site/current.new" && mv -T "$DIR/site/current.new" "$DIR/site/current"
