@@ -164,11 +164,9 @@ vault/policies/
   ([docs/install.md](docs/install.md))
 - [x] A signed apt repository for the .deb, `apt.shreeda.xyz`, published by the homelab
   from each release ([docs/install.md](docs/install.md#debian-and-ubuntu))
-- [ ] cloudflared upgrade: one `cloudflared_version` in the role, installed from
-  Cloudflare's apt repository and held, instead of whatever version was current when a VM
-  was set up. The three connectors have drifted (frigate and ragnarok run 2025.11.1, netbird
-  2026.3.0). The role upgrades one connector at a time and moves on only when the other two
-  are healthy in the tunnel, so the public names never go down
+- [x] cloudflared pinned: one `cloudflared_version`, installed from Cloudflare's apt
+  repository and held, upgraded one connector at a time while the others keep the tunnel
+  up. The token is read from a root-only file, not the process list
 - [ ] The rebuild runbook, tested on a second server
 
 ## Known issues

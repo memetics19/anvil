@@ -16,9 +16,9 @@ matching keys are left alone, a different value is refused unless you pass `--fo
 
 | Vault path | Key | Source on the VM | Used for |
 |---|---|---|---|
-| `kv/homelab/frigate/cloudflared` | `token` | `--token` in the `cloudflared` systemd unit | Cloudflare tunnel connector |
-| `kv/homelab/netbird/cloudflared` | `token` | `--token` in the `cloudflared` systemd unit | Cloudflare tunnel connector |
-| `kv/homelab/ragnarok/cloudflared` | `token` | `--token` in the `cloudflared` systemd unit | Cloudflare tunnel connector |
+| `kv/homelab/frigate/cloudflared` | `token` | `/etc/cloudflared/token` (0600 root), read with `--token-file` | Cloudflare tunnel connector |
+| `kv/homelab/netbird/cloudflared` | `token` | `/etc/cloudflared/token` (0600 root), read with `--token-file` | Cloudflare tunnel connector |
+| `kv/homelab/ragnarok/cloudflared` | `token` | `/etc/cloudflared/token` (0600 root), read with `--token-file` | Cloudflare tunnel connector |
 | `kv/homelab/frigate/frigate` | `front_door_rtsp_url` | `/home/config/config.yml`: `cameras.front_door.ffmpeg.inputs[0].path`, same as `go2rtc.streams.front_door` | Camera stream URL, with credentials |
 | `kv/homelab/frigate/frigate` | `rtsp_user` | user part of that URL | Camera RTSP login |
 | `kv/homelab/frigate/frigate` | `rtsp_password` | password part of that URL | Camera RTSP login |
