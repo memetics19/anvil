@@ -45,7 +45,7 @@ exceptions=(
   # pulse-update (netbird VM, Pulse's own volume and /opt/pulse only): the data copy into a
   # fresh backups/<name> and, on a rollback, back into Pulse's data volume; the oldest data
   # copies beyond KEEP; the docs site's previous builds under /opt/pulse/docs
-  'ansible/roles/pulse/templates/pulse-update.sh.j2|sh -c "rm -rf '"'"'$2'"'"' && mkdir -p '"'"'$2'"'"' && cp -a '"'"'$1/.'"'"' '"'"'$2/'"'"'"'
+  'ansible/roles/pulse/templates/pulse-update.sh.j2|sh -c "mkdir -p '"'"'$2'"'"' && find '"'"'$2'"'"' -mindepth 1 -delete && cp -a '"'"'$1/.'"'"' '"'"'$2/'"'"'"'
   'ansible/roles/pulse/templates/pulse-update.sh.j2|for d in "${all[@]:0:n-KEEP}"; do rm -r -- "$d"; done'
   'ansible/roles/pulse/templates/pulse-update.sh.j2|rm -rf "$out.tmp"'
   'ansible/roles/pulse/templates/pulse-update.sh.j2|rm -rf "$out" && mv "$out.tmp" "$out"'

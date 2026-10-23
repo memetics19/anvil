@@ -6,14 +6,15 @@
 #  - a second run with nothing new changes nothing;
 #  - --check reports and changes nothing;
 #  - a new release that does not answer is rolled back to the image that ran before, and
-#    the data copy is put back;
+#    the data copy is put back (run for real against directories, with the data
+#    directory standing in for the volume's mount point: it cannot be removed itself);
 #  - TRACK pins a tag; a new main commit rebuilds the docs and drops the old build.
 # Needs ansible-playbook, git and python3 with PyYAML.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+trap 'chmod -R u+w "$tmp" 2>/dev/null; rm -rf "$tmp"' EXIT
 fail=0
 ok() { echo "ok   $1"; }
 bad_() { echo "FAIL $1"; fail=1; }
@@ -77,10 +78,18 @@ if [ "$1" = run ]; then
   for a in "$@"; do
     case $a in
       /out/*) mkdir -p "$FAKE_DIR/docs/${a#/out/}" && touch "$FAKE_DIR/docs/${a#/out/}/index.html" ;;
-      # the data copy: a copy into /backup/<name> leaves that directory behind
-      *"mkdir -p '/backup/"*) d=${a#*mkdir -p \'/backup/}; mkdir -p "$FAKE_DIR/backups/${d%%\'*}" ;;
     esac
   done
+  # The data copy runs for real: '/data' is FAKE_VOLUME (a directory that cannot be
+  # removed, like a mount point) and '/backup' is the backups directory.
+  last=${*: -1}
+  case $last in
+    *"cp -a '"*)
+      cmd=${last//\'\/data/\'$FAKE_VOLUME}
+      cmd=${cmd//\'\/backup/\'$FAKE_DIR\/backups}
+      sh -c "$cmd" || exit 1
+      ;;
+  esac
 fi
 exit 0
 EOF
@@ -88,6 +97,11 @@ cat >"$bin/compose" <<'EOF'
 #!/bin/bash
 # Like pulse-compose: it reads release.env, and fails without it.
 [ -f "$FAKE_DIR/release.env" ] || { echo "couldn't find env file: $FAKE_DIR/release.env" >&2; exit 1; }
+# A bad release starts and damages the data before it fails its health check.
+if [ "$1" = up ] && [ -n "${FAKE_BAD_IMAGE:-}" ] && grep -q "=$FAKE_BAD_IMAGE\$" "$FAKE_DIR/release.env"; then
+  echo "damaged" >"$FAKE_VOLUME/pulse.db"
+  touch "$FAKE_VOLUME/written-by-bad-release"
+fi
 echo "compose $*" >>"$FAKE_LOG"
 [ "$1 $2" = "ps -aq" ] && echo cid1
 exit 0
@@ -111,11 +125,17 @@ fi
 chmod +x "$bin"/*
 
 dir="$tmp/opt"
+# The Pulse data volume: its parent is read-only, so the directory itself cannot be removed,
+# like the mount point inside the real copy container. Only its contents can change.
+vol="$tmp/mnt/volume"
+mkdir -p "$vol"
+echo "the real data" >"$vol/pulse.db"
+chmod 555 "$tmp/mnt"
 mkdir -p "$dir"
 conf="$tmp/test.conf"
 sed -e "s#^REPO=.*#REPO=file://$up#" -e "s#^DIR=.*#DIR=$dir#" -e "s#^COMPOSE=.*#COMPOSE=$bin/compose#" \
   -e "s#^HEALTH_TIMEOUT=.*#HEALTH_TIMEOUT=6#" -e "s#^KEEP=.*#KEEP=2#" "$tmp/update.conf" >"$conf"
-upd() { PATH="$bin:$PATH" FAKE_LOG="$log" FAKE_DIR="$dir" PULSE_UPDATE_CONF="$conf" bash "$tmp/pulse-update.sh" "$@" >"$tmp/out" 2>&1; }
+upd() { PATH="$bin:$PATH" FAKE_LOG="$log" FAKE_DIR="$dir" FAKE_VOLUME="$vol" PULSE_UPDATE_CONF="$conf" bash "$tmp/pulse-update.sh" "$@" >"$tmp/out" 2>&1; }
 main_sha() { git -C "$up" rev-parse main; }
 
 # 1. first run over a container nothing recorded
@@ -148,7 +168,8 @@ if upd --check && grep -q "would deploy v1.11.0" "$tmp/out" && [ ! -s "$log" ] &
 : >"$log"
 if FAKE_BAD_IMAGE=ghcr.io/memetics19/pulse:1.11.0 FAKE_PREV_IMAGE=ghcr.io/memetics19/pulse:1.10.0 upd; then bad_ "an unhealthy release fails the run"; else ok "an unhealthy release fails the run"; fi
 check "it is rolled back to the image that ran before" "grep -qx 'PULSE_IMAGE=ghcr.io/memetics19/pulse:1.10.0' '$dir/release.env' && grep -q 'rolled back to ghcr.io/memetics19/pulse:1.10.0' '$tmp/out'"
-check "the data copy is put back" "grep -q \"sh -c rm -rf '/data'\" '$log'"
+check "the data copy is put back into the volume" "[ \"\$(cat '$vol/pulse.db')\" = 'the real data' ] && [ ! -e '$vol/written-by-bad-release' ]"
+check "the volume's mount point itself is never removed" "[ -d '$vol' ]"
 check "the recorded release stays v1.10.0" "[ \"\$(cat '$dir/state/version')\" = v1.10.0 ]"
 
 # 5. a pin, and a new docs commit
