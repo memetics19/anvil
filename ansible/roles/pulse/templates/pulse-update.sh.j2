@@ -10,6 +10,10 @@
 #         KEEP copies are kept, whether the deploy worked or not. With VERIFY=true the
 #         pulled image's digest must carry a cosign signature from the repo's release
 #         workflow (SIGNER), and Pulse runs that digest, so it runs what was checked.
+#         A first install has nothing to go back to: if it is not healthy in time it is left
+#         running and recorded in state/pending, and a later run records it once it answers.
+#         If the rollback cannot restore the data, state/hold names the copy to restore by
+#         hand: until state/hold is removed every run stops at once (--check reports it).
 #   docs: the head of DOCS_REF, built with mkdocs into docs/<commit>, then the
 #         docs/current link moves to it in one rename.
 # Usage: pulse-update [--check | --retry]
@@ -43,6 +47,17 @@ flock -n 9 || die "another pulse-update is running"
 current=$(cat "$DIR/state/version" 2>/dev/null || true)
 docs_current=$(cat "$DIR/state/docs" 2>/dev/null || true)
 failed=$(cat "$DIR/state/failed" 2>/dev/null || true)
+pending=$(cat "$DIR/state/pending" 2>/dev/null || true)
+hold=$(cat "$DIR/state/hold" 2>/dev/null || true)
+
+# A rollback could not restore the data: the volume may be half empty. Nothing runs (a new
+# deploy would copy the broken data and later drop the good copy) until someone restores
+# it by hand and removes state/hold.
+if [ -n "$hold" ]; then
+  msg="on hold: a rollback could not restore the data. Restore $DIR/backups/$hold into the data volume by hand, then remove $DIR/state/hold"
+  if $check; then log "$msg"; exit 0; fi
+  die "$msg"
+fi
 
 # --- what to run ---------------------------------------------------------------------------------
 case $TRACK in
@@ -58,27 +73,31 @@ if [ -n "$pattern" ]; then
 else
   want=$TRACK
 fi
-skip=false
+skip=false waiting=false
 [ "$want" != "$current" ] && [ "$want" = "$failed" ] && ! $retry && skip=true
+[ -n "$pending" ] && [ "$want" = "$pending" ] && ! $retry && waiting=true
 docs_want=$(git ls-remote "$REPO" "refs/heads/$DOCS_REF" | cut -f1)
 [ -n "$docs_want" ] || die "no branch $DOCS_REF in $REPO"
 
-if $check; then
-  if [ "$want" = "$current" ]; then log "app: $current, up to date"
-  elif $skip; then log "app: $want failed before, skipped until a newer tag or --retry (running: ${current:-nothing})"
-  else log "app: would deploy $want (running: ${current:-nothing})"; fi
-  if [ "$docs_want" = "$docs_current" ]; then log "docs: ${docs_current:0:7}, up to date"; else log "docs: would build ${docs_want:0:7} (built: ${docs_current:0:7})"; fi
-  exit 0
-fi
-
+answers() { curl -fsS -m 3 -o /dev/null "$HEALTH_URL"; }
 healthy() {
   local i
   for ((i = 0; i < HEALTH_TIMEOUT; i += 3)); do
-    curl -fsS -m 3 -o /dev/null "$HEALTH_URL" && return 0
+    answers && return 0
     sleep 3
   done
   return 1
 }
+
+if $check; then
+  if [ "$want" = "$current" ]; then log "app: $current, up to date"
+  elif $skip; then log "app: $want failed before, skipped until a newer tag or --retry (running: ${current:-nothing})"
+  elif $waiting && answers; then log "app: $want is healthy now, the next run records it"
+  elif $waiting; then log "app: $want is not healthy yet, left running and checked again on the next run"
+  else log "app: would deploy $want (running: ${current:-nothing})"; fi
+  if [ "$docs_want" = "$docs_current" ]; then log "docs: ${docs_current:0:7}, up to date"; else log "docs: would build ${docs_want:0:7} (built: ${docs_current:0:7})"; fi
+  exit 0
+fi
 
 volume_copy() { # volume_copy <from> <to>: from and to are /data or /backup/<dir>
   # Empty <to> and copy <from> into it. Only the contents of <to> are removed, never <to>
@@ -89,8 +108,12 @@ volume_copy() { # volume_copy <from> <to>: from and to are /data or /backup/<dir
 }
 
 image_of() { echo "$IMAGE:${1#v}"; }
-# The digest a pulled tag points at, as IMAGE@sha256:...
-digest_of() { docker image inspect --format '{{ '{{' }}index .RepoDigests 0{{ '}}' }}' "$1"; }
+# The digest a pulled tag points at, as IMAGE@sha256:... The same image can also be known
+# under other names (a mirror, a retag), in any order: only the entry of IMAGE counts.
+digest_of() {
+  docker image inspect --format '{{ '{{' }}range .RepoDigests{{ '}}' }}{{ '{{' }}println .{{ '}}' }}{{ '{{' }}end{{ '}}' }}' "$1" |
+    awk -v p="$IMAGE@" 'index($0, p) == 1 && !found { print; found = 1 } END { exit !found }'
+}
 verified() { # verified <IMAGE@digest>: a keyless cosign signature by SIGNER, in the Rekor log
   docker run --rm "$COSIGN_IMAGE" verify "$1" \
     --certificate-identity-regexp "$SIGNER" \
@@ -107,7 +130,7 @@ deploy() {
   ref=$(image_of "$tag")
   docker pull -q "$ref" >/dev/null || die "cannot pull $ref"
   if [ "$VERIFY" = true ]; then
-    ref=$(digest_of "$ref") && [ -n "$ref" ] || die "no digest for $(image_of "$tag")"
+    ref=$(digest_of "$ref") && [ -n "$ref" ] || die "no digest of $IMAGE for $(image_of "$tag"), not deployed"
     # Pulse keeps running: a check that fails (or cannot reach Sigstore) changes nothing.
     verified "$ref" || die "$ref has no valid signature from $SIGNER, not deployed"
     log "signature of $ref checked"
@@ -127,29 +150,42 @@ deploy() {
   compose up -d pulse caddy
   if healthy; then
     echo "$tag" >"$DIR/state/version"
-    rm -f "$DIR/state/failed"
+    rm -f "$DIR/state/failed" "$DIR/state/pending"
     log "deployed $tag (was ${current:-${prev:-nothing}})"
     return 0
   fi
 
   log "$tag is not healthy after ${HEALTH_TIMEOUT}s"
-  echo "$tag" >"$DIR/state/failed"
-  [ -n "$prev" ] || die "$tag is not healthy and there is no earlier image to go back to"
-  compose stop pulse
-  if [ -n "$backup" ] && ! volume_copy "/backup/$backup" /data; then
-    die "rollback: restoring the data failed, Pulse is stopped. The copy is in $DIR/backups/$backup: restore it by hand before starting Pulse"
+  if [ -z "$prev" ]; then
+    # Nothing to go back to. It may only be slow (a first migration): it is left running,
+    # not marked failed, and a later run records it once it answers.
+    echo "$tag" >"$DIR/state/pending"
+    die "$tag is not healthy yet and there is no earlier image to go back to. It is left running: a later run records it once it answers"
   fi
+  # An upgrade that is only slower to start than HEALTH_TIMEOUT is rolled back too, as it
+  # cannot be told from a broken one. Raise HEALTH_TIMEOUT, then pulse-update --retry.
+  echo "$tag" >"$DIR/state/failed"
+  compose stop pulse
+  # The image to start again, set first: after a failed restore it is the one to start by hand.
   use_image "$prev"
+  if [ -n "$backup" ] && ! volume_copy "/backup/$backup" /data; then
+    echo "$backup" >"$DIR/state/hold"
+    die "rollback: restoring the data failed, Pulse is stopped and later runs do nothing (state/hold). The copy is in $DIR/backups/$backup: restore it by hand before starting Pulse ($prev), then remove $DIR/state/hold"
+  fi
   compose up -d pulse caddy
   if healthy; then die "rolled back to $prev, data restored from ${backup:-nothing}"; fi
   die "rolled back to $prev, data restored from ${backup:-nothing}, and it is not healthy either"
 }
 
-prune_backups() { # keep the newest KEEP data copies
+prune_backups() { # keep the newest KEEP data copies, and always the one state/hold names
   # Backup names start with a UTC timestamp, so the glob's name order is time order.
-  local all=("$DIR"/backups/*/) d n
+  local all=() d n held
+  held=$(cat "$DIR/state/hold" 2>/dev/null || true)
+  for d in "$DIR"/backups/*/; do
+    if [ -d "$d" ] && [ "$d" != "$DIR/backups/$held/" ]; then all+=("$d"); fi
+  done
   n={% raw %}${#all[@]}{% endraw %} # backups, oldest first
-  if [ -d "${all[0]}" ] && [ "$n" -gt "$KEEP" ]; then
+  if [ "$n" -gt "$KEEP" ]; then
     for d in "${all[@]:0:n-KEEP}"; do rm -r -- "$d"; done
   fi
 }
@@ -161,10 +197,20 @@ drop_old() { # keep the running and the previous image
   done
 }
 
+# A first install that was not healthy in time was left running: record it once it answers.
+if [ -n "$pending" ] && answers; then
+  echo "$pending" >"$DIR/state/version"
+  rm -f "$DIR/state/pending"
+  log "$pending is healthy now, recorded"
+  current=$pending waiting=false
+fi
+
 if [ "$want" = "$current" ]; then
   :
 elif $skip; then
   log "skipping $want: it was not healthy before (state/failed). A newer tag, or pulse-update --retry, tries again"
+elif $waiting; then
+  log "$want is not healthy yet, left running (state/pending). The next run checks it again, pulse-update --retry deploys it again"
 else
   deploy "$want"
   drop_old

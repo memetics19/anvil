@@ -6,7 +6,7 @@
 
 - name: Key digests stored in Vault
   ansible.builtin.command:
-    argv: ["{{ vaultwarden_repo_scripts }}/vault-kv-digests.sh", "{{ vaultwarden_vault_path }}"]
+    argv: ["{{ vaultwarden_repo_scripts }}/vault-kv-digests.sh", "{{ vaultwarden_vault_path }}", "{{ vaultwarden_vault_mount }}"]
   delegate_to: localhost
   become: false
   register: vaultwarden_vault_digests
@@ -154,7 +154,7 @@
 
     - name: Read the digests back from Vault
       ansible.builtin.command:
-        argv: ["{{ vaultwarden_repo_scripts }}/vault-kv-digests.sh", "{{ vaultwarden_vault_path }}"]
+        argv: ["{{ vaultwarden_repo_scripts }}/vault-kv-digests.sh", "{{ vaultwarden_vault_path }}", "{{ vaultwarden_vault_mount }}"]
       delegate_to: localhost
       become: false
       register: vaultwarden_vault_after

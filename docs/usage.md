@@ -166,6 +166,7 @@ List what a path holds without printing values:
 
 ```sh
 scripts/vault-kv-digests.sh homelab/apps/vaultwarden    # "<key> <sha256>" per key
+scripts/vault-kv-digests.sh homelab/apps/vaultwarden kv # the mount, kv when none is given
 ```
 
 After you change a secret, rerun the role that uses it, for example `make vm HOST=apps`.

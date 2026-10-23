@@ -29,7 +29,7 @@
 
 - name: API keys | digests in Vault
   ansible.builtin.command:
-    argv: ["{{ arr_stack_repo_scripts }}/vault-kv-digests.sh", "{{ arr_stack_vault_path }}"]
+    argv: ["{{ arr_stack_repo_scripts }}/vault-kv-digests.sh", "{{ arr_stack_vault_path }}", "{{ arr_stack_vault_mount }}"]
   delegate_to: localhost
   become: false
   register: arr_stack_vault
@@ -73,7 +73,7 @@
 
 - name: API keys | read the digests back
   ansible.builtin.command:
-    argv: ["{{ arr_stack_repo_scripts }}/vault-kv-digests.sh", "{{ arr_stack_vault_path }}"]
+    argv: ["{{ arr_stack_repo_scripts }}/vault-kv-digests.sh", "{{ arr_stack_vault_path }}", "{{ arr_stack_vault_mount }}"]
   delegate_to: localhost
   become: false
   register: arr_stack_vault_after

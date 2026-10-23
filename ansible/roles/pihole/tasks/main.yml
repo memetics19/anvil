@@ -4,7 +4,7 @@
 # --- secret ----------------------------------------------------------------------------------
 - name: Key digests stored in Vault
   ansible.builtin.command:
-    argv: ["{{ pihole_repo_scripts }}/vault-kv-digests.sh", "{{ pihole_vault_path }}"]
+    argv: ["{{ pihole_repo_scripts }}/vault-kv-digests.sh", "{{ pihole_vault_path }}", "{{ pihole_vault_mount }}"]
   delegate_to: localhost
   become: false
   register: pihole_vault_digests

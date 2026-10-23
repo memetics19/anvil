@@ -12,8 +12,16 @@
 #    or a newer tag, and data copies beyond KEEP are dropped after a failure too;
 #  - TRACK=<major> stays on that major, latest moves to a new one;
 #  - TRACK pins a tag; a new main commit rebuilds the docs and drops the old build;
-#  - with VERIFY=true a signed image runs by its digest, an unsigned one is not deployed.
-# Needs ansible-playbook, git and python3 with PyYAML.
+#  - with VERIFY=true a signed image runs by its digest, an unsigned one is not deployed;
+#  - a rollback whose data restore fails writes state/hold: later runs do nothing (--check
+#    reports it) and the held data copy is never pruned;
+#  - a first install that is not healthy in time is left running, not marked failed, and
+#    recorded by a later run once it answers;
+#  - the digest checked and run is the RepoDigests entry of IMAGE, never another name's,
+#    and a pull with none fails;
+#  - the role writes the setup token to pulse_vault_mount, by patch when the path has keys
+#    (vault-kv-digests.sh reads that mount), and every role passes its mount to it.
+# Needs ansible-playbook, git, jq and python3 with PyYAML.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
@@ -80,8 +88,14 @@ case "$1 $2" in
   "inspect --format") echo "${FAKE_PREV_IMAGE:-pulse:latest}" ;;
   "image ls") exit 0 ;;
   "pull -q") exit 0 ;;
-  # The digest a tag points at: IMAGE@sha256:fake-<version>.
-  "image inspect") echo "${5%:*}@sha256:fake-${5##*:}"; exit 0 ;;
+  # The digests a tag points at, one per line: IMAGE@sha256:fake-<version>, or one per name
+  # in FAKE_REPO_DIGESTS (the same image known under other names too). `index .RepoDigests
+  # 0` gets the first.
+  "image inspect")
+    d=()
+    for r in ${FAKE_REPO_DIGESTS:-${5%:*}}; do d+=("$r@sha256:fake-${5##*:}"); done
+    case $4 in *"index .RepoDigests 0"*) echo "${d[0]}" ;; *) printf '%s\n' "${d[@]}" ;; esac
+    exit 0 ;;
 esac
 # cosign verify: every image is signed except FAKE_UNSIGNED.
 if [ "$1" = run ] && [[ " $* " == *" verify "* ]]; then
@@ -101,6 +115,11 @@ if [ "$1" = run ]; then
     *"cp -a '"*)
       cmd=${last//\'\/data/\'$FAKE_VOLUME}
       cmd=${cmd//\'\/backup/\'$FAKE_DIR\/backups}
+      # FAKE_RESTORE_FAILS: copying a backup back empties the volume, then the copy fails.
+      if [ -n "${FAKE_RESTORE_FAILS:-}" ] && [[ $last == *"cp -a '/backup/"* ]]; then
+        sh -c "${cmd%% && cp -a*}"
+        exit 1
+      fi
       sh -c "$cmd" || exit 1
       ;;
   esac
@@ -117,7 +136,8 @@ if [ "$1" = up ] && [ -n "${FAKE_BAD_IMAGE:-}" ] && grep -q "=$FAKE_BAD_IMAGE\$"
   touch "$FAKE_VOLUME/written-by-bad-release"
 fi
 echo "compose $*" >>"$FAKE_LOG"
-[ "$1 $2" = "ps -aq" ] && echo cid1
+# FAKE_NO_CONTAINER: the project has no container yet (a first install).
+[ "$1 $2" = "ps -aq" ] && [ -z "${FAKE_NO_CONTAINER:-}" ] && echo cid1
 exit 0
 EOF
 # Healthy unless release.env names FAKE_BAD_IMAGE.
@@ -150,6 +170,14 @@ conf="$tmp/test.conf"
 sed -e "s#^REPO=.*#REPO=file://$up#" -e "s#^DIR=.*#DIR=$dir#" -e "s#^COMPOSE=.*#COMPOSE=$bin/compose#" \
   -e "s#^HEALTH_TIMEOUT=.*#HEALTH_TIMEOUT=6#" -e "s#^KEEP=.*#KEEP=1#" -e "s#^TRACK=.*#TRACK=latest#" -e "s#^VERIFY=.*#VERIFY=false#" \
   "$tmp/update.conf" >"$conf"
+cp "$conf" "$tmp/base.conf"
+fresh() { # fresh <name>: a new DIR and data volume, with the settings above
+  dir="$tmp/$1" vol="$tmp/mnt-$1/volume" conf="$tmp/$1.conf"
+  mkdir -p "$dir" "$vol"
+  echo "the real data" >"$vol/pulse.db"
+  chmod 555 "$tmp/mnt-$1"
+  sed "s#^DIR=.*#DIR=$dir#" "$tmp/base.conf" >"$conf"
+}
 upd() { PATH="$bin:$PATH" FAKE_LOG="$log" FAKE_DIR="$dir" FAKE_VOLUME="$vol" PULSE_UPDATE_CONF="$conf" bash "$tmp/pulse-update.sh" "$@" >"$tmp/out" 2>&1; }
 main_sha() { git -C "$up" rev-parse main; }
 
@@ -237,6 +265,127 @@ sed -i.bak 's#^TRACK=.*#TRACK=v1.14.0#' "$conf"
 if FAKE_UNSIGNED=ghcr.io/memetics19/pulse@sha256:fake-1.14.0 upd; then bad_ "an unsigned release fails the run"; else ok "an unsigned release fails the run"; fi
 check "an unsigned release is never started, and Pulse is not stopped" \
   "grep -qx 'PULSE_IMAGE=ghcr.io/memetics19/pulse@sha256:fake-1.13.0' '$dir/release.env' && ! grep -q -E 'compose (stop|up)' '$log' && grep -q 'no valid signature' '$tmp/out'"
+
+# 7. a rollback whose data restore fails: on hold until the data is restored by hand
+fresh hold
+sed -i.bak 's#^TRACK=.*#TRACK=v1.13.0#' "$conf"
+FAKE_PREV_IMAGE=ghcr.io/memetics19/pulse:1.12.0 upd || { bad_ "hold: the first deploy"; cat "$tmp/out"; }
+mkdir "$dir/backups/99991231-235959-newer" # newer than the copy the failed deploy takes
+sed -i.bak 's#^TRACK=.*#TRACK=v1.14.0#' "$conf"
+: >"$log"
+if FAKE_RESTORE_FAILS=1 FAKE_BAD_IMAGE=ghcr.io/memetics19/pulse:1.14.0 FAKE_PREV_IMAGE=ghcr.io/memetics19/pulse:1.13.0 upd; then
+  bad_ "a failed restore fails the run"; else ok "a failed restore fails the run"; fi
+held=$(cat "$dir/state/hold" 2>/dev/null)
+check "a failed restore writes state/hold, naming the data copy" \
+  "[ -n '$held' ] && grep -q 'backups/$held' '$tmp/out' && [ \"\$(cat '$dir/backups/$held/pulse.db')\" = 'the real data' ]"
+check "the held data copy is never pruned (KEEP=1, a newer copy exists)" "[ -n '$held' ] && [ -d '$dir/backups/$held' ]"
+check "Pulse stays stopped, release.env names the image to start after the restore" \
+  "[ \"\$(grep -E '^compose (stop|up)' '$log' | tail -n 1)\" = 'compose stop pulse' ] && grep -qx 'PULSE_IMAGE=ghcr.io/memetics19/pulse:1.13.0' '$dir/release.env'"
+git -C "$up" tag v1.15.0
+sed -i.bak 's#^TRACK=.*#TRACK=v1.15.0#' "$conf"
+held_runs=ok
+for a in "" --retry; do
+  : >"$log"
+  if FAKE_PREV_IMAGE=ghcr.io/memetics19/pulse:1.14.0 upd $a || ! grep -q 'state/hold' "$tmp/out" || [ -s "$log" ]; then
+    held_runs=bad; cat "$tmp/out" "$log"; fi
+done
+if [ "$held_runs" = ok ]; then ok "on hold, a run (also --retry) fails and touches nothing, even for a newer tag"; else bad_ "runs on hold"; fi
+: >"$log"
+if upd --check && grep -q 'on hold' "$tmp/out" && grep -q "backups/$held" "$tmp/out" && [ ! -s "$log" ]; then
+  ok "--check reports the hold"; else bad_ "--check on hold"; cat "$tmp/out"; fi
+rm -f "$dir/state/hold"
+if FAKE_PREV_IMAGE=ghcr.io/memetics19/pulse:1.13.0 upd && grep -q "deployed v1.15.0" "$tmp/out"; then
+  ok "with state/hold removed, runs go on"; else bad_ "runs after the hold"; cat "$tmp/out"; fi
+
+# 8. a first install that is not healthy in time (nothing to roll back to)
+fresh first
+sed -i.bak 's#^TRACK=.*#TRACK=v1.13.0#' "$conf"
+: >"$log"
+if FAKE_NO_CONTAINER=1 FAKE_BAD_IMAGE=ghcr.io/memetics19/pulse:1.13.0 upd; then
+  bad_ "a slow first install fails the run"; else ok "a slow first install fails the run"; fi
+check "it is not marked failed, and it is left running" \
+  "[ ! -e '$dir/state/failed' ] && ! grep -q 'compose stop' '$log' && grep -qx 'PULSE_IMAGE=ghcr.io/memetics19/pulse:1.13.0' '$dir/release.env'"
+: >"$log"
+if FAKE_BAD_IMAGE=ghcr.io/memetics19/pulse:1.13.0 upd && ! grep -q -E 'compose (stop|up)|cp -a|pull' "$log" && [ ! -e "$dir/state/version" ]; then
+  ok "while it does not answer, later runs leave it alone"; else bad_ "slow first install, next run"; cat "$tmp/out" "$log"; fi
+if FAKE_BAD_IMAGE=ghcr.io/memetics19/pulse:1.13.0 upd --check && grep -q 'v1.13.0 is not healthy yet' "$tmp/out" && ! grep -q 'failed before' "$tmp/out"; then
+  ok "--check says it waits for v1.13.0"; else bad_ "--check on a slow first install"; cat "$tmp/out"; fi
+: >"$log"
+if upd && grep -q 'v1.13.0 is healthy now' "$tmp/out" && [ "$(cat "$dir/state/version" 2>/dev/null)" = v1.13.0 ] &&
+  [ ! -e "$dir/state/failed" ] && ! grep -q -E 'compose (stop|up)|cp -a|pull' "$log"; then
+  ok "once it answers, the next run records it without a redeploy"; else bad_ "slow first install recorded"; cat "$tmp/out" "$log"; fi
+
+# 9. the digest of IMAGE, when the image is also known under another name
+fresh digest
+sed -i.bak -e 's#^VERIFY=.*#VERIFY=true#' -e 's#^TRACK=.*#TRACK=v1.13.0#' "$conf"
+: >"$log"
+if FAKE_REPO_DIGESTS="registry.example/ghcr.io/memetics19/pulse ghcr.io/memetics19/pulse" FAKE_PREV_IMAGE=ghcr.io/memetics19/pulse:1.12.0 upd &&
+  grep -qx 'PULSE_IMAGE=ghcr.io/memetics19/pulse@sha256:fake-1.13.0' "$dir/release.env" &&
+  grep -q 'verify ghcr.io/memetics19/pulse@sha256:fake-1.13.0 ' "$log" && ! grep -q 'verify registry' "$log"; then
+  ok "the RepoDigests entry of IMAGE is checked and run, not the first one"; else bad_ "digest of IMAGE"; cat "$tmp/out"; fi
+sed -i.bak 's#^TRACK=.*#TRACK=v1.14.0#' "$conf"
+: >"$log"
+if FAKE_REPO_DIGESTS="registry.example/ghcr.io/memetics19/pulse" FAKE_PREV_IMAGE=ghcr.io/memetics19/pulse:1.13.0 upd; then
+  bad_ "a pull with no digest of IMAGE fails the run"; else ok "a pull with no digest of IMAGE fails the run"; fi
+check "it is never started, and Pulse is not stopped" \
+  "grep -qx 'PULSE_IMAGE=ghcr.io/memetics19/pulse@sha256:fake-1.13.0' '$dir/release.env' && ! grep -q -E 'compose (stop|up)| verify ' '$log' && grep -q 'no digest' '$tmp/out'"
+
+# 10. the setup token goes to pulse_vault_mount: the role's Vault tasks run against a fake
+# vault, with pulse_vault_mount=secrets
+vbin="$tmp/vbin"
+mkdir -p "$vbin"
+cat >"$vbin/vault" <<'EOF'
+#!/bin/bash
+# One KV v2 path on mount FAKE_VAULT_MOUNT, its keys in FAKE_VAULT_DATA ("key=value" lines).
+echo "vault $*" >>"$FAKE_VAULT_LOG"
+mount=
+for a in "$@"; do case $a in -mount=*) mount=${a#-mount=} ;; esac; done
+has_keys() { [ "$mount" = "$FAKE_VAULT_MOUNT" ] && [ -s "$FAKE_VAULT_DATA" ]; }
+k=${*: -1} k=${k%=-}
+case "$1 $2" in
+  "kv get")
+    has_keys || { echo "No value found at $mount/data/${*: -1}" >&2; exit 2; }
+    python3 -c 'import json,sys; print(json.dumps({"data": {"data": dict(l.rstrip("\n").split("=", 1) for l in open(sys.argv[1]))}}))' "$FAKE_VAULT_DATA" ;;
+  "kv put") # replaces every key, unless -cas=0 refuses a path that exists
+    if [[ " $* " == *" -cas=0 "* ]] && has_keys; then echo "check-and-set parameter did not match the current version" >&2; exit 2; fi
+    printf '%s=%s\n' "$k" "$(cat)" >"$FAKE_VAULT_DATA" ;;
+  "kv patch") printf '%s=%s\n' "$k" "$(cat)" >>"$FAKE_VAULT_DATA" ;;
+esac
+EOF
+chmod +x "$vbin/vault"
+python3 - "$PWD/ansible/roles/pulse/tasks/main.yml" "$tmp/vault_tasks.yml" <<'PY'
+import sys, yaml
+tasks = yaml.safe_load(open(sys.argv[1]))
+end = [t.get("name") for t in tasks].index("Generate the setup token into Vault")
+yaml.safe_dump(tasks[:end + 1], open(sys.argv[2], "w"), sort_keys=False)
+PY
+cat >"$tmp/vault_play.yml" <<PLAY
+- name: Pulse setup token
+  hosts: localhost
+  gather_facts: false
+  vars:
+    pulse_repo_scripts: $PWD/scripts
+    pulse_vault_mount: secrets
+    pulse_vault_path: homelab/netbird/pulse
+  tasks:
+    - ansible.builtin.include_tasks: $tmp/vault_tasks.yml
+PLAY
+vault_env() { env PATH="$vbin:$PATH" FAKE_VAULT_LOG="$tmp/vault.log" FAKE_VAULT_DATA="$tmp/vault.data" FAKE_VAULT_MOUNT=secrets "$@"; }
+vrun() { : >"$tmp/vault.log"; vault_env ansible-playbook -i localhost, -c local "$tmp/vault_play.yml" >"$tmp/vault.out" 2>&1; }
+printf 'other=keep\n' >"$tmp/vault.data"
+if vrun && grep -q 'kv patch -mount=secrets homelab/netbird/pulse setup_token=-' "$tmp/vault.log" && ! grep -q 'kv put' "$tmp/vault.log" &&
+  grep -qx 'other=keep' "$tmp/vault.data" && grep -q '^setup_token=.\{32\}' "$tmp/vault.data"; then
+  ok "a path on pulse_vault_mount that has keys gets the token by patch, its keys kept"; else bad_ "setup token on another mount"; cat "$tmp/vault.out" "$tmp/vault.log"; fi
+if vrun && ! grep -q -E 'kv (put|patch)' "$tmp/vault.log"; then
+  ok "a token already in Vault is not written again"; else bad_ "setup token written again"; cat "$tmp/vault.out" "$tmp/vault.log"; fi
+: >"$tmp/vault.data"
+if vrun && grep -q 'kv put -cas=0 -mount=secrets homelab/netbird/pulse setup_token=-' "$tmp/vault.log" && grep -q '^setup_token=' "$tmp/vault.data"; then
+  ok "an empty path gets the token by put, which Vault refuses once the path exists (-cas=0)"; else bad_ "setup token on an empty path"; cat "$tmp/vault.out" "$tmp/vault.log"; fi
+: >"$tmp/vault.log"
+vault_env scripts/vault-kv-digests.sh homelab/x >/dev/null 2>&1
+check "vault-kv-digests.sh reads the kv mount when given none" "grep -q -- '-mount=kv homelab/x' '$tmp/vault.log'"
+check "every role passes its mount to vault-kv-digests.sh" \
+  "grep -rq 'vault-kv-digests.sh\"' ansible && ! grep -rE 'vault-kv-digests\.sh\", \"[^\"]*\"\]' ansible"
 
 [ "$fail" = 0 ] && echo "PASS: pulse" || echo "FAIL: pulse"
 exit "$fail"

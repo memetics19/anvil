@@ -2,7 +2,7 @@
 # vaultwarden reads, with its defaults). Without an SMTP login there is no hole.
 - name: Vaultwarden's SMTP keys in Vault (digests only)
   ansible.builtin.command:
-    argv: ["{{ pve_enclave_repo_scripts }}/vault-kv-digests.sh", "{{ pve_enclave_smtp_vault_path }}"]
+    argv: ["{{ pve_enclave_repo_scripts }}/vault-kv-digests.sh", "{{ pve_enclave_smtp_vault_path }}", "{{ pve_enclave_smtp_vault_mount }}"]
   delegate_to: localhost
   become: false
   register: pve_enclave_smtp_digests

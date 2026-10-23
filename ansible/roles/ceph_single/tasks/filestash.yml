@@ -50,7 +50,7 @@
 # --- keys into Vault ---------------------------------------------------------------------
 - name: Filestash | key digests stored in Vault
   ansible.builtin.command:
-    argv: ["{{ ceph_single_repo_scripts }}/vault-kv-digests.sh", "{{ ceph_single_filestash_vault_path }}"]
+    argv: ["{{ ceph_single_repo_scripts }}/vault-kv-digests.sh", "{{ ceph_single_filestash_vault_path }}", "kv"]
   delegate_to: localhost
   become: false
   register: ceph_single_fs_vault
@@ -90,7 +90,7 @@
 
 - name: Filestash | read the digests back from Vault
   ansible.builtin.command:
-    argv: ["{{ ceph_single_repo_scripts }}/vault-kv-digests.sh", "{{ ceph_single_filestash_vault_path }}"]
+    argv: ["{{ ceph_single_repo_scripts }}/vault-kv-digests.sh", "{{ ceph_single_filestash_vault_path }}", "kv"]
   delegate_to: localhost
   become: false
   register: ceph_single_fs_vault_after

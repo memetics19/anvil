@@ -3,7 +3,7 @@
 # `netbird up --setup-key-file` (never on argv), and the file is removed again.
 - name: Key digests stored in Vault
   ansible.builtin.command:
-    argv: ["{{ netbird_peer_repo_scripts }}/vault-kv-digests.sh", "{{ netbird_peer_vault_path }}"]
+    argv: ["{{ netbird_peer_repo_scripts }}/vault-kv-digests.sh", "{{ netbird_peer_vault_path }}", "{{ netbird_peer_vault_mount }}"]
   delegate_to: localhost
   become: false
   register: netbird_peer_vault_digests

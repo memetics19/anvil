@@ -35,7 +35,7 @@
 # --- secrets ---------------------------------------------------------------------------------
 - name: Key digests stored in Vault
   ansible.builtin.command:
-    argv: ["{{ iptv_repo_scripts }}/vault-kv-digests.sh", "{{ iptv_vault_path }}"]
+    argv: ["{{ iptv_repo_scripts }}/vault-kv-digests.sh", "{{ iptv_vault_path }}", "{{ iptv_vault_mount }}"]
   delegate_to: localhost
   become: false
   register: iptv_vault_digests
