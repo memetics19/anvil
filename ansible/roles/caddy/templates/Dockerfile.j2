@@ -1,13 +1,16 @@
 # Managed by Ansible (role caddy): Caddy {{ caddy_version }} with caddy-dns/cloudflare
-# {{ caddy_cloudflare_version }}, built by xcaddy {{ caddy_xcaddy_version }} with {{ caddy_go_version }}
+# {{ caddy_cloudflare_version }} and golang.org/x/net {{ caddy_x_net_version }}, built by xcaddy
+# {{ caddy_xcaddy_version }} with {{ caddy_go_version }}
 # (module checksums verified by Go's sum database).
 FROM {{ caddy_builder_image }} AS build
 ENV GOTOOLCHAIN=local CGO_ENABLED=0
 RUN go install github.com/caddyserver/xcaddy/cmd/xcaddy@{{ caddy_xcaddy_version }} \
  && xcaddy build v{{ caddy_version }} --output /caddy \
-      --with github.com/caddy-dns/cloudflare@{{ caddy_cloudflare_version }}
+      --with github.com/caddy-dns/cloudflare@{{ caddy_cloudflare_version }} \
+      --replace golang.org/x/net=golang.org/x/net@{{ caddy_x_net_version }}
 
 FROM {{ caddy_base_image }}
 COPY --from=build /caddy /usr/bin/caddy
 RUN caddy list-modules | grep -qx 'dns.providers.cloudflare' \
- && caddy build-info | grep -qE '^go[[:space:]]+{{ caddy_go_version }}$'
+ && caddy build-info | grep -qE '^go[[:space:]]+{{ caddy_go_version }}$' \
+ && caddy build-info | grep -qE '^=>[[:space:]]+golang.org/x/net[[:space:]]+{{ caddy_x_net_version }}([[:space:]]|$)'
