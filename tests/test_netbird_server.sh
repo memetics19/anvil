@@ -30,7 +30,7 @@ cat >"$tmp/play.yml" <<PLAY
     - $PWD/ansible/roles/netbird_server/defaults/main.yml
     - $PWD/ansible/roles/netbird_peer/defaults/main.yml
   vars:
-    caddy_image: anvil/caddy:test
+    caddy_image_resolved: anvil/caddy:test
     inventory_hostname: netbird
     site:
       domain: example.com

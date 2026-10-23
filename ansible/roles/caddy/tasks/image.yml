@@ -2,6 +2,12 @@
 # loaded on this host. Nothing happens when the image (tag) is already here. The build
 # host keeps its copy of the image (a later VM rebuild loads it without a rebuild) but no
 # export file.
+# Resolved here, where Dockerfile.j2 is found: other roles that load this image (Pulse, the
+# apt repository and the NetBird server on the netbird VM) use the fact, not the lookup.
+- name: The Caddy image tag
+  ansible.builtin.set_fact:
+    caddy_image_resolved: "{{ caddy_image }}"
+
 - name: Is the Caddy image loaded
   ansible.builtin.command:
     argv: [docker, image, inspect, --format, "{{ '{{' }}.Id{{ '}}' }}", "{{ caddy_image }}"]

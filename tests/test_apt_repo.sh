@@ -30,7 +30,7 @@ cat >"$tmp/play.yml" <<PLAY
   hosts: localhost
   gather_facts: false
   vars:
-    caddy_image: anvil/caddy:test
+    caddy_image_resolved: anvil/caddy:test
   vars_files:
     - $PWD/ansible/roles/apt_repo/defaults/main.yml
   tasks:

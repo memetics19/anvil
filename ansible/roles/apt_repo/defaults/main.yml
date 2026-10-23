@@ -15,5 +15,5 @@ apt_repo_interval: 30min
 # kv/<path>: private_key, public_key, fingerprint (scripts/apt-key-init.sh makes them).
 apt_repo_vault_mount: kv
 apt_repo_vault_path: homelab/apt/signing
-# Role caddy's patched build (caddy_image), loaded by this role's tasks.
-apt_repo_caddy_image: "{{ caddy_image }}"
+# Role caddy's patched build, loaded by this role's tasks (caddy_image_resolved).
+apt_repo_caddy_image: "{{ caddy_image_resolved }}"

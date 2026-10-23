@@ -28,7 +28,7 @@ cat >"$tmp/play.yml" <<PLAY
     inventory_hostname: netbird
     site: {hosts: {netbird: {ip: 192.0.2.5}}}
     pulse_admin_token: test-token
-    caddy_image: anvil/caddy:test
+    caddy_image_resolved: anvil/caddy:test
   vars_files:
     - $PWD/ansible/roles/pulse/defaults/main.yml
   tasks:
