@@ -3,10 +3,12 @@ name: security
 # Trivy, on pull requests, on main and weekly (new advisories appear after a merge):
 #   repo     the repository: Go and Python dependencies, Terraform, committed secrets
 #   binary   the anvil binary as a release builds it (Go's standard library is inside it)
+#   caddy    the patched Caddy role caddy builds (Go, golang.org/x/net), as every host runs it
 #   images   every container image the roles pin (tag@sha256), as the lab runs them
-# repo and binary fail on a fixable HIGH or CRITICAL finding. images only reports, because
-# upstream images gain advisories all the time: the run's summary lists the counts and the
-# Security tab has the details, so a role's pin can be bumped.
+# repo, binary and caddy fail on a fixable HIGH or CRITICAL finding: anvil builds them. images
+# only reports, and only fixable HIGH or CRITICAL findings, so the Security tab lists what a
+# new pin or a newer upstream release would fix. Caddy's base image is scanned without its
+# /usr/bin/caddy, which the patched build replaces.
 on:
   push:
     branches: [main]
@@ -100,6 +102,66 @@ jobs:
           format: table
           exit-code: "1"
 
+  caddy:
+    name: Trivy (patched Caddy)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: The versions role caddy builds with
+        id: v
+        run: |
+          d=ansible/roles/caddy/defaults/main.yml
+          get() { sed -nE "s/^$1: *(.+)$/\\1/p" "$d"; }
+          {
+            echo "caddy=$(get caddy_version)"
+            echo "cloudflare=$(get caddy_cloudflare_version)"
+            echo "xcaddy=$(get caddy_xcaddy_version)"
+            echo "xnet=$(get caddy_x_net_version)"
+            echo "go=$(get caddy_go_version | sed 's/^go//')"
+          } | tee -a "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: ${{ steps.v.outputs.go }}
+      - name: Build it as the role's Dockerfile does
+        env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: "0"
+        run: |
+          go install "github.com/caddyserver/xcaddy/cmd/xcaddy@${{ steps.v.outputs.xcaddy }}"
+          "$(go env GOPATH)/bin/xcaddy" build "v${{ steps.v.outputs.caddy }}" --output build/caddy \
+            --with "github.com/caddy-dns/cloudflare@${{ steps.v.outputs.cloudflare }}" \
+            --replace "golang.org/x/net=golang.org/x/net@${{ steps.v.outputs.xnet }}"
+      - name: Report to the Security tab
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          scan-type: rootfs
+          scan-ref: build/caddy
+          scanners: vuln
+          format: sarif
+          output: trivy-caddy.sarif
+          exit-code: "0"
+      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370  # v4.39.1
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        with:
+          sarif_file: trivy-caddy.sarif
+          category: trivy-caddy
+      - name: Fail on fixable HIGH or CRITICAL findings
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          skip-setup-trivy: true
+          scan-type: rootfs
+          scan-ref: build/caddy
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: "1"
+
   list-images:
     name: Pinned images
     runs-on: ubuntu-latest
@@ -141,6 +203,9 @@ jobs:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: ${{ matrix.image }}
           scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          skip-files: ${{ startsWith(matrix.image, 'caddy:') && 'usr/bin/caddy' || '' }}
           format: sarif
           output: trivy-image.sarif
           exit-code: "0"
@@ -154,7 +219,7 @@ jobs:
           SHORT: ${{ steps.name.outputs.short }}
         run: |
           {
-            echo "| image | findings by severity |"
+            echo "| image | fixable HIGH and CRITICAL |"
             echo "|---|---|"
             jq -r --arg img "$SHORT" '
               [.runs[].results[]? | (.message.text | capture("Severity: (?<s>[A-Z]+)").s // "UNKNOWN")]
