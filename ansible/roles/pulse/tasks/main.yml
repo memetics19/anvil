@@ -3,21 +3,53 @@
 # here), not by Ansible. Nothing here runs `docker compose down` or removes a volume.
 
 # --- secret ------------------------------------------------------------------------------------
-- name: Read the Pulse admin token from Vault
+# The setup token (PULSE_SETUP_TOKEN): a fresh Pulse finishes its /setup wizard only for
+# someone who has it, so nobody who reaches the page first can claim the instance. It goes
+# from openssl straight into Vault, never displayed, logged or written to a local file.
+- name: Keys stored in Vault for Pulse
+  ansible.builtin.command:
+    argv: ["{{ pulse_repo_scripts }}/vault-kv-digests.sh", "{{ pulse_vault_path }}"]
+  delegate_to: localhost
+  become: false
+  register: pulse_vault_digests
+  changed_when: false
+  check_mode: false
+
+- name: Keys stored in Vault for Pulse, by name
   ansible.builtin.set_fact:
-    pulse_admin_token: >-
+    pulse_vault_keys: "{{ pulse_vault_digests.stdout_lines | map('split', ' ') | map('first') | list }}"
+
+- name: Generate the setup token into Vault
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      openssl rand -base64 48 | tr -d '\n' |
+      vault kv {{ 'patch' if pulse_vault_keys else 'put' }} -mount={{ pulse_vault_mount }}
+      {{ pulse_vault_path }} setup_token=- >/dev/null
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  when: "'setup_token' not in pulse_vault_keys"
+
+# In check mode a token that would be generated above does not exist yet: a stand-in is used.
+- name: Read the setup token from Vault
+  ansible.builtin.set_fact:
+    pulse_setup_token: >-
       {{ (lookup('community.hashi_vault.vault_kv2_get', pulse_vault_path,
                  engine_mount_point=pulse_vault_mount,
                  url=lookup('env', 'VAULT_ADDR'),
                  token=lookup('env', 'VAULT_TOKEN'),
-                 ca_cert=lookup('env', 'VAULT_CACERT')).secret.admin_token) | default('') }}
+                 ca_cert=lookup('env', 'VAULT_CACERT')).secret.setup_token) | default('') }}
   no_log: true
+  when: not (ansible_check_mode and 'setup_token' not in pulse_vault_keys)
 
-- name: The admin token is present
+- name: The setup token is present
   ansible.builtin.assert:
-    that: pulse_admin_token | length > 0
-    fail_msg: "{{ pulse_vault_mount }}/{{ pulse_vault_path }} has no admin_token"
+    that: pulse_setup_token | default('') | length >= 32
+    fail_msg: "kv/{{ pulse_vault_path }}: setup_token is missing or shorter than 32 characters"
     quiet: true
+  when: not (ansible_check_mode and 'setup_token' not in pulse_vault_keys)
 
 - name: The update settings are valid
   ansible.builtin.assert:
@@ -64,7 +96,7 @@
     - {src: update.conf.j2, dest: update.conf}
   register: pulse_files
 
-- name: Pulse .env (admin token from Vault)
+- name: Pulse .env (setup token from Vault)
   ansible.builtin.template:
     src: env.j2
     dest: "{{ pulse_dir }}/.env"

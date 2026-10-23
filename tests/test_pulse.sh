@@ -31,7 +31,7 @@ cat >"$tmp/play.yml" <<PLAY
   vars:
     inventory_hostname: netbird
     site: {hosts: {netbird: {ip: 192.0.2.5}}}
-    pulse_admin_token: test-token
+    pulse_setup_token: test-token
     caddy_image_resolved: anvil/caddy:test
   vars_files:
     - $PWD/ansible/roles/pulse/defaults/main.yml
@@ -48,7 +48,8 @@ check "compose: pulse image from release.env, data volume kept" \
   "python3 -c 'import yaml,sys; d=yaml.safe_load(open(\"$tmp/compose.yaml\")); s=d[\"services\"]; assert d[\"name\"]==\"pulse\"; assert s[\"pulse\"][\"image\"].startswith(\"\${PULSE_IMAGE\"); assert \"pulse_data:/data\" in s[\"pulse\"][\"volumes\"]; assert \"pulse_data\" in d[\"volumes\"]; assert s[\"pulse\"][\"environment\"][\"PULSE_DB\"]==\"\${PULSE_DB:-}\"'"
 check "compose: Caddy is the patched build, not upstream's binary" "grep -q 'image: anvil/caddy:test' '$tmp/compose.yaml'"
 check "compose: no secret value in the compose file" "! grep -q test-token '$tmp/compose.yaml'"
-check ".env: holds the admin token" "grep -qx 'PULSE_ADMIN_TOKEN=test-token' '$tmp/env'"
+check ".env: holds the setup token" "grep -qx 'PULSE_SETUP_TOKEN=test-token' '$tmp/env'"
+check "compose: passes the setup token from .env" "grep -qx '      PULSE_SETUP_TOKEN: \${PULSE_SETUP_TOKEN:-}' '$tmp/compose.yaml'"
 check "Caddyfile: docs.* gets the docs site, the rest the status page" \
   "grep -q 'header_regexp Host ^docs' '$tmp/Caddyfile' && grep -q 'root \* /srv/docs/current' '$tmp/Caddyfile' && grep -q 'reverse_proxy pulse:8080' '$tmp/Caddyfile'"
 check "update.conf: follows one major version by default" "grep -qx 'TRACK=3' '$tmp/update.conf'"
