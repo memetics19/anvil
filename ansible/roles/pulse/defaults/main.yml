@@ -3,8 +3,10 @@
 # site from its main branch. Nothing on GitHub can reach this host. The role writes the
 # compose project, Caddy, the settings and the timer, then runs pulse-update once.
 pulse_repo: https://github.com/memetics19/pulse
-# "latest" follows the newest vX.Y.Z tag. A tag such as v1.1.0 pins that release.
-pulse_track: latest
+# Which release pulse-update deploys. A major version such as "3" follows the newest 3.x.y
+# and never moves to 4.0 by itself (a major can break things). "latest" follows the newest
+# tag of any major. A tag such as v3.0.0 pins that release.
+pulse_track: "3"
 # The docs site follows this branch.
 pulse_docs_ref: main
 # The release workflow pushes IMAGE:X.Y.Z for each tag vX.Y.Z (the package is public).
@@ -16,7 +18,7 @@ pulse_project: pulse
 pulse_update_interval: 10min
 # Seconds a new release has to answer /healthz before it is rolled back.
 pulse_health_timeout: 90
-# Data copies taken before each upgrade, newest first.
+# Data copies taken before each upgrade. The newest are kept, also after a failed one.
 pulse_backups_keep: 5
 pulse_memory_limit: 256m
 # Role caddy's patched build, loaded by this role's tasks (caddy_image_resolved).

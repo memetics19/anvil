@@ -1,21 +1,30 @@
 #!/bin/bash
 # Managed by Ansible (role pulse). Keeps Pulse and its docs site current, pulling from GitHub
 # (nothing on GitHub can reach this host). Run by pulse-update.timer and by the role.
-#   app:  the newest vX.Y.Z tag of the repo (or the pinned tag in TRACK), as the image the
-#         release workflow pushed, IMAGE:X.Y.Z. Before the switch Pulse stops and its data
-#         volume is copied to backups/. If the new version is not healthy within
-#         HEALTH_TIMEOUT seconds, the previous image and that copy come back.
+#   app:  the newest vX.Y.Z tag of the repo that TRACK allows (latest: any, a number: that
+#         major only, vX.Y.Z: that tag), as the image the release workflow pushed,
+#         IMAGE:X.Y.Z. Before the switch Pulse stops and its data volume is copied to
+#         backups/. If the new version is not healthy within HEALTH_TIMEOUT seconds, the
+#         previous image and that copy come back, and the tag is recorded in state/failed:
+#         later runs skip it until a newer tag appears or --retry is given. Only the newest
+#         KEEP copies are kept, whether the deploy worked or not.
 #   docs: the head of DOCS_REF, built with mkdocs into docs/<commit>, then the
 #         docs/current link moves to it in one rename.
-# Usage: pulse-update [--check]   (--check prints what it would do and changes nothing)
+# Usage: pulse-update [--check | --retry]
+#   --check prints what it would do and changes nothing. --retry deploys a failed tag again.
 # Settings come from CONF (update.conf, written by the role).
 set -euo pipefail
 
 conf=${PULSE_UPDATE_CONF:-{{ pulse_dir }}/update.conf}
 # shellcheck source=/dev/null
 . "$conf"
-check=false
-[ "${1:-}" = --check ] && check=true
+check=false retry=false
+case ${1:-} in
+  --check) check=true ;;
+  --retry) retry=true ;;
+  "") ;;
+  *) echo "usage: pulse-update [--check | --retry]" >&2; exit 2 ;;
+esac
 
 log() { echo "pulse-update: $*"; }
 die() { echo "pulse-update: $*" >&2; exit 1; }
@@ -31,20 +40,31 @@ flock -n 9 || die "another pulse-update is running"
 
 current=$(cat "$DIR/state/version" 2>/dev/null || true)
 docs_current=$(cat "$DIR/state/docs" 2>/dev/null || true)
+failed=$(cat "$DIR/state/failed" 2>/dev/null || true)
 
 # --- what to run ---------------------------------------------------------------------------------
-if [ "$TRACK" = latest ]; then
+case $TRACK in
+  latest) pattern='^v[0-9]+\.[0-9]+\.[0-9]+$' ;;
+  v*) pattern= ;;
+  *[!0-9]* | "") die "TRACK must be latest, a major version such as 3, or a tag such as v3.0.0 (got '$TRACK')" ;;
+  *) pattern="^v$TRACK\\.[0-9]+\\.[0-9]+\$" ;;
+esac
+if [ -n "$pattern" ]; then
   want=$(git ls-remote --tags --refs "$REPO" 'v*' | awk '{sub("refs/tags/", "", $2); print $2}' |
-    grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1) || true
-  [ -n "$want" ] || die "no vX.Y.Z tag in $REPO"
+    grep -E "$pattern" | sort -V | tail -1) || true
+  [ -n "$want" ] || die "no tag in $REPO matches TRACK=$TRACK"
 else
   want=$TRACK
 fi
+skip=false
+[ "$want" != "$current" ] && [ "$want" = "$failed" ] && ! $retry && skip=true
 docs_want=$(git ls-remote "$REPO" "refs/heads/$DOCS_REF" | cut -f1)
 [ -n "$docs_want" ] || die "no branch $DOCS_REF in $REPO"
 
 if $check; then
-  if [ "$want" = "$current" ]; then log "app: $current, up to date"; else log "app: would deploy $want (running: ${current:-nothing})"; fi
+  if [ "$want" = "$current" ]; then log "app: $current, up to date"
+  elif $skip; then log "app: $want failed before, skipped until a newer tag or --retry (running: ${current:-nothing})"
+  else log "app: would deploy $want (running: ${current:-nothing})"; fi
   if [ "$docs_want" = "$docs_current" ]; then log "docs: ${docs_current:0:7}, up to date"; else log "docs: would build ${docs_want:0:7} (built: ${docs_current:0:7})"; fi
   exit 0
 fi
@@ -72,6 +92,8 @@ use_image() { printf 'PULSE_IMAGE=%s\n' "$1" >"$DIR/release.env"; }
 # --- app -------------------------------------------------------------------------------------------
 deploy() {
   local tag=$1 stamp backup="" cid prev=""
+  # Whatever happens from here, keep only the newest KEEP data copies.
+  trap 'prune_backups' EXIT
   docker pull -q "$(image_of "$tag")" >/dev/null || die "cannot pull $(image_of "$tag")"
 
   # The running container's image, whatever put it there: the rollback target.
@@ -88,11 +110,13 @@ deploy() {
   compose up -d pulse caddy
   if healthy; then
     echo "$tag" >"$DIR/state/version"
+    rm -f "$DIR/state/failed"
     log "deployed $tag (was ${current:-${prev:-nothing}})"
     return 0
   fi
 
   log "$tag is not healthy after ${HEALTH_TIMEOUT}s"
+  echo "$tag" >"$DIR/state/failed"
   [ -n "$prev" ] || die "$tag is not healthy and there is no earlier image to go back to"
   compose stop pulse
   if [ -n "$backup" ] && ! volume_copy "/backup/$backup" /data; then
@@ -104,20 +128,27 @@ deploy() {
   die "rolled back to $prev, data restored from ${backup:-nothing}, and it is not healthy either"
 }
 
-drop_old() { # keep the running and the previous image, and the newest KEEP backups
-  local t
-  for t in $(docker image ls --format '{{ '{{' }}.Tag{{ '}}' }}' "$IMAGE"); do
-    case $t in "${want#v}" | "${current#v}" | '<none>') ;; *) docker image rm "$IMAGE:$t" >/dev/null 2>&1 || true ;; esac
-  done
+prune_backups() { # keep the newest KEEP data copies
   # Backup names start with a UTC timestamp, so the glob's name order is time order.
   local all=("$DIR"/backups/*/) d n
   n={% raw %}${#all[@]}{% endraw %} # backups, oldest first
   if [ -d "${all[0]}" ] && [ "$n" -gt "$KEEP" ]; then
-    for d in "${all[@]:0:n-KEEP}"; do rm -r -- "$d"; done
+    for d in "${all[@]:0:n-KEEP}"; do rm -r -- "$d" || true; done
   fi
 }
 
-if [ "$want" != "$current" ]; then
+drop_old() { # keep the running and the previous image
+  local t
+  for t in $(docker image ls --format '{{ '{{' }}.Tag{{ '}}' }}' "$IMAGE"); do
+    case $t in "${want#v}" | "${current#v}" | '<none>') ;; *) docker image rm "$IMAGE:$t" >/dev/null 2>&1 || true ;; esac
+  done
+}
+
+if [ "$want" = "$current" ]; then
+  :
+elif $skip; then
+  log "skipping $want: it was not healthy before (state/failed). A newer tag, or pulse-update --retry, tries again"
+else
   deploy "$want"
   drop_old
 fi
