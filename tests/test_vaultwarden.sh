@@ -126,7 +126,7 @@ check "compose: iterations not below default" 'grep -qx "      PASSWORD_ITERATIO
 check "compose: no SMTP"                      '! grep -q SMTP "$c"'
 check "compose: unprivileged port 8080"       'grep -qx "      ROCKET_PORT: \"8080\"" "$c"'
 check "compose: no published port"            '! grep -qE "^\s+ports:" "$c"'
-check "compose: image pinned by tag and digest" 'grep -qE "^    image: vaultwarden/server:[0-9.]+@sha256:[0-9a-f]{64}$" "$c"'
+check "compose: the Alpine image, pinned by tag and digest" 'grep -qE "^    image: vaultwarden/server:[0-9.]+-alpine@sha256:[0-9a-f]{64}$" "$c"'
 check "compose: runs as its own uid"          'grep -qx "    user: \"10004:10004\"" "$c"'
 check "compose: read-only root, no capabilities" 'grep -qx "    read_only: true" "$c" && grep -qx "      - ALL" "$c" && grep -q "no-new-privileges:true" "$c"'
 check "compose: memory cap 128m, swap included" 'grep -qx "    mem_limit: 128m" "$c" && grep -qx "    memswap_limit: 128m" "$c"'
@@ -183,7 +183,7 @@ VW_HOST=vaultwarden VW_EXTRA=$xv run "$encl"
 if [ "$?" -eq 0 ]; then ok "enclave: renders"; else bad_ "enclave: renders"; tail -20 "$tmp/log"; fi
 c="$out/docker-compose.yaml"
 check "enclave: published on the VM's address only" '[ "$(grep -A1 "^    ports:" "$c" | tail -1)" = "      - \"198.51.100.21:8080:8080/tcp\"" ] && [ "$(grep -c ":8080/tcp" "$c")" = 1 ]'
-check "enclave: image by tag, never pulled"   'grep -qx "    image: vaultwarden/server:1.37.4" "$c" && grep -qx "    pull_policy: never" "$c"'
+check "enclave: image by tag, never pulled"   'grep -qx "    image: vaultwarden/server:1.37.4-alpine" "$c" && grep -qx "    pull_policy: never" "$c"'
 check "enclave: Caddy proxies to the VM"      'grep -q "reverse_proxy http://198.51.100.21:8080" "$out/Caddyfile"'
 check "enclave: pass is for the operator only" 'grep -q "@pass_denied not remote_ip 100.64.0.7/32 198.51.100.51/32 192.0.2.31/32" "$out/Caddyfile" && grep -q "respond @pass_denied 403" "$out/Caddyfile"'
 check "enclave: dns is an infra page (operator /32s, vpn_only ignored)" 'grep -q "@dns_denied not remote_ip 198.51.100.51/32 192.0.2.31/32 100.64.0.7/32" "$out/Caddyfile"'

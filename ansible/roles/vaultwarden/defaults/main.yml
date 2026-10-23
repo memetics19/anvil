@@ -9,8 +9,10 @@
 # Accounts: sign-ups are closed; the admin page (/admin, token from Vault) invites an email,
 # which can then register directly (no SMTP: an invited email needs no mail to sign up).
 vaultwarden_dir: /opt/vaultwarden
-# Pinned by tag and digest (2026-10-21; 1.37.4 was released 2026-10-05).
-vaultwarden_image: vaultwarden/server:1.37.4@sha256:efb3cde962015fcc036b2ea625242248611943b27212ebf4392841fb30fad055
+# Pinned by tag and digest (2026-10-21; 1.37.4 was released 2026-10-05). The Alpine build
+# of the same release: the Debian one carried 8 CRITICAL and 72 HIGH findings in its base
+# packages, the Alpine one none (Trivy, 2026-10-23).
+vaultwarden_image: vaultwarden/server:1.37.4-alpine@sha256:19ea2b669945d842dadc3d500f2d6a795866a003330f59a47b9634658bae98bb
 
 # The image is pulled by digest on vaultwarden_image_host (it has internet), exported,
 # copied through the controller and loaded here (the caddy image pattern). Loaded images
