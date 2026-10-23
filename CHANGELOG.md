@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.4.0](https://github.com/memetics19/anvil/compare/v0.3.0...v0.4.0) (2026-10-23)
+
+
+### Features
+
+* **apt_repo:** one apt repository for anvil and pulse ([c348357](https://github.com/memetics19/anvil/commit/c348357840baa3e1f9dc5e8fd160c007b89202db))
+* **apt_repo:** one apt repository for anvil and pulse ([d89f9ee](https://github.com/memetics19/anvil/commit/d89f9ee9e7c14b2c1d244235acf22db102fa306d))
+* **apt_repo:** one repository for several projects, pulse next to anvil ([84e042b](https://github.com/memetics19/anvil/commit/84e042b77041721dce3ca8abb81e2a61b3fa7273))
+* **cloudflared:** one pinned version, rolled out one connector at a time ([82a7323](https://github.com/memetics19/anvil/commit/82a7323dee4b803eb672916f518f3d2c2d6f1026))
+* **cloudflared:** pinned at 2026.10.3, rolled out one connector at a time ([6383650](https://github.com/memetics19/anvil/commit/6383650943da961c3e906cb637151f83a02d6ab1))
+
+
+### Bug Fixes
+
+* **caddy:** build with golang.org/x/net 0.61 and current base and builder digests ([5afe5a0](https://github.com/memetics19/anvil/commit/5afe5a0a62887ae454d5f697b82a00791ebdd3cb))
+* **caddy:** other roles use the resolved image tag, not the template lookup ([5073f9e](https://github.com/memetics19/anvil/commit/5073f9e571f2bad6356f0ade5f359d4212445090))
+* filestash on its rebuilt image, the IPTV helper on Debian trixie ([e7fc753](https://github.com/memetics19/anvil/commit/e7fc753a6bffab378e3270992c009ec25b3a358e))
+* **iptv:** a failed guide grab warns when a guide already exists ([172e2fc](https://github.com/memetics19/anvil/commit/172e2fcd82ab96557c5eeba10e12fd46cb976025))
+* patched Caddy on every host, rebuilt images, IPTV on trixie ([8c469e7](https://github.com/memetics19/anvil/commit/8c469e7bc169f832e7c56b7de3e23071655055fa))
+* the Caddy containers on the netbird VM run the patched build ([fb4b776](https://github.com/memetics19/anvil/commit/fb4b7765815aed2b190e3d61ecdc8eaf282ce87f))
+* **vaultwarden:** the Alpine build of 1.37.4 ([be26449](https://github.com/memetics19/anvil/commit/be26449db429adb374138848becfcf65834216a1))
+* **vaultwarden:** the Alpine build of 1.37.4 (no CRITICAL or HIGH findings) ([8ad6d4d](https://github.com/memetics19/anvil/commit/8ad6d4de7352f72bb6902f0a77a906acdf49aa5e))
+
 ## [0.3.0](https://github.com/memetics19/anvil/compare/v0.2.0...v0.3.0) (2026-10-22)
 
 
