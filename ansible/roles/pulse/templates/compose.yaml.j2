@@ -11,6 +11,8 @@ services:
 {% for k, v in pulse_env.items() %}
       {{ k }}: ${{ '{' }}{{ k }}:-{{ '}' }}
 {% endfor %}
+      # Only a fresh instance reads it: /setup asks for it (Vault, setup_token).
+      PULSE_SETUP_TOKEN: ${PULSE_SETUP_TOKEN:-}
     # Unprivileged ICMP (ping monitors) without privileged mode.
     sysctls:
       - net.ipv4.ping_group_range=0 2147483647
