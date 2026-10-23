@@ -125,7 +125,9 @@ if [ "$docs_want" != "$docs_current" ]; then
   git -C "$src" checkout -q --force --detach "$docs_want"
   out="$DIR/docs/$docs_want"
   rm -rf "$out.tmp"
-  docker run --rm -v "$src:/workspace:ro" -v "$DIR/docs:/out" "$MKDOCS_IMAGE" \
+  # From the repository root, as anyone building the docs does: mkdocs extensions such
+  # as pymdownx.snippets resolve their paths from the current directory.
+  docker run --rm -w /workspace -v "$src:/workspace:ro" -v "$DIR/docs:/out" "$MKDOCS_IMAGE" \
     build --quiet -f /workspace/mkdocs.yml -d "/out/$docs_want.tmp" || die "docs build failed for ${docs_want:0:7}"
   rm -rf "$out" && mv "$out.tmp" "$out"
   ln -sfn "$docs_want" "$DIR/docs/current.new" && mv -T "$DIR/docs/current.new" "$DIR/docs/current"

@@ -131,6 +131,7 @@ stopped_first() { # the data copy (docker run ... cp) sits between compose stop 
   [ -n "$stop" ] && [ -n "$copy" ] && [ -n "$upl" ] && [ "$stop" -lt "$copy" ] && [ "$copy" -lt "$upl" ]
 }
 check "the data was copied while Pulse was stopped, before the switch" "ls '$dir/backups' | grep -q -- '-first\$' && stopped_first"
+check "mkdocs runs from the repository root (snippets paths)" "grep -q 'docker run --rm -w /workspace' '$log'"
 check "the docs were built from main" "[ \"\$(cat '$dir/state/docs')\" = \"\$(git -C '$up' rev-parse main)\" ] && [ -f '$dir/docs/current/index.html' ]"
 
 # 2. nothing new
