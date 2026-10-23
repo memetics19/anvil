@@ -59,8 +59,11 @@ healthy() {
 }
 
 volume_copy() { # volume_copy <from> <to>: from and to are /data or /backup/<dir>
+  # Empty <to> and copy <from> into it. Only the contents of <to> are removed, never <to>
+  # itself: /data is the volume's mount point, which cannot be removed (deleting it
+  # deletes everything inside and then fails, which used to stop the restore).
   docker run --rm -v "$DATA_VOLUME:/data" -v "$DIR/backups:/backup" "$BASE_IMAGE" \
-    sh -c "rm -rf '$2' && mkdir -p '$2' && cp -a '$1/.' '$2/'"
+    sh -c "mkdir -p '$2' && find '$2' -mindepth 1 -delete && cp -a '$1/.' '$2/'"
 }
 
 image_of() { echo "$IMAGE:${1#v}"; }
@@ -92,7 +95,9 @@ deploy() {
   log "$tag is not healthy after ${HEALTH_TIMEOUT}s"
   [ -n "$prev" ] || die "$tag is not healthy and there is no earlier image to go back to"
   compose stop pulse
-  [ -z "$backup" ] || volume_copy "/backup/$backup" /data
+  if [ -n "$backup" ] && ! volume_copy "/backup/$backup" /data; then
+    die "rollback: restoring the data failed, Pulse is stopped. The copy is in $DIR/backups/$backup: restore it by hand before starting Pulse"
+  fi
   use_image "$prev"
   compose up -d pulse caddy
   if healthy; then die "rolled back to $prev, data restored from ${backup:-nothing}"; fi
