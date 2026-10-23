@@ -11,3 +11,6 @@ MKDOCS_IMAGE={{ pulse_mkdocs_image | quote }}
 HEALTH_URL=http://127.0.0.1/healthz
 HEALTH_TIMEOUT={{ pulse_health_timeout }}
 KEEP={{ pulse_backups_keep }}
+VERIFY={{ pulse_verify_signature | bool | lower }}
+SIGNER={{ pulse_signer | quote }}
+COSIGN_IMAGE={{ pulse_cosign_image | quote }}

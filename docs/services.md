@@ -209,6 +209,12 @@ every 10 minutes by `pulse-update.timer` and once by the role, does two things:
   are dropped after a failed deploy too.
 - It follows one major version (`pulse_track: "3"`), so a 4.0 release, which may break
   things, is never deployed by itself.
+- Before it stops anything, it checks the pulled image's cosign signature: the digest must
+  be signed by Pulse's release workflow and logged in Rekor (`pulse_signer`). Pulse then
+  runs that exact digest. An unsigned or tampered image is not deployed and Pulse keeps
+  running. The check runs in a pinned cosign container (`pulse_cosign_image`) and needs
+  internet access to Sigstore. `pulse_verify_signature: false` turns it off, for example
+  to pin a release older than 3.0.0, which is not signed.
 - It builds the docs site from the head of `main` with mkdocs into `/opt/pulse/docs/` and
   moves the `current` link to it.
 
