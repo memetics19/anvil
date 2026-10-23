@@ -81,4 +81,7 @@ you if you stack often.
 Merging to `main` keeps a release pull request up to date. Merging that one tags the
 version, publishes the GitHub Release with the binaries, the .deb and .rpm packages and the
 Homebrew formula, and the homelab's apt repository picks the packages up within 30 minutes.
-See [docs/install.md](docs/install.md#versions-and-releases).
+
+The release workflow merges it by itself every Monday at 10:00 IST when `main` is green
+and the release holds no breaking change. A breaking release is merged by hand. See
+[docs/install.md](docs/install.md#versions-and-releases).
