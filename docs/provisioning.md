@@ -324,7 +324,9 @@ root. Then hand it to the repo, as in [First build](setup.md#first-build):
    `pve_host` and `pve_network` roles read `site.pve`, the current server, so a second
    Proxmox host needs its own variables first. That is the next roadmap step.
 2. `make bootstrap-ssh ARGS="--limit <box>"` installs the operator key. The installer has
-   already put it there, so this only checks it. It reads the root password from the
+   already put it there, so this only checks it. If the box took over the address of an
+   older machine, run `make forget-host HOST=<box>` first: its new SSH key is refused
+   otherwise. It reads the root password from the
    Keychain item `pve-root-password`.
 3. `make host ARGS="--limit <box> --check --diff"`, then without `--check`.
 4. Continue with the other steps of [First build](setup.md#first-build) or

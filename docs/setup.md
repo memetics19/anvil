@@ -43,6 +43,23 @@ You also need an SSH key pair at `~/.ssh/id_ed25519`. `make bootstrap-ssh` insta
 public key on the Proxmox host and the adopted guests. Terraform puts it into cloud-init for
 the `vault` and `apps` VMs (`ssh_public_key_path` in `terraform/variables.tf`).
 
+### SSH host keys
+
+Ansible checks every host's SSH key, because plays send the sudo password and secrets
+from Vault. The first connection to a host records its key in `~/.ssh/known_hosts`. After
+that, a different key stops the run with "Host key verification failed", before anything
+is sent. That is what a spoofed address or a reused IP looks like.
+
+When you rebuilt the host yourself, the new key is expected. Drop the old one and run
+again:
+
+```sh
+make forget-host HOST=frigate
+```
+
+The enclave VMs are reached through the Proxmox host, so the Proxmox host's key must be
+known first. The switch's key is kept in `build/switch/known_hosts`.
+
 ## Keychain items
 
 All items use service `homelab`. `scripts/env.sh` reads them and exports most as

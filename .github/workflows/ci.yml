@@ -71,6 +71,8 @@ jobs:
         run: tests/test_pulse.sh
       - name: Every published port names its address
         run: tests/test_published_ports.sh
+      - name: SSH host keys are checked
+        run: tests/test_host_keys.sh
       - name: apt repository test
         run: |
           sudo apt-get install -y -qq apt-utils

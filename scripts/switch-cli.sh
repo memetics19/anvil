@@ -16,8 +16,8 @@
 # while. Nothing has been sent at that point, so a retry is safe.
 # copy running-config startup-config must print "Copy succeeded". A (Y/N) question after
 # it, which some firmware asks, is answered Y. Any other question fails the run.
-# SWITCH_KNOWN_HOSTS: the known hosts file (default /dev/null, no host key check). A real
-# file pins the key on first use. SWITCH_CLI_TIMEOUT: seconds per command (default 60).
+# SWITCH_KNOWN_HOSTS: the known hosts file (default build/switch/known_hosts, the file the
+# network_switch role uses). The key is pinned on first use and a changed key is refused. SWITCH_CLI_TIMEOUT: seconds per command (default 60).
 # Exit codes:
 #   0 ok
 #   2 usage, or a line refused by --show-only
@@ -55,7 +55,11 @@ done
 
 SWITCH_CLI_LINES=$(printf '%s\n' "${lines[@]}")
 export SWITCH_CLI_LINES
-export SWITCH_KNOWN_HOSTS="${SWITCH_KNOWN_HOSTS:-/dev/null}"
+if [ -z "${SWITCH_KNOWN_HOSTS:-}" ]; then
+  SWITCH_KNOWN_HOSTS="$(cd "$(dirname "$0")/.." && pwd)/build/switch/known_hosts"
+  mkdir -p "$(dirname "$SWITCH_KNOWN_HOSTS")"
+fi
+export SWITCH_KNOWN_HOSTS
 export SWITCH_CLI_TIMEOUT="${SWITCH_CLI_TIMEOUT:-60}"
 tries="${SWITCH_CLI_TRIES:-3}"
 backoff="${SWITCH_CLI_BACKOFF:-20}"
@@ -66,7 +70,6 @@ set user [lindex $argv 0]
 set host [lindex $argv 1]
 set timeout $env(SWITCH_CLI_TIMEOUT)
 set known $env(SWITCH_KNOWN_HOSTS)
-set strict [expr {$known eq "/dev/null" ? "no" : "accept-new"}]
 # The prompt: a host name, an optional (config...) mode, then # or >, at the end of output.
 set prompt {(^|[\r\n])[A-Za-z0-9._-]+(\([A-Za-z0-9-]+\))?[#>] ?$}
 set mode exec
@@ -90,7 +93,7 @@ spawn -noecho sshpass -e ssh -tt \
   -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa \
   -o Ciphers=+aes128-cbc,aes256-cbc,3des-cbc \
   -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no \
-  -o NumberOfPasswordPrompts=1 -o StrictHostKeyChecking=$strict \
+  -o NumberOfPasswordPrompts=1 -o StrictHostKeyChecking=accept-new \
   -o UserKnownHostsFile=$known -o GlobalKnownHostsFile=/dev/null \
   -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 \
   -o LogLevel=ERROR -F /dev/null \
