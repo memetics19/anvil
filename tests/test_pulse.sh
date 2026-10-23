@@ -41,7 +41,7 @@ PLAY
 if ansible-playbook -i localhost, -c local "$tmp/play.yml" >"$tmp/render.log" 2>&1; then ok "templates render"; else
   bad_ "templates render"; cat "$tmp/render.log"; exit 1; fi
 check "compose: pulse image from release.env, data volume kept" \
-  "python3 -c 'import yaml,sys; d=yaml.safe_load(open(\"$tmp/compose.yaml\")); s=d[\"services\"]; assert d[\"name\"]==\"pulse\"; assert s[\"pulse\"][\"image\"].startswith(\"\${PULSE_IMAGE\"); assert \"pulse_data:/data\" in s[\"pulse\"][\"volumes\"]; assert \"pulse_data\" in d[\"volumes\"]; assert s[\"pulse\"][\"environment\"][\"SQLITE_PATH\"]==\"\${SQLITE_PATH:-}\"'"
+  "python3 -c 'import yaml,sys; d=yaml.safe_load(open(\"$tmp/compose.yaml\")); s=d[\"services\"]; assert d[\"name\"]==\"pulse\"; assert s[\"pulse\"][\"image\"].startswith(\"\${PULSE_IMAGE\"); assert \"pulse_data:/data\" in s[\"pulse\"][\"volumes\"]; assert \"pulse_data\" in d[\"volumes\"]; assert s[\"pulse\"][\"environment\"][\"PULSE_DB\"]==\"\${PULSE_DB:-}\"'"
 check "compose: Caddy is the patched build, not upstream's binary" "grep -q 'image: anvil/caddy:test' '$tmp/compose.yaml'"
 check "compose: no secret value in the compose file" "! grep -q test-token '$tmp/compose.yaml'"
 check ".env: holds the admin token" "grep -qx 'PULSE_ADMIN_TOKEN=test-token' '$tmp/env'"
@@ -131,6 +131,7 @@ stopped_first() { # the data copy (docker run ... cp) sits between compose stop 
   [ -n "$stop" ] && [ -n "$copy" ] && [ -n "$upl" ] && [ "$stop" -lt "$copy" ] && [ "$copy" -lt "$upl" ]
 }
 check "the data was copied while Pulse was stopped, before the switch" "ls '$dir/backups' | grep -q -- '-first\$' && stopped_first"
+check "mkdocs runs from the repository root (snippets paths)" "grep -q 'docker run --rm -w /workspace' '$log'"
 check "the docs were built from main" "[ \"\$(cat '$dir/state/docs')\" = \"\$(git -C '$up' rev-parse main)\" ] && [ -f '$dir/docs/current/index.html' ]"
 
 # 2. nothing new

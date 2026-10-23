@@ -30,7 +30,9 @@ pulse_base_image: alpine:3.24@sha256:71e9b7bae160ba167fa17414401b94cbcdaf3c32fee
 pulse_vault_mount: kv
 pulse_vault_path: "homelab/{{ inventory_hostname }}/pulse"
 pulse_env:
-  SQLITE_PATH: /data/pulse.db
+  # Pulse 3 name (SQLITE_PATH before). A 2.x image ignores it and uses /data/pulse.db,
+  # the same file, so a rollback is safe.
+  PULSE_DB: /data/pulse.db
   RESEND_API_KEY: ""
   SLACK_WEBHOOK_URL: ""
   PULSE_SECURE_COOKIES: "true"
