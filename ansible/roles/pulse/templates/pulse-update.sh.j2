@@ -133,7 +133,7 @@ prune_backups() { # keep the newest KEEP data copies
   local all=("$DIR"/backups/*/) d n
   n={% raw %}${#all[@]}{% endraw %} # backups, oldest first
   if [ -d "${all[0]}" ] && [ "$n" -gt "$KEEP" ]; then
-    for d in "${all[@]:0:n-KEEP}"; do rm -r -- "$d" || true; done
+    for d in "${all[@]:0:n-KEEP}"; do rm -r -- "$d"; done
   fi
 }
 
