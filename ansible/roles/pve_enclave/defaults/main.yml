@@ -32,8 +32,8 @@ pve_enclave_net_rollback_script: /usr/local/sbin/net-rollback.sh
 # group_vars/all/enclave.yml: the Mac's LAN /32s and NetBird peer /32s, or the NetBird ones
 # only with site.enclave.vpn_only). No VM is one: every address of every host in the site
 # dict (VMs, their lab and home addresses, the Proxmox host's) is in the set not_admin,
-# which is dropped before the operator rules. The host's own connections (Ansible's
-# ProxyJump) leave from the host itself and are not forwarded traffic.
+# which is dropped before the operator rules. The host's own connections (Ansible's SSH
+# jump) leave from the host itself and are not forwarded traffic.
 # NetBird: the routing peers (the Proxmox host, which masquerades only after this firewall,
 # and the netbird VM, which does not masquerade) keep the peer's address up to here.
 pve_enclave_admin_sources: "{{ enclave_admin_sources }}"
