@@ -211,13 +211,16 @@ The Cloudflare tunnel publishes both names.
 `make vm HOST=netbird ARGS="--tags pulse"`. `sudo pulse-compose ps` (or `logs`) runs
 docker compose for the project. `journalctl -u pulse-update` has the deploy history.
 
-- `apt_repo`: the signed apt repository for the anvil .deb packages, in `/opt/apt-repo`,
+- `apt_repo`: the signed apt repository for the .deb packages of anvil and pulse
+  (`apt_repo_sources`), in `/opt/apt-repo`,
   served read-only by Caddy on port 8082 (compose project `apt-repo`), which the Cloudflare
   tunnel publishes as `apt.<domain>`.
 
 `apt-publish`, run every 30 minutes by `apt-publish.timer` and once by the role, takes the
-.deb files of each new `vX.Y.Z` release of anvil, checks them against the release's
-`checksums.txt`, and keeps them in `pool/`. When something is new it builds a fresh tree
+.deb files of each new `vX.Y.Z` release of every source, checks them against the release's
+checksum file (`checksums.txt` for anvil, `SHA256SUMS` for pulse), and keeps them in
+`pool/`. The signing key is published as `key.gpg` and `key.asc`, and also as `anvil.gpg`
+and `anvil.asc` for machines set up with the first instructions. When something is new it builds a fresh tree
 with `apt-ftparchive`, signs `InRelease` and `Release.gpg`, checks both signatures with the
 key it publishes, and moves the `site/current` link to the new tree. A .deb that does not
 match its checksum stops the run, and the live tree stays as it was. The tree is rebuilt
@@ -226,8 +229,7 @@ from the releases and the key at any time, so it has no backup.
 `sudo apt-publish --check` shows what the next run would do. `journalctl -u apt-publish`
 has the history. The key is made once with `scripts/apt-key-init.sh`, which writes it
 straight into Vault. To rotate it, delete `kv/homelab/apt/signing` and
-`/opt/apt-repo/gnupg`, rerun the script and the role, and tell users to fetch `anvil.gpg`
-again.
+`/opt/apt-repo/gnupg`, rerun the script and the role, and tell users to fetch `key.gpg` again.
 
 PHP is kept off this VM. `php*`, `composer` and `jsonlint` were removed by hand on
 2026-10-21 (php2shell, CVE-2026-109618/109619), and the role purges them if they come back.

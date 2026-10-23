@@ -2,15 +2,22 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ apt_repo_package }} apt repository</title>
+<title>apt repository</title>
 <style>body{font:16px/1.5 system-ui,sans-serif;max-width:46rem;margin:2rem auto;padding:0 1rem}pre{background:#f4f4f4;padding:1rem;overflow-x:auto}@media(prefers-color-scheme:dark){body{background:#111;color:#ddd}pre{background:#222}}</style>
-<h1>{{ apt_repo_package }} apt repository</h1>
-<p>Signed packages of <a href="https://github.com/{{ apt_repo_github }}">{{ apt_repo_github }}</a> for Debian and Ubuntu, amd64 and arm64.</p>
+<h1>apt repository</h1>
+<p>Signed packages for Debian and Ubuntu, amd64 and arm64:</p>
+<ul>
+{% for src in apt_repo_sources %}
+  <li><a href="https://github.com/{{ src.repo }}">{{ src.repo }}</a>: {{ src.packages | join(', ') }}</li>
+{% endfor %}
+</ul>
+<p>Add the repository once:</p>
 <pre>sudo install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://HOST/{{ apt_repo_package }}.gpg | sudo tee /etc/apt/keyrings/{{ apt_repo_package }}.gpg &gt;/dev/null
-echo "deb [signed-by=/etc/apt/keyrings/{{ apt_repo_package }}.gpg] https://HOST {{ apt_repo_suite }} {{ apt_repo_component }}" |
-  sudo tee /etc/apt/sources.list.d/{{ apt_repo_package }}.list
-sudo apt update &amp;&amp; sudo apt install {{ apt_repo_package }}</pre>
-<p>The signing key: <a href="{{ apt_repo_package }}.asc">{{ apt_repo_package }}.asc</a> (armored) or <a href="{{ apt_repo_package }}.gpg">{{ apt_repo_package }}.gpg</a>.</p>
-<script>document.querySelector('pre').textContent=document.querySelector('pre').textContent.replaceAll('HOST',location.host)</script>
+curl -fsSL https://HOST/key.gpg | sudo tee /etc/apt/keyrings/{{ apt_repo_list_name }}.gpg &gt;/dev/null
+echo "deb [signed-by=/etc/apt/keyrings/{{ apt_repo_list_name }}.gpg] https://HOST {{ apt_repo_suite }} {{ apt_repo_component }}" |
+  sudo tee /etc/apt/sources.list.d/{{ apt_repo_list_name }}.list
+sudo apt update</pre>
+<p>Then install a package, for example <code>sudo apt install {{ apt_repo_sources[0].packages[0] }}</code>.</p>
+<p>The signing key: <a href="key.asc">key.asc</a> (armored) or <a href="key.gpg">key.gpg</a>.</p>
+<script>const p=document.querySelector('pre');p.textContent=p.textContent.replaceAll('HOST',location.host)</script>
 </html>
