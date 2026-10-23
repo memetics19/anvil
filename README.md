@@ -177,6 +177,11 @@ vault/policies/
 - The Ceph dashboard's Object Gateway zone and multisite pages return 500 on Proxmox. See
   [Ceph](docs/services.md#ceph).
 
+## Contributing
+
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the checks to
+run, the commit style, and how pull requests are merged and stacked.
+
 ## License
 
 [MIT](LICENSE)
