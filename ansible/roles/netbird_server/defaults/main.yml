@@ -7,7 +7,8 @@ netbird_server_dir: /opt/netbird-server
 # Pinned by tag and digest. A bump is a deliberate change of these lines.
 netbird_server_image: netbirdio/netbird-server:0.81.3@sha256:541ecef7e98a66b17411d44e9d4dcfdb65913415f39b3b944b8e7e748f997f1d
 netbird_server_dashboard_image: netbirdio/dashboard:v2.95.0@sha256:3d6adfee19dd8d34d795af51daee69d27d2081d2076a5a304cfdd14acc67d6f4
-netbird_server_caddy_image: caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+# Role caddy's patched build (caddy_image), loaded by this role's tasks.
+netbird_server_caddy_image: "{{ caddy_image }}"
 # Memory caps (the VM has 3 GB for everything it runs).
 netbird_server_mem_limit: 512m
 netbird_server_dashboard_mem_limit: 96m

@@ -29,6 +29,8 @@ cat >"$tmp/play.yml" <<PLAY
 - name: apt repository templates
   hosts: localhost
   gather_facts: false
+  vars:
+    caddy_image: anvil/caddy:test
   vars_files:
     - $PWD/ansible/roles/apt_repo/defaults/main.yml
   tasks:
@@ -41,6 +43,7 @@ PLAY
 if ansible-playbook -i localhost, -c local "$tmp/play.yml" >"$tmp/render.log" 2>&1; then ok "templates render"; else
   bad_ "templates render"; cat "$tmp/render.log"; exit 1; fi
 check "Caddy refuses anything but GET and HEAD" "grep -q 'not method GET HEAD' '$tmp/Caddyfile' && grep -q 'respond @write 405' '$tmp/Caddyfile'"
+check "Caddy is the patched build, not upstream's binary" "grep -q 'image: anvil/caddy:test' '$tmp/compose.yaml'"
 check "the site is mounted read-only" "grep -q '/srv/site:ro' '$tmp/compose.yaml'"
 check "the index page names no host" "! grep -qiE 'shreeda|\\.xyz' '$tmp/index.html'"
 
