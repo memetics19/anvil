@@ -6,7 +6,7 @@ HVAC_CHECK := py=$$(ansible-playbook --version | sed -n 's/^  python version = .
 	"$${py:-python3}" -c 'import hvac' 2>/dev/null || { \
 	  echo "hvac is missing in the Python that runs Ansible; fix: \"$$py\" -m pip install hvac" >&2; exit 1; }
 
-.PHONY: lint secrets-scan bootstrap-ssh host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply provision-iso provision provision-clean docs docs-publish cli release-snapshot
+.PHONY: lint secrets-scan bootstrap-ssh forget-host host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply provision-iso provision provision-clean docs docs-publish cli release-snapshot
 
 lint:
 	@set -eu -o pipefail; \
@@ -30,6 +30,17 @@ secrets-scan:
 bootstrap-ssh:
 	@set -eu -o pipefail; $(ENV); $(HVAC_CHECK); \
 	cd ansible && ansible-playbook playbooks/bootstrap-ssh.yml $(ARGS)
+
+# After a deliberate rebuild of a host: drop its old SSH host key, so the next run records
+# the new one. Ansible refuses a changed key otherwise. make forget-host HOST=frigate
+forget-host:
+	@set -eu -o pipefail; [ -n "$(HOST)" ] || { echo "usage: make forget-host HOST=<name>" >&2; exit 1; }; \
+	$(ENV); $(HVAC_CHECK); \
+	addr=$$(cd ansible && ansible "$(HOST)" -m ansible.builtin.debug -a var=ansible_host -o 2>/dev/null | \
+	  sed -n 's/.*"ansible_host": "\([^"]*\)".*/\1/p'); \
+	[ -n "$$addr" ] || { echo "forget-host: no address for $(HOST) in the inventory" >&2; exit 1; }; \
+	ssh-keygen -R "$$addr" >/dev/null 2>&1 || true; \
+	echo "forget-host: removed the stored key of $(HOST). The next run records the new one."
 
 host:
 	@set -eu -o pipefail; $(ENV); $(HVAC_CHECK); \
