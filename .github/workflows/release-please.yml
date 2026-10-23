@@ -1,17 +1,83 @@
 # Opens and updates a release PR from the conventional commits on main: the next version
 # and CHANGELOG.md. Merging it tags vX.Y.Z and creates the GitHub Release.
 # The first release is 0.1.0: the manifest starts at 0.0.0 and a feat bumps the minor.
+#
+# Weekly release: every Monday at 10:00 IST the auto-merge job merges the release PR by
+# itself when there is one, main's latest commit passed every check, the PR is up to date
+# with main, and it holds no breaking change. "Run workflow" does the same at any time.
+# A breaking release is always manual: merge its release PR by hand, which releases it as
+# any merge to main does.
+# A merge made with the workflow's token starts no other workflow, so the tag, the GitHub
+# Release and the packages are made in this same run, by the jobs below.
 name: release-please
 
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: "30 4 * * 1"   # Monday 04:30 UTC, 10:00 IST
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# A push and the weekly run never update the release PR at the same time.
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
 jobs:
+  auto-merge:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: read
+    outputs:
+      merged: ${{ steps.merge.outputs.merged }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: merge
+        name: Merge the release PR when it is safe
+        run: |
+          set -euo pipefail
+          echo "merged=false" >>"$GITHUB_OUTPUT"
+          skip() { echo "::notice::No release this time: $*"; exit 0; }
+
+          pr=$(gh pr list --state open --label "autorelease: pending" --json number --jq '.[0].number // empty')
+          [ -n "$pr" ] || skip "no release PR (nothing releasable since the last release)"
+          gh pr view "$pr" --json title,body,mergeable,baseRefOid >pr.json
+          title=$(jq -r .title pr.json)
+
+          if jq -r .body pr.json | grep -q 'BREAKING CHANGES'; then
+            skip "$title holds a breaking change, which is released by hand: merge #$pr yourself"
+          fi
+          [ "$(jq -r .mergeable pr.json)" = MERGEABLE ] || skip "#$pr cannot be merged as it is"
+
+          head=$(gh api "repos/$GH_REPO/commits/main" --jq .sha)
+          [ "$(jq -r .baseRefOid pr.json)" = "$head" ] || skip "#$pr is not up to date with main yet"
+          # Every check on main's latest commit finished, and none failed. This run shows up
+          # there too while it runs, so it is left out.
+          gh api --paginate "repos/$GH_REPO/commits/$head/check-runs?per_page=100" \
+            --jq ".check_runs[] | select(.details_url | contains(\"/runs/$GITHUB_RUN_ID/\") | not)
+                  | \"\\(.status) \\(.conclusion) \\(.name)\"" >checks.txt
+          [ -s checks.txt ] || skip "main ($head) has no checks yet"
+          if grep -v -E '^completed (success|skipped|neutral) ' checks.txt; then
+            skip "main ($head) has checks that are not green (listed above)"
+          fi
+
+          gh pr merge "$pr" --squash
+          echo "::notice::Merged #$pr: $title"
+          echo "merged=true" >>"$GITHUB_OUTPUT"
+
   release-please:
+    needs: auto-merge
+    # On a push (auto-merge skipped), or right after the weekly run merged the release PR.
+    if: >-
+      always() && (github.event_name == 'push' || needs.auto-merge.outputs.merged == 'true')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -30,7 +96,7 @@ jobs:
 
   release:
     needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    if: always() && needs.release-please.outputs.release_created == 'true'
     permissions:
       contents: write
     uses: ./.github/workflows/release.yml

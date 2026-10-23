@@ -126,6 +126,18 @@ Merging it tags `vX.Y.Z` and creates the GitHub Release. GoReleaser
 (`.goreleaser.yaml`) then builds the archives, checksums, .deb and .rpm packages, adds
 them to the release and commits the formula to `Formula/` in this repo.
 
+Releases are weekly. Every Monday at 10:00 IST the release workflow merges the release
+pull request by itself, when all of these hold:
+
+- there is one, so a week with nothing to release makes no release
+- every check on the latest commit of `main` finished and passed
+- the pull request is up to date with `main`
+- it holds no breaking change
+
+A breaking release is always made by hand: merge its release pull request yourself. Any
+other release can come early the same way, or from **Actions > release-please > Run
+workflow**, which applies the same checks.
+
 Every pull request and push to `main` runs the same build as a snapshot that publishes
 nothing. Run it locally with:
 
