@@ -319,7 +319,7 @@ recreate.
 | Vault | `vault_server_version` | Restarts and seals Vault. Use `ARGS="-e vault_server_allow_restart=true"`, then `make vault-unseal`. |
 | cloudflared | `cloudflared_version` | Held at that version. `make vms ARGS="--tags cloudflared"` upgrades one connector at a time and stops if one does not come back ready. |
 | NetBird client | `netbird_peer_version` | The package is held. Bumping this is the upgrade, and it restarts the client. |
-| Pulse | Nothing: `pulse-update` deploys each new release by itself. `pulse_track` pins one | A failed release is rolled back. Images for its Caddy, mkdocs and data copies are `pulse_*_image`. |
+| Pulse | Nothing within a major version: `pulse-update` deploys each new release by itself. `pulse_track` picks the major (or pins a tag) | A failed release is rolled back and skipped until a newer one. Images for its Caddy, mkdocs and data copies are `pulse_*_image`. |
 | Self-hosted NetBird | `netbird_server_image`, `netbird_server_dashboard_image`, `netbird_server_caddy_image` | Pinned as `tag@sha256:digest`. Read NetBird's release notes first. `make vm HOST=netbird ARGS="--tags netbird_server"` |
 | IPTV tools | `iptv_streamlink_version`, `iptv_mpegts_version`, `iptv_threadfin_db_version` | `make vm HOST=ragnarok ARGS="--tags iptv"` |
 | node_exporter | `node_exporter_version` | |

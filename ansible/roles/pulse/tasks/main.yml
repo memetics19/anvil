@@ -19,6 +19,14 @@
     fail_msg: "{{ pulse_vault_mount }}/{{ pulse_vault_path }} has no admin_token"
     quiet: true
 
+- name: The update settings are valid
+  ansible.builtin.assert:
+    that:
+      - pulse_track | string is match('^(latest|[0-9]+|v[0-9]+\\.[0-9]+\\.[0-9]+)$')
+      - pulse_backups_keep | int >= 1
+    fail_msg: "pulse_track must be latest, a major version such as 3, or a tag such as v3.0.0, and pulse_backups_keep at least 1"
+    quiet: true
+
 # --- files -------------------------------------------------------------------------------------
 - name: Install git and curl
   ansible.builtin.apt:

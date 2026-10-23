@@ -8,6 +8,9 @@
 #  - a new release that does not answer is rolled back to the image that ran before, and
 #    the data copy is put back (run for real against directories, with the data
 #    directory standing in for the volume's mount point: it cannot be removed itself);
+#  - the failed tag is skipped on later runs (no restart, no new data copy) until --retry
+#    or a newer tag, and data copies beyond KEEP are dropped after a failure too;
+#  - TRACK=<major> stays on that major, latest moves to a new one;
 #  - TRACK pins a tag; a new main commit rebuilds the docs and drops the old build.
 # Needs ansible-playbook, git and python3 with PyYAML.
 set -uo pipefail
@@ -48,7 +51,7 @@ check "compose: no secret value in the compose file" "! grep -q test-token '$tmp
 check ".env: holds the admin token" "grep -qx 'PULSE_ADMIN_TOKEN=test-token' '$tmp/env'"
 check "Caddyfile: docs.* gets the docs site, the rest the status page" \
   "grep -q 'header_regexp Host ^docs' '$tmp/Caddyfile' && grep -q 'root \* /srv/docs/current' '$tmp/Caddyfile' && grep -q 'reverse_proxy pulse:8080' '$tmp/Caddyfile'"
-check "update.conf: follows the newest release by default" "grep -qx 'TRACK=latest' '$tmp/update.conf'"
+check "update.conf: follows one major version by default" "grep -qx 'TRACK=3' '$tmp/update.conf'"
 
 # --- a fake upstream repo ------------------------------------------------------------------------
 up="$tmp/upstream"
@@ -134,7 +137,8 @@ chmod 555 "$tmp/mnt"
 mkdir -p "$dir"
 conf="$tmp/test.conf"
 sed -e "s#^REPO=.*#REPO=file://$up#" -e "s#^DIR=.*#DIR=$dir#" -e "s#^COMPOSE=.*#COMPOSE=$bin/compose#" \
-  -e "s#^HEALTH_TIMEOUT=.*#HEALTH_TIMEOUT=6#" -e "s#^KEEP=.*#KEEP=2#" "$tmp/update.conf" >"$conf"
+  -e "s#^HEALTH_TIMEOUT=.*#HEALTH_TIMEOUT=6#" -e "s#^KEEP=.*#KEEP=1#" -e "s#^TRACK=.*#TRACK=latest#" \
+  "$tmp/update.conf" >"$conf"
 upd() { PATH="$bin:$PATH" FAKE_LOG="$log" FAKE_DIR="$dir" FAKE_VOLUME="$vol" PULSE_UPDATE_CONF="$conf" bash "$tmp/pulse-update.sh" "$@" >"$tmp/out" 2>&1; }
 main_sha() { git -C "$up" rev-parse main; }
 
@@ -171,6 +175,33 @@ check "it is rolled back to the image that ran before" "grep -qx 'PULSE_IMAGE=gh
 check "the data copy is put back into the volume" "[ \"\$(cat '$vol/pulse.db')\" = 'the real data' ] && [ ! -e '$vol/written-by-bad-release' ]"
 check "the volume's mount point itself is never removed" "[ -d '$vol' ]"
 check "the recorded release stays v1.10.0" "[ \"\$(cat '$dir/state/version')\" = v1.10.0 ]"
+check "the failed tag is recorded" "[ \"\$(cat '$dir/state/failed')\" = v1.11.0 ]"
+check "data copies beyond KEEP are dropped after a failed deploy too" "[ \$(ls '$dir/backups' | wc -l) -le 1 ]"
+
+# 4b. the failed tag is not tried again on the next tick
+: >"$log"
+if FAKE_BAD_IMAGE=ghcr.io/memetics19/pulse:1.11.0 FAKE_PREV_IMAGE=ghcr.io/memetics19/pulse:1.10.0 upd &&
+  grep -q "skipping v1.11.0" "$tmp/out" && ! grep -q -E 'compose (stop|up)|cp -a' "$log"; then
+  ok "a failed tag is skipped: no restart, no data copy"; else bad_ "failed tag skipped"; cat "$tmp/out" "$log"; fi
+if upd --check && grep -q "v1.11.0 failed before" "$tmp/out"; then ok "--check says the tag is skipped"; else bad_ "--check skip"; cat "$tmp/out"; fi
+: >"$log"
+if FAKE_BAD_IMAGE=ghcr.io/memetics19/pulse:1.11.0 FAKE_PREV_IMAGE=ghcr.io/memetics19/pulse:1.10.0 upd --retry; then
+  bad_ "--retry deploys the failed tag again"; else
+  if grep -q 'compose up' "$log"; then ok "--retry deploys the failed tag again"; else bad_ "--retry"; cat "$tmp/out"; fi; fi
+
+# 4c. a newer tag is tried, and a good one clears the failure
+git -C "$up" tag v1.12.0
+if FAKE_PREV_IMAGE=ghcr.io/memetics19/pulse:1.10.0 upd && grep -q "deployed v1.12.0" "$tmp/out" && [ ! -e "$dir/state/failed" ]; then
+  ok "a newer tag is deployed and clears the failure"; else bad_ "newer tag after a failure"; cat "$tmp/out"; fi
+
+# 4d. a major version pin
+git -C "$up" tag v2.1.0
+sed -i.bak 's#^TRACK=.*#TRACK=1#' "$conf"
+if upd --check && grep -q "app: v1.12.0, up to date" "$tmp/out"; then ok "TRACK=1 stays on 1.x when 2.x is out"; else bad_ "major pin"; cat "$tmp/out"; fi
+sed -i.bak 's#^TRACK=.*#TRACK=latest#' "$conf"
+if upd --check && grep -q "would deploy v2.1.0" "$tmp/out"; then ok "TRACK=latest moves to the new major"; else bad_ "latest across majors"; cat "$tmp/out"; fi
+sed -i.bak 's#^TRACK=.*#TRACK=3x#' "$conf"
+if upd --check; then bad_ "a bad TRACK is refused"; else ok "a bad TRACK is refused"; fi
 
 # 5. a pin, and a new docs commit
 old_docs=$(main_sha)
@@ -179,7 +210,7 @@ sed -i.bak 's#^TRACK=.*#TRACK=v1.2.0#' "$conf"
 if FAKE_PREV_IMAGE=ghcr.io/memetics19/pulse:1.10.0 upd && grep -q "deployed v1.2.0" "$tmp/out"; then ok "TRACK pins a tag"; else bad_ "pin"; cat "$tmp/out"; fi
 check "a new main commit rebuilds the docs" "[ \"\$(readlink '$dir/docs/current')\" = \"\$(git -C '$up' rev-parse main)\" ]"
 check "the build before the previous one is dropped, the previous kept" "[ -d '$dir/docs/$old_docs' ]"
-check "backups beyond KEEP are dropped" "[ \$(ls '$dir/backups' | wc -l) -le 2 ]"
+check "backups beyond KEEP are dropped" "[ \$(ls '$dir/backups' | wc -l) -le 1 ]"
 
 [ "$fail" = 0 ] && echo "PASS: pulse" || echo "FAIL: pulse"
 exit "$fail"

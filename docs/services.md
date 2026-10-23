@@ -199,20 +199,26 @@ Check it on the VM with
 The VM keeps Pulse current by itself. Nothing on GitHub can reach it. `pulse-update`, run
 every 10 minutes by `pulse-update.timer` and once by the role, does two things:
 
-- It deploys the newest `vX.Y.Z` tag of the repo as the image the release workflow pushed,
+- It deploys the newest `vX.Y.Z` tag of the major version it follows as the image the release workflow pushed,
   `ghcr.io/memetics19/pulse:X.Y.Z`. Before the switch it stops Pulse and copies its data
   volume to `/opt/pulse/backups/` (the newest 5 are kept). If the new version does not
   answer `/healthz` within 90 seconds, the image that ran before and that copy come back,
-  and the run fails.
+  and the run fails. The failed tag is written to `/opt/pulse/state/failed` and later runs
+  skip it, so a bad release does not restart Pulse every 10 minutes. The next newer tag is
+  tried as usual. `sudo pulse-update --retry` tries the failed one again. Old data copies
+  are dropped after a failed deploy too.
+- It follows one major version (`pulse_track: "3"`), so a 4.0 release, which may break
+  things, is never deployed by itself.
 - It builds the docs site from the head of `main` with mkdocs into `/opt/pulse/docs/` and
   moves the `current` link to it.
 
 Caddy sends names that start with `docs.` to the docs site and every other name to Pulse.
 The Cloudflare tunnel publishes both names.
 
-`sudo pulse-update --check` shows what the next run would do. To pin a release, set
-`pulse_track: v1.2.3` in `inventory/host_vars/netbird.yml` and run
-`make vm HOST=netbird ARGS="--tags pulse"`. `sudo pulse-compose ps` (or `logs`) runs
+`sudo pulse-update --check` shows what the next run would do. To move to a new major
+version, read its release notes, then set `pulse_track: "4"` in
+`inventory/host_vars/netbird.yml` and run `make vm HOST=netbird ARGS="--tags pulse"`.
+`pulse_track: v3.1.0` pins one release, and `latest` follows every major. `sudo pulse-compose ps` (or `logs`) runs
 docker compose for the project. `journalctl -u pulse-update` has the deploy history.
 
 - `apt_repo`: the signed apt repository for the .deb packages of anvil and pulse
