@@ -890,7 +890,11 @@ on port 123.
   client, the host. It is 5000 queries per 60 s for that reason ([Pi-hole](#pi-hole)). A
   later improvement: let the VLANs' DNS skip the masquerade, so Pi-hole sees and limits
   each client.
-- IPv6 is not routed for the VLANs. The firewall drops it.
+- IPv6 is not routed for the VLANs or the enclave. Each segment bridge still has a
+  link-local `fe80::` address, and SSH and the Proxmox UI listen on IPv6 too. So the first
+  rule of the segment firewall, in `input` and `forward`, drops every IPv6 packet on a
+  segment's interface, before any other rule. A guest in a segment cannot reach the host
+  over IPv6, even through a rule that has no address in it.
 - Devices on the same VLAN reach each other directly (layer 2). The firewall sees only
   traffic that the host routes. That holds while `net.bridge.bridge-nf-call-iptables` is
   0, as it is today. The Proxmox firewall sets it to 1 when it is turned on. Then bridged

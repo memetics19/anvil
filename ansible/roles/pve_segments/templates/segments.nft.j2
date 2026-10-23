@@ -30,6 +30,7 @@
 {% endif %}		{{ parts | join(' ') }}
 {% endif -%}
 {%- endmacro %}
+{% set segment_ifaces = '{ "' ~ (pve_segments_list | map(attribute='interface') | join('", "')) ~ '" }' %}
 table inet {{ pve_segments_table }}
 delete table inet {{ pve_segments_table }}
 table inet {{ pve_segments_table }} {
@@ -51,6 +52,11 @@ table inet {{ pve_segments_table }} {
 {% endfor %}
 	chain forward {
 		type filter hook forward priority filter; policy accept;
+		# No segment uses IPv6. The rules below match IPv4 addresses (and one without an
+		# address would match both families), so IPv6 on a segment's interface is dropped
+		# first, whatever else is allowed.
+		meta nfproto ipv6 iifname {{ segment_ifaces }} counter drop
+		meta nfproto ipv6 oifname {{ segment_ifaces }} counter drop
 {% for g in pve_segments_list %}
 		# {{ g.name }}: its addresses only ever arrive on its own interface (no spoofing,
 		# no detour through another NIC of a host that has one there too), checked before
@@ -68,6 +74,9 @@ table inet {{ pve_segments_table }} {
 
 	chain input {
 		type filter hook input priority filter; policy accept;
+		# IPv6 from a segment never reaches this host: its link-local address on each segment
+		# bridge would otherwise answer, past the IPv4 rules below.
+		meta nfproto ipv6 iifname {{ segment_ifaces }} counter drop
 {% for g in pve_segments_list %}
 		ip saddr {{ g.subnet }} iifname != { "{{ g.interface }}", "lo" } counter drop
 {% endfor %}
