@@ -118,6 +118,16 @@
     mode: "0644"
   when: not ansible_check_mode
 
+# The patched Caddy that role caddy builds (current Go and golang.org/x/net), not upstream's
+# binary: built once on the build host, loaded here if this host does not have it yet.
+- name: The patched Caddy image
+  ansible.builtin.include_role:
+    name: caddy
+    tasks_from: image.yml
+    public: true
+  vars:
+    caddy_dir: "{{ apt_repo_dir }}"
+
 - name: Caddy for the apt repository
   ansible.builtin.include_role:
     name: compose_project

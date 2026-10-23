@@ -210,12 +210,23 @@
     path: "{{ iptv_guide_dir }}/{{ iptv_guide_file }}"
   register: iptv_guide
 
-# A new lineup gets its guide now, before Threadfin (re)reads it below.
+# A new lineup gets its guide now, before Threadfin (re)reads it below. When a guide already
+# exists, a failed grab (a guide source outage: the grabber keeps the existing guide) is a
+# warning, so it does not hold back the rest of the IPTV changes. With no guide it fails.
 - name: Grab the guide now
   ansible.builtin.command:
     argv: [systemctl, start, iptv-epg-grab.service]
+  register: iptv_grab_now
   changed_when: true
+  failed_when: iptv_grab_now.rc != 0 and not iptv_guide.stat.exists
   when: not ansible_check_mode and (iptv_grab_script.changed or not iptv_guide.stat.exists)
+
+- name: The guide was not refreshed
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: the guide grab failed and the existing guide is kept. See
+      `journalctl -u iptv-epg-grab` on {{ inventory_hostname }} (a guide source outage?).
+  when: iptv_grab_now.rc | default(0) != 0
 
 # --- Threadfin config (written before it starts; it reads them only at start) -----------------
 - name: Read Threadfin's settings, login database and source playlist

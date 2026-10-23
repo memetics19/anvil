@@ -18,9 +18,12 @@ caddy_dir: /opt/caddy
 caddy_version: 2.11.7
 caddy_cloudflare_version: v0.2.4
 caddy_xcaddy_version: v0.4.7
-caddy_builder_image: golang:1.26.10-alpine@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca
+# Caddy 2.11.7's go.mod brings golang.org/x/net 0.59 or 0.60 (CVE-2026-78669): xcaddy
+# replaces it with this version.
+caddy_x_net_version: v0.61.0
+caddy_builder_image: golang:1.26.10-alpine@sha256:27f2d3b83cfc5803c8078f8e730af0f7c431bf067afaec8f60a36fb763187cba
 caddy_go_version: go1.26.10
-caddy_base_image: caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+caddy_base_image: caddy:2.11.7-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
 caddy_dockerfile: "{{ lookup('ansible.builtin.template', 'Dockerfile.j2') }}"
 caddy_image: >-
   anvil/caddy:{{ caddy_version }}-cloudflare-{{ caddy_cloudflare_version | regex_replace('^v', '') }}-{{

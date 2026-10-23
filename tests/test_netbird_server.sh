@@ -30,6 +30,7 @@ cat >"$tmp/play.yml" <<PLAY
     - $PWD/ansible/roles/netbird_server/defaults/main.yml
     - $PWD/ansible/roles/netbird_peer/defaults/main.yml
   vars:
+    caddy_image_resolved: anvil/caddy:test
     inventory_hostname: netbird
     site:
       domain: example.com
@@ -118,13 +119,16 @@ has "Caddy: first party CSP for the dashboard" "header_down Content-Security-Pol
 hasnt "Caddy: no vendor domain in the CSP" "netbird.io" "$f"
 
 d=$tmp/docker-compose.yaml
+has "compose: Caddy is the patched build, not upstream's binary" 'image: anvil/caddy:test' "$d"
 has "server API on loopback only" '"127.0.0.1:8089:80"' "$d"
 has "Caddy on the lab address only" '"192.0.2.115:8443:443"' "$d"
 check_ports=$(grep -cE '^\s+- "[0-9.]+:[0-9]+:[0-9]+' "$d")
 [ "$check_ports" = 2 ] && ok "two published ports" || bad "two published ports (got $check_ports)"
 hasnt "no UDP port" "/udp" "$d"
 images=$(grep -cE '^\s+image: .+:[^@]+@sha256:[0-9a-f]{64}$' "$d")
-[ "$images" = 3 ] && ok "three images, tag and digest" || bad "three images, tag and digest (got $images)"
+# The server and the dashboard are pinned by digest. Caddy is the patched local build,
+# whose tag carries a hash of its Dockerfile (asserted above).
+[ "$images" = 2 ] && ok "server and dashboard images, tag and digest" || bad "server and dashboard images, tag and digest (got $images)"
 limits=$(grep -c 'mem_limit:' "$d")
 [ "$limits" = 3 ] && ok "a memory cap on every service" || bad "a memory cap on every service (got $limits)"
 for s in fake-relay-secret FAKEDATASTOREKEY fake-session-key; do

@@ -28,6 +28,7 @@ cat >"$tmp/play.yml" <<PLAY
     inventory_hostname: netbird
     site: {hosts: {netbird: {ip: 192.0.2.5}}}
     pulse_admin_token: test-token
+    caddy_image_resolved: anvil/caddy:test
   vars_files:
     - $PWD/ansible/roles/pulse/defaults/main.yml
   tasks:
@@ -41,6 +42,7 @@ if ansible-playbook -i localhost, -c local "$tmp/play.yml" >"$tmp/render.log" 2>
   bad_ "templates render"; cat "$tmp/render.log"; exit 1; fi
 check "compose: pulse image from release.env, data volume kept" \
   "python3 -c 'import yaml,sys; d=yaml.safe_load(open(\"$tmp/compose.yaml\")); s=d[\"services\"]; assert d[\"name\"]==\"pulse\"; assert s[\"pulse\"][\"image\"].startswith(\"\${PULSE_IMAGE\"); assert \"pulse_data:/data\" in s[\"pulse\"][\"volumes\"]; assert \"pulse_data\" in d[\"volumes\"]; assert s[\"pulse\"][\"environment\"][\"SQLITE_PATH\"]==\"\${SQLITE_PATH:-}\"'"
+check "compose: Caddy is the patched build, not upstream's binary" "grep -q 'image: anvil/caddy:test' '$tmp/compose.yaml'"
 check "compose: no secret value in the compose file" "! grep -q test-token '$tmp/compose.yaml'"
 check ".env: holds the admin token" "grep -qx 'PULSE_ADMIN_TOKEN=test-token' '$tmp/env'"
 check "Caddyfile: docs.* gets the docs site, the rest the status page" \

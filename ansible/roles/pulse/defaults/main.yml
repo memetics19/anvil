@@ -19,7 +19,8 @@ pulse_health_timeout: 90
 # Data copies taken before each upgrade, newest first.
 pulse_backups_keep: 5
 pulse_memory_limit: 256m
-pulse_caddy_image: caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+# Role caddy's patched build, loaded by this role's tasks (caddy_image_resolved).
+pulse_caddy_image: "{{ caddy_image_resolved }}"
 pulse_mkdocs_image: squidfunk/mkdocs-material:9.7.7@sha256:51b87149d227691486b5f08993d28c65ca7e4990010664b697265b8e6fcd5287
 # For the data copies (cp in a throwaway container with the volume mounted).
 pulse_base_image: alpine:3.24@sha256:71e9b7bae160ba167fa17414401b94cbcdaf3c32feeab9298bd794a2a0614c35
