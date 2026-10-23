@@ -1,7 +1,13 @@
 # Managed by Ansible (role apt_repo). Settings for apt-publish.
-REPO_URL={{ ('https://github.com/' ~ apt_repo_github) | quote }}
-RELEASES={{ ('https://github.com/' ~ apt_repo_github ~ '/releases') | quote }}
-PACKAGE={{ apt_repo_package | quote }}
+GITHUB={{ apt_repo_github_url | quote }}
+# owner/repo|packages|checksum file, one source per line
+{% set lines = [] %}
+{% for src in apt_repo_sources %}
+{%   set _ = lines.append(src.repo ~ '|' ~ (src.packages | join(' ')) ~ '|' ~ src.checksums) %}
+{% endfor %}
+SOURCES={{ lines | join('\n') | quote }}
+ORIGIN={{ apt_repo_origin | quote }}
+KEYNAME={{ apt_repo_keyname | quote }}
 ARCHES={{ apt_repo_arches | join(' ') | quote }}
 SUITE={{ apt_repo_suite | quote }}
 COMPONENT={{ apt_repo_component | quote }}
