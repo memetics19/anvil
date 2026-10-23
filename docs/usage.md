@@ -316,6 +316,7 @@ recreate.
 | Container images | `<role>_image` in `ansible/roles/<role>/defaults/main.yml` (pihole, unbound, homepage, socket proxy, vaultwarden, filestash, threadfin, iptv python) | Pinned as `tag@sha256:digest`. Change both. |
 | Caddy | `caddy_version`, `caddy_cloudflare_version`, `caddy_xcaddy_version`, `caddy_go_version`, `caddy_builder_image`, `caddy_base_image` | Builds a new image on `ragnarok` and loads it on `apps`. Read the Go note in the defaults before you change Go. |
 | Vault | `vault_server_version` | Restarts and seals Vault. Use `ARGS="-e vault_server_allow_restart=true"`, then `make vault-unseal`. |
+| cloudflared | `cloudflared_version` | Held at that version. `make vms ARGS="--tags cloudflared"` upgrades one connector at a time and stops if one does not come back ready. |
 | NetBird client | `netbird_peer_version` | The package is held. Bumping this is the upgrade, and it restarts the client. |
 | Pulse | Nothing: `pulse-update` deploys each new release by itself. `pulse_track` pins one | A failed release is rolled back. Images for its Caddy, mkdocs and data copies are `pulse_*_image`. |
 | Self-hosted NetBird | `netbird_server_image`, `netbird_server_dashboard_image`, `netbird_server_caddy_image` | Pinned as `tag@sha256:digest`. Read NetBird's release notes first. `make vm HOST=netbird ARGS="--tags netbird_server"` |

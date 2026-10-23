@@ -19,10 +19,37 @@
 - name: Refresh apt cache before installing
   ansible.builtin.meta: flush_handlers
 
-- name: Install cloudflared
-  ansible.builtin.apt:
+# Held at cloudflared_version: release the hold, install that version (an upgrade or a
+# downgrade), hold it again. A changed package restarts the connector below.
+- name: Installed cloudflared version
+  ansible.builtin.command:
+    argv: [dpkg-query, -W, -f, "${Version}", cloudflared]
+  register: cloudflared_installed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Install cloudflared {{ cloudflared_version }}
+  when: cloudflared_installed.stdout | default('') != cloudflared_version
+  block:
+    - name: Release the hold
+      ansible.builtin.dpkg_selections:
+        name: cloudflared
+        selection: install
+      when: cloudflared_installed.rc == 0
+
+    - name: Install the pinned version
+      ansible.builtin.apt:
+        name: "cloudflared={{ cloudflared_version }}"
+        state: present
+        allow_downgrade: true
+      notify: Restart cloudflared
+
+- name: Hold cloudflared at its version
+  ansible.builtin.dpkg_selections:
     name: cloudflared
-    state: present
+    selection: hold
+  when: not (ansible_check_mode and cloudflared_installed.rc != 0)
 
 # The token is never logged or diffed: every task that holds it has no_log.
 - name: Read the tunnel token from Vault
@@ -42,6 +69,25 @@
     quiet: true
   no_log: true
 
+- name: Token directory (root only)
+  ansible.builtin.file:
+    path: "{{ cloudflared_token_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Token file (root only)
+  ansible.builtin.copy:
+    content: "{{ cloudflared_token }}"
+    dest: "{{ cloudflared_token_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+  notify: Restart cloudflared
+
 - name: Render the unit
   ansible.builtin.set_fact:
     cloudflared_unit: "{{ lookup('ansible.builtin.template', 'cloudflared.service.j2') }}"
@@ -53,8 +99,8 @@
     checksum_algorithm: sha256
   register: cloudflared_unit_stat
 
-# Content and mode are handled apart: the unit holds the token, so it is 0600, and
-# tightening the mode alone must not restart the tunnel.
+# Content and mode are handled apart: tightening the mode alone must not restart the tunnel.
+# The unit used to hold the token, so it stays 0600.
 - name: Unit content (token from Vault)
   ansible.builtin.copy:
     content: "{{ cloudflared_unit }}"
@@ -87,3 +133,26 @@
     name: cloudflared
     enabled: true
     state: started
+
+- name: Apply a new package or token
+  ansible.builtin.meta: flush_handlers
+
+# The play runs one VM at a time and stops on a failure: the next connector is touched
+# only once this one is connected again.
+- name: The connector is ready at Cloudflare's edge
+  ansible.builtin.uri:
+    url: "http://{{ cloudflared_metrics }}/ready"
+  register: cloudflared_ready
+  retries: 30
+  delay: 2
+  until: cloudflared_ready.status == 200
+  when: not ansible_check_mode
+
+- name: The running connector is the pinned version
+  ansible.builtin.command:
+    argv: [cloudflared, --version]
+  register: cloudflared_running
+  changed_when: false
+  failed_when: cloudflared_version not in cloudflared_running.stdout
+  check_mode: false
+  when: not (ansible_check_mode and cloudflared_installed.stdout | default('') != cloudflared_version)

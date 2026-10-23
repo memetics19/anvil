@@ -29,11 +29,19 @@
     - role: guest_base
       tags: [base]
 
-- name: Docker and the Cloudflare tunnel
+- name: Docker
   hosts: guests
   roles:
     - role: docker
       tags: [docker]
+
+# One connector at a time: the next is touched only when this one is back and ready at
+# Cloudflare's edge, so the tunnel's public names stay up. Any failure stops the rest.
+- name: The Cloudflare tunnel connectors
+  hosts: guests
+  serial: 1
+  max_fail_percentage: 0
+  roles:
     - role: cloudflared
       tags: [cloudflared]
 

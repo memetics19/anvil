@@ -7,3 +7,10 @@ cloudflared_unit_path: /etc/systemd/system/cloudflared.service
 cloudflared_vault_mount: kv
 cloudflared_vault_path: "homelab/{{ inventory_hostname }}/cloudflared"
 cloudflared_vault_key: token
+# The connector version on every tunnel VM, installed from Cloudflare's apt repository and
+# held, so the connectors cannot drift apart. Bumping it upgrades one VM at a time.
+cloudflared_version: 2026.10.3
+# The token file the unit reads (--token-file): the token stays out of the process list.
+cloudflared_token_file: /etc/cloudflared/token
+# Local metrics and readiness (/ready answers 200 once the connector is connected).
+cloudflared_metrics: 127.0.0.1:20241
