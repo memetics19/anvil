@@ -18,6 +18,12 @@ pulse_project: pulse
 pulse_update_interval: 10min
 # Seconds a new release has to answer /healthz before it is rolled back.
 pulse_health_timeout: 90
+# Each release image is signed by the repo's release workflow (Sigstore keyless, see
+# Pulse's docs/security.md). pulse-update checks the signature of the pulled digest before
+# it deploys it, and runs that digest. Releases before 3.0.0 are not signed.
+pulse_verify_signature: true
+pulse_signer: '^https://github\.com/memetics19/pulse/\.github/workflows/release\.yml@'
+pulse_cosign_image: ghcr.io/sigstore/cosign/cosign:v3.1.4@sha256:0f06154836d2de34f887a5c273506d52ca43edaa1d9e53e6510fa78a48f69c2d
 # Data copies taken before each upgrade. The newest are kept, also after a failed one.
 pulse_backups_keep: 5
 pulse_memory_limit: 256m

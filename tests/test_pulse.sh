@@ -11,7 +11,8 @@
 #  - the failed tag is skipped on later runs (no restart, no new data copy) until --retry
 #    or a newer tag, and data copies beyond KEEP are dropped after a failure too;
 #  - TRACK=<major> stays on that major, latest moves to a new one;
-#  - TRACK pins a tag; a new main commit rebuilds the docs and drops the old build.
+#  - TRACK pins a tag; a new main commit rebuilds the docs and drops the old build;
+#  - with VERIFY=true a signed image runs by its digest, an unsigned one is not deployed.
 # Needs ansible-playbook, git and python3 with PyYAML.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
@@ -53,6 +54,8 @@ check "compose: passes the setup token from .env" "grep -qx '      PULSE_SETUP_T
 check "Caddyfile: docs.* gets the docs site, the rest the status page" \
   "grep -q 'header_regexp Host ^docs' '$tmp/Caddyfile' && grep -q 'root \* /srv/docs/current' '$tmp/Caddyfile' && grep -q 'reverse_proxy pulse:8080' '$tmp/Caddyfile'"
 check "update.conf: follows one major version by default" "grep -qx 'TRACK=3' '$tmp/update.conf'"
+check "update.conf: checks signatures by default, cosign pinned by digest" \
+  "grep -qx 'VERIFY=true' '$tmp/update.conf' && grep -q '^COSIGN_IMAGE=.*@sha256:' '$tmp/update.conf' && grep -q '^SIGNER=.*memetics19/pulse/' '$tmp/update.conf'"
 
 # --- a fake upstream repo ------------------------------------------------------------------------
 up="$tmp/upstream"
@@ -77,7 +80,14 @@ case "$1 $2" in
   "inspect --format") echo "${FAKE_PREV_IMAGE:-pulse:latest}" ;;
   "image ls") exit 0 ;;
   "pull -q") exit 0 ;;
+  # The digest a tag points at: IMAGE@sha256:fake-<version>.
+  "image inspect") echo "${5%:*}@sha256:fake-${5##*:}"; exit 0 ;;
 esac
+# cosign verify: every image is signed except FAKE_UNSIGNED.
+if [ "$1" = run ] && [[ " $* " == *" verify "* ]]; then
+  [[ -n "${FAKE_UNSIGNED:-}" && " $* " == *" $FAKE_UNSIGNED "* ]] && exit 1
+  exit 0
+fi
 if [ "$1" = run ]; then
   for a in "$@"; do
     case $a in
@@ -138,7 +148,7 @@ chmod 555 "$tmp/mnt"
 mkdir -p "$dir"
 conf="$tmp/test.conf"
 sed -e "s#^REPO=.*#REPO=file://$up#" -e "s#^DIR=.*#DIR=$dir#" -e "s#^COMPOSE=.*#COMPOSE=$bin/compose#" \
-  -e "s#^HEALTH_TIMEOUT=.*#HEALTH_TIMEOUT=6#" -e "s#^KEEP=.*#KEEP=1#" -e "s#^TRACK=.*#TRACK=latest#" \
+  -e "s#^HEALTH_TIMEOUT=.*#HEALTH_TIMEOUT=6#" -e "s#^KEEP=.*#KEEP=1#" -e "s#^TRACK=.*#TRACK=latest#" -e "s#^VERIFY=.*#VERIFY=false#" \
   "$tmp/update.conf" >"$conf"
 upd() { PATH="$bin:$PATH" FAKE_LOG="$log" FAKE_DIR="$dir" FAKE_VOLUME="$vol" PULSE_UPDATE_CONF="$conf" bash "$tmp/pulse-update.sh" "$@" >"$tmp/out" 2>&1; }
 main_sha() { git -C "$up" rev-parse main; }
@@ -212,6 +222,21 @@ if FAKE_PREV_IMAGE=ghcr.io/memetics19/pulse:1.10.0 upd && grep -q "deployed v1.2
 check "a new main commit rebuilds the docs" "[ \"\$(readlink '$dir/docs/current')\" = \"\$(git -C '$up' rev-parse main)\" ]"
 check "the build before the previous one is dropped, the previous kept" "[ -d '$dir/docs/$old_docs' ]"
 check "backups beyond KEEP are dropped" "[ \$(ls '$dir/backups' | wc -l) -le 1 ]"
+
+# 6. signatures
+git -C "$up" tag v1.13.0
+git -C "$up" tag v1.14.0
+sed -i.bak -e 's#^VERIFY=.*#VERIFY=true#' -e 's#^TRACK=.*#TRACK=v1.13.0#' "$conf"
+: >"$log"
+if FAKE_PREV_IMAGE=ghcr.io/memetics19/pulse:1.2.0 upd && grep -q "deployed v1.13.0" "$tmp/out"; then ok "a signed release is deployed"; else bad_ "signed release"; cat "$tmp/out"; fi
+check "the signature is checked against the release workflow and GitHub's issuer" \
+  "grep -q 'verify ghcr.io/memetics19/pulse@sha256:fake-1.13.0 --certificate-identity-regexp .*memetics19/pulse/.*--certificate-oidc-issuer https://token.actions.githubusercontent.com' '$log'"
+check "Pulse runs the digest that was checked" "grep -qx 'PULSE_IMAGE=ghcr.io/memetics19/pulse@sha256:fake-1.13.0' '$dir/release.env'"
+sed -i.bak 's#^TRACK=.*#TRACK=v1.14.0#' "$conf"
+: >"$log"
+if FAKE_UNSIGNED=ghcr.io/memetics19/pulse@sha256:fake-1.14.0 upd; then bad_ "an unsigned release fails the run"; else ok "an unsigned release fails the run"; fi
+check "an unsigned release is never started, and Pulse is not stopped" \
+  "grep -qx 'PULSE_IMAGE=ghcr.io/memetics19/pulse@sha256:fake-1.13.0' '$dir/release.env' && ! grep -q -E 'compose (stop|up)' '$log' && grep -q 'no valid signature' '$tmp/out'"
 
 [ "$fail" = 0 ] && echo "PASS: pulse" || echo "FAIL: pulse"
 exit "$fail"

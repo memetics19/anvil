@@ -7,7 +7,9 @@
 #         backups/. If the new version is not healthy within HEALTH_TIMEOUT seconds, the
 #         previous image and that copy come back, and the tag is recorded in state/failed:
 #         later runs skip it until a newer tag appears or --retry is given. Only the newest
-#         KEEP copies are kept, whether the deploy worked or not.
+#         KEEP copies are kept, whether the deploy worked or not. With VERIFY=true the
+#         pulled image's digest must carry a cosign signature from the repo's release
+#         workflow (SIGNER), and Pulse runs that digest, so it runs what was checked.
 #   docs: the head of DOCS_REF, built with mkdocs into docs/<commit>, then the
 #         docs/current link moves to it in one rename.
 # Usage: pulse-update [--check | --retry]
@@ -87,6 +89,13 @@ volume_copy() { # volume_copy <from> <to>: from and to are /data or /backup/<dir
 }
 
 image_of() { echo "$IMAGE:${1#v}"; }
+# The digest a pulled tag points at, as IMAGE@sha256:...
+digest_of() { docker image inspect --format '{{ '{{' }}index .RepoDigests 0{{ '}}' }}' "$1"; }
+verified() { # verified <IMAGE@digest>: a keyless cosign signature by SIGNER, in the Rekor log
+  docker run --rm "$COSIGN_IMAGE" verify "$1" \
+    --certificate-identity-regexp "$SIGNER" \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
+}
 use_image() { printf 'PULSE_IMAGE=%s\n' "$1" >"$DIR/release.env"; }
 
 # --- app -------------------------------------------------------------------------------------------
@@ -94,7 +103,15 @@ deploy() {
   local tag=$1 stamp backup="" cid prev=""
   # Whatever happens from here, keep only the newest KEEP data copies.
   trap 'prune_backups' EXIT
-  docker pull -q "$(image_of "$tag")" >/dev/null || die "cannot pull $(image_of "$tag")"
+  local ref
+  ref=$(image_of "$tag")
+  docker pull -q "$ref" >/dev/null || die "cannot pull $ref"
+  if [ "$VERIFY" = true ]; then
+    ref=$(digest_of "$ref") && [ -n "$ref" ] || die "no digest for $(image_of "$tag")"
+    # Pulse keeps running: a check that fails (or cannot reach Sigstore) changes nothing.
+    verified "$ref" || die "$ref has no valid signature from $SIGNER, not deployed"
+    log "signature of $ref checked"
+  fi
 
   # The running container's image, whatever put it there: the rollback target.
   cid=$(compose ps -aq pulse | head -n 1) || die "cannot list the project's containers"
@@ -106,7 +123,7 @@ deploy() {
     volume_copy /data "/backup/$backup" || { [ -z "$cid" ] || compose start pulse; die "data backup failed, nothing changed"; }
     log "data copied to $DIR/backups/$backup"
   fi
-  use_image "$(image_of "$tag")"
+  use_image "$ref"
   compose up -d pulse caddy
   if healthy; then
     echo "$tag" >"$DIR/state/version"
