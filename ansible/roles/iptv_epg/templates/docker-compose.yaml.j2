@@ -5,6 +5,6 @@ services:
     container_name: iptv-epg-web
     restart: unless-stopped
     ports:
-      - "{{ iptv_epg_port }}:80"
+      - "{{ site.hosts[inventory_hostname].ip }}:{{ iptv_epg_port }}:80"
     volumes:
       - ./output:/usr/share/nginx/html:ro

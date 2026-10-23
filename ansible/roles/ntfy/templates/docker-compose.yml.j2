@@ -15,5 +15,5 @@ services:
       - ./data/cache:/var/cache/ntfy
       - ./data/lib:/var/lib/ntfy
     ports:
-      - "{{ ntfy_port }}:80"
+      - "{{ site.hosts[inventory_hostname].ip }}:{{ ntfy_port }}:80"
     restart: unless-stopped

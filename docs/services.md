@@ -25,6 +25,10 @@ frigate-notify config restarts only that container.
 The public hostname reaches Frigate through nginx on the VM. Frigate's own login on port
 8971 is the access control. The `admin` password is in Vault.
 
+Frigate's unauthenticated API (5000) is on the VM's loopback only. Mosquitto is not
+published: Frigate and frigate-notify reach it on the compose network. The images are
+pinned by tag and digest in `frigate_stack/defaults/main.yml`.
+
 ## ragnarok
 
 `make vm HOST=ragnarok` runs four compose projects. None of them may live inside the media
@@ -257,7 +261,11 @@ SSH connection and DNS and HTTP checks from the Mac succeed first.
 ufw does not filter ports that Docker publishes. Docker forwards them to the container
 through its own chains, so they never reach ufw's input rules. For those ports the
 `ip:port` binding in the compose file is the boundary. Bind every published port to a
-specific address, never `0.0.0.0`, as Caddy's 80 and 443 are.
+specific address, never `0.0.0.0`, as Caddy's 80 and 443 are. Use the host's lab address
+when the gateway or another host needs the port, and `127.0.0.1` when only the VM itself
+does. A port that only other containers use is not published at all: they reach it by
+service name on the compose network. `tests/test_published_ports.sh` fails on any published
+port in a compose template that names no address.
 
 ### Pi-hole
 

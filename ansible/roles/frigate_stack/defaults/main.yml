@@ -35,3 +35,8 @@ frigate_stack_private_files:
 frigate_stack_homepage_user: homepage
 frigate_stack_api: http://127.0.0.1:5000/api
 frigate_stack_repo_scripts: "{{ playbook_dir }}/../../scripts"
+# Pinned by tag and digest (the digests running on 2026-10-23, so pinning changed no version).
+frigate_stack_frigate_image: ghcr.io/blakeblackshear/frigate:stable@sha256:1724960349dad0bd2ae8ec884171a6fd5755a4dc242a0e66cadbda9c0e85c99b
+frigate_stack_notify_image: ghcr.io/0x2142/frigate-notify:latest@sha256:3831fdff1c87fdf573ac3cebe16d3340a0f7d39dfde82a0ec3e655695280e099
+frigate_stack_mosquitto_image: eclipse-mosquitto:2@sha256:077fe4ff4c49df1e860c98335c77dda08360629e0e2a718147027e4db3eace9d
+frigate_stack_gotify_image: gotify/server:latest@sha256:2ae0e4e689f183137c8247884382fcb174d5a72253ce1897e7e5267090093fc8

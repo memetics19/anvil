@@ -32,6 +32,8 @@ cat >"$tmp/play.yml" <<PLAY
   gather_facts: false
   vars:
     caddy_image_resolved: anvil/caddy:test
+    inventory_hostname: netbird
+    site: {hosts: {netbird: {ip: 192.0.2.5}}}
   vars_files:
     - $PWD/ansible/roles/apt_repo/defaults/main.yml
   tasks:
