@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.2](https://github.com/memetics19/anvil/compare/v0.4.1...v0.4.2) (2026-10-23)
+
+
+### Bug Fixes
+
+* publish container ports on a named address, never all interfaces ([#24](https://github.com/memetics19/anvil/issues/24)) ([61cdf3c](https://github.com/memetics19/anvil/commit/61cdf3c51cdd76560a61f837463e9163c8d913e8)), closes [#19](https://github.com/memetics19/anvil/issues/19)
+* **pulse:** a rollback restores the data instead of wiping it ([#23](https://github.com/memetics19/anvil/issues/23)) ([299cb82](https://github.com/memetics19/anvil/commit/299cb8284a690321965b6b4dca9e5ee8df66a0b9)), closes [#17](https://github.com/memetics19/anvil/issues/17)
+* **pulse:** check the release image's signature before deploying it ([#29](https://github.com/memetics19/anvil/issues/29)) ([e0593e8](https://github.com/memetics19/anvil/commit/e0593e8dca9adfd5d822482d9a673fe841d230a5)), closes [#18](https://github.com/memetics19/anvil/issues/18)
+* **pulse:** pass a generated setup token instead of the unused admin token ([#28](https://github.com/memetics19/anvil/issues/28)) ([fc488bf](https://github.com/memetics19/anvil/commit/fc488bfe7c767fe92f684c064a6c3b819c761400)), closes [#18](https://github.com/memetics19/anvil/issues/18)
+* **pulse:** skip a failed release, prune backups after a failure, follow one major ([#30](https://github.com/memetics19/anvil/issues/30)) ([2f2175f](https://github.com/memetics19/anvil/commit/2f2175fb39cc5e643c407df97ae1a874b5ff8213))
+* **security:** check SSH host keys before sending the become password ([#27](https://github.com/memetics19/anvil/issues/27)) ([d938a55](https://github.com/memetics19/anvil/commit/d938a55526fc3df7286510bad9a6efe91d4b87fd)), closes [#20](https://github.com/memetics19/anvil/issues/20)
+
 ## [0.4.1](https://github.com/memetics19/anvil/compare/v0.4.0...v0.4.1) (2026-10-23)
 
 
