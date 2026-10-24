@@ -75,6 +75,10 @@ jobs:
         run: tests/test_docmost.sh
       - name: Pulse agent role
         run: tests/test_pulse_agent.sh
+      - name: Grow a disk online (loop devices, ext4 and LVM)
+        run: |
+          sudo apt-get install -y -qq gdisk cloud-guest-utils lvm2 parted
+          tests/test_grow_disk.sh
       - name: SSH host keys are checked
         run: tests/test_host_keys.sh
       - name: forget-host removes one host's key

@@ -6,7 +6,7 @@ HVAC_CHECK := py=$$(ansible-playbook --version | sed -n 's/^  python version = .
 	"$${py:-python3}" -c 'import hvac' 2>/dev/null || { \
 	  echo "hvac is missing in the Python that runs Ansible; fix: \"$$py\" -m pip install hvac" >&2; exit 1; }
 
-.PHONY: lint secrets-scan bootstrap-ssh forget-host host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply provision-iso provision provision-clean docs docs-publish cli release-snapshot
+.PHONY: lint secrets-scan bootstrap-ssh forget-host grow-disk host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply provision-iso provision provision-clean docs docs-publish cli release-snapshot
 
 lint:
 	@set -eu -o pipefail; \
@@ -78,6 +78,15 @@ ceph:
 vms:
 	@set -eu -o pipefail; $(ENV); $(HVAC_CHECK); \
 	cd ansible && ansible-playbook playbooks/vms.yml $(ARGS)
+
+# A VM's disk ADD GB bigger while it runs: plan (only that disk may change, and only grow),
+# site dict, apply, then the partition and filesystem inside it. CHECK=1 plans only.
+# make grow-disk HOST=ragnarok ADD=600 [MOUNT=/home] [CHECK=1]
+grow-disk:
+	@set -eu -o pipefail; [ -n "$(HOST)" ] && [ -n "$(ADD)" ] || \
+	  { echo "usage: make grow-disk HOST=<vm> ADD=<GB> [MOUNT=<path>] [CHECK=1]" >&2; exit 1; }; \
+	$(ENV); $(HVAC_CHECK); \
+	scripts/grow-disk.sh $(if $(CHECK),--check) "$(HOST)" "$(ADD)" "$(MOUNT)"
 
 # One VM at a time: make vm HOST=frigate
 vm:

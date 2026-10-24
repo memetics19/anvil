@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Guardrail test for scripts/plan-guard.sh: it must refuse plans that destroy or
-# replace anything, change the identity of ragnarok's disks (the media disk), or that
-# errored or were cut down with -target; and it must accept a clean plan.
+# replace anything, change the identity of ragnarok's disks (the media disk), shrink a
+# protected disk, or that errored or were cut down with -target; and it must accept a clean
+# plan and a protected disk that only grows (anvil increase-disk).
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
@@ -18,6 +19,10 @@ plan delete.json       '.resource_changes[0].change.actions = ["delete"]'
 plan create-del.json   '.resource_changes[0].change.actions = ["create", "delete"]'
 plan other-del.json    '.resource_changes[0].address = "proxmox_sdn_vnet.servers" | .resource_changes[0].change.actions = ["delete"]'
 plan disk-size.json    '.resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0].size = 2048'
+plan disk-shrink.json  '.resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0].size = 512'
+plan disk-size-null.json '.resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0].size = null'
+plan disk-size-gone.json '.resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0] |= del(.size)'
+plan disk-grow-move.json '.resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0].size = 2048 | .resource_changes[0].change.after.disk[0].datastore_id = "other"'
 plan disk-store.json   '.resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0].datastore_id = "other"'
 plan disk-gone.json    '.resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk = []'
 plan disk-unknown.json '.resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk = null'
@@ -55,16 +60,20 @@ expect "$tmp/import.json"       0
 expect "$tmp/delete.json"       1
 expect "$tmp/create-del.json"   1
 expect "$tmp/other-del.json"    1
-expect "$tmp/disk-size.json"    1
+expect "$tmp/disk-size.json"    0
+expect "$tmp/disk-shrink.json"  1
+expect "$tmp/disk-size-null.json" 1
+expect "$tmp/disk-size-gone.json" 1
+expect "$tmp/disk-grow-move.json" 1
 expect "$tmp/disk-store.json"   1
 expect "$tmp/disk-gone.json"    1
 expect "$tmp/disk-unknown.json" 1
 expect "$tmp/disk-tune.json"    0
 expect "$tmp/cpu-only.json"     0
 expect "$tmp/frigate-disk.json" 0
-expect "$tmp/vault-disk.json"   1
-expect "$tmp/apps-disk.json"    1
-expect "$tmp/vw-disk.json"      1
+expect "$tmp/vault-disk.json"   0
+expect "$tmp/apps-disk.json"    0
+expect "$tmp/vw-disk.json"      0
 expect "$tmp/create-vw.json"    0
 expect "$tmp/create-apps.json"  0
 expect "$tmp/create-rag.json"   0

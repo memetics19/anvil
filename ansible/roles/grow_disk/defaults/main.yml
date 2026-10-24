@@ -1,0 +1,6 @@
+# Grow what is at the end of a VM's disk after Proxmox made the disk bigger (make grow-disk,
+# anvil increase-disk). Only with the tag grow_disk: a normal run never does this.
+# The VM's disk (Terraform's scsi0).
+grow_disk_device: /dev/sda
+# For an LVM disk with several logical volumes: the mount point of the one to grow.
+grow_disk_mount: ""

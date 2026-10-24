@@ -40,7 +40,7 @@ resource "proxmox_virtual_environment_vm" "vaultwarden" {
     datastore_id = "local-lvm"
     interface    = "scsi0"
     import_from  = proxmox_virtual_environment_download_file.noble_cloudimg.id
-    size         = 8
+    size         = nonsensitive(try(local.site.hosts.vaultwarden.disk_gb, 8))
     iothread     = true
     discard      = "on"
   }

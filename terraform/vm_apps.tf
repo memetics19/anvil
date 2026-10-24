@@ -42,7 +42,7 @@ resource "proxmox_virtual_environment_vm" "apps" {
     datastore_id = "local-lvm"
     interface    = "scsi0"
     import_from  = proxmox_virtual_environment_download_file.noble_cloudimg.id
-    size         = 16
+    size         = nonsensitive(try(local.site.hosts.apps.disk_gb, 16))
     iothread     = true
     discard      = "on"
   }
