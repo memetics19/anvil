@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.0](https://github.com/memetics19/anvil/compare/v0.5.0...v0.6.0) (2026-10-24)
+
+
+### Features
+
+* **cli:** anvil media to search, download and follow movies and series ([#42](https://github.com/memetics19/anvil/issues/42)) ([e752f2d](https://github.com/memetics19/anvil/commit/e752f2d594fbd393e1301d8eee68662d94b3b29e))
+* grow a VM's disk while it runs (anvil increase-disk, make grow-disk) ([#43](https://github.com/memetics19/anvil/issues/43)) ([8908be4](https://github.com/memetics19/anvil/commit/8908be4693ad9d3736528a413e302ab4dcaf2f31))
+* **nfs_media:** the media library read-only over NFS to a Jellyfin in another home ([#44](https://github.com/memetics19/anvil/issues/44)) ([2a16207](https://github.com/memetics19/anvil/commit/2a162074072e0217966cbea5284175c63f78f43c))
+* **pulse_agent:** host metrics from every lab VM to Pulse ([#40](https://github.com/memetics19/anvil/issues/40)) ([53bbfc4](https://github.com/memetics19/anvil/commit/53bbfc4067084cecc8fc96409f58f46adafb8214))
+
 ## [0.5.0](https://github.com/memetics19/anvil/compare/v0.4.2...v0.5.0) (2026-10-24)
 
 
