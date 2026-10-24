@@ -209,4 +209,18 @@ check "login refused every time: rc 5 after 3 tries" "$?:$(cat "$tmp/log.logins"
 printf 'show vlan\n' | env -u SSHPASS PATH="$tmp/bin:$PATH" scripts/switch-cli.sh admin 192.0.2.24 >/dev/null 2>&1
 check "no SSHPASS: refused" "$?" 2
 
+# A known hosts file that cannot hold the key turns pinning off: accept-new would take any
+# key every time. Each is refused before connecting.
+mkdir "$tmp/ro"
+chmod a-w "$tmp/ro"
+for kh in /dev/null none "$tmp" "$tmp/missing/known_hosts" "$tmp/ro/known_hosts"; do
+  [ "$kh" = "$tmp/ro/known_hosts" ] && [ "$(id -u)" = 0 ] && continue
+  printf 'show vlan\n' | SWITCH_KNOWN_HOSTS=$kh cli --show-only admin 192.0.2.24
+  check "known hosts ${kh/#"$tmp"/<tmp>}: refused, never connects" "$?:$(cat "$tmp/log.logins" 2>/dev/null)" "2:"
+  check "known hosts ${kh/#"$tmp"/<tmp>}: says why" "$(grep -c 'pinning' "$tmp/err")" 1
+done
+chmod u+w "$tmp/ro"
+printf 'show vlan\n' | SWITCH_KNOWN_HOSTS="$tmp/known_hosts" cli --show-only admin 192.0.2.24
+check "known hosts: a new file in a writable directory is fine" "$?" 0
+
 exit "$fail"

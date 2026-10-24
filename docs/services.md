@@ -646,7 +646,7 @@ The enclave's rules (`pve_enclave_segment` in `ansible/roles/pve_enclave/default
 | To the host | NTP and the apt cache on the gateway address, and ping. Vaultwarden also reaches the Ceph S3 gateway (backups). |
 
 No VM reaches the enclave apart from that gateway path. The Proxmox host itself is not
-filtered on its way in: its own connections (Ansible's SSH through `ProxyJump`, the
+filtered on its way in: its own connections (Ansible's SSH jump through the host, the
 operator path) are not forwarded traffic. From the enclave the host offers only NTP, the
 apt cache and (Vaultwarden) the Ceph S3 gateway.
 
@@ -912,7 +912,11 @@ on port 123.
   client, the host. It is 5000 queries per 60 s for that reason ([Pi-hole](#pi-hole)). A
   later improvement: let the VLANs' DNS skip the masquerade, so Pi-hole sees and limits
   each client.
-- IPv6 is not routed for the VLANs. The firewall drops it.
+- IPv6 is not routed for the VLANs or the enclave. Each segment bridge still has a
+  link-local `fe80::` address, and SSH and the Proxmox UI listen on IPv6 too. So the first
+  rule of the segment firewall, in `input` and `forward`, drops every IPv6 packet on a
+  segment's interface, before any other rule. A guest in a segment cannot reach the host
+  over IPv6, even through a rule that has no address in it.
 - Devices on the same VLAN reach each other directly (layer 2). The firewall sees only
   traffic that the host routes. That holds while `net.bridge.bridge-nf-call-iptables` is
   0, as it is today. The Proxmox firewall sets it to 1 when it is turned on. Then bridged

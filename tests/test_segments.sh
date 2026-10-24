@@ -59,6 +59,9 @@ has "one table, replaced in one transaction" "delete table inet segments" "$f"
 has "operators: NetBird peers and the Mac's LAN /32s" "elements = { 100.64.0.7/32, 203.0.113.51/32, 192.0.2.30/32 }" "$f"
 has "no host address is an operator" "elements = { 192.0.2.121, 203.0.113.249, 192.0.2.114, 192.0.2.119, 198.51.100.20, 192.0.2.120, 198.51.100.21, 192.0.2.10, 192.0.2.1, 203.0.113.250 }" "$f"
 check "anti-spoofing comes before established" "$(awk '/chain forward/{f=1} f&&/iifname != "secrets" counter drop/{print "spoof"; } f&&/ct state established/{print "est"; exit}' "$f" | tr '\n' ' ')" "spoof est "
+check "IPv6 on the segment is dropped first, in input and forward" "$(awk '/chain (forward|input)/{c=$2} /meta nfproto ipv6/{print c} /ct state established/{exit}' "$f" | tr '\n' ' ')" "forward forward "
+check "IPv6 drop comes before anti-spoofing and established" "$(awk '/chain forward/{f=1} f&&/nfproto ipv6 iifname/{print "v6"} f&&/iifname != "secrets" counter drop/{print "spoof"} f&&/ct state established/{print "est"; exit}' "$f" | tr '\n' ' ')" "v6 spoof est "
+check "IPv6 from the segment never reaches the host" "$(awk '/chain input/{i=1} i&&/meta nfproto ipv6 iifname { "secrets" } counter drop/{print "v6"} i&&/ct state established/{print "est"; exit}' "$f" | tr '\n' ' ')" "v6 est "
 check "invalid dropped in every segment chain" "$(grep -c 'ct state invalid counter drop' "$f")" "3"
 has "DNS-fed set has a size cap" "size 64" "$f"
 has "the SMTP set is DNS-fed (timeout)" "flags timeout" "$f"
@@ -222,6 +225,9 @@ chain() { awk -v c="chain $1 {" '$0 ~ c {f=1} f {print} f && /^\t}$/ {exit}' "$2
 
 render_vlans "$tmp/v.nft" true
 check "VLANs: render rc" "$?" "0"
+v=$tmp/v.nft
+check "VLANs: IPv6 dropped on every segment, in input and forward" \
+  "$(grep -c 'meta nfproto ipv6 [io]ifname { "secrets", "servers", "cameras", "personal" } counter drop' "$v")" "3"
 v=$tmp/v.nft
 for n in servers cameras personal; do
   has "$n: masqueraded out of its vnet" "oifname != \"$n\" masquerade" "$v"

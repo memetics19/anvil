@@ -1,6 +1,9 @@
 # The secrets enclave's VMs (Terraform sdn.tf, role pve_enclave): no route from the
 # controller is needed, SSH goes through the Proxmox host (an operator path the enclave
 # firewall allows: the host itself). A Mac with the enclave route (README) can drop this.
-ansible_ssh_common_args: "-o ProxyJump=root@{{ site.pve.ip }}"
+# A ProxyCommand, not ProxyJump: OpenSSH does not pass command-line -o options to a jump
+# host, so ansible.cfg's accept-new would not reach it. The jump sets accept-new itself.
+ansible_ssh_common_args: >-
+  -o ProxyCommand="ssh -o StrictHostKeyChecking=accept-new -W %h:%p root@{{ site.pve.ip }}"
 # Role enclave_guest: apt through the host's apt cache, time from the host's chrony.
 enclave_guest_gateway: "{{ site.sdn.enclave.gateway }}"

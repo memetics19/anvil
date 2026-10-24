@@ -82,7 +82,9 @@ The apply goes in this order:
 
 A second run prints nothing to change. An apply with nothing to change sends nothing
 and does not save. The host key is pinned in `build/switch/known_hosts`
-on first use. `tests/test_switch.sh` renders the plan from example output and checks that
+on first use. After a reset of the switch, `make forget-host HOST=switch` drops the old
+key. `switch-cli.sh` refuses a `SWITCH_KNOWN_HOSTS` of `/dev/null`, `none` or a file it
+cannot write, since that would turn pinning off. `tests/test_switch.sh` renders the plan from example output and checks that
 it names only the listed ports. It also runs the script against a fake switch.
 
 ## Rollback

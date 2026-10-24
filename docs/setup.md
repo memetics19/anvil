@@ -57,8 +57,22 @@ again:
 make forget-host HOST=frigate
 ```
 
-The enclave VMs are reached through the Proxmox host, so the Proxmox host's key must be
-known first. The switch's key is kept in `build/switch/known_hosts`.
+`HOST` must be exactly one inventory host. A group such as `guests`, a pattern or an
+unknown name is refused. The target prints each key it removed, or says that no key was
+stored. It stops on any `ssh-keygen` error.
+
+The switch's key is kept in `build/switch/known_hosts`, the file `scripts/switch-cli.sh`
+reads. `make forget-host HOST=switch` removes it from there, under the switch's address
+`site.network.switch_ip`. `switch-cli.sh` refuses a `SWITCH_KNOWN_HOSTS` of `/dev/null`,
+`none` or a file it cannot write, because ssh would then accept any key every time.
+
+The enclave VMs are reached through the Proxmox host. OpenSSH does not pass command-line
+`-o` options to a `ProxyJump` host, so the accept-new setting in `ansible.cfg` would not
+reach that hop. `group_vars/enclave.yml` uses a `ProxyCommand` instead. It runs
+`ssh -o StrictHostKeyChecking=accept-new -W %h:%p` to the Proxmox host, so the jump checks
+the host's key the same way. After `make forget-host HOST=pve` and a rebuild, the next
+enclave play records the new key of the Proxmox host on the jump. A changed key still
+stops the run.
 
 ## Keychain items
 
