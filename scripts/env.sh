@@ -56,14 +56,20 @@ _hl_main() {
   # Away from home (on the VPN) the route to Vault's enclave address does not exist, but
   # the gateway does: vault.<gateway domain>, with a public certificate. When the enclave
   # address does not answer in 2 seconds and the gateway does, use the gateway.
+  # A parent that already chose the gateway (make, then a script that sources this again)
+  # passes the choice on: no second probe, no repeated note.
   _hl_gw=
-  if [ -z "${HOMELAB_VAULT_ADDR:-}" ] && [ -n "$VAULT_IP" ] && [ -n "$_hl_kc" ] &&
+  if [ -n "${HOMELAB_VAULT_VIA_GATEWAY:-}" ] && [ -z "${HOMELAB_VAULT_ADDR:-}" ]; then
+    export VAULT_ADDR="https://vault.$HOMELAB_VAULT_VIA_GATEWAY" VAULT_CACERT="$HOMELAB_VAULT_VIA_CACERT"
+    _hl_gw=$HOMELAB_VAULT_VIA_GATEWAY
+  elif [ -z "${HOMELAB_VAULT_ADDR:-}" ] && [ -n "$VAULT_IP" ] && [ -n "$_hl_kc" ] &&
     [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 --cacert "$VAULT_CACERT" "$VAULT_ADDR/v1/sys/health" 2>/dev/null)" = 000 ]; then
     _hl_gw="$(printf '%s' "$_hl_kc" | jq -r '((.gateway.subdomain // "") | tostring | if . == "" then "" else . + "." end) + (.domain // "")' 2>/dev/null)" || _hl_gw=
     for _hl_v in /etc/ssl/cert.pem /etc/ssl/certs/ca-certificates.crt; do
       if [ -n "$_hl_gw" ] && [ "$_hl_gw" != "." ] && [ -f "$_hl_v" ] &&
         [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 4 --cacert "$_hl_v" "https://vault.$_hl_gw/v1/sys/health" 2>/dev/null)" != 000 ]; then
         export VAULT_ADDR="https://vault.$_hl_gw" VAULT_CACERT="$_hl_v"
+        export HOMELAB_VAULT_VIA_GATEWAY="$_hl_gw" HOMELAB_VAULT_VIA_CACERT="$_hl_v"
         echo "env.sh: Vault's enclave address does not answer (away from home?): using the gateway, vault.<gateway domain>" >&2
         break
       fi
@@ -96,7 +102,9 @@ _hl_main() {
         jq -c '.data.data.site | select(type == "object")' 2>/dev/null)" || _hl_v=
       if [ -n "$_hl_v" ]; then
         export TF_VAR_site_json="$_hl_v" HOMELAB_SITE_USED=vault
-        if [ -n "$_hl_kc" ] && [ "$(printf '%s' "$_hl_v" | jq -S -c . | shasum -a 256)" != "$(printf '%s' "$_hl_kc" | jq -S -c . | shasum -a 256)" ]; then
+        if [ -z "${HOMELAB_STALE_WARNED:-}" ] && [ -n "$_hl_kc" ] && [ "$(printf '%s' "$_hl_v" | jq -S -c . | shasum -a 256)" != "$(printf '%s' "$_hl_kc" | jq -S -c . | shasum -a 256)" ]; then
+          # Once per run: make and the scripts it starts source this file again.
+          export HOMELAB_STALE_WARNED=1
           echo "env.sh: warning: the Keychain bootstrap copy (site-bootstrap) is stale; Vault is used. Refresh it: scripts/site-to-keychain.sh --yes" >&2
         fi
       else

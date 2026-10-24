@@ -31,13 +31,14 @@ source scripts/env.sh >/dev/null
 site=${TF_VAR_site_json:-}
 [ -n "$site" ] || die "no site dict: scripts/env.sh could not load it"
 grep -qs "resource \"proxmox_virtual_environment_vm\" \"$vm\"" terraform/*.tf ||
-  die "$vm is not a VM Terraform manages (terraform/*.tf)"
+  die "$vm is not a VM Terraform manages. These are: $(sed -n 's/^resource "proxmox_virtual_environment_vm" "\([a-z0-9_-]*\)".*/\1/p' terraform/*.tf | sort | tr '\n' ' ')"
 vmid=$(jq -r --arg v "$vm" '.hosts[$v].vmid // empty' <<<"$site")
 [ -n "$vmid" ] || die "site.hosts.$vm has no vmid"
 
 # The size Proxmox has now, in GB (scsi0, for example size=1T or size=500G).
-raw=$(ssh -n -o BatchMode=yes "root@$PVE_IP" "qm config $vmid" |
-  awk -F'size=' '/^scsi0:/ { split($2, a, ","); print a[1] }')
+conf=$(ssh -n -o BatchMode=yes -o ConnectTimeout=10 "root@$PVE_IP" "qm config $vmid") ||
+  die "cannot reach the Proxmox host over SSH. Away from home on the VPN, a lab address alias left on the Wi-Fi hides the VPN's route (docs/cli.md, No route to host on macOS)"
+raw=$(awk -F'size=' '/^scsi0:/ { split($2, a, ","); print a[1] }' <<<"$conf")
 case $raw in
   *T) cur=$(( ${raw%T} * 1024 )) ;;
   *G) cur=${raw%G} ;;
