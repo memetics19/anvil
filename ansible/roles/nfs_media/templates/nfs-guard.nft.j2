@@ -1,0 +1,13 @@
+#!/usr/sbin/nft -f
+# Managed by anvil (ansible/roles/nfs_media). NFS (and rpcbind) only from the allowed
+# NetBird clients, on the NetBird interface. One table, replaced in one transaction.
+table inet anvil_nfs_guard
+delete table inet anvil_nfs_guard
+table inet anvil_nfs_guard {
+	chain input {
+		type filter hook input priority filter; policy accept;
+		meta l4proto { tcp, udp } th dport { 111, 2049 } iifname != "{{ nfs_media_interface }}" iifname != "lo" counter drop
+		meta l4proto { tcp, udp } th dport { 111, 2049 } iifname "{{ nfs_media_interface }}" ip saddr != { {{ nfs_media_clients | join(', ') }} } counter drop
+		meta l4proto { tcp, udp } th dport 111 iifname "{{ nfs_media_interface }}" counter drop
+	}
+}

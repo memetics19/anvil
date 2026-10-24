@@ -127,6 +127,40 @@ On a Vega OS Fire TV, open the web TV page in Silk. On Fire OS with sideloading,
 playlist URL in TiviMate (Add playlist, Enter URL) or in VLC for Fire (Browse, New
 favorite). VLC shows no guide.
 
+### Media over NFS (Jellyfin in another home)
+
+`make vm HOST=ragnarok ARGS="--tags nfs_media"` puts ragnarok on NetBird cloud as a plain
+peer (role `netbird_peer`, no routes) and serves `movies` and `tv` from the media library
+over NFSv4, read-only (role `nfs_media`). `downloads` is not shared.
+
+- Only NFSv4 over TCP (port 2049). No NFSv3, no UDP, and rpcbind is not reachable over
+  NetBird.
+- Each client reads as the library's owner (`all_squash`, uid 1000) and can change
+  nothing.
+- A firewall table (`anvil_nfs_guard`, loaded at boot before the NFS server) drops NFS and
+  rpcbind everywhere but the NetBird interface, and there from everyone but the clients
+  in `site.nfs.clients`. The lab network cannot mount the library either.
+
+Before the first run:
+
+1. In the NetBird cloud dashboard, create a setup key for ragnarok and store it in Vault:
+   `vault kv put -mount=kv homelab/ragnarok/netbird setup_key=-` (paste it, then Ctrl-D).
+2. Put the other home's Jellyfin machine on NetBird cloud, and add its NetBird IP to the
+   site dict as `site.nfs.clients: [<ip>]`.
+3. In the dashboard, a policy that lets only that machine reach ragnarok on TCP 2049.
+
+On the Jellyfin machine (Linux), mount it read-only:
+
+```sh
+sudo mkdir -p /mnt/media/movies /mnt/media/tv
+echo "<ragnarok's NetBird IP>:/home/ubuntu/media/movies /mnt/media/movies nfs4 ro,_netdev,nofail,soft,timeo=150 0 0
+<ragnarok's NetBird IP>:/home/ubuntu/media/tv /mnt/media/tv nfs4 ro,_netdev,nofail,soft,timeo=150 0 0" |
+  sudo tee -a /etc/fstab
+sudo mount -a
+```
+
+Then add `/mnt/media/movies` and `/mnt/media/tv` as libraries in Jellyfin.
+
 ## netbird
 
 `make vm HOST=netbird` runs the "Netbird workloads" play. This VM is the emergency VPN

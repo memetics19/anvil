@@ -1,0 +1,5 @@
+# Managed by anvil (ansible/roles/nfs_media): read-only, NetBird clients only.
+{% for path in nfs_media_exports %}
+{{ path }} {% for c in nfs_media_clients %}{{ c }}(ro,all_squash,anonuid={{ nfs_media_anon_uid }},anongid={{ nfs_media_anon_gid }},no_subtree_check,sec=sys,secure){{ ' ' if not loop.last else '' }}{% endfor %}
+
+{% endfor %}

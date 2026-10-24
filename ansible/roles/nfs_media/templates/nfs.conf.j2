@@ -1,0 +1,10 @@
+# Managed by anvil (ansible/roles/nfs_media): NFSv4 only, so one TCP port (2049) and no
+# rpcbind or mountd ports for clients.
+[nfsd]
+vers3=n
+vers4=y
+vers4.0=n
+vers4.1=y
+vers4.2=y
+udp=n
+tcp=y
