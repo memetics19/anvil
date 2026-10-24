@@ -15,6 +15,7 @@ Placeholders: `<apps-address>` (the `apps` VM's lab address), `<apps-home-addres
 | `make lint` | `terraform fmt -check`, tflint, yamllint and ansible-lint. Needs no secrets. |
 | `make secrets-scan` | gitleaks over the git history and the working tree (tracked and untracked files, not ignored ones). Needs no secrets. |
 | `make bootstrap-ssh` | Installs `~/.ssh/id_ed25519.pub` on the Proxmox host and the adopted guests, with passwords from the Keychain. |
+| `make grow-disk HOST=<vm> ADD=<GB>` | Grows a VM's disk by ADD GB while it runs: Terraform (only that disk may change, and only grow), the site dict, then the partition and filesystem inside the VM. `CHECK=1` plans only, `MOUNT=` names the LVM volume. `anvil increase-disk` wraps it. |
 | `make forget-host HOST=<name>` | Drops one host's stored SSH host key after you rebuilt it on purpose, so the next run records the new key. Prints what it removed. `HOST=switch` drops the key in `build/switch/known_hosts`. |
 | `make host` | Proxmox host base: repositories, packages, time, `/etc/hosts`, the Terraform API token, storage content types, and the Homepage token (`--tags homepage`). |
 | `make host-network` | Proxmox `/etc/network/interfaces`, with a timed rollback. |

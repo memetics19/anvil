@@ -5,8 +5,9 @@
 #   - errored, or is not marked complete (`complete` is false for -target plans and
 #     deferred actions; a missing key also fails), so it may not show everything;
 #   - has a `delete` action on any resource (covers destroy and replace);
-#   - changes which storage backs a protected VM's disks (interface, datastore, size,
-#     path, format or source image), or makes them unknown. Protected: any
+#   - changes which storage backs a protected VM's disks (interface, datastore, path,
+#     format or source image), makes a disk smaller, or makes them unknown. A disk may
+#     only grow: that keeps every byte (anvil increase-disk). Protected: any
 #     proxmox_virtual_environment_vm named ragnarok (its disk holds
 #     the media library), vault (it holds secrets), apps or vaultwarden (Vaultwarden's data), at any
 #     module path. Tuning options (discard, iothread, cache, ...)
@@ -40,12 +41,18 @@ fi
 
 # shellcheck disable=SC2016  # $t and $n are jq variables
 disks=$(q -r --arg t "$protected_type" --argjson n "$protected_names" '
-  def ident: [ (. // [])[] | {interface, datastore_id, size, path_in_datastore,
+  def ident: [ (. // [])[] | {interface, datastore_id, path_in_datastore,
                               file_format, file_id, import_from} ] | sort_by(.interface);
+  # Size per interface. A size that is unknown in the plan is null, which sorts below
+  # every number, so it counts as a shrink.
+  def sizes: [ (. // [])[] | {key: .interface, value: .size} ] | from_entries;
+  def shrinks($b; $a): [ ($b | sizes) as $x | ($a | sizes) as $y | $x | keys[]
+                         | select(($y[.] // null) == null or $y[.] < $x[.]) ] | length > 0;
   .resource_changes // [] | .[]
   | select(.type == $t and (.name as $x | $n | index($x)))
   | select(.change.actions | index("update"))   # an existing VM only: a pure create is fine
   | select(((.change.before.disk // null) | ident) != ((.change.after.disk // null) | ident)
+           or shrinks(.change.before.disk; .change.after.disk)
            or (.change.after == null) or (.change.after.disk == null))
   | .address')
 if [ -n "$disks" ]; then

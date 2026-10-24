@@ -40,7 +40,7 @@ resource "proxmox_virtual_environment_vm" "frigate" {
   disk {
     datastore_id = "local-lvm"
     interface    = "scsi0"
-    size         = 500
+    size         = nonsensitive(try(local.site.hosts.frigate.disk_gb, 500))
     iothread     = true
     discard      = "on"
   }
@@ -107,7 +107,7 @@ resource "proxmox_virtual_environment_vm" "netbird" {
   disk {
     datastore_id = "local-lvm"
     interface    = "scsi0"
-    size         = 42
+    size         = nonsensitive(try(local.site.hosts.netbird.disk_gb, 42))
     iothread     = true
     discard      = "on"
   }
@@ -175,7 +175,7 @@ resource "proxmox_virtual_environment_vm" "ragnarok" {
   disk {
     datastore_id = "local-lvm"
     interface    = "scsi0"
-    size         = 1024
+    size         = nonsensitive(try(local.site.hosts.ragnarok.disk_gb, 1024))
     iothread     = true
     discard      = "on"
   }

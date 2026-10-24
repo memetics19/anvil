@@ -321,6 +321,32 @@ anvil provision pve2 --install       # the dry run, the name typed, then the ins
 `-e provision_media_ready=true` for manual media. The guard in `scripts/provision.py`
 still refuses the current server. See [provisioning.md](provisioning.md).
 
+## anvil increase-disk
+
+Makes a VM's disk bigger while it runs. Nothing stops and nothing is unmounted.
+
+```sh
+anvil increase-disk ragnarok 600gb            # adds 600 GB (1 TB = 1024 GB)
+anvil increase-disk frigate 100 --mount /home # LVM with several volumes: name the one
+```
+
+It runs `make grow-disk HOST=<vm> ADD=<GB> CHECK=1` first and shows the result, asks, then
+runs it for real (`--yes` skips the question):
+
+1. The current size comes from Proxmox. Terraform plans the new size, held in memory
+   only. The plan must pass `scripts/plan-guard.sh` and change nothing but that disk's
+   size. The guard refuses a disk that gets smaller.
+2. The new size goes into the site dict in Vault (`site.hosts.<vm>.disk_gb`), and the
+   saved plan is applied. Proxmox grows the disk of the running VM. The provider never
+   reboots a VM (`reboot_after_update = false`).
+3. The role `grow_disk` grows the partition that ends last on the disk (`growpart`), then
+   its filesystem (`resize2fs`, `xfs_growfs`), or for LVM the physical volume and the
+   logical volume with its filesystem (`lvextend -r`). All of it while mounted.
+
+Only the partition at the end of the disk can grow this way. On ragnarok that is `/home`,
+which holds the media library. Its root partition (`/`) sits before it and cannot grow
+online.
+
 ## anvil media
 
 Movies and series, through Radarr and Sonarr on the media VM. They search the indexers

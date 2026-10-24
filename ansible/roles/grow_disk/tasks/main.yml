@@ -1,0 +1,36 @@
+# Grow the partition at the end of the disk and what is on it, online. The script
+# (files/grow-disk.sh, run from the role) never shrinks or creates anything, and a second run changes nothing.
+- name: The growpart tool (cloud-guest-utils)
+  ansible.builtin.apt:
+    name: cloud-guest-utils
+    state: present
+
+- name: Space before
+  ansible.builtin.command:
+    argv: [lsblk, -o, "NAME,SIZE,FSTYPE,MOUNTPOINTS", "{{ grow_disk_device }}"]
+  register: grow_disk_before
+  changed_when: false
+  check_mode: false
+
+# Run straight from the role, nothing installed. In check mode the script itself runs
+# with --check, which only reads, so it runs then too.
+- name: Grow the end of the disk
+  ansible.builtin.script:
+    cmd: >-
+      grow-disk.sh {{ '--check' if ansible_check_mode else '' }} {{ grow_disk_device | quote }}
+      {{ grow_disk_mount | quote if grow_disk_mount else '' }}
+    executable: /bin/bash
+  register: grow_disk_run
+  changed_when: "'would run' in grow_disk_run.stdout or 'already reaches the end' not in grow_disk_run.stdout"
+  check_mode: false
+
+- name: Space after
+  ansible.builtin.command:
+    argv: [df, -h, "--output=source,size,used,avail,pcent,target", -x, tmpfs, -x, overlay, -x, devtmpfs]
+  register: grow_disk_after
+  changed_when: false
+  check_mode: false
+
+- name: Report
+  ansible.builtin.debug:
+    msg: "{{ grow_disk_before.stdout_lines + [''] + grow_disk_run.stdout_lines + [''] + grow_disk_after.stdout_lines }}"
