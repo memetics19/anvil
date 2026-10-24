@@ -73,14 +73,24 @@ func tildePath(getenv func(string) string, p string) string {
 }
 
 // repoRoot finds the repo: ANVIL_REPO, else the current directory upwards, else the copy
-// anvil fetch made. Without any, the error says how to get one.
+// anvil fetch made. Without any, at a terminal it offers to fetch that copy now (what a
+// packaged install needs once). Elsewhere the error says how to get one.
 func (a *app) repoRoot() (string, error) {
 	root, err := findRoot(a.cwd, a.getenv("ANVIL_REPO"))
 	if !errors.Is(err, errNoRepo) {
 		return root, err
 	}
-	if d := dataRepo(a.getenv); isRepoRoot(d) {
+	d := dataRepo(a.getenv)
+	if isRepoRoot(d) {
 		return d, nil
+	}
+	if a.tty && !a.fetchOffered {
+		a.fetchOffered = true
+		fmt.Fprintf(a.stdout, "anvil keeps a copy of its repo (the scripts, Ansible and Terraform it runs) in %s,\n"+
+			"and there is none yet.\n", tildePath(a.getenv, d))
+		if askYesDefault(a.stdin, a.stdout, "Fetch it now?") && cmdFetch(a, nil) == 0 && isRepoRoot(d) {
+			return d, nil
+		}
 	}
 	return "", fmt.Errorf("no anvil repo found: not inside a checkout, ANVIL_REPO is unset, and %s is empty.\n"+
 		"Run anvil fetch to clone it there (then anvil doctor), cd into a checkout, or set ANVIL_REPO",

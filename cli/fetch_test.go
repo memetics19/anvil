@@ -161,3 +161,37 @@ func TestNoRepoSaysHowToGetOne(t *testing.T) {
 		}
 	}
 }
+
+func TestNoRepoAtATerminalOffersToFetch(t *testing.T) {
+	r := newRemoteLab(t)
+	r.cwd(t.TempDir())
+	r.tty = true
+	if code := r.run("\n", "backup", "--dry-run"); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, r.output())
+	}
+	if !isRepoRoot(r.clone()) {
+		t.Fatal("the repo was not fetched")
+	}
+	out := r.output()
+	for _, want := range []string{"there is none yet", "Fetch it now? [Y/n]", "anvil fetch: cloning"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	// The next command finds it without asking again.
+	if code := r.run("", "backup", "--dry-run"); code != 0 || strings.Contains(r.output(), "Fetch it now?") {
+		t.Errorf("second run: exit %d:\n%s", code, r.output())
+	}
+}
+
+func TestNoRepoAtATerminalNoFetchesNothing(t *testing.T) {
+	r := newRemoteLab(t)
+	r.cwd(t.TempDir())
+	r.tty = true
+	if code := r.run("n\n", "backup", "--dry-run"); code != 1 || !strings.Contains(r.output(), "Run anvil fetch") {
+		t.Fatalf("exit %d:\n%s", code, r.output())
+	}
+	if _, err := os.Stat(r.clone()); !os.IsNotExist(err) {
+		t.Error("declining still fetched the repo")
+	}
+}
