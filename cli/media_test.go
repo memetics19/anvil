@@ -301,3 +301,15 @@ func TestMediaEnvErrorIsShown(t *testing.T) {
 		t.Errorf("exit %d, stderr %q", code, l.err.String())
 	}
 }
+
+func TestMediaVaultUnreachableHint(t *testing.T) {
+	l := newTestLab(t)
+	old := mediaEnv
+	mediaEnv = func(*app) (mediaConfig, error) {
+		return mediaConfig{}, errors.New("site-source: cannot read kv/homelab/site: Vault (Keychain vault-ip) is unreachable or returned an error.")
+	}
+	t.Cleanup(func() { mediaEnv = old })
+	if code := l.run("", "media", "status"); code != 1 || !strings.Contains(l.err.String(), "Vault must answer: be at home or on the VPN") {
+		t.Errorf("exit %d, stderr %q", code, l.err.String())
+	}
+}

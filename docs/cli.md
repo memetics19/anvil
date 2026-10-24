@@ -417,6 +417,12 @@ message has both hints. The fix:
 When the message names the network or the VPN instead, the host did not answer at all.
 Check that you are on the home or lab network, or connected to the VPN.
 
+Away from home, a lab address added by hand to the Wi-Fi interface (an alias, used at
+home to reach the lab directly) breaks the VPN route: the alias's
+route is more specific and points into the wrong network. `route -n get <lab address>`
+then names the Wi-Fi interface, not the VPN's. Remove the alias while away:
+`sudo ifconfig en0 -alias <alias address>`.
+
 ## Exit codes
 
 | Code | Meaning |
