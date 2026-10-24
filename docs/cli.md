@@ -321,6 +321,29 @@ anvil provision pve2 --install       # the dry run, the name typed, then the ins
 `-e provision_media_ready=true` for manual media. The guard in `scripts/provision.py`
 still refuses the current server. See [provisioning.md](provisioning.md).
 
+## anvil media
+
+Movies and series, through Radarr and Sonarr on the media VM. They search the indexers
+(through Prowlarr) and hand each download to qBittorrent.
+
+```sh
+anvil media search interstellar          # what matches, and what is already in the library
+anvil media get interstellar             # asks which match, adds it, starts the download
+anvil media get "the expanse" --tv       # a series: every season, missing episodes searched
+anvil media get dune --pick 1 --quality Ultra-HD
+anvil media status                       # downloads in progress, what is still searched for,
+anvil media status --watch               # the free space, refreshed every 10 seconds
+```
+
+`get` uses the quality profile `HD-1080p` unless `--quality` names another, and the first
+root folder. For a movie or series that is already added but has no file, it starts a
+new search instead of adding it twice. Under 15 GB of free space it asks first (`--yes`
+skips the question).
+
+The addresses come from `site.services` (`radarr`, `sonarr`) and the API keys from
+`kv/homelab/<vm>/arr`, through `scripts/media-env.sh`. anvil reads them from a pipe and
+never prints them. The script refuses to write the keys to a terminal.
+
 ## Shell completion
 
 ```sh
