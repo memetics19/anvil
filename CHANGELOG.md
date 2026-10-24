@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0](https://github.com/memetics19/anvil/compare/v0.4.2...v0.5.0) (2026-10-24)
+
+
+### Features
+
+* **docmost:** a wiki on frigate, reached at wiki.&lt;gateway domain&gt; ([#39](https://github.com/memetics19/anvil/issues/39)) ([96ada61](https://github.com/memetics19/anvil/commit/96ada614c4399be7033abc8860e3c828785097a0))
+
+
+### Bug Fixes
+
+* forget-host removes exactly one host's key, close guard test blind spots ([#37](https://github.com/memetics19/anvil/issues/37)) ([6063dd9](https://github.com/memetics19/anvil/commit/6063dd9f6540c5ee4ba7a741a52b81b822c05f3a)), closes [#34](https://github.com/memetics19/anvil/issues/34)
+* **pulse:** hold after a failed restore, wait for a slow first install, read the right Vault mount ([#38](https://github.com/memetics19/anvil/issues/38)) ([0979c52](https://github.com/memetics19/anvil/commit/0979c52cb246e7a7ff5b33b54ee99ee67a887252)), closes [#33](https://github.com/memetics19/anvil/issues/33)
+* **security:** drop IPv6 on segment interfaces before any other rule ([#35](https://github.com/memetics19/anvil/issues/35)) ([494d737](https://github.com/memetics19/anvil/commit/494d73743104ece891045f7e5323417f28a11b8f)), closes [#31](https://github.com/memetics19/anvil/issues/31)
+
 ## [0.4.2](https://github.com/memetics19/anvil/compare/v0.4.1...v0.4.2) (2026-10-23)
 
 
