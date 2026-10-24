@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/memetics19/anvil/compare/v0.6.1...v0.6.2) (2026-10-24)
+
+
+### Bug Fixes
+
+* **cli:** say why anvil media cannot load its settings, quiet git on fetch ([#48](https://github.com/memetics19/anvil/issues/48)) ([78d748d](https://github.com/memetics19/anvil/commit/78d748d7cdd6cdef992fd71a3e0861a37f195a45))
+
 ## [0.6.1](https://github.com/memetics19/anvil/compare/v0.6.0...v0.6.1) (2026-10-24)
 
 
