@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/memetics19/anvil/compare/v0.6.2...v0.6.3) (2026-10-24)
+
+
+### Bug Fixes
+
+* reach Vault, Radarr and Sonarr through the gateway when away from home ([#50](https://github.com/memetics19/anvil/issues/50)) ([0e1307b](https://github.com/memetics19/anvil/commit/0e1307bc1169044286ce851eba71c577c4c94534))
+
 ## [0.6.2](https://github.com/memetics19/anvil/compare/v0.6.1...v0.6.2) (2026-10-24)
 
 
