@@ -1,0 +1,67 @@
+# Managed by anvil (ansible/roles/docmost); changes here are overwritten on the next run.
+services:
+  docmost:
+    image: {{ docmost_image }}
+    container_name: docmost
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    env_file: docmost.env
+    environment:
+      APP_URL: "{{ docmost_url }}"
+      PORT: "3000"
+      REDIS_URL: redis://redis:6379
+      STORAGE_DRIVER: local
+      DISABLE_TELEMETRY: "true"
+    ports:
+      # The gateway reaches it on the lab address. Nothing else is published.
+      - "{{ docmost_bind_ip }}:{{ docmost_port }}:3000"
+    volumes:
+      - storage:/app/data/storage
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: {{ docmost_mem_limit }}
+    memswap_limit: {{ docmost_mem_limit }}
+    restart: unless-stopped
+
+  db:
+    image: {{ docmost_postgres_image }}
+    container_name: docmost-db
+    env_file: db.env
+    environment:
+      POSTGRES_DB: docmost
+      POSTGRES_USER: docmost
+    volumes:
+      - db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "docmost", "-d", "docmost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: {{ docmost_postgres_mem_limit }}
+    memswap_limit: {{ docmost_postgres_mem_limit }}
+    restart: unless-stopped
+
+  redis:
+    image: {{ docmost_redis_image }}
+    container_name: docmost-redis
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: {{ docmost_redis_mem_limit }}
+    memswap_limit: {{ docmost_redis_mem_limit }}
+    restart: unless-stopped
+
+volumes:
+  storage:
+  db:
+  redis:

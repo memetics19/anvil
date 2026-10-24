@@ -1,0 +1,112 @@
+# Docmost on frigate: two secrets from Vault (generated once by this role), two env files
+# (mode 600, one per container), and the compose project. Docmost migrates its own database
+# at start. The first person to open the site creates the workspace and its admin account:
+# do that right after the first run.
+
+# --- secrets -------------------------------------------------------------------------------
+- name: Key digests stored in Vault
+  ansible.builtin.command:
+    argv: ["{{ docmost_repo_scripts }}/vault-kv-digests.sh", "{{ docmost_vault_path }}", "{{ docmost_vault_mount }}"]
+  delegate_to: localhost
+  become: false
+  register: docmost_vault_digests
+  changed_when: false
+  check_mode: false
+
+- name: Keys stored in Vault
+  ansible.builtin.set_fact:
+    docmost_vault_keys: "{{ docmost_vault_digests.stdout_lines | map('split', ' ') | map('first') | list }}"
+
+# Each value goes from openssl into a shell variable and on to Vault as JSON on stdin (printf
+# is a builtin): never on a command line, displayed or logged. A path with keys gets patch,
+# which keeps the others. An empty path gets put -cas=0, which refuses to replace anything.
+- name: Generate the missing secrets into Vault
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail; s=;
+      for k in {{ docmost_missing | join(' ') }}; do
+      s="$s${s:+,}\"$k\":\"$(openssl rand -hex 32)\""; done;
+      printf '{{ "{%s}" }}' "$s" |
+      vault kv {{ 'patch' if docmost_vault_keys else 'put -cas=0' }} -mount={{ docmost_vault_mount }}
+      {{ docmost_vault_path }} - >/dev/null
+    executable: /bin/bash
+  vars:
+    docmost_missing: "{{ ['app_secret', 'db_password'] | difference(docmost_vault_keys) }}"
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  when: docmost_missing | length > 0
+
+# In check mode secrets that would be generated above do not exist yet.
+- name: Docmost secrets are readable
+  ansible.builtin.set_fact:
+    docmost_have_secrets: "{{ not (ansible_check_mode and (['app_secret', 'db_password'] | difference(docmost_vault_keys))) }}"
+
+- name: Read the Docmost secrets from Vault
+  ansible.builtin.set_fact:
+    docmost_secrets: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', docmost_vault_path,
+                engine_mount_point=docmost_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
+  no_log: true
+  when: docmost_have_secrets | bool
+
+- name: The secrets are present
+  ansible.builtin.assert:
+    that:
+      - docmost_secrets.app_secret | default('') | length >= 32
+      - docmost_secrets.db_password | default('') | length >= 32
+    fail_msg: "kv/{{ docmost_vault_path }}: app_secret or db_password is missing or shorter than 32 characters"
+    quiet: true
+  when: docmost_have_secrets | bool
+
+# --- files ---------------------------------------------------------------------------------
+- name: Project directory
+  ansible.builtin.file:
+    path: "{{ docmost_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The compose config hash includes the env files, so a changed secret recreates its container.
+- name: Env files (secrets from Vault)
+  ansible.builtin.copy:
+    content: "{{ lookup('ansible.builtin.template', item + '.j2') }}"
+    dest: "{{ docmost_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: [docmost.env, db.env]
+  no_log: true
+  diff: false
+  when: docmost_have_secrets | bool
+
+- name: Are the env files there
+  ansible.builtin.stat:
+    path: "{{ docmost_dir }}/docmost.env"
+  register: docmost_env_stat
+
+# --- compose -------------------------------------------------------------------------------
+- name: Docmost compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ docmost_dir }}"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+    # Holds the VM's address and the gateway name: keep them out of --diff output.
+    compose_project_diff: false
+  # In check mode on a new host the env files the compose file names do not exist yet.
+  when: docmost_env_stat.stat.exists or not ansible_check_mode
+
+- name: Docmost answers
+  ansible.builtin.uri:
+    url: "http://{{ docmost_bind_ip }}:{{ docmost_port }}/api/health"
+    status_code: 200
+  register: docmost_health
+  retries: 40
+  delay: 3
+  until: docmost_health.status == 200
+  when: not ansible_check_mode
