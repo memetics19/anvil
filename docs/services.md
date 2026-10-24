@@ -272,6 +272,18 @@ sudo pulse-compose up -d pulse caddy
 curl -fsS http://localhost/healthz && sudo rm /opt/pulse/state/hold
 ```
 
+- `pulse_agent` (every VM in `guests` and `apps_servers`): host metrics for Pulse. Run it
+  with `make vms ARGS="--tags pulse_agent"`. The role adds the homelab apt repository from
+  the netbird VM's lab address (port 8082). It installs its key only if the fingerprint is
+  `E583 2FE9 662C 5F40 21A7 D4A5 2DE3 AD52 8436 9C1D`. Then it installs `pulse-agent`, and
+  registers the VM in Pulse under its inventory name, through `pulse.<gateway-domain>` with
+  the API key in `kv/homelab/netbird/pulse` (`api_key`, scope `agents:write`). Pulse shows
+  the agent token once: it goes straight into `kv/homelab/<vm>/pulse-agent` (`token`) and
+  into `/etc/pulse-agent/token` (mode 640, group `pulse-agent`). The agent reports every
+  30 seconds to Pulse over the lab network. The netbird VM uses loopback. The enclave VMs
+  get no agent: they have no route to Pulse, and opening one would weaken the enclave.
+  To register a VM again, delete its agent in Pulse's admin and its token in Vault, then
+  run the role.
 - `apt_repo`: the signed apt repository for the .deb packages of anvil and pulse
   (`apt_repo_sources`), in `/opt/apt-repo`,
   served read-only by Caddy on port 8082 (compose project `apt-repo`), which the Cloudflare

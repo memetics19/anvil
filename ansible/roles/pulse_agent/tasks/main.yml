@@ -1,0 +1,181 @@
+# Pulse agent: the homelab apt repository (key checked against its fingerprint), the
+# pulse-agent package, the VM registered as an agent in Pulse (its token straight into
+# Vault), the token file and the service.
+
+# --- apt repository ------------------------------------------------------------------------
+- name: Keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Download the repository key
+  ansible.builtin.get_url:
+    url: "{{ pulse_agent_apt_url }}/key.gpg"
+    dest: "{{ pulse_agent_keyring }}.download"
+    mode: "0644"
+    force: true
+  changed_when: false
+  check_mode: false
+
+- name: Fingerprint of the downloaded key
+  ansible.builtin.command:
+    argv: [gpg, --show-keys, --with-colons, "{{ pulse_agent_keyring }}.download"]
+  register: pulse_agent_key_info
+  changed_when: false
+  check_mode: false
+
+# A key with another fingerprint (a swapped file, or someone answering on that address)
+# is never installed.
+- name: The key is the repository's signing key
+  ansible.builtin.assert:
+    that: >-
+      pulse_agent_key_info.stdout_lines | select('match', '^fpr:') | map('split', ':')
+      | map(attribute=9) | list == [pulse_agent_apt_signer_fpr]
+    fail_msg: "{{ pulse_agent_apt_url }}/key.gpg is not the key {{ pulse_agent_apt_signer_fpr }}"
+    quiet: true
+
+- name: Repository key
+  ansible.builtin.copy:
+    src: "{{ pulse_agent_keyring }}.download"
+    dest: "{{ pulse_agent_keyring }}"
+    remote_src: true
+    mode: "0644"
+
+- name: Repository source
+  ansible.builtin.template:
+    src: anvil.sources.j2
+    dest: /etc/apt/sources.list.d/anvil.sources
+    mode: "0644"
+  register: pulse_agent_source
+
+- name: The agent package
+  ansible.builtin.apt:
+    name: pulse-agent
+    state: present
+    update_cache: "{{ pulse_agent_source is changed }}"
+  register: pulse_agent_package
+  notify: Restart pulse-agent
+  # In check mode a new source is not written, so apt does not know the package yet.
+  when: not (ansible_check_mode and pulse_agent_source is changed)
+
+# Check mode on a VM without the agent: the package's files (/etc/pulse-agent, the unit)
+# are not there yet, so the steps that need them are only reported.
+- name: Is this a preview of a first install
+  ansible.builtin.set_fact:
+    pulse_agent_preview: "{{ ansible_check_mode and (pulse_agent_package is skipped or pulse_agent_package is changed) }}"
+
+# --- registration and token ----------------------------------------------------------------
+- name: Key digests stored in Vault
+  ansible.builtin.command:
+    argv: ["{{ pulse_agent_repo_scripts }}/vault-kv-digests.sh", "{{ pulse_agent_vault_path }}", "{{ pulse_agent_vault_mount }}"]
+  delegate_to: localhost
+  become: false
+  register: pulse_agent_vault_digests
+  changed_when: false
+  check_mode: false
+
+- name: Is the token in Vault
+  ansible.builtin.set_fact:
+    pulse_agent_have_token: "{{ 'token' in (pulse_agent_vault_digests.stdout_lines | map('split', ' ') | map('first') | list) }}"
+
+- name: Register the agent in Pulse
+  when: not pulse_agent_have_token | bool
+  delegate_to: localhost
+  become: false
+  block:
+    - name: The Pulse API key
+      ansible.builtin.set_fact:
+        pulse_agent_api_key: >-
+          {{ lookup('community.hashi_vault.vault_kv2_get', pulse_agent_api_vault_path,
+                    engine_mount_point=pulse_agent_vault_mount,
+                    url=lookup('env', 'VAULT_ADDR'),
+                    token=lookup('env', 'VAULT_TOKEN'),
+                    ca_cert=lookup('env', 'VAULT_CACERT')).secret.api_key }}
+      no_log: true
+
+    - name: Agents Pulse knows
+      ansible.builtin.uri:
+        url: "{{ pulse_agent_api_url }}/api/agents"
+        headers: {Authorization: "Bearer {{ pulse_agent_api_key }}"}
+        return_content: true
+      register: pulse_agent_list
+      check_mode: false
+      no_log: true
+
+    # Pulse shows a token once. Without it in Vault, an agent of the same name cannot be
+    # used again: remove it in Pulse's admin (Agents) and run again.
+    - name: No agent of this name without its token
+      ansible.builtin.assert:
+        that: inventory_hostname not in (pulse_agent_list.json | map(attribute='name') | list)
+        fail_msg: >-
+          Pulse has an agent named {{ inventory_hostname }} but kv/{{ pulse_agent_vault_path }} has
+          no token. Delete that agent in Pulse's admin, then run the role again.
+        quiet: true
+
+    - name: Create the agent
+      ansible.builtin.uri:
+        url: "{{ pulse_agent_api_url }}/api/agents"
+        method: POST
+        headers: {Authorization: "Bearer {{ pulse_agent_api_key }}"}
+        body_format: json
+        body: {name: "{{ inventory_hostname }}", host_label: "{{ inventory_hostname }}"}
+        status_code: 201
+        return_content: true
+      register: pulse_agent_created
+      no_log: true
+      when: not ansible_check_mode
+
+    # The token goes from the response to Vault on stdin: never on a command line or in a log.
+    - name: The token into Vault
+      ansible.builtin.command:
+        # A path with other keys gets patch, which keeps them. An empty path gets put -cas=0.
+        cmd: >-
+          vault kv {{ 'patch' if pulse_agent_vault_digests.stdout_lines else 'put -cas=0' }}
+          -mount={{ pulse_agent_vault_mount }} {{ pulse_agent_vault_path }} token=-
+        stdin: "{{ pulse_agent_created.json.token }}"
+        stdin_add_newline: false
+      changed_when: true
+      no_log: true
+      when: not ansible_check_mode
+
+- name: Read the agent token from Vault
+  ansible.builtin.set_fact:
+    pulse_agent_token: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', pulse_agent_vault_path,
+                engine_mount_point=pulse_agent_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret.token }}
+  no_log: true
+  when: pulse_agent_have_token | bool or not ansible_check_mode
+
+# --- config and service --------------------------------------------------------------------
+- name: Agent token (only the service's group can read it)
+  ansible.builtin.copy:
+    content: "{{ pulse_agent_token }}"
+    dest: /etc/pulse-agent/token
+    owner: root
+    group: pulse-agent
+    mode: "0640"
+  no_log: true
+  diff: false
+  notify: Restart pulse-agent
+  when: pulse_agent_token is defined and not pulse_agent_preview | bool
+
+- name: Agent settings
+  ansible.builtin.template:
+    src: agent.env.j2
+    dest: /etc/pulse-agent/agent.env
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart pulse-agent
+  when: not pulse_agent_preview | bool
+
+- name: The agent runs and starts at boot
+  ansible.builtin.systemd_service:
+    name: pulse-agent
+    enabled: true
+    state: started
+  when: pulse_agent_token is defined and not pulse_agent_preview | bool

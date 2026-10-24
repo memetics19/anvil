@@ -1,0 +1,6 @@
+# Managed by anvil (ansible/roles/pulse_agent): the homelab's signed apt repository.
+Types: deb
+URIs: {{ pulse_agent_apt_url }}
+Suites: stable
+Components: main
+Signed-By: {{ pulse_agent_keyring }}
