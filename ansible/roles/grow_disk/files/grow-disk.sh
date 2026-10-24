@@ -26,7 +26,10 @@ rescan=/sys/class/block/$(basename "$disk")/device/rescan
 part=$(sfdisk -d "$disk" | awk -F'[ :=,]+' '/^\/dev\// { if ($3 + $5 > end) { end = $3 + $5; p = $1 } } END { print p }')
 [ -n "$part" ] || die "$disk has no partition"
 num=$(cat "/sys/class/block/$(basename "$part")/partition")
-fstype=$(lsblk -no FSTYPE "$part" | head -n 1)
+# blkid reads the signature on the device itself. lsblk would also list what is inside it
+# (an LVM volume's ext4) and depends on udev having caught up.
+fstype_of() { blkid -o value -s TYPE "$1" 2>/dev/null || true; }
+fstype=$(fstype_of "$part")
 log "$disk: the last partition is $part ($fstype)"
 
 # growpart --dry-run: 0 when it would grow, 1 with NOCHANGE when the partition already
@@ -82,7 +85,7 @@ case $fstype in
       run lvextend -r -l +100%FREE "$lv"
     else
       log "$vg has no free space left: $lv is already as big as it can be"
-      grow_fs "$lv" "$(lsblk -no FSTYPE "$lv")"
+      grow_fs "$lv" "$(fstype_of "$lv")"
     fi ;;
   *) die "$part is ${fstype:-not formatted}: only ext4, xfs and LVM are grown" ;;
 esac
