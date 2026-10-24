@@ -24,8 +24,16 @@ jobs:
           pipx install ansible-lint
           pipx install ansible-core
           curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz | sudo tar -xz -C /usr/local/bin gitleaks
-      - name: Install Ansible collections
-        run: ansible-galaxy collection install --force -r ansible/requirements.yml -p "$ANSIBLE_COLLECTIONS_PATH"
+      # The pinned collections, cached by requirements.yml: a Galaxy outage does not stop CI.
+      - name: Cache Ansible collections
+        id: collections
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ${{ env.ANSIBLE_COLLECTIONS_PATH }}
+          key: ansible-collections-${{ hashFiles('ansible/requirements.yml') }}
+      - name: Install Ansible collections (Galaxy, else GitHub at the same tags)
+        if: steps.collections.outputs.cache-hit != 'true'
+        run: scripts/install-collections.sh "$ANSIBLE_COLLECTIONS_PATH"
       - name: Lint and secret scan
         run: make lint secrets-scan
       - name: Guardrail test

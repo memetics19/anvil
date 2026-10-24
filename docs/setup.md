@@ -29,7 +29,7 @@ The rest is unpinned. Install everything with:
 brew tap hashicorp/tap
 brew install hashicorp/tap/terraform hashicorp/tap/vault ansible ansible-lint \
   gitleaks tflint yamllint jq pre-commit sshpass awscli age
-ansible-galaxy collection install -r ansible/requirements.yml -p ~/.ansible/collections
+scripts/install-collections.sh ~/.ansible/collections   # Galaxy, else GitHub at the pinned tags
 # hvac for the community.hashi_vault lookup, in the Python that runs Ansible
 "$(brew --prefix ansible)/libexec/bin/python" -m pip install hvac
 pre-commit install
