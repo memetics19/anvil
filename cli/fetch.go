@@ -101,7 +101,7 @@ func cmdFetch(a *app, args []string) int {
 		fmt.Fprintf(a.stderr, "anvil fetch: %v\n", err)
 		return 1
 	}
-	if _, c := a.git(dir, true, "clone", "--quiet", "--branch", ref, a.cloneURL(), "."); c != 0 || !isRepoRoot(dir) {
+	if _, c := a.git(dir, true, "-c", "advice.detachedHead=false", "clone", "--quiet", "--branch", ref, a.cloneURL(), "."); c != 0 || !isRepoRoot(dir) {
 		// The directory was empty or missing before: nothing of the user's is removed.
 		os.RemoveAll(dir)
 		fmt.Fprintf(a.stderr, "anvil fetch: the clone of %s at %s failed\n", a.cloneURL(), ref)

@@ -64,8 +64,9 @@ var mediaEnv = func(a *app) (mediaConfig, error) {
 	cmd.Dir, cmd.Env = root, a.env
 	cmd.Stdout, cmd.Stderr = &out, &errOut
 	if err := cmd.Run(); err != nil {
-		// stderr carries only the reason, never a key.
-		msg := strings.TrimSpace(lastLine(errOut.String()))
+		// stderr carries only reasons (env.sh warnings, media-env's own), never a key: the
+		// keys go to stdout only.
+		msg := strings.TrimSpace(errOut.String())
 		if msg == "" {
 			msg = err.Error()
 		}
@@ -76,11 +77,6 @@ var mediaEnv = func(a *app) (mediaConfig, error) {
 		return mediaConfig{}, fmt.Errorf("scripts/media-env.sh did not print the endpoints: %v", err)
 	}
 	return c, nil
-}
-
-func lastLine(s string) string {
-	lines := strings.Split(strings.TrimSpace(s), "\n")
-	return lines[len(lines)-1]
 }
 
 // arr is one Radarr or Sonarr instance.
@@ -261,6 +257,10 @@ func cmdMedia(a *app, args []string) int {
 	cfg, err := mediaEnv(a)
 	if err != nil {
 		fmt.Fprintf(a.stderr, "anvil: media: %v\n", err)
+		if msg := err.Error(); strings.Contains(msg, "Vault") && strings.Contains(msg, "unreachable") {
+			fmt.Fprintln(a.stderr, "anvil media reads the API keys from Vault, so Vault must answer: be at home or on the VPN\n"+
+				"(docs/cli.md, No route to host on macOS, also covers a lab alias left on the Wi-Fi).")
+		}
 		return 1
 	}
 	client := &http.Client{Timeout: 30 * time.Second}

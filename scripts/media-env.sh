@@ -8,7 +8,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=/dev/null  # env.sh ends in a top-level return
 source scripts/env.sh >/dev/null
-[ -n "${TF_VAR_site_json:-}" ] || { echo "media-env: no site dict: scripts/env.sh could not load it" >&2; exit 1; }
+if [ -z "${TF_VAR_site_json:-}" ]; then
+  # site-source.sh says why (Vault unreachable, no Keychain copy, ...). It prints no values.
+  reason=$(scripts/site-source.sh 2>&1 >/dev/null | tail -n 1)
+  echo "media-env: no site dict${reason:+: $reason}" >&2
+  exit 1
+fi
 [ -t 1 ] && { echo "media-env: refusing to print API keys to a terminal: pipe the output" >&2; exit 2; }
 
 # The VM that runs Radarr: its site.services entry names the address as hosts.<vm>.ip.
