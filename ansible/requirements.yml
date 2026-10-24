@@ -1,5 +1,12 @@
+# Pinned, so every run (CI and the operator machine) gets the same code. Bump a version on
+# purpose. scripts/install-collections.sh falls back to each collection's GitHub repo at
+# the same tag when Galaxy is down.
 collections:
   - name: community.general
+    version: 13.5.0
   - name: community.hashi_vault
+    version: 7.1.0
   - name: community.crypto
+    version: 3.5.1
   - name: ansible.posix
+    version: 2.2.2

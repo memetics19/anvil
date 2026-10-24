@@ -82,7 +82,7 @@ func (a *app) prepareCollections(r *runner) bool {
 	if !r.dryRun {
 		fmt.Fprintf(a.stderr, "anvil: %d Ansible collection(s) missing, installing ansible/requirements.yml\n", missing)
 	}
-	if code := r.shell("ansible-galaxy collection install -r ansible/requirements.yml -p ~/.ansible/collections", nil); code != 0 {
+	if code := r.shell("bash scripts/install-collections.sh ~/.ansible/collections", nil); code != 0 {
 		fmt.Fprintf(a.stderr, "anvil: installing the Ansible collections failed (exit %d)\n", code)
 		return false
 	}
