@@ -58,7 +58,7 @@ func newTestLab(t *testing.T) *testLab {
 	l.write("scripts/env.sh", "export PVE_IP="+sentinelSource+"\n")
 	// An initialised checkout, so commands do not run tf-init first (TestPrepareTerraform).
 	l.write(tfState, "{}")
-	for _, p := range []string{playbookPath, inventoryPath} {
+	for _, p := range []string{playbookPath, inventoryPath, "scripts/install-collections.sh", "ansible/requirements.yml"} {
 		b, err := os.ReadFile(filepath.Join(realRoot, p))
 		if err != nil {
 			t.Fatal(err)
