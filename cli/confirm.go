@@ -16,6 +16,18 @@ func readLine(in *bufio.Reader) (string, bool) {
 	return strings.TrimSpace(line), true
 }
 
+// askYesDefault asks a Y/n question: an empty answer is a yes, end of input a no.
+func askYesDefault(in *bufio.Reader, out io.Writer, question string) bool {
+	fmt.Fprintf(out, "%s [Y/n] ", question)
+	ans, ok := readLine(in)
+	if !ok {
+		fmt.Fprintln(out)
+		return false
+	}
+	ans = strings.ToLower(ans)
+	return ans == "" || ans == "y" || ans == "yes"
+}
+
 // askYesNo asks a y/N question. Only y or yes is a yes, and end of input is a no.
 func askYesNo(in *bufio.Reader, out io.Writer, question string) bool {
 	fmt.Fprintf(out, "%s [y/N] ", question)

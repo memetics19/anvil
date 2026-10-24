@@ -46,6 +46,8 @@ type app struct {
 	cmd string
 	// tty: stdout is a terminal. noColor: --no-color was given. See color.go.
 	tty, noColor bool
+	// fetchOffered: repoRoot asked once to fetch the repo in this run (repo.go).
+	fetchOffered bool
 	// preflight and status are anvil up's first and last steps. nil: the real ones.
 	// Tests replace them.
 	preflight func(a *app, r *runner) bool

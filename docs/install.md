@@ -113,7 +113,8 @@ anvil fetch     # clones the repo into ~/.local/share/anvil/repo
 anvil doctor    # tools, Keychain items, Vault and versions, read-only
 ```
 
-A release binary fetches its own tag, for example `v0.1.0`. After an upgrade,
+Any command offers to do the fetch the first time, so `anvil media status` right after the
+install works too. A release binary fetches its own tag, for example `v0.1.0`. After an upgrade,
 `anvil update` moves that copy to the new tag. The copy is in your home because runs
 write `build/` and `terraform/.terraform` inside it. [cli.md](cli.md#anvil-fetch-and-anvil-update)
 has the details.

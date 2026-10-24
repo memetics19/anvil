@@ -29,6 +29,8 @@ platform:
 
 `anvil` finds the repo by walking up from the current directory. From anywhere else, set
 `ANVIL_REPO` to the repo's path. Without either, it uses the copy that `anvil fetch` made.
+When there is no copy yet, a command run at a terminal offers to fetch it first and then
+carries on. In a script it stops with an error instead.
 
 ## anvil fetch and anvil update
 
