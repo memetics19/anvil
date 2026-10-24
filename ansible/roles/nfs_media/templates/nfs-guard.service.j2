@@ -1,0 +1,14 @@
+# Managed by anvil (ansible/roles/nfs_media): the NFS guard, loaded before the NFS server.
+[Unit]
+Description=anvil: NFS only from the allowed NetBird clients
+Before=nfs-server.service
+Wants=network-pre.target
+After=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f {{ nfs_media_guard_file }}
+
+[Install]
+WantedBy=multi-user.target

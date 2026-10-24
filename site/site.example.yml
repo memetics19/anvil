@@ -138,6 +138,9 @@ site:
   # The Homepage dashboard (role homepage) lists every enabled entry except its own (home);
   # optional fields title, group, icon, description and widget override its catalog
   # (ansible/roles/homepage/defaults/main.yml; `widget: none` turns a widget off).
+  # Machines that may mount the media library over NFS (role nfs_media): their NetBird IPs.
+  nfs:
+    clients: [100.64.0.7]
   services:
     - {name: pve, host: pve.ip, port: 8006, scheme: https, insecure_upstream: true, websocket: true}
     - {name: vault, host: hosts.vault.ip, port: 8200, scheme: https, upstream_ca: vault}

@@ -3,7 +3,7 @@
 # node_exporter (group node_exporter in the inventory).
 # Run: make vms ARGS="--check --diff"   or one VM: make vm HOST=frigate
 # Tags: base, docker, cloudflared, node_exporter, frigate, docmost, arr, iptv_epg, filestash, iptv,
-# netbird_peer, netbird_home, redis, ntfy, pulse, pulse_agent, grow_disk (only when named), apt_repo, netbird_server, pihole, homepage,
+# netbird_peer, netbird_home, redis, ntfy, pulse, pulse_agent, grow_disk (only when named), nfs_media, apt_repo, netbird_server, pihole, homepage,
 # vaultwarden, caddy, docs, firewall. The tag docs alone copies only the static sites Caddy
 # serves (make docs-publish). The tag homepage alone also runs the pieces other roles keep
 # for the dashboard (ARR API keys into Vault on ragnarok, the Frigate viewer login, Pi-hole's
@@ -50,6 +50,20 @@
   roles:
     - role: node_exporter
       tags: [node_exporter]
+
+# The media library for a Jellyfin in another home: ragnarok joins NetBird cloud as a plain
+# peer (no routes), then serves movies and tv read-only over NFSv4 to the NetBird IPs in
+# site.nfs.clients. The NetBird policy for it is set in the NetBird dashboard. Nothing runs
+# until site.nfs.clients lists a client, so a full run is not stopped before the setup.
+- name: Media over NFS
+  hosts: ragnarok
+  roles:
+    - role: netbird_peer
+      tags: [netbird_peer, nfs_media]
+      when: site.nfs.clients | default([]) | length > 0
+    - role: nfs_media
+      tags: [nfs_media]
+      when: site.nfs.clients | default([]) | length > 0
 
 # After Proxmox made a VM's disk bigger (make grow-disk): grow the partition and filesystem
 # at its end, online. Only with --tags grow_disk.

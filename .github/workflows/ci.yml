@@ -83,6 +83,10 @@ jobs:
         run: tests/test_docmost.sh
       - name: Pulse agent role
         run: tests/test_pulse_agent.sh
+      - name: NFS media role
+        run: |
+          sudo apt-get install -y -qq nftables
+          tests/test_nfs_media.sh
       - name: Grow a disk online (loop devices, ext4 and LVM)
         run: |
           sudo apt-get install -y -qq gdisk cloud-guest-utils lvm2 parted

@@ -1,0 +1,103 @@
+# NFS for the media library: read-only, NFSv4 only, NetBird clients only. The firewall
+# table is loaded before the export exists, and the library itself is only ever read: the
+# role checks that the folders are there and never creates or changes them.
+
+- name: The allowed clients are set (site.nfs.clients, their NetBird IPs)
+  ansible.builtin.assert:
+    that:
+      - nfs_media_clients | length > 0
+      - nfs_media_clients | select('match', '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$') | list | length == nfs_media_clients | length
+    fail_msg: "site.nfs.clients must list the NetBird IPs of the machines that may mount the library"
+    quiet: true
+
+- name: The NetBird interface is up (role netbird_peer)
+  ansible.builtin.stat:
+    path: "/sys/class/net/{{ nfs_media_interface }}"
+  register: nfs_media_iface
+
+- name: NetBird runs here
+  ansible.builtin.assert:
+    that: nfs_media_iface.stat.exists or ansible_check_mode
+    fail_msg: "{{ nfs_media_interface }} is missing: enrol this VM in NetBird first (make vm HOST={{ inventory_hostname }} ARGS=\"--tags netbird_peer\")"
+    quiet: true
+
+- name: The library folders exist (read only, never created here)
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: "{{ nfs_media_exports }}"
+  register: nfs_media_paths
+
+- name: Every exported folder is there
+  ansible.builtin.assert:
+    that: nfs_media_paths.results | rejectattr('stat.isdir', 'defined') | list | length == 0
+          and nfs_media_paths.results | selectattr('stat.isdir', 'defined') | rejectattr('stat.isdir') | list | length == 0
+    fail_msg: "a folder in nfs_media_exports is missing or not a directory"
+    quiet: true
+
+# --- firewall first ------------------------------------------------------------------------
+- name: Config directory
+  ansible.builtin.file:
+    path: "{{ nfs_media_guard_file | dirname }}"
+    state: directory
+    mode: "0755"
+
+- name: NFS guard (checked with nft -c before it is installed)
+  ansible.builtin.template:
+    src: nfs-guard.nft.j2
+    dest: "{{ nfs_media_guard_file }}"
+    mode: "0644"
+    validate: nft -c -f %s
+  register: nfs_media_guard
+
+- name: Boot unit for the guard
+  ansible.builtin.template:
+    src: nfs-guard.service.j2
+    dest: /etc/systemd/system/nfs-guard.service
+    mode: "0644"
+  register: nfs_media_guard_unit
+
+- name: The guard is loaded at boot
+  ansible.builtin.systemd_service:
+    name: nfs-guard
+    enabled: true
+    daemon_reload: "{{ nfs_media_guard_unit is changed }}"
+
+- name: Is the guard loaded
+  ansible.builtin.command:
+    argv: [nft, list, table, inet, anvil_nfs_guard]
+  register: nfs_media_guard_live
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Load the guard (one transaction)
+  ansible.builtin.command:
+    argv: [nft, -f, "{{ nfs_media_guard_file }}"]
+  changed_when: true
+  when: nfs_media_guard is changed or nfs_media_guard_live.rc != 0
+
+# --- the NFS server ------------------------------------------------------------------------
+- name: The NFS server
+  ansible.builtin.apt:
+    name: nfs-kernel-server
+    state: present
+
+- name: NFSv4 only
+  ansible.builtin.template:
+    src: nfs.conf.j2
+    dest: /etc/nfs.conf.d/anvil.conf
+    mode: "0644"
+  notify: Restart nfs-server
+
+- name: Read-only exports for the NetBird clients
+  ansible.builtin.template:
+    src: media.exports.j2
+    dest: /etc/exports.d/anvil-media.exports
+    mode: "0644"
+  notify: Reexport
+
+- name: The NFS server runs
+  ansible.builtin.systemd_service:
+    name: nfs-server
+    enabled: true
+    state: started

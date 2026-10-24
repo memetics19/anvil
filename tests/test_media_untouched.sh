@@ -3,7 +3,8 @@
 # scripts/ (check_tree), run on the real tree (must pass) and on fixtures that each add one
 # violation (each must fail, with the expected rule):
 #   media-path   the media path appears only as bind-mount sources in the ARR compose
-#                template, and as the protected path in compose_project's defaults
+#                template, as the protected path in compose_project's defaults, and as plain
+#                list entries (the read-only NFS exports) in nfs_media's defaults
 #   home-dir     the VM user's home directory (the media library's parent) appears, and
 #                any variable that resolves to it is defined, only in arr_stack/defaults and
 #                used only in arr_stack/defaults and arr_stack/tasks
@@ -20,6 +21,7 @@ home="/home/""ubuntu"
 media="$home/media"
 template="ansible/roles/arr_stack/templates/docker-compose.yaml.j2"
 protected="ansible/roles/compose_project/defaults/main.yml"
+nfs_defaults="ansible/roles/nfs_media/defaults/main.yml"
 arr_defaults="ansible/roles/arr_stack/defaults/main.yml"
 arr_tasks="ansible/roles/arr_stack/tasks/main.yml"
 
@@ -77,6 +79,10 @@ check_tree() {
       "$root/$protected")
         hits=$(grep -nF -- "$media" "$f" | grep -vE "^[0-9]+:  - ${media}$")
         [ -z "$hits" ] || { echo "FAIL media-path: $protected, not the protected-path entry: $hits"; rc=1; } ;;
+      "$root/$nfs_defaults")
+        # Read-only exports (tests/test_nfs_media.sh checks every export is ro, squashed).
+        hits=$(grep -nF -- "$media" "$f" | grep -vE "^[0-9]+:  - ${media}/[A-Za-z0-9._-]+$")
+        [ -z "$hits" ] || { echo "FAIL media-path: $nfs_defaults, not an export entry: $hits"; rc=1; } ;;
       *) echo "FAIL media-path: ${f#"$root"/}"; rc=1 ;;
     esac
   done < <(grep -rlF --exclude-dir=.ansible --exclude-dir=.collections -- "$media" "$root/ansible" "$root/scripts")
@@ -166,6 +172,8 @@ x=ansible/roles/zz_fixture/tasks/main.yml
 case_ media-in-defaults media-path ansible/roles/zz_fixture/defaults/main.yml "zz_path: $media/tv"
 case_ media-in-template media-path "$template" "    working_dir: $media"
 case_ media-in-script media-path scripts/zz.sh "ls $media"
+case_ media-nfs-variable media-path "$nfs_defaults" "nfs_media_scratch: $media/tmp"
+case_ media-nfs-whole media-path "$nfs_defaults" "  - $media"
 case_ home-var-elsewhere home-dir ansible/roles/zz_fixture/defaults/main.yml "zz_dir: $home"
 case_ arr-dir-elsewhere home-dir "$x" "- name: x
   ansible.builtin.debug:

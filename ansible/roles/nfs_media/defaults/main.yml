@@ -1,0 +1,15 @@
+# The media library over NFS, read-only, to machines in another home over NetBird (their
+# Jellyfin reads it). Only NFSv4 (one TCP port, 2049). Only the NetBird interface, and only
+# the client addresses in site.nfs.clients (their NetBird IPs, Vault) may reach it. The
+# NetBird policy that lets those peers reach this one is set in the NetBird dashboard.
+nfs_media_exports:
+  - /home/ubuntu/media/movies
+  - /home/ubuntu/media/tv
+nfs_media_clients: "{{ site.nfs.clients | default([]) }}"
+# The NetBird cloud client's interface on this VM (role netbird_peer).
+nfs_media_interface: wt0
+# Every client reads as the library's owner (the VM's first user): read-only, so it can
+# read every file whatever its mode, and change nothing.
+nfs_media_anon_uid: 1000
+nfs_media_anon_gid: 1000
+nfs_media_guard_file: /etc/anvil/nfs-guard.nft
