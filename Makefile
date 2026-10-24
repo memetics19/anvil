@@ -32,15 +32,12 @@ bootstrap-ssh:
 	cd ansible && ansible-playbook playbooks/bootstrap-ssh.yml $(ARGS)
 
 # After a deliberate rebuild of a host: drop its old SSH host key, so the next run records
-# the new one. Ansible refuses a changed key otherwise. make forget-host HOST=frigate
+# the new one. Ansible refuses a changed key otherwise. One inventory host only. The switch's
+# key is in build/switch/known_hosts (scripts/forget-host.sh). make forget-host HOST=frigate
 forget-host:
 	@set -eu -o pipefail; [ -n "$(HOST)" ] || { echo "usage: make forget-host HOST=<name>" >&2; exit 1; }; \
 	$(ENV); $(HVAC_CHECK); \
-	addr=$$(cd ansible && ansible "$(HOST)" -m ansible.builtin.debug -a var=ansible_host -o 2>/dev/null | \
-	  sed -n 's/.*"ansible_host": "\([^"]*\)".*/\1/p'); \
-	[ -n "$$addr" ] || { echo "forget-host: no address for $(HOST) in the inventory" >&2; exit 1; }; \
-	ssh-keygen -R "$$addr" >/dev/null 2>&1 || true; \
-	echo "forget-host: removed the stored key of $(HOST). The next run records the new one."
+	scripts/forget-host.sh "$(HOST)"
 
 host:
 	@set -eu -o pipefail; $(ENV); $(HVAC_CHECK); \

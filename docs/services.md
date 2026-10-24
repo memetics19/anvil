@@ -624,7 +624,7 @@ The enclave's rules (`pve_enclave_segment` in `ansible/roles/pve_enclave/default
 | To the host | NTP and the apt cache on the gateway address, and ping. Vaultwarden also reaches the Ceph S3 gateway (backups). |
 
 No VM reaches the enclave apart from that gateway path. The Proxmox host itself is not
-filtered on its way in: its own connections (Ansible's SSH through `ProxyJump`, the
+filtered on its way in: its own connections (Ansible's SSH jump through the host, the
 operator path) are not forwarded traffic. From the enclave the host offers only NTP, the
 apt cache and (Vaultwarden) the Ceph S3 gateway.
 
