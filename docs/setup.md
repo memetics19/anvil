@@ -509,9 +509,11 @@ security add-generic-password -U -s homelab -a vault-ip -w <vault-enclave-addres
 source scripts/env.sh && vault status && make tf-plan
 ```
 
-Without the route, Ansible still works (it goes through the Proxmox host), and
-`HOMELAB_VAULT_ADDR=https://vault.<gateway-domain>` with `HOMELAB_VAULT_CACERT` set to a
-public CA bundle reaches Vault through the gateway.
+Without the route, Ansible still works (it goes through the Proxmox host). Away from home,
+on the VPN, `scripts/env.sh` notices that the enclave address does not answer within 2
+seconds and uses the gateway instead (`https://vault.<gateway-domain>`, with the system's
+public CA bundle), and says so. `HOMELAB_VAULT_ADDR` with `HOMELAB_VAULT_CACERT` still
+picks an address by hand.
 
 **Current risk, close it first:** the NetBird access policy for the lab's /16 route admits
 the GitHub-hosted runner peers (`runnervm…`, CI jobs that joined the network). While it

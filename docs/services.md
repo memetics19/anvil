@@ -870,7 +870,9 @@ systemd-timesyncd with that server only.
 - **Reaching it.** Ansible connects through the Proxmox host (`group_vars/enclave.yml`).
   From the Mac: through the gateway (`https://vault.<gateway-domain>`, operator addresses
   only), or directly once the Mac has the enclave route and the Keychain `vault-ip` is the
-  enclave address ([setup.md](setup.md#not-managed-here)). Until then, for the scripts:
+  enclave address ([setup.md](setup.md#not-managed-here)). When the enclave address does not
+  answer (away from home, on the VPN), `scripts/env.sh` switches to the gateway by itself.
+  To pick the gateway by hand:
 
   ```sh
   export HOMELAB_VAULT_ADDR=https://vault.<gateway-domain>
