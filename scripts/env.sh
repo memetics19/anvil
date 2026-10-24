@@ -44,10 +44,35 @@ _hl_main() {
   # with VAULT_TLS_SERVER_NAME set to the enclave address); HOMELAB_VAULT_CACERT the CA file.
   export VAULT_ADDR="${HOMELAB_VAULT_ADDR:-https://${VAULT_IP}:8200}"
   export VAULT_CACERT="${HOMELAB_VAULT_CACERT:-$HOME/.config/homelab/vault-ca.pem}"
+
+  # The Keychain copy of the site dict (site-bootstrap). Here only for the gateway name;
+  # which copy Terraform gets is decided below (site-source.sh).
+  _hl_kc=
+  if _hl_v="$("$_hl_root/scripts/site-keychain-read.sh")" && [ -n "$_hl_v" ]; then
+    _hl_kc="$(printf '%s' "$_hl_v" | _hl_site_json)" || _hl_kc=
+    [ -n "$_hl_kc" ] || echo "env.sh: Keychain item site-bootstrap is not YAML with a top-level site dict" >&2
+  fi
+
+  # Away from home (on the VPN) the route to Vault's enclave address does not exist, but
+  # the gateway does: vault.<gateway domain>, with a public certificate. When the enclave
+  # address does not answer in 2 seconds and the gateway does, use the gateway.
+  _hl_gw=
+  if [ -z "${HOMELAB_VAULT_ADDR:-}" ] && [ -n "$VAULT_IP" ] && [ -n "$_hl_kc" ] &&
+    [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 --cacert "$VAULT_CACERT" "$VAULT_ADDR/v1/sys/health" 2>/dev/null)" = 000 ]; then
+    _hl_gw="$(printf '%s' "$_hl_kc" | jq -r '((.gateway.subdomain // "") | tostring | if . == "" then "" else . + "." end) + (.domain // "")' 2>/dev/null)" || _hl_gw=
+    for _hl_v in /etc/ssl/cert.pem /etc/ssl/certs/ca-certificates.crt; do
+      if [ -n "$_hl_gw" ] && [ "$_hl_gw" != "." ] && [ -f "$_hl_v" ] &&
+        [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 4 --cacert "$_hl_v" "https://vault.$_hl_gw/v1/sys/health" 2>/dev/null)" != 000 ]; then
+        export VAULT_ADDR="https://vault.$_hl_gw" VAULT_CACERT="$_hl_v"
+        echo "env.sh: Vault's enclave address does not answer (away from home?): using the gateway, vault.<gateway domain>" >&2
+        break
+      fi
+    done
+  fi
   # Ansible's hashi_vault lookup (hvac -> requests) asks macOS for system proxies inside a
   # forked worker, which crashes it ("A worker was found in a dead state"). Listing the
   # lab hosts in no_proxy makes requests skip that lookup for them.
-  export no_proxy="${no_proxy:-$VAULT_IP,$PVE_IP}"
+  export no_proxy="${no_proxy:-$VAULT_IP,$PVE_IP${_hl_gw:+,vault.$_hl_gw}}"
 
   _hl_v="$(_hl_get pve-api-token)" && [ -n "$_hl_v" ] && export PROXMOX_VE_API_TOKEN="$_hl_v"
   _hl_v="$(_hl_get ceph-s3-access-key)" && [ -n "$_hl_v" ] && export AWS_ACCESS_KEY_ID="$_hl_v"
@@ -65,11 +90,6 @@ _hl_main() {
   # stops. HOMELAB_SITE_USED (vault | keychain) names the source; it is not a site value.
   # scripts/site-keychain-read.sh decodes the stored forms (compressed, hex or plain).
   unset HOMELAB_SITE_USED
-  _hl_kc=
-  if _hl_v="$("$_hl_root/scripts/site-keychain-read.sh")" && [ -n "$_hl_v" ]; then
-    _hl_kc="$(printf '%s' "$_hl_v" | _hl_site_json)" || _hl_kc=
-    [ -n "$_hl_kc" ] || echo "env.sh: Keychain item site-bootstrap is not YAML with a top-level site dict" >&2
-  fi
   if _hl_from="$("$_hl_root/scripts/site-source.sh")"; then
     if [ "$_hl_from" = vault ]; then
       _hl_v="$(VAULT_CLIENT_TIMEOUT=5 VAULT_MAX_RETRIES=0 vault kv get -format=json -mount=kv homelab/site 2>/dev/null |
@@ -91,7 +111,7 @@ _hl_main() {
 
 _hl_main
 _hl_rc=$?
-unset _hl_v _hl_src _hl_root _hl_kc _hl_from
+unset _hl_v _hl_src _hl_root _hl_kc _hl_from _hl_gw
 unset -f _hl_get _hl_site_json _hl_main
 if [ -n "$_hl_x" ]; then unset _hl_x; set -x; else unset _hl_x; fi
 # shellcheck disable=SC2317

@@ -368,8 +368,9 @@ root folder. For a movie or series that is already added but has no file, it sta
 new search instead of adding it twice. Under 15 GB of free space it asks first (`--yes`
 skips the question).
 
-The addresses come from `site.services` (`radarr`, `sonarr`) and the API keys from
-`kv/homelab/<vm>/arr`, through `scripts/media-env.sh`. anvil reads them from a pipe and
+The addresses are the gateway names (`radarr.<gateway-domain>`, `sonarr.<gateway-domain>`),
+so it works at home and over the VPN alike. The API keys come from `kv/homelab/<vm>/arr`,
+through `scripts/media-env.sh`. anvil reads them from a pipe and
 never prints them. The script refuses to write the keys to a terminal.
 
 ## Shell completion

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # media-env.sh: Radarr's and Sonarr's addresses and API keys as one JSON object on stdout,
-# for `anvil media`. The addresses come from site.services (name radarr and sonarr), the
-# keys from kv/homelab/<host>/arr (written by the arr_stack role). The keys only ever go
+# for `anvil media`. The addresses are their gateway names (radarr.<gateway domain>, from
+# site.services and the site's domain): they answer at home and over the VPN alike, with a
+# public certificate. The keys come from kv/homelab/<host>/arr (role arr_stack). The keys only ever go
 # through pipes and to stdout, never on a command line: run this into a pipe, not a terminal.
-#   {"radarr": {"url": "http://<ip>:7878", "key": "..."}, "sonarr": {...}}
+#   {"radarr": {"url": "https://radarr.<gateway domain>", "key": "..."}, "sonarr": {...}}
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=/dev/null  # env.sh ends in a top-level return
@@ -24,8 +25,8 @@ host=$(jq -r 'env.TF_VAR_site_json | fromjson | .services[] | select(.name == "r
 vault kv get -format=json -mount=kv "homelab/$host/arr" | jq -ce '
   (env.TF_VAR_site_json | fromjson) as $s
   | .data.data as $k
-  | def url($n): ($s.services[] | select(.name == $n)) as $v
-      | "\($v.scheme // "http")://\($s | getpath($v.host | split(".")))" + ":\($v.port)";
+  | (($s.gateway.subdomain // "") | tostring | if . == "" then "" else . + "." end) as $sub
+  | def url($n): ($s.services[] | select(.name == $n)) as $v | "https://\($n).\($sub)\($s.domain)";
   { radarr: {url: url("radarr"), key: $k.radarr_api_key},
     sonarr: {url: url("sonarr"), key: $k.sonarr_api_key} }
   | select(.radarr.key and .sonarr.key)' ||
