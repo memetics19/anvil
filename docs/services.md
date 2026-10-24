@@ -206,14 +206,21 @@ every 10 minutes by `pulse-update.timer` and once by the role, does two things:
   and the run fails. The failed tag is written to `/opt/pulse/state/failed` and later runs
   skip it, so a bad release does not restart Pulse every 10 minutes. The next newer tag is
   tried as usual. `sudo pulse-update --retry` tries the failed one again. Old data copies
-  are dropped after a failed deploy too.
+  are dropped after a failed deploy too. A release that is only slower to start than 90
+  seconds is rolled back the same way, as it cannot be told from a broken one. Raise
+  `pulse_health_timeout`, then run `sudo pulse-update --retry`.
+- A first install has no earlier image to go back to. If it does not answer in time, it is
+  left running and written to `/opt/pulse/state/pending`, not marked failed. Later runs
+  leave it alone and record it as soon as it answers, so a slow first migration needs no
+  help.
 - It follows one major version (`pulse_track: "3"`), so a 4.0 release, which may break
   things, is never deployed by itself.
 - Before it stops anything, it checks the pulled image's cosign signature: the digest must
   be signed by Pulse's release workflow and logged in Rekor (`pulse_signer`). Pulse then
-  runs that exact digest. An unsigned or tampered image is not deployed and Pulse keeps
-  running. The check runs in a pinned cosign container (`pulse_cosign_image`) and needs
-  internet access to Sigstore. `pulse_verify_signature: false` turns it off, for example
+  runs that exact digest. It is the digest listed for `ghcr.io/memetics19/pulse`, even when
+  the image is known under other names as well. An unsigned or tampered image, or one with
+  no such digest, is not deployed and Pulse keeps running. The check runs in a pinned
+  cosign container (`pulse_cosign_image`) and needs internet access to Sigstore. `pulse_verify_signature: false` turns it off, for example
   to pin a release older than 3.0.0, which is not signed.
 - It builds the docs site from the head of `main` with mkdocs into `/opt/pulse/docs/` and
   moves the `current` link to it.
@@ -226,6 +233,21 @@ version, read its release notes, then set `pulse_track: "4"` in
 `inventory/host_vars/netbird.yml` and run `make vm HOST=netbird ARGS="--tags pulse"`.
 `pulse_track: v3.1.0` pins one release, and `latest` follows every major. `sudo pulse-compose ps` (or `logs`) runs
 docker compose for the project. `journalctl -u pulse-update` has the deploy history.
+
+If a rollback cannot copy the data back, Pulse stays stopped and the name of the data copy
+goes to `/opt/pulse/state/hold`. Until that file is gone, every run stops at once and
+changes nothing. No new release lands on the broken data, and the copy is never dropped.
+`sudo pulse-update --check` shows the hold. `/opt/pulse/release.env` already names the
+image that ran before. To clear the hold, put the copy back by hand, start Pulse, check it,
+then remove the file:
+
+```sh
+name=$(cat /opt/pulse/state/hold)
+sudo docker run --rm -v pulse_pulse_data:/data -v /opt/pulse/backups:/backup alpine \
+  sh -c "find /data -mindepth 1 -delete && cp -a '/backup/$name/.' /data/"
+sudo pulse-compose up -d pulse caddy
+curl -fsS http://localhost/healthz && sudo rm /opt/pulse/state/hold
+```
 
 - `apt_repo`: the signed apt repository for the .deb packages of anvil and pulse
   (`apt_repo_sources`), in `/opt/apt-repo`,

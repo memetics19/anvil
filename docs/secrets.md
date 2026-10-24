@@ -35,7 +35,11 @@ The three cloudflared units currently run the same tunnel token.
 
 Ansible generates these and pipes them straight into Vault, never displaying them or
 writing them to a file. Each write is checked by reading the SHA-256 digests back with
-`scripts/vault-kv-digests.sh`.
+`scripts/vault-kv-digests.sh`. Each role passes it the mount it writes to (its
+`*_vault_mount`, `kv` by default), so a role whose mount is changed reads and writes the
+same place. A generated secret goes to an empty path by `vault kv put` and to a path that
+already has keys by `vault kv patch`, which keeps the other keys. Pulse's put also has
+`-cas=0`, so Vault refuses it if the path exists after all.
 
 | Vault path | Key | Created by | Used for |
 |---|---|---|---|

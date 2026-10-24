@@ -8,7 +8,7 @@
 # --- secrets -------------------------------------------------------------------------------
 - name: Key digests stored in Vault
   ansible.builtin.command:
-    argv: ["{{ filestash_repo_scripts }}/vault-kv-digests.sh", "{{ filestash_vault_path }}"]
+    argv: ["{{ filestash_repo_scripts }}/vault-kv-digests.sh", "{{ filestash_vault_path }}", "{{ filestash_vault_mount }}"]
   delegate_to: localhost
   become: false
   register: filestash_vault_digests

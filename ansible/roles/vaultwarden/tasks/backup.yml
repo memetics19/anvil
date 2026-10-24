@@ -3,7 +3,7 @@
 
 - name: Backup S3 key digests in Vault
   ansible.builtin.command:
-    argv: ["{{ vaultwarden_repo_scripts }}/vault-kv-digests.sh", "{{ vaultwarden_backup_vault_path }}"]
+    argv: ["{{ vaultwarden_repo_scripts }}/vault-kv-digests.sh", "{{ vaultwarden_backup_vault_path }}", "{{ vaultwarden_vault_mount }}"]
   delegate_to: localhost
   become: false
   register: vaultwarden_backup_digests

@@ -26,7 +26,7 @@
 
 - name: Homepage token | key digests in Vault
   ansible.builtin.command:
-    argv: ["{{ pve_host_repo_scripts }}/vault-kv-digests.sh", "{{ pve_host_homepage_vault_path }}"]
+    argv: ["{{ pve_host_repo_scripts }}/vault-kv-digests.sh", "{{ pve_host_homepage_vault_path }}", "{{ pve_host_homepage_vault_mount }}"]
   delegate_to: localhost
   become: false
   register: pve_host_hp_vault
@@ -155,7 +155,7 @@
 
     - name: Homepage token | read the digest back
       ansible.builtin.command:
-        argv: ["{{ pve_host_repo_scripts }}/vault-kv-digests.sh", "{{ pve_host_homepage_vault_path }}"]
+        argv: ["{{ pve_host_repo_scripts }}/vault-kv-digests.sh", "{{ pve_host_homepage_vault_path }}", "{{ pve_host_homepage_vault_mount }}"]
       delegate_to: localhost
       become: false
       register: pve_host_hp_vault_after

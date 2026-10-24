@@ -3,7 +3,7 @@
 # argv, the log or the screen. Nothing is restarted: Frigate stores users in its database.
 - name: Homepage user | key digests in Vault
   ansible.builtin.command:
-    argv: ["{{ frigate_stack_repo_scripts }}/vault-kv-digests.sh", "{{ frigate_stack_vault_frigate_path }}"]
+    argv: ["{{ frigate_stack_repo_scripts }}/vault-kv-digests.sh", "{{ frigate_stack_vault_frigate_path }}", "{{ frigate_stack_vault_mount }}"]
   delegate_to: localhost
   become: false
   register: frigate_stack_hp_vault

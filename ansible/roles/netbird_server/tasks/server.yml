@@ -13,7 +13,7 @@
 # --- secrets -----------------------------------------------------------------------------------
 - name: Key digests stored in Vault
   ansible.builtin.command:
-    argv: ["{{ netbird_server_repo_scripts }}/vault-kv-digests.sh", "{{ netbird_server_vault_path }}"]
+    argv: ["{{ netbird_server_repo_scripts }}/vault-kv-digests.sh", "{{ netbird_server_vault_path }}", "{{ netbird_server_vault_mount }}"]
   delegate_to: localhost
   become: false
   register: netbird_server_vault_digests

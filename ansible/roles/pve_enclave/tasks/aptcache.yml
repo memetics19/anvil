@@ -31,7 +31,7 @@
 # straight into Vault (never displayed) and written only into security.conf (mode 640).
 - name: Apt cache admin password in Vault (digests only)
   ansible.builtin.command:
-    argv: ["{{ pve_enclave_repo_scripts }}/vault-kv-digests.sh", "{{ pve_enclave_aptcache_vault_path }}"]
+    argv: ["{{ pve_enclave_repo_scripts }}/vault-kv-digests.sh", "{{ pve_enclave_aptcache_vault_path }}", "kv"]
   delegate_to: localhost
   become: false
   register: pve_enclave_acng_digests

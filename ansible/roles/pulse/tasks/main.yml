@@ -6,9 +6,12 @@
 # The setup token (PULSE_SETUP_TOKEN): a fresh Pulse finishes its /setup wizard only for
 # someone who has it, so nobody who reaches the page first can claim the instance. It goes
 # from openssl straight into Vault, never displayed, logged or written to a local file.
+# The keys are read from pulse_vault_mount, the mount the token is written to. A path with
+# keys gets it by patch. An empty one by put with -cas=0, which Vault refuses once the
+# path exists, so a put never replaces keys that are already there.
 - name: Keys stored in Vault for Pulse
   ansible.builtin.command:
-    argv: ["{{ pulse_repo_scripts }}/vault-kv-digests.sh", "{{ pulse_vault_path }}"]
+    argv: ["{{ pulse_repo_scripts }}/vault-kv-digests.sh", "{{ pulse_vault_path }}", "{{ pulse_vault_mount }}"]
   delegate_to: localhost
   become: false
   register: pulse_vault_digests
@@ -24,7 +27,7 @@
     cmd: >-
       set -o pipefail;
       openssl rand -base64 48 | tr -d '\n' |
-      vault kv {{ 'patch' if pulse_vault_keys else 'put' }} -mount={{ pulse_vault_mount }}
+      vault kv {{ 'patch' if pulse_vault_keys else 'put -cas=0' }} -mount={{ pulse_vault_mount }}
       {{ pulse_vault_path }} setup_token=- >/dev/null
     executable: /bin/bash
   delegate_to: localhost
