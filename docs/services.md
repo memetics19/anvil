@@ -141,7 +141,7 @@ over NFSv4, read-only (role `nfs_media`). `downloads` is not shared.
   rpcbind everywhere but the NetBird interface, and there from everyone but the clients
   in `site.nfs.clients`. The lab network cannot mount the library either.
 
-Before the first run:
+Nothing about it runs until `site.nfs.clients` lists a client. Before the first run:
 
 1. In the NetBird cloud dashboard, create a setup key for ragnarok and store it in Vault:
    `vault kv put -mount=kv homelab/ragnarok/netbird setup_key=-` (paste it, then Ctrl-D).
