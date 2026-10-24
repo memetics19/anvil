@@ -81,3 +81,16 @@ func TestIncreaseDiskUsage(t *testing.T) {
 		t.Errorf("make ran: %q", calls)
 	}
 }
+
+func TestIncreaseDiskSizeWithoutVM(t *testing.T) {
+	l := newTestLab(t)
+	for _, size := range []string{"600gb", "600"} {
+		if code := l.run("", "increase-disk", size, "--yes"); code != 2 ||
+			!strings.Contains(l.err.String(), "which VM? Name it before the size: anvil increase-disk <vm> "+size) {
+			t.Errorf("%s: exit %d, stderr %q", size, code, l.err.String())
+		}
+	}
+	if calls := l.makeCalls(); len(calls) != 0 {
+		t.Errorf("make ran: %q", calls)
+	}
+}

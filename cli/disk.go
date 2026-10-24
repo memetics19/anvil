@@ -65,7 +65,11 @@ func cmdIncreaseDisk(a *app, args []string) int {
 	if !ok {
 		return code
 	}
-	if len(pos) != 2 {
+	switch {
+	case len(pos) == 1 && sizeRE.MatchString(strings.ToLower(pos[0])):
+		fmt.Fprintf(a.stderr, "anvil: increase-disk: which VM? Name it before the size: anvil increase-disk <vm> %s (for example ragnarok)\n", pos[0])
+		return 2
+	case len(pos) != 2:
 		fmt.Fprint(a.stderr, increaseDiskUsage)
 		return 2
 	}
