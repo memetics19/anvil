@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.4](https://github.com/memetics19/anvil/compare/v0.6.3...v0.6.4) (2026-10-24)
+
+
+### Bug Fixes
+
+* clearer increase-disk errors, each env.sh note once per run ([#52](https://github.com/memetics19/anvil/issues/52)) ([76a76df](https://github.com/memetics19/anvil/commit/76a76dfae2613db80053a028b9970c8f247a1dee))
+
 ## [0.6.3](https://github.com/memetics19/anvil/compare/v0.6.2...v0.6.3) (2026-10-24)
 
 
