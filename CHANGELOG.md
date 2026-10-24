@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/memetics19/anvil/compare/v0.6.0...v0.6.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **cli:** offer to fetch the repo when a command needs it and there is none ([#46](https://github.com/memetics19/anvil/issues/46)) ([1460905](https://github.com/memetics19/anvil/commit/14609053efbd280371e9d1c02dae1a9e34df59db))
+
 ## [0.6.0](https://github.com/memetics19/anvil/compare/v0.5.0...v0.6.0) (2026-10-24)
 
 
