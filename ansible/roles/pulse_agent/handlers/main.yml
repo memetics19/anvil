@@ -1,0 +1,5 @@
+- name: Restart pulse-agent
+  ansible.builtin.systemd_service:
+    name: pulse-agent
+    state: restarted
+  when: not ansible_check_mode

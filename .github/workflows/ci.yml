@@ -73,6 +73,8 @@ jobs:
         run: tests/test_published_ports.sh
       - name: Docmost role
         run: tests/test_docmost.sh
+      - name: Pulse agent role
+        run: tests/test_pulse_agent.sh
       - name: SSH host keys are checked
         run: tests/test_host_keys.sh
       - name: forget-host removes one host's key

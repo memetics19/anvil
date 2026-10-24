@@ -3,7 +3,7 @@
 # node_exporter (group node_exporter in the inventory).
 # Run: make vms ARGS="--check --diff"   or one VM: make vm HOST=frigate
 # Tags: base, docker, cloudflared, node_exporter, frigate, docmost, arr, iptv_epg, filestash, iptv,
-# netbird_peer, netbird_home, redis, ntfy, pulse, apt_repo, netbird_server, pihole, homepage,
+# netbird_peer, netbird_home, redis, ntfy, pulse, pulse_agent, apt_repo, netbird_server, pihole, homepage,
 # vaultwarden, caddy, docs, firewall. The tag docs alone copies only the static sites Caddy
 # serves (make docs-publish). The tag homepage alone also runs the pieces other roles keep
 # for the dashboard (ARR API keys into Vault on ragnarok, the Frigate viewer login, Pi-hole's
@@ -50,6 +50,13 @@
   roles:
     - role: node_exporter
       tags: [node_exporter]
+
+# Host metrics for Pulse, on every VM that reaches it. The enclave has no route to Pulse.
+- name: Pulse agent
+  hosts: guests:apps_servers
+  roles:
+    - role: pulse_agent
+      tags: [pulse_agent]
 
 # Workload: the Frigate NVR stack (compose project "home"), nginx in front of it.
 - name: Frigate stack

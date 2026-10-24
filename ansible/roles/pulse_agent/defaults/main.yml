@@ -1,0 +1,24 @@
+# Pulse agent (host metrics) on the lab VMs. It comes from the homelab's own signed apt
+# repository and reports to Pulse, both on the netbird VM and both over the LAN: no public
+# name and no internet on the way. The secrets enclave has no route to them and gets none.
+pulse_agent_pulse_host: netbird
+# Where the agent sends its metrics: Pulse's Caddy on the netbird VM's lab address (the VM
+# itself uses loopback). Plain HTTP stays on the lab network.
+pulse_agent_server: >-
+  {{ 'http://127.0.0.1' if inventory_hostname == pulse_agent_pulse_host
+     else 'http://' ~ site.hosts[pulse_agent_pulse_host].ip }}
+pulse_agent_interval: 30
+# The apt repository (role apt_repo, port 8082 on the same VM). apt checks the signature, so
+# HTTP is fine. The key is accepted only with this fingerprint.
+pulse_agent_apt_url: "http://{{ site.hosts[pulse_agent_pulse_host].ip }}:8082"
+pulse_agent_apt_signer_fpr: E5832FE9662C5F4021A7D4A52DE3AD5284369C1D
+pulse_agent_keyring: /etc/apt/keyrings/anvil.gpg
+# Pulse's API for registering each VM as an agent, called from the controller with the API
+# key in Vault (kv/homelab/<pulse host>/pulse, api_key, scope agents:write). Through the
+# gateway, so the key travels only over TLS.
+pulse_agent_api_url: "https://pulse.{{ gateway_domain }}"
+pulse_agent_api_vault_path: "homelab/{{ pulse_agent_pulse_host }}/pulse"
+# Each VM's agent token, written once when the agent is registered.
+pulse_agent_vault_mount: kv
+pulse_agent_vault_path: "homelab/{{ inventory_hostname }}/pulse-agent"
+pulse_agent_repo_scripts: "{{ playbook_dir }}/../../scripts"
