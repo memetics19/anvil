@@ -1,18 +1,20 @@
 # Setup
 
-How to go from a bare Proxmox VE install to a running lab, and how to rebuild it on a new
-box from backups. Day-to-day work is in [usage.md](usage.md).
+From a bare Proxmox VE install to a running lab, and rebuilding it on a new box from
+backups. Day-to-day work is in [usage.md](usage.md).
 
-Placeholders: `<proxmox-address>` (the host's lab address, Keychain `pve-ip`),
-`<vault-address>`, `<apps-address>`, `<apps-home-address>`, `<domain>` and
-`<gateway-domain>` (see [Service gateway](services.md#service-gateway)).
+| Placeholder | Meaning |
+|---|---|
+| `<proxmox-address>` | The Proxmox host's lab address, Keychain `pve-ip` |
+| `<vault-address>`, `<apps-address>`, `<apps-home-address>` | The addresses of those VMs |
+| `<domain>`, `<gateway-domain>` | See [Service gateway](services.md#service-gateway) |
 
 ## Operator machine
 
-The operator machine is a Mac. Secrets and bootstrap values live in its Keychain, and the
+The operator machine is a Mac. Secrets and bootstrap values live in its Keychain. The
 scripts read them with `security`.
 
-These versions are pinned in the repo:
+Pinned versions:
 
 | Tool | Version | Pinned in |
 |---|---|---|
@@ -23,7 +25,7 @@ These versions are pinned in the repo:
 | yamllint | 1.37.1 | `.pre-commit-config.yaml` |
 | Vault server | 2.2.0-1 | `vault_server_version` in `ansible/roles/vault_server/defaults/main.yml` |
 
-The rest is unpinned. Install everything with:
+The rest is unpinned. Install everything:
 
 ```sh
 brew tap hashicorp/tap
@@ -35,44 +37,48 @@ scripts/install-collections.sh ~/.ansible/collections   # Galaxy, else GitHub at
 pre-commit install
 ```
 
-Every Ansible target checks for `hvac` first and prints the `pip install` command if it is
-missing. `scripts/env.sh` reads the Keychain copy of the site dict with `python3` and
-PyYAML, or with the system Ruby when PyYAML is missing, so nothing else is needed.
+Every Ansible target checks for `hvac` first. When it is missing, the target prints the
+`pip install` command. `scripts/env.sh` reads the Keychain copy of the site dict with
+`python3` and PyYAML, or with the system Ruby when PyYAML is missing. Nothing else is
+needed.
 
-You also need an SSH key pair at `~/.ssh/id_ed25519`. `make bootstrap-ssh` installs the
-public key on the Proxmox host and the adopted guests. Terraform puts it into cloud-init for
-the `vault` and `apps` VMs (`ssh_public_key_path` in `terraform/variables.tf`).
+You also need an SSH key pair at `~/.ssh/id_ed25519`:
+
+- `make bootstrap-ssh` installs the public key on the Proxmox host and the adopted guests.
+- Terraform puts it into cloud-init for the `vault` and `apps` VMs (`ssh_public_key_path`
+  in `terraform/variables.tf`).
 
 ### SSH host keys
 
 Ansible checks every host's SSH key, because plays send the sudo password and secrets
 from Vault. The first connection to a host records its key in `~/.ssh/known_hosts`. After
-that, a different key stops the run with "Host key verification failed", before anything
-is sent. That is what a spoofed address or a reused IP looks like.
+that, a different key stops the run with "Host key verification failed" before anything
+is sent. A spoofed address or a reused IP looks like this.
 
-When you rebuilt the host yourself, the new key is expected. Drop the old one and run
+After you rebuild a host yourself, the new key is expected. Drop the old one and run
 again:
 
 ```sh
 make forget-host HOST=frigate
 ```
 
-`HOST` must be exactly one inventory host. A group such as `guests`, a pattern or an
-unknown name is refused. The target prints each key it removed, or says that no key was
-stored. It stops on any `ssh-keygen` error.
+- `HOST` must be exactly one inventory host. A group such as `guests`, a pattern or an
+  unknown name is refused.
+- The target prints each key it removed, or says that no key was stored.
+- It stops on any `ssh-keygen` error.
 
-The switch's key is kept in `build/switch/known_hosts`, the file `scripts/switch-cli.sh`
-reads. `make forget-host HOST=switch` removes it from there, under the switch's address
+The switch's key is in `build/switch/known_hosts`, the file `scripts/switch-cli.sh` reads.
+`make forget-host HOST=switch` removes it from there, under the switch's address
 `site.network.switch_ip`. `switch-cli.sh` refuses a `SWITCH_KNOWN_HOSTS` of `/dev/null`,
-`none` or a file it cannot write, because ssh would then accept any key every time.
+`none` or a file it cannot write. With those, ssh would accept any key every time.
 
 The enclave VMs are reached through the Proxmox host. OpenSSH does not pass command-line
 `-o` options to a `ProxyJump` host, so the accept-new setting in `ansible.cfg` would not
 reach that hop. `group_vars/enclave.yml` uses a `ProxyCommand` instead. It runs
 `ssh -o StrictHostKeyChecking=accept-new -W %h:%p` to the Proxmox host, so the jump checks
 the host's key the same way. After `make forget-host HOST=pve` and a rebuild, the next
-enclave play records the new key of the Proxmox host on the jump. A changed key still
-stops the run.
+enclave play records the Proxmox host's new key on the jump. A changed key still stops the
+run.
 
 ## Keychain items
 
@@ -95,8 +101,8 @@ bootstrap. Only `pve-ip` is required.
 | `backup-age-recipient` | age public key for backups | `scripts/backup-key-init.sh` | `scripts/backup.sh`, the `vaultwarden` role |
 | `backup-age-identity` | age private key for backups | `scripts/backup-key-init.sh` | `scripts/backup-restore-tfstate.sh`, `make vaultwarden-drill` |
 
-`scripts/vault-init.sh` also creates and deletes a throwaway `vault-init-probe` item to
-test the Keychain before it initializes Vault.
+`scripts/vault-init.sh` also creates and deletes a throwaway `vault-init-probe` item. It
+tests the Keychain this way before it initializes Vault.
 
 Add the plain values yourself:
 
@@ -108,7 +114,7 @@ security add-generic-password -s homelab -a pve-root-password -w
 security add-generic-password -s homelab -a vm-sudo-password -w
 ```
 
-With `-w` last, `security` prompts for the password, which keeps it off the command line.
+With `-w` last, `security` prompts for the password. This keeps it off the command line.
 Add `-U` to replace an existing item.
 
 ## The site dict
@@ -116,14 +122,17 @@ Add `-U` to replace an existing item.
 Addresses, MACs, VM IDs, the domain and the e-mail address live in one `site` dict.
 [`site/site.example.yml`](../site/site.example.yml) shows its structure.
 
-Ansible and Terraform read it from Vault, `kv/homelab/site` (mount `kv`, key `site`),
-which is the canonical copy. Before `VAULT_TOKEN` is set, or while that path does not
-exist, they read the Keychain item `site-bootstrap` instead. Each run prints which source
-it used and warns when the two copies differ.
+| Copy | Where | Used |
+|---|---|---|
+| Canonical | Vault, `kv/homelab/site` (mount `kv`, key `site`) | By default |
+| Bootstrap | Keychain item `site-bootstrap` | Before `VAULT_TOKEN` is set, or while the Vault path does not exist |
+
+Ansible and Terraform read it. Each run prints which source it used and warns when the two
+copies differ.
 
 `scripts/site-source.sh` makes that choice and fails closed. If `VAULT_TOKEN` is set and
-Vault is sealed, unreachable or rejects the token, the run stops instead of falling back
-to the Keychain. Set `HOMELAB_SITE_SOURCE=keychain` to use the Keychain copy on purpose.
+Vault is sealed, unreachable or rejects the token, the run stops. It does not fall back to
+the Keychain. Set `HOMELAB_SITE_SOURCE=keychain` to use the Keychain copy on purpose.
 `make vault` falls back on its own, with a warning, so it can repair a broken Vault.
 
 Terraform checks more than the example file shows. The plan stops with a validation error
@@ -137,8 +146,8 @@ until the dict has:
 ### Create the bootstrap copy
 
 Write the dict as YAML with a top-level `site:` key, outside the repo. Store it compressed,
-the way `scripts/site-to-keychain.sh` does, because `security -i` only reads lines under
-4000 bytes:
+the way `scripts/site-to-keychain.sh` does. `security -i` only reads lines under 4000
+bytes.
 
 ```sh
 source scripts/keychain-lib.sh
@@ -176,10 +185,12 @@ Run each step with `ARGS="--check --diff"` first, then without.
    make bootstrap-ssh ARGS="--limit proxmox"
    ```
 
-2. Set up the Proxmox host: apt repositories, packages, time and `/etc/hosts`. This also
-   creates Terraform's API user and token, stores the token in Keychain `pve-api-token`,
-   and enables the `import` content type on storage `local` for Terraform. Skip the
-   `homepage` tag, which needs Vault.
+2. Set up the Proxmox host: apt repositories, packages, time and `/etc/hosts`. It also:
+
+   - creates Terraform's API user and token, and stores the token in Keychain `pve-api-token`
+   - enables the `import` content type on storage `local` for Terraform
+
+   Skip the `homepage` tag. It needs Vault.
 
    ```sh
    make host ARGS="--skip-tags homepage"
@@ -195,7 +206,7 @@ Run each step with `ARGS="--check --diff"` first, then without.
    make host-network
    ```
 
-4. Build Ceph and the state bucket. The first real run wipes the OSD disk, so read
+4. Build Ceph and the state bucket. The first real run wipes the OSD disk. Read
    [Ceph](services.md#ceph) first.
 
    ```sh
@@ -204,7 +215,7 @@ Run each step with `ARGS="--check --diff"` first, then without.
    ```
 
    This run creates the `tfstate` bucket and its S3 user. The `filestash` and
-   `vaultwarden-backup` users need Vault, so you rerun `make ceph` in step 7.
+   `vaultwarden-backup` users need Vault. You rerun `make ceph` for them in step 7.
 
    Copy the state bucket's keys into the Keychain:
 
@@ -216,11 +227,11 @@ Run each step with `ARGS="--check --diff"` first, then without.
    unset keys
    ```
 
-   Copying the dashboard password is optional. See [Ceph dashboard](services.md#ceph-dashboard).
+   The dashboard password is optional. See [Ceph dashboard](services.md#ceph-dashboard).
 
 5. Run Terraform. It creates the `vault` and `apps` VMs and the SDN zone and VNets. It
    adopts `frigate`, `netbird` and `ragnarok` with the `import` blocks in
-   `terraform/imports.tf`, so those VMs must already exist with their VM IDs.
+   `terraform/imports.tf`. Those VMs must already exist with their VM IDs.
 
    ```sh
    make tf-init
@@ -239,14 +250,15 @@ Run each step with `ARGS="--check --diff"` first, then without.
    scripts/backup-key-init.sh    # once: the age key pair for backups
    ```
 
-   `make vault` copies Vault's CA certificate to `~/.config/homelab/vault-ca.pem`.
-   `scripts/vault-init.sh` tells you how to print the unseal keys for an offline paper
-   copy. Keep an offline copy of `backup-age-identity` too, because without it the backups
-   cannot be read.
+   - `make vault` copies Vault's CA certificate to `~/.config/homelab/vault-ca.pem`.
+   - `scripts/vault-init.sh` tells you how to print the unseal keys for an offline paper
+     copy.
+   - Keep an offline copy of `backup-age-identity` too. Without it the backups cannot be
+     read.
 
 7. Put the secrets the roles read into Vault. [secrets.md](secrets.md) lists every path
-   and key. `scripts/import-secrets.sh` copies some from the old VMs, and the roles generate
-   others. You add the rest by hand (see [Secrets in Vault](usage.md#secrets-in-vault)):
+   and key. `scripts/import-secrets.sh` copies some from the old VMs. The roles generate
+   others. Add the rest by hand (see [Secrets in Vault](usage.md#secrets-in-vault)):
 
    - the Cloudflare tunnel token for each tunnel host
    - `cloudflare_dns_token` in `kv/homelab/apps/caddy`, a Cloudflare API token that may
@@ -270,7 +282,7 @@ Run each step with `ARGS="--check --diff"` first, then without.
    make enclave
    ```
 
-   Then the VLANs: their firewall, the gateway addresses on the vnets, DHCP and NTP
+   Then set up the VLANs: their firewall, the gateway addresses on the vnets, DHCP and NTP
    ([VLANs](services.md#vlans)). `site.sdn.subnets` needs a `dhcp_range` for each.
 
    ```sh
@@ -285,8 +297,8 @@ Run each step with `ARGS="--check --diff"` first, then without.
    make vms ARGS="--check --diff"
    ```
 
-   Then run the VMs one at a time. Do `apps` last, because its dashboard reads credentials
-   the other roles create.
+   Then run the VMs one at a time. Do `apps` last. Its dashboard reads credentials the
+   other roles create.
 
    ```sh
    make vm HOST=vault
@@ -307,25 +319,24 @@ Then do the hand steps in [Not managed here](#not-managed-here).
 
 ## Rebuilding on a new box
 
-This runbook has not been tested on a second server yet. You need:
+This runbook is not yet tested on a second server. You need:
 
 - the Mac's Keychain (service `homelab`)
 - `~/homelab-backups`, with `tfstate-*.json.age`, `vault-*.snap` and `vaultwarden-*.tar.age`
 - the offline copies of the unseal keys and the age identity, if the Keychain is lost
 
-The repo does not back up the disks of `frigate`, `netbird` and `ragnarok`, which hold the
+The repo does not back up the disks of `frigate`, `netbird` and `ragnarok`. They hold the
 media library, app databases and Frigate recordings. Restore those VMs from your own
 Proxmox backups, with their old VM IDs, before you plan. Otherwise the plan shows them as
 new VMs to create. Do not apply that plan.
 
 1. Install Proxmox VE with the same addresses as before. If they change, update `pve-ip`,
-   `vault-ip` and the Keychain copy of the site dict.
-   [provisioning.md](provisioning.md) installs it unattended from an ISO with the answer
-   file inside.
+   `vault-ip` and the Keychain copy of the site dict. To install it unattended from an ISO
+   with the answer file inside, see [provisioning.md](provisioning.md).
 2. Set the new OSD disk in `ceph-osd-disk-id` or `site.pve.ceph_osd_disk_id`.
-3. Run steps 1 to 4 of [First build](#first-build). The new S3 user has new keys, so
-   delete the old `ceph-s3-access-key` and `ceph-s3-secret-key` items before you copy the
-   new ones in.
+3. Run steps 1 to 4 of [First build](#first-build). The new S3 user has new keys. Delete
+   the old `ceph-s3-access-key` and `ceph-s3-secret-key` items before you copy the new ones
+   in.
 4. Restore the Terraform state into the empty bucket, then plan and apply:
 
    ```sh
@@ -337,13 +348,13 @@ new VMs to create. Do not apply that plan.
    make tf-apply
    ```
 
-   `backup-restore-tfstate.sh` takes a file name to restore an older backup. It only
+   To restore an older backup, pass its file name to `backup-restore-tfstate.sh`. It only
    writes to stdout.
 
 5. Restore Vault from the newest Raft snapshot. `scripts/vault-init.sh` refuses to run,
-   because `vault-init-json` still holds the old keys, and the snapshot needs those keys.
-   Instead, initialize a throwaway cluster, restore the snapshot over it, and unseal with
-   the old keys. This is not scripted:
+   because `vault-init-json` still holds the old keys. The snapshot needs those keys.
+   Initialize a throwaway cluster, restore the snapshot over it, and unseal with the old
+   keys. This is not scripted:
 
    ```sh
    make vault
@@ -359,11 +370,11 @@ new VMs to create. Do not apply that plan.
 
    The site dict, every secret and the old root token are now back.
 
-6. Run `make ceph` again, so the new S3 users' keys replace the old ones in Vault. Then run
+6. Run `make ceph` again. The new S3 users' keys replace the old ones in Vault. Then run
    `make host ARGS="--tags homepage"`.
 7. Run steps 8 and 9 of [First build](#first-build). `make vm HOST=apps` starts
    Vaultwarden with an empty data directory.
-8. Restore Vaultwarden into its live data directory with the container stopped. If the
+8. Restore Vaultwarden into its live data directory, with the container stopped. If the
    bucket already holds a backup, run `make vaultwarden-drill` first. The archive holds one
    directory, `vaultwarden/`, with the database, attachments, sends, the RSA keys and any
    `config.json`. This is not scripted:
@@ -388,7 +399,7 @@ new VMs to create. Do not apply that plan.
 
 ## Not managed here
 
-You set these by hand, and redo them after a rebuild.
+Set these by hand. Redo them after a rebuild.
 
 ### Cloudflare
 
@@ -407,13 +418,13 @@ The tunnels and their public hostnames, and the API token Caddy uses for DNS-01.
 
 On the cloud network, routes, groups, ACLs and setup keys live in the NetBird dashboard.
 The self-hosted network gets its Pi-hole nameserver from the netbird_server role. On the
-cloud one, add it by hand:
+cloud network, add it by hand:
 
 1. DNS, Nameservers, Add nameserver: custom, IP `<apps-address>`, port 53, UDP. The lab
    network must be a route the peers use, through the `netbird` routing peer.
 2. Distribution groups: the peer groups that should use it, for example All.
 3. Match domains: leave them empty to send every query to Pi-hole, so remote devices get
-   filtering too, or set `lan.<domain>` and `<gateway-domain>` for local and gateway names
+   filtering too. Or set `lan.<domain>` and `<gateway-domain>` for local and gateway names
    only. Leave it enabled and save. Peers pick it up within a minute. Check with
    `netbird status -d`.
 
@@ -422,8 +433,8 @@ cloud one, add it by hand:
 `make vm HOST=netbird` runs the server and sets it up (groups, policy, networks, DNS). Four
 things stay by hand.
 
-**1. The Cloudflare route.** The server's public name goes through the existing tunnel,
-whose connectors run on `frigate`, `netbird` and `ragnarok`. In the Cloudflare dashboard:
+**1. The Cloudflare route.** The server's public name goes through the existing tunnel.
+Its connectors run on `frigate`, `netbird` and `ragnarok`. In the Cloudflare dashboard:
 
 1. Zero Trust, Networks, Tunnels: open that tunnel, Public hostnames, Add a public
    hostname.
@@ -433,24 +444,31 @@ whose connectors run on `frigate`, `netbird` and `ragnarok`. In the Cloudflare d
    set Origin Server Name to `sync.<domain>`. Save. Cloudflare adds the DNS record.
 5. In the `<domain>` zone, Network: turn gRPC on. Leave WebSockets on.
 
-Then check `https://sync.<domain>` shows the login page, and run
+Check that `https://sync.<domain>` shows the login page. Then run
 `make vm HOST=netbird ARGS="--tags netbird_home"`. It enrolls `netbird-home`, the routing
-peer. Native NetBird clients need gRPC through the tunnel. Cloudflare documents gRPC on
-public tunnel names as unsupported: the tunnel answers but drops the `grpc-status`
-trailer, and the client gives up. The run checks for that trailer first. Without it, it
-skips the enrollment with a warning and the rest of the run goes on. See
-[docs/usage.md](usage.md#self-hosted-netbird) for a route that works.
+peer.
+
+Native NetBird clients need gRPC through the tunnel. Cloudflare documents gRPC on public
+tunnel names as unsupported. The tunnel answers but drops the `grpc-status` trailer, and
+the client gives up. The run checks for that trailer first. Without it, the run skips the
+enrollment with a warning and goes on. See [docs/usage.md](usage.md#self-hosted-netbird)
+for a route that works.
 
 **2. The Proxmox host's return route.** The `home-gateway` route keeps the peer's own
-address (masquerade off). `apps` answers such a peer through the Proxmox host, which needs a
-route for `site.netbird_server.network_range` to the `netbird` VM. It is off until
-`pve_network_netbird_return_route: true` is set in `inventory/group_vars/proxmox.yml`. Then
-dry run and apply it on its own, never with a `netbird` VM change:
-`make host-network ARGS="--check --diff"`, then `make host-network`.
+address (masquerade off). `apps` answers such a peer through the Proxmox host. The host
+needs a route for `site.netbird_server.network_range` to the `netbird` VM. The route is
+off until you set `pve_network_netbird_return_route: true` in
+`inventory/group_vars/proxmox.yml`. Then dry run and apply it on its own, never with a
+`netbird` VM change: `make host-network ARGS="--check --diff"`, then `make host-network`.
 
-**3. Your devices, with two NetBird profiles.** `home` is the self-hosted network (day to
-day), `cloud` is NetBird's service (emergency). The login is `owner_email` and
-`owner_password` in `kv/homelab/netbird-srv`. On the Mac:
+**3. Your devices, with two NetBird profiles.**
+
+| Profile | Network | Use |
+|---|---|---|
+| `home` | The self-hosted network | Day to day |
+| `cloud` | NetBird's service | Emergency |
+
+The login is `owner_email` and `owner_password` in `kv/homelab/netbird-srv`. On the Mac:
 
 ```sh
 netbird profile add home
@@ -463,30 +481,33 @@ netbird profile select home
 ```
 
 Each `up` opens a browser login. On the phone, add the self-hosted server as a second
-profile in the NetBird app (or Settings, Change server, on an app without profiles).
+profile in the NetBird app. On an app without profiles, use Settings, Change server.
 Every device you log in to the self-hosted server joins group `operator`.
 
 **4. Your new peer addresses.** The self-hosted network gives your devices other 100.x
 addresses than the cloud one. Add each device's self-hosted address as a /32 to
-`site.admin_vpn_sources` (find it with `netbird status` on the Mac, and in the app on the
-phone), then run `make vm HOST=apps ARGS="--tags caddy"`. Until then the `pass` and
-`vault` names refuse them. The enclave itself stays a cloud network path: the self-hosted
-lab route masquerades as the `netbird` VM, and the enclave firewall drops every VM.
+`site.admin_vpn_sources`. Find it with `netbird status` on the Mac, and in the app on the
+phone. Then run `make vm HOST=apps ARGS="--tags caddy"`. Until then the `pass` and `vault`
+names refuse them.
+
+The enclave itself stays a cloud network path. The self-hosted lab route masquerades as
+the `netbird` VM, and the enclave firewall drops every VM.
 
 Failure drills, with the user at hand:
 
 1. Stop the self-hosted stack (`sudo docker stop netbird-server` on `netbird`), select the
    `cloud` profile on the Mac, and reach the lab.
 2. Start it again. Stop the cloud client on `netbird` (`sudo systemctl stop netbird`),
-   select `home`, and reach the lab. The Proxmox host still routes the lab on the cloud
-   network meanwhile.
+   select `home`, and reach the lab. Meanwhile the Proxmox host still routes the lab on
+   the cloud network.
 3. Start both again (`sudo systemctl start netbird`, `sudo docker start netbird-server`).
 
 ### The Mac's route to the secrets enclave
 
-Vault and Vaultwarden are on the enclave network, which only the Proxmox host routes. The
-Mac reaches it through the host's home address, on the Wi-Fi service (this replaces the
-service's additional routes. It had none, so add any you use to the same command):
+Vault and Vaultwarden are on the enclave network. Only the Proxmox host routes it. The
+Mac reaches it through the host's home address, on the Wi-Fi service. The command below
+replaces the service's additional routes. It had none. If you use any, add them to the
+same command.
 
 ```sh
 networksetup -getadditionalroutes "Wi-Fi"        # note the existing ones first
@@ -494,39 +515,51 @@ sudo networksetup -setadditionalroutes "Wi-Fi" <enclave-network> <enclave-netmas
 netstat -rn -f inet | grep <enclave-network-prefix>
 ```
 
-The enclave firewall and the gateway's `pass` and `vault` routes let in only the operator's
-devices: the Mac's LAN addresses in `site.admin_sources` (its home Wi-Fi address, reserved
-in the router's DHCP, its USB LAN and Wi-Fi alias lab addresses) and its NetBird peers in
-`site.admin_vpn_sources`. `site.enclave.vpn_only: true` keeps only the NetBird ones (a
-LAN address is no proof of the device: the lab and home networks share one L2 segment, so any
-VM or home device can take over the Mac's LAN addresses, ARP included, and finish a TCP
-connection as the Mac. A NetBird address arrives only through the operator's WireGuard
-tunnel). See [Turning on VPN-only](services.md#turning-on-vpn-only). Then point the Keychain at Vault's
-enclave address and check:
+The enclave firewall and the gateway's `pass` and `vault` routes let in only the
+operator's devices:
+
+| Setting | Holds |
+|---|---|
+| `site.admin_sources` | The Mac's LAN addresses: its home Wi-Fi address (reserved in the router's DHCP), its USB LAN and Wi-Fi alias lab addresses |
+| `site.admin_vpn_sources` | The Mac's NetBird peers |
+
+`site.enclave.vpn_only: true` keeps only the NetBird ones. A LAN address is no proof of the
+device. The lab and home networks share one L2 segment, so any VM or home device can take
+over the Mac's LAN addresses, ARP included, and finish a TCP connection as the Mac. A
+NetBird address arrives only through the operator's WireGuard tunnel. See
+[Turning on VPN-only](services.md#turning-on-vpn-only).
+
+Then point the Keychain at Vault's enclave address and check:
 
 ```sh
 security add-generic-password -U -s homelab -a vault-ip -w <vault-enclave-address>
 source scripts/env.sh && vault status && make tf-plan
 ```
 
-Without the route, Ansible still works (it goes through the Proxmox host). Away from home,
-on the VPN, `scripts/env.sh` notices that the enclave address does not answer within 2
-seconds and uses the gateway instead (`https://vault.<gateway-domain>`, with the system's
-public CA bundle), and says so. `HOMELAB_VAULT_ADDR` with `HOMELAB_VAULT_CACERT` still
-picks an address by hand.
+Without the route, Ansible still works. It goes through the Proxmox host.
+
+Away from home, on the VPN, `scripts/env.sh` notices when the enclave address does not
+answer within 2 seconds. It then uses the gateway (`https://vault.<gateway-domain>`, with
+the system's public CA bundle) and says so. `HOMELAB_VAULT_ADDR` with
+`HOMELAB_VAULT_CACERT` still picks an address by hand.
 
 **Current risk, close it first:** the NetBird access policy for the lab's /16 route admits
-the GitHub-hosted runner peers (`runnervm…`, CI jobs that joined the network). While it
-does, any of those jobs can reach the whole lab /16: the Proxmox host's web UI (8006) and
-SSH (22), and every VM. The enclave firewall keeps them out of Vault and Vaultwarden (they
-are not in `site.admin_vpn_sources`), but nothing else in the lab is closed to them. Step 2
-below removes them.
+the GitHub-hosted runner peers (`runnervm…`, CI jobs that joined the network). Any of those
+jobs can reach the whole lab /16: the Proxmox host's web UI (8006) and SSH (22), and every
+VM. The enclave firewall keeps them out of Vault and Vaultwarden, because they are not in
+`site.admin_vpn_sources`. Nothing else in the lab is closed to them. Step 2 below removes
+them.
 
-NetBird reaches the lab through two routing peers for the lab's /16: the Proxmox host
-(masquerade on, applied after its firewall) and the `netbird` VM (no masquerade). Either way
-the enclave firewall sees the peer's own NetBird address, so only the peers listed in
-`site.admin_vpn_sources` get in. To make that path reliable and keep other peers out, in the
-NetBird dashboard:
+NetBird reaches the lab through two routing peers for the lab's /16:
+
+| Routing peer | Masquerade |
+|---|---|
+| The Proxmox host | On, applied after its firewall |
+| The `netbird` VM | Off |
+
+Either way the enclave firewall sees the peer's own NetBird address. Only the peers in
+`site.admin_vpn_sources` get in. To make that path reliable and keep other peers out, in
+the NetBird dashboard:
 
 1. Groups: make a group (for example `operator`) with only your own devices (today the
    Mac's peers). Remove the stale duplicates of it. List their NetBird addresses in
@@ -534,34 +567,39 @@ NetBird dashboard:
 2. Access control: the policy that opens the lab's /16 route today also admits the GitHub
    Actions runner peers. Limit it to the `operator` group, or add a policy for the enclave
    route below that only `operator` gets.
-3. Network routes: add the enclave network (`site.sdn.enclave.subnet`) with the Proxmox host
-   (`pve`) as its only routing peer, masquerade off, distribution group `operator` (the
-   enclave VMs answer through their gateway, the Proxmox host, which sends it back through
-   NetBird). Through the
-   `netbird` VM the answers would come back over the Proxmox host's tunnel instead, which the
-   client drops.
-4. For the gateway names (`pass`, `vault`) over NetBird, Caddy must see the peer's address:
-   add the `apps` home address as a /32 route with the Proxmox host as routing peer,
-   masquerade off, distribution group `operator`. (`apps` answers through its default
-   gateway, the Proxmox host, which sends it back through NetBird.) With masquerade, Caddy
-   sees the routing peer's address, which is not an operator, and answers 403.
+3. Network routes: add the enclave network (`site.sdn.enclave.subnet`) with the Proxmox
+   host (`pve`) as its only routing peer, masquerade off, distribution group `operator`.
+   The enclave VMs answer through their gateway, the Proxmox host, which sends the answer
+   back through NetBird. Through the `netbird` VM the answers would come back over the
+   Proxmox host's tunnel instead, and the client drops them.
+4. For the gateway names (`pass`, `vault`) over NetBird, Caddy must see the peer's address.
+   Add the `apps` home address as a /32 route with the Proxmox host as routing peer,
+   masquerade off, distribution group `operator`. `apps` answers through its default
+   gateway, the Proxmox host, which sends the answer back through NetBird. With
+   masquerade, Caddy sees the routing peer's address, which is not an operator, and answers
+   403.
 
 ### Switch
 
-The Cisco switch's ports and VLANs, from `site.network.switch` with `make switch`. The
-Proxmox port is a trunk (the lab untagged, VLANs 10, 20 and 30 tagged). See
+`make switch` sets the Cisco switch's ports and VLANs from `site.network.switch`. The
+Proxmox port is a trunk: the lab untagged, VLANs 10, 20 and 30 tagged. See
 [cisco-switch.md](cisco-switch.md).
 
 ### Wi-Fi access point
 
-The cameras are on the home Wi-Fi, so VLAN 20 cannot isolate them yet. A VLAN-capable
-access point on the switch trunk fixes that, with a hidden camera SSID tagged VLAN 20. See
-[Cameras on VLAN 20](cisco-switch.md#cameras-on-vlan-20). Until it exists, the home
-router's per-device internet block can keep the cameras off the internet, at the cost of
-the Tapo app away from home.
+The cameras are on the home Wi-Fi, so VLAN 20 cannot isolate them yet. The fix is a
+VLAN-capable access point on the switch trunk, with a hidden camera SSID tagged VLAN 20. See
+[Cameras on VLAN 20](cisco-switch.md#cameras-on-vlan-20). Until then, the home router's
+per-device internet block can keep the cameras off the internet. The cost is the Tapo app
+away from home.
 
 ### App settings
 
-Settings kept in app databases: indexers and download clients in the ARR apps,
-Threadfin mappings, ntfy users and access rules, Frigate recordings, Pi-hole block lists
-added in its UI, and Vaultwarden accounts.
+Settings kept in app databases:
+
+- indexers and download clients in the ARR apps
+- Threadfin mappings
+- ntfy users and access rules
+- Frigate recordings
+- Pi-hole block lists added in its UI
+- Vaultwarden accounts
