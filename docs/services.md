@@ -672,12 +672,15 @@ user is live, then removes the container and its directory. The real restore is 
 
 ## Secrets enclave
 
-Vault and Vaultwarden live on their own network, the SDN vnet `secrets` (simple zone
-`enclave`, `terraform/sdn.tf`). It is a bridge on the Proxmox host with no physical port, so
-none of its frames reach the switch or the home network. The host is its only router
-(`site.sdn.enclave.gateway` is the host's address on it) and does no NAT for it, except
-the one mail flow below. The vnet isolates its ports: the two VMs reach the gateway, not
-each other. `make enclave` (role `pve_enclave`) sets up the host side.
+Vault and Vaultwarden live on their own network: the SDN vnet `secrets`, in the simple
+zone `enclave` (`terraform/sdn.tf`). `make enclave` (role `pve_enclave`) sets up the host
+side.
+
+- The vnet is a bridge on the Proxmox host with no physical port. None of its frames reach
+  the switch or the home network.
+- The host is its only router. `site.sdn.enclave.gateway` is the host's address on it.
+- The host does no NAT for it, except the one mail flow below.
+- The vnet isolates its ports. The two VMs reach the gateway, not each other.
 
 ### Firewall: routed segments
 
@@ -685,11 +688,11 @@ The host's nftables table `inet segments` (role `pve_segments`) is built from da
 of segments in `inventory/group_vars/proxmox.yml` (`pve_segments_list`) and named sets.
 Each segment has:
 
-- a name, its interface, subnet and gateway.
-- a `nat` flag (masquerade the whole segment).
+- a name, its interface, subnet and gateway
+- a `nat` flag (masquerade the whole segment)
 - three rule lists: `ingress` (new connections into it), `egress` (out of it) and `host`
-  (to the Proxmox host).
-- `nat_out`, for single flows of a segment without NAT that leave source-NATed.
+  (to the Proxmox host)
+- `nat_out`, for single flows of a segment without NAT that leave source-NATed
 
 A rule is saddr/daddr (an address, a list or `@set`), proto and dport. A rule whose address
 is empty (a host not in the site dict yet) is left out.
@@ -702,11 +705,11 @@ The forward chain:
 4. jumps to `<name>_in`, which accepts.
 
 So a connection between two segments passes both. The input chain works the same way with
-`<name>_host`, and each gateway address answers only on its own interface. Every segment
+`<name>_host`. Each gateway address answers only on its own interface. Every segment
 chain ends in a counted drop.
 
 Sets are static, CIDR intervals, or fed from DNS by a timer (`segments-set-refresh@<set>`).
-A DNS-fed set takes only public unicast A records, keeps each for a while, and a failed,
+A DNS-fed set takes only public unicast A records and keeps each for a while. A failed,
 empty or oversized lookup changes nothing.
 
 The ruleset is checked with `nft -c`, shown with addresses masked, and applied under a
@@ -714,69 +717,98 @@ The ruleset is checked with `nft -c`, shown with addresses masked, and applied u
 (`segments-firewall.service`). The lab SNAT, the IPTV DNAT and NetBird's rules are separate
 and unchanged. The enclave is the first segment. The VLANs are added as more entries.
 
-The enclave's rules (`pve_enclave_segment` in `ansible/roles/pve_enclave/defaults/main.yml`):
+The enclave's rules are `pve_enclave_segment` in
+`ansible/roles/pve_enclave/defaults/main.yml`:
 
 | Direction | Allowed |
 |---|---|
-| Into the enclave | Caddy (the `apps` lab address) to Vault 8200 and Vaultwarden 8080. On `apps` only Caddy's own network may use it, see below. Operators to Vault 8200, and SSH and ping on both VMs. Operators are the operator's own devices only (`inventory/group_vars/all/enclave.yml`): the Mac's LAN /32s (`site.admin_sources`) and the operator's NetBird peers (`site.admin_vpn_sources`), or only the NetBird peers with `site.enclave.vpn_only: true`. Each is a single address (/32). Wider prefixes are refused. Every address of every host in the site dict (VMs, their lab and home addresses, the Proxmox host's) is dropped before those rules, so no VM is an operator, monitoring included (no scrape rules). |
+| Into the enclave | Caddy (the `apps` lab address) to Vault 8200 and Vaultwarden 8080. On `apps`, only Caddy's own network may use it (see below). Operators to Vault 8200, and SSH and ping on both VMs. |
 | Out of the enclave | Vaultwarden only: DNS to Pi-hole, and the SMTP port to the set `enclave_smtp_relay`, source-NATed to the host's home address. That is the only translated flow. Vault: nothing. |
 | To the host | NTP and the apt cache on the gateway address, and ping. Vaultwarden also reaches the Ceph S3 gateway (backups). |
 
+Operators are the operator's own devices only (`inventory/group_vars/all/enclave.yml`):
+
+- the Mac's LAN /32s (`site.admin_sources`) and the operator's NetBird peers
+  (`site.admin_vpn_sources`)
+- or only the NetBird peers, with `site.enclave.vpn_only: true`
+
+Each operator is a single address (/32). Wider prefixes are refused. Every address of
+every host in the site dict is dropped before those rules: the VMs, their lab and home
+addresses, and the Proxmox host's. So no VM is an operator, monitoring included (there are
+no scrape rules).
+
 No VM reaches the enclave apart from that gateway path. The Proxmox host itself is not
-filtered on its way in: its own connections (Ansible's SSH jump through the host, the
-operator path) are not forwarded traffic. From the enclave the host offers only NTP, the
-apt cache and (Vaultwarden) the Ceph S3 gateway.
+filtered on its way in. Its own connections (Ansible's SSH jump through the host, the
+operator path) are not forwarded traffic. From the enclave, the host offers only NTP, the
+apt cache and, for Vaultwarden, the Ceph S3 gateway.
 
-On `apps`, Caddy shares its lab address with every other container and the host, so the
-Proxmox host cannot tell Caddy's connections apart. `apps` decides it: the nftables table
-`inet anvil_gateway_guard` (role `caddy`, `tasks/enclave_guard.yml`, loaded at boot by
-`gateway-guard.service` before Docker) lets only Caddy's own network `caddy_gateway` open
-connections to Vault's and Vaultwarden's ports. That network is pinned in compose: its
-subnet comes from `site.hosts.apps.gateway_subnet` and its bridge is always `br-caddygw`
-(`tasks/gateway_net.yml` checks the subnet overlaps nothing and replaces a network that
-differs, recreating Caddy once), Caddy is its only member and its default route
-(`gw_priority`), and the guard matches both the bridge and the subnet, so no other or
-recreated network can inherit the admitted addresses. Replies (Pi-hole's DNS answers to
-Vaultwarden) pass as established. The guard drops everything else from that VM to the
-enclave (other containers, the host). It is not required by Docker, so a failed guard never
-keeps Pi-hole down. In Caddy, the `pass` and `vault` routes (`caddy_admin_only_routes`) answer
-only the same operator addresses, matched on the real client address. Any other client
-gets 403.
+On `apps`, Caddy shares its lab address with every other container and the host. The
+Proxmox host cannot tell Caddy's connections apart, so `apps` decides:
 
-NetBird: both routing peers for the lab's /16, the Proxmox host (which masquerades only
-after its forward chain) and the `netbird` VM (which does not masquerade), keep a peer's
-own address up to the enclave firewall, so the operator's peers are listed by address and
-no VM is admitted. See [NetBird](setup.md#netbird) for the routes and access policy that
-make this reliable.
+- The nftables table `inet anvil_gateway_guard` (role `caddy`, `tasks/enclave_guard.yml`)
+  lets only Caddy's own network, `caddy_gateway`, open connections to Vault's and
+  Vaultwarden's ports. `gateway-guard.service` loads it at boot, before Docker.
+- That network is pinned in compose. Its subnet comes from
+  `site.hosts.apps.gateway_subnet` and its bridge is always `br-caddygw`.
+  `tasks/gateway_net.yml` checks that the subnet overlaps nothing. It replaces a network
+  that differs, which recreates Caddy once.
+- Caddy is the network's only member and its default route (`gw_priority`).
+- The guard matches both the bridge and the subnet, so no other or recreated network can
+  inherit the admitted addresses.
+- Replies (Pi-hole's DNS answers to Vaultwarden) pass as established. The guard drops
+  everything else from that VM to the enclave, other containers and the host included.
+- Docker does not require the guard, so a failed guard never keeps Pi-hole down.
+- In Caddy, the `pass` and `vault` routes (`caddy_admin_only_routes`) answer only the same
+  operator addresses, matched on the real client address. Any other client gets 403.
 
-The mail hole: `smtp_host` and `smtp_port` come from `kv/homelab/apps/vaultwarden`. The
-timer resolves the host through Pi-hole, the resolver Vaultwarden uses, every 10 minutes,
-and keeps each address for 24 h. The set holds at most 64. An answer that would not fit
-next to the kept ones replaces the set (never more than 64, nothing but the answer). No
-expected-range list (`refresh.expect`) is set for it. The relay answers from a large shared
-cloud address pool, so a published range would not narrow anything. Without an SMTP login in Vault the set stays empty. Not done: Vaultwarden may ask Pi-hole
-for any name, not only the relay's (a narrow DNS channel out through Pi-hole's own
-recursion). Closing it needs a Pi-hole client group for Vaultwarden that allows only the
-relay's name, or a resolver of its own. Neither is managed here yet.
+NetBird has two routing peers for the lab's /16:
 
-The lab SNAT rule on the host also matches lab-to-enclave traffic, so the enclave VMs see
-lab clients (Caddy included) as the host's home address. The firewall decides on the real
+| Routing peer | Masquerade |
+|---|---|
+| The Proxmox host | Only after its forward chain |
+| The `netbird` VM | No |
+
+Both keep a peer's own address up to the enclave firewall. So the operator's peers are
+listed by address, and no VM is admitted. See [NetBird](setup.md#netbird) for the routes
+and access policy that make this reliable.
+
+The mail hole:
+
+- `smtp_host` and `smtp_port` come from `kv/homelab/apps/vaultwarden`. Without an SMTP
+  login in Vault, the set stays empty.
+- Every 10 minutes, the timer resolves the host through Pi-hole, the resolver Vaultwarden
+  uses. It keeps each address for 24 h.
+- The set holds at most 64. An answer that would not fit next to the kept ones replaces
+  the set (never more than 64, nothing but the answer).
+- No expected-range list (`refresh.expect`) is set for it. The relay answers from a large
+  shared cloud address pool, so a published range would not narrow anything.
+
+Not done: Vaultwarden may ask Pi-hole for any name, not only the relay's. That is a narrow
+DNS channel out through Pi-hole's own recursion. Closing it needs a Pi-hole client group
+for Vaultwarden that allows only the relay's name, or a resolver of its own. Neither is
+managed here yet.
+
+The lab SNAT rule on the host also matches lab-to-enclave traffic. So the enclave VMs see
+lab clients, Caddy included, as the host's home address. The firewall decides on the real
 source, before that translation.
 
 ### Turning on VPN-only
 
-`site.enclave.vpn_only: true` admits only the NetBird peers in `site.admin_vpn_sources`, at
-the enclave firewall and in Caddy's `pass` and `vault` routes. The Mac's LAN /32s no longer
-count. A LAN address proves nothing on this network (the lab and home share one L2 segment:
-any VM or home device can take over the Mac's addresses, ARP included). In this order:
+`site.enclave.vpn_only: true` admits only the NetBird peers in `site.admin_vpn_sources`,
+at the enclave firewall and in Caddy's `pass` and `vault` routes. The Mac's LAN /32s no
+longer count. A LAN address proves nothing on this network. The lab and home share one L2
+segment, so any VM or home device can take over the Mac's addresses, ARP included.
 
-1. Do the NetBird dashboard steps ([setup.md](setup.md#netbird)): the `operator` group with
-   only your devices, the access policy without the runner peers, the enclave network routed
-   through the Proxmox host, and the `apps` home address as a /32 route through the Proxmox
-   host with masquerade off.
+Do these steps in order:
+
+1. Do the NetBird dashboard steps ([setup.md](setup.md#netbird)):
+    - the `operator` group with only your devices
+    - the access policy without the runner peers
+    - the enclave network, routed through the Proxmox host
+    - the `apps` home address as a /32 route through the Proxmox host, with masquerade off
 2. Clear the Mac's static enclave route, so the enclave is reached over NetBird only:
    `sudo networksetup -setadditionalroutes "Wi-Fi"` with no further arguments.
-3. At home with Wi-Fi on and NetBird up, check that both addresses go through the NetBird
+3. At home, with Wi-Fi on and NetBird up, check that both addresses go through the NetBird
    interface (a `utun` device), not Wi-Fi:
 
    ```sh
@@ -788,11 +820,11 @@ any VM or home device can take over the Mac's addresses, ARP included). In this 
    `apps` home address is in that subnet, so the Wi-Fi route may win. Test this at home
    before the switch. If either answer names the Wi-Fi interface, stop here.
 4. Over NetBird, check that the Mac reaches `https://pass.<gateway-domain>` (200, not 403)
-   and Vault (`vault status` with `vault-ip`, or `HOMELAB_VAULT_ADDR`). Check it at home and
-   also away from home or with Wi-Fi off.
+   and Vault (`vault status` with `vault-ip`, or `HOMELAB_VAULT_ADDR`). Check it at home,
+   and also away from home or with Wi-Fi off.
 5. Set `enclave: {vpn_only: true}` in `kv/homelab/site` with a CAS write, as in
    [Adding a service behind the gateway](usage.md#adding-a-service-behind-the-gateway).
-6. `make enclave ARGS="--tags firewall"` and `make vm HOST=apps ARGS="--tags caddy"`.
+6. Run `make enclave ARGS="--tags firewall"` and `make vm HOST=apps ARGS="--tags caddy"`.
 
 Rollback. This works while the Mac is locked out:
 
@@ -820,75 +852,85 @@ source scripts/env.sh && vault status
 
 ### Guests didn't start at boot (enclave firewall failed to load)
 
-Symptom: after a reboot no VM runs. `systemctl status pve-guests` shows its `ExecStartPre`
-(`nft list table inet segments`) failed, and `systemctl status segments-firewall` shows why
-(`nft -f /etc/segments/segments.nft`). This is deliberate: without the table the segments
-would be open.
+Symptom: after a reboot, no VM runs. `systemctl status pve-guests` shows that its
+`ExecStartPre` (`nft list table inet segments`) failed. `systemctl status segments-firewall`
+shows why (`nft -f /etc/segments/segments.nft`). This is deliberate. Without the table,
+the segments would be open.
 
-1. Fix the table: read the error (`nft -c -f /etc/segments/segments.nft`), repair the file
-   (or copy the newest `/var/backups/pve-network/segments.nft.<epoch>.file` back), then
-   `nft -f /etc/segments/segments.nft` and check `nft list table inet segments`. Then run
-   `systemctl start segments-set-refresh@enclave_smtp_relay`. The table loads with the
-   DNS-fed set empty, and without this the mail relay waits up to 10 minutes for the timer.
+1. Fix the table.
+    - Read the error: `nft -c -f /etc/segments/segments.nft`.
+    - Repair the file, or copy the newest
+      `/var/backups/pve-network/segments.nft.<epoch>.file` back.
+    - Run `nft -f /etc/segments/segments.nft` and check `nft list table inet segments`.
+    - Run `systemctl start segments-set-refresh@enclave_smtp_relay`. The table loads with
+      the DNS-fed set empty. Without this, the mail relay waits up to 10 minutes for the
+      timer.
 2. Start the guests. `pve-guests` refuses manual starts (`RefuseManualStart=yes`, see
-   `systemctl cat pve-guests`), so use `pvesh create /nodes/localhost/startall` (all, in
-   startup order) or `qm start <vmid>` for one.
-3. Rerun `make enclave` so the file, the unit and the check match the repo again.
+   `systemctl cat pve-guests`). Use `pvesh create /nodes/localhost/startall` for all, in
+   startup order, or `qm start <vmid>` for one.
+3. Rerun `make enclave`, so the file, the unit and the check match the repo again.
 
-Never start guests by hand while the table is missing: the enclave would be reachable from
-every VM and the home network, and its VMs could reach anything routed. If you must (DNS for
-the home), start only `apps` with `qm start`, and fix the table before starting `vault` and
-`vaultwarden`.
+Never start guests by hand while the table is missing. The enclave would be reachable from
+every VM and the home network, and its VMs could reach anything routed. If you must (DNS
+for the home), start only `apps` with `qm start`. Fix the table before you start `vault`
+and `vaultwarden`.
 
-After a manual start, shutdown is not clean. The failed boot leaves `pve-guests` failed,
-and a failed unit has nothing to stop. At the next shutdown or reboot Proxmox's stopall does
-not run, so the guests started by hand (`startall` or `qm start`) are hard-stopped. That
-risks Vault's Raft store and Vaultwarden's sqlite database. So, after fixing the table,
-reboot the host. That boot starts `pve-guests` normally, and its stop runs stopall at the
-next shutdown. If guests were started by hand and stay up, run
-`pvesh create /nodes/localhost/stopall` before any later shutdown or reboot.
+After a manual start, shutdown is not clean:
+
+- The failed boot leaves `pve-guests` failed, and a failed unit has nothing to stop.
+- At the next shutdown or reboot, Proxmox's stopall does not run. The guests started by
+  hand (`startall` or `qm start`) are hard-stopped. That risks Vault's Raft store and
+  Vaultwarden's sqlite database.
+- So after fixing the table, reboot the host. That boot starts `pve-guests` normally, and
+  its stop runs stopall at the next shutdown.
+- If guests were started by hand and stay up, run `pvesh create /nodes/localhost/stopall`
+  before any later shutdown or reboot.
 
 Never `systemctl restart` or `stop` a unit that `pve-guests` is ordered against. Never link
 one to it with Requires, RequiredBy, Requisite, BindsTo, PartOf, Conflicts or
-PropagatesStopTo: a restart of such a unit stops every guest (it happened once).
+PropagatesStopTo. A restart of such a unit stops every guest. It happened once.
 
 ### Apt cache and time
 
 `apt-cacher-ng` on the host listens on the gateway address only. It serves the Debian and
 Ubuntu archives and nothing else: `ForceManaged`, only those remaps, port 80 upstreams, no
-CONNECT tunnels, IPv4 only. The enclave VMs use it as their apt proxy, set by the role
-`enclave_guest` and by the cloud-init vendor data `local:snippets/enclave-vendor.yaml` from
-the first boot. HTTPS repositories are not reachable, so Docker comes from Ubuntu's archive
-and Vault's HashiCorp repository is removed.
+CONNECT tunnels, IPv4 only.
 
-The host's chrony answers NTP on the gateway address for the enclave subnet. The VMs use
-systemd-timesyncd with that server only.
+- The enclave VMs use it as their apt proxy. The role `enclave_guest` sets it, and so does
+  the cloud-init vendor data `local:snippets/enclave-vendor.yaml` from the first boot.
+- HTTPS repositories are not reachable. So Docker comes from Ubuntu's archive, and Vault's
+  HashiCorp repository is removed.
+- The host's chrony answers NTP on the gateway address for the enclave subnet. The VMs use
+  systemd-timesyncd with that server only.
 
 ### Vault on the enclave
 
 - **NICs.** The vault VM's enclave NIC (hot-plugged, MAC `site.hosts.vault.enclave_mac`)
   is its only working one. Its first NIC, on the lab network, is retired
-  (`site.hosts.vault.lab_nic_retired: true`, 2026-10-22): its link is down in Proxmox
-  (`disconnected`) and the netplan keeps it with no address. `site.hosts.vault.ip` is the
+  (`site.hosts.vault.lab_nic_retired: true`, 2026-10-22). Its link is down in Proxmox
+  (`disconnected`), and the netplan keeps it with no address. `site.hosts.vault.ip` is the
   enclave address. `lab_ip` and `mac` record the old NIC.
-- **Netplan.** `guest_base` owns it in enclave mode, under a timed rollback: the enclave NIC
-  has the default route and no DNS, and cloud-init no longer writes the network.
-- **Listener.** Vault listens on the enclave address only. The `api_addr`, `cluster_addr` and
-  the certificate's address are the enclave one.
+- **Netplan.** `guest_base` owns it in enclave mode, under a timed rollback. The enclave
+  NIC has the default route and no DNS. cloud-init no longer writes the network.
+- **Listener.** Vault listens on the enclave address only. The `api_addr`, `cluster_addr`
+  and the certificate's address are the enclave one.
 - **Reaching it.** Ansible connects through the Proxmox host (`group_vars/enclave.yml`).
-  From the Mac: through the gateway (`https://vault.<gateway-domain>`, operator addresses
-  only), or directly once the Mac has the enclave route and the Keychain `vault-ip` is the
-  enclave address ([setup.md](setup.md#not-managed-here)). When the enclave address does not
-  answer (away from home, on the VPN), `scripts/env.sh` switches to the gateway by itself.
-  To pick the gateway by hand:
+  The Mac reaches it in one of two ways:
+    - through the gateway, `https://vault.<gateway-domain>`, from operator addresses only
+    - directly, once the Mac has the enclave route and the Keychain `vault-ip` is the
+      enclave address ([setup.md](setup.md#not-managed-here))
 
-  ```sh
-  export HOMELAB_VAULT_ADDR=https://vault.<gateway-domain>
-  export HOMELAB_VAULT_CACERT="$(python3 -m certifi)"   # the gateway's certificate is public
-  ```
+    When the enclave address does not answer (away from home, on the VPN),
+    `scripts/env.sh` switches to the gateway by itself. To pick the gateway by hand:
 
-  `make vault-unseal`, `make backup`, the Ansible lookups and `make tf-plan` all work that
-  way. Caddy's own trust in Vault always uses Vault's CA file, never `$VAULT_CACERT`.
+    ```sh
+    export HOMELAB_VAULT_ADDR=https://vault.<gateway-domain>
+    export HOMELAB_VAULT_CACERT="$(python3 -m certifi)"   # the gateway's certificate is public
+    ```
+
+    `make vault-unseal`, `make backup`, the Ansible lookups and `make tf-plan` all work
+    that way. Caddy's own trust in Vault always uses Vault's CA file, never
+    `$VAULT_CACERT`.
 
 Vault now reaches nothing but the host's NTP and apt cache: no DNS, no lab host, no
 internet. Removing the retired NIC from the VM altogether is a later, separate change
@@ -928,31 +970,34 @@ the enclave and not another VLAN.
 ### How it is built
 
 - **Firewall.** Each VLAN is a segment of the routed segments' table `inet segments`
-  ([Firewall: routed segments](#firewall-routed-segments)), next to the enclave. The data
-  is in `ansible/inventory/group_vars/proxmox.yml` (`vlans`, `vlan_segments`,
-  `vlan_sets`). Each VLAN has `nat: true`, so its traffic leaves with the host's address.
-  "The internet" means any address outside the set `vlan_nonpublic` (private, shared,
-  link-local, documentation, multicast and reserved ranges). That set covers the lab, the
-  home network, the NetBird range, the enclave and the other VLANs (`make vlans` checks
-  that, and that no two of those networks overlap). Each VLAN has `strict_source`: the
-  first rule of its `_out` chain drops any source outside its subnet, so a device cannot
-  send with a forged address. The enclave's own rules, sets and operator list are not
-  changed by the VLANs. Each `vlans` entry names its own egress profile (`dns`, `web`,
-  `internet`).
+  ([Firewall: routed segments](#firewall-routed-segments)), next to the enclave.
+    - The data is in `ansible/inventory/group_vars/proxmox.yml` (`vlans`, `vlan_segments`,
+      `vlan_sets`). Each `vlans` entry names its own egress profile (`dns`, `web`,
+      `internet`).
+    - Each VLAN has `nat: true`, so its traffic leaves with the host's address.
+    - "The internet" means any address outside the set `vlan_nonpublic` (private, shared,
+      link-local, documentation, multicast and reserved ranges). That set covers the lab,
+      the home network, the NetBird range, the enclave and the other VLANs. `make vlans`
+      checks that, and that no two of those networks overlap.
+    - Each VLAN has `strict_source`. The first rule of its `_out` chain drops any source
+      outside its subnet, so a device cannot send with a forged address.
+    - The VLANs do not change the enclave's own rules, sets and operator list.
 - **Gateways.** The host's address on each vnet (`site.sdn.subnets.<vnet>.gateway`) is in
   `/etc/network/interfaces.d/vlans`. ifupdown2 merges it into SDN's stanza for the vnet.
   A change goes through the same 120 s rollback as `make host-network`.
 - **DHCP.** One dnsmasq per VLAN (`vlan-dhcp@<vnet>`), DHCP only, bound to its vnet alone.
-  It hands out `site.sdn.subnets.<vnet>.dhcp_range`, the gateway as router and NTP
-  server, and Pi-hole's lab address as DNS. The package is `dnsmasq-base`, which has no
-  service of its own. The home router stays the only DHCP server of the home network. The
-  unit runs only while its vnet exists (bound to the device), and starts only when the
-  table `inet segments` is loaded, so no lease is handed out without the firewall.
-- **NTP.** One small chronyd per VLAN (`vlan-ntp@<vnet>`) answers on that gateway only. It
-  serves the host clock and never sets it. The host's own chronyd keeps the clock and
-  still answers only the enclave. Chrony takes one bind address per process, which is why
-  each VLAN has its own. It also starts only with the table loaded. Neither unit is linked
-  to `pve-guests` in any way.
+    - It hands out `site.sdn.subnets.<vnet>.dhcp_range`, the gateway as router and NTP
+      server, and Pi-hole's lab address as DNS.
+    - The package is `dnsmasq-base`, which has no service of its own.
+    - The home router stays the only DHCP server of the home network.
+    - The unit runs only while its vnet exists (bound to the device). It starts only when
+      the table `inet segments` is loaded, so no lease is handed out without the firewall.
+- **NTP.** One small chronyd per VLAN (`vlan-ntp@<vnet>`) answers on that gateway only.
+    - It serves the host clock and never sets it. The host's own chronyd keeps the clock
+      and still answers only the enclave.
+    - Chrony takes one bind address per process. That is why each VLAN has its own.
+    - It also starts only with the table loaded.
+    - Neither unit is linked to `pve-guests` in any way.
 - **Trunk.** `vmbr0`'s uplink carries VLANs 10, 20 and 30 tagged (`bridge-vids`, from
   `make host-network`). The lab and home networks stay untagged. The switch side is
   `make switch`, see [cisco-switch.md](cisco-switch.md).
@@ -960,8 +1005,8 @@ the enclave and not another VLAN.
 ### Changing it
 
 - `cameras_internet: false` in `inventory/group_vars/proxmox.yml` leaves VLAN 20 with DNS
-  and NTP only. Then run `make vlans`. VLAN 20 stays NATed either way: its DNS queries reach
-  Pi-hole with the host's address, which Pi-hole answers and can reply to.
+  and NTP only. Then run `make vlans`. VLAN 20 stays NATed either way. Its DNS queries
+  reach Pi-hole with the host's address, which Pi-hole answers and can reply to.
 - To bring VLANs up one at a time, name them:
   `make vlans ARGS="-e '{\"pve_vlans_enabled\": [\"servers\"]}'"`. The ones not named
   lose their gateway, DHCP and NTP. The firewall keeps all three.
@@ -1011,10 +1056,12 @@ on port 123.
 
 ## Ceph
 
-`make ceph` builds a one-disk Ceph cluster on `pve`: a monitor, a manager, one OSD and pool
-size 1. It adds a RADOS Gateway on port 7480 of the host's address, the S3 user
-`terraform` and the bucket `tfstate` for Terraform state. It also makes the S3 users
-`filestash` (read-only) and `vaultwarden-backup`, whose keys go into Vault.
+`make ceph` builds a one-disk Ceph cluster on `pve`: a monitor, a manager, one OSD and
+pool size 1. It also adds:
+
+- a RADOS Gateway on port 7480 of the host's address
+- the S3 user `terraform` and the bucket `tfstate`, for Terraform state
+- the S3 users `filestash` (read-only) and `vaultwarden-backup`, whose keys go into Vault
 
 The OSD disk is the `/dev/disk/by-id/` name in `site.pve.ceph_osd_disk_id`, else in
 Keychain `ceph-osd-disk-id`. `-e ceph_osd_device=/dev/disk/by-id/...` overrides both.
@@ -1029,16 +1076,16 @@ that:
 - is a PV in any non-Ceph volume group
 - carries a ZFS pool that is imported, or importable in any state other than `UNAVAIL`
 
-A disk that is already an OSD (the Ceph VG, LVM on the disk and `ceph-volume` agree) is
-left alone. If those disagree, the play stops. `make ceph ARGS="--check --diff"` runs the
-checks and lists what would run.
+A disk that is already an OSD is left alone: the Ceph VG, LVM on the disk and
+`ceph-volume` agree. If those disagree, the play stops. `make ceph ARGS="--check --diff"`
+runs the checks and lists what would run.
 
 The `terraform` user's S3 keys are written to `/root/.ceph-rgw-terraform.json` (mode 600)
 on the host. [First build](setup.md#first-build) copies them into the Keychain.
 
 ### Ceph dashboard
 
-The dashboard is at `https://<proxmox-address>:8443/` with a self-signed certificate. Log
+The dashboard is at `https://<proxmox-address>:8443/`, with a self-signed certificate. Log
 in as `admin` with the password in `/root/.ceph-dashboard-admin` (mode 600) on the host.
 To keep a copy in the Keychain:
 
