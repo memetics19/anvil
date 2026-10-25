@@ -349,77 +349,102 @@ The list is `guest_base_absent_packages` in `inventory/host_vars/netbird.yml`, t
 gateway and Homepage. Vaultwarden ran here first. It now runs on its own VM in the
 [secrets enclave](#secrets-enclave).
 
-It has two NICs on `vmbr0`, both set by cloud-init in `terraform/vm_apps.tf`. One has a lab
-address and the default route. The other has a home-network address
-(`site.hosts.apps.home_ip`) and no gateway, so home devices reach Pi-hole on their own
-subnet. Each NIC answers ARP only for its own address.
+It has two NICs on `vmbr0`, both set by cloud-init in `terraform/vm_apps.tf`:
+
+| NIC | Address | Route |
+|---|---|---|
+| Lab | A lab address | The default route |
+| Home | A home-network address (`site.hosts.apps.home_ip`) | No gateway. Home devices reach Pi-hole on their own subnet. |
+
+Each NIC answers ARP only for its own address.
 
 ### Firewall
 
-The `host_firewall` role sets up ufw. Inbound traffic is denied by default. SSH (22), DNS
-(53, TCP and UDP) and the gateway (80, 443) are allowed, each bound to its NIC and
-address. A change has a timed rollback: ufw disables itself after 3 minutes unless a fresh
-SSH connection and DNS and HTTP checks from the Mac succeed first.
+The `host_firewall` role sets up ufw. Inbound traffic is denied by default. These are
+allowed, each bound to its NIC and address:
+
+- SSH (22)
+- DNS (53, TCP and UDP)
+- the gateway (80, 443)
+
+A change has a timed rollback. ufw disables itself after 3 minutes unless a fresh SSH
+connection and DNS and HTTP checks from the Mac succeed first.
 
 ufw does not filter ports that Docker publishes. Docker forwards them to the container
-through its own chains, so they never reach ufw's input rules. For those ports the
-`ip:port` binding in the compose file is the boundary. Bind every published port to a
-specific address, never `0.0.0.0`, as Caddy's 80 and 443 are. Use the host's lab address
-when the gateway or another host needs the port, and `127.0.0.1` when only the VM itself
-does. A port that only other containers use is not published at all: they reach it by
-service name on the compose network. `tests/test_published_ports.sh` fails on any published
-port in a compose template that names no address.
+through its own chains, so they never reach ufw's input rules. For those ports, the
+`ip:port` binding in the compose file is the boundary.
+
+- Bind every published port to a specific address, never `0.0.0.0`, as Caddy's 80 and 443
+  are.
+- Use the host's lab address when the gateway or another host needs the port.
+- Use `127.0.0.1` when only the VM itself needs it.
+- Do not publish a port that only other containers use. They reach it by service name on
+  the compose network.
+
+`tests/test_published_ports.sh` fails on any published port in a compose template that
+names no address.
 
 ### Pi-hole
 
 The `pihole` role runs compose project `/opt/pihole`.
 
-Pi-hole publishes DNS on port 53 on the two `apps` addresses only. It is not a DHCP
-server. Its web UI is not published either: it is at `https://dns.<gateway-domain>/admin/`
-through the gateway, with `web_password` from `kv/homelab/apps/pihole`. Settings the role
-passes are read-only in the UI.
+- Pi-hole publishes DNS on port 53 on the two `apps` addresses only. It is not a DHCP
+  server.
+- Its web UI is not published. It is at `https://dns.<gateway-domain>/admin/` through the
+  gateway, with `web_password` from `kv/homelab/apps/pihole`. Settings the role passes are
+  read-only in the UI.
+- Its only upstream is Unbound, at a fixed address on the project's own Docker network
+  (`site.hosts.apps.dns_subnet` and `dns_unbound_ip`, never published). Unbound resolves
+  from the root servers, validates DNSSEC and has a healthcheck.
+- Either container can restart on its own, and resolution comes back without a run.
 
-Its only upstream is Unbound, at a fixed address on the project's own Docker network
-(`site.hosts.apps.dns_subnet` and `dns_unbound_ip`, never published). Unbound resolves
-from the root servers and validates DNSSEC, and has a healthcheck. Either container can
-restart on its own and resolution comes back without a run.
+#### Rate limit
 
 Each client may send 5000 queries per 60 seconds (`pihole_rate_limit_count` and
-`pihole_rate_limit_interval`). The limit counts per client address. Every VLAN client and
-every NetBird peer routed through the Proxmox host arrive as the host's address (it
-masquerades them), so they all share one limit. That is why it is 5000 and not FTL's 1000.
-NetBird clients behind the `netbird` VM share that VM's address too. Hand Pi-hole out to
-devices directly through the router's DHCP. If the router forwards its own DNS to Pi-hole
-instead, every device shows up as the router and shares one limit.
+`pihole_rate_limit_interval`). The limit counts per client address.
 
-The role applies the rate limit live (`tasks/settings_apply.yml`, `pihole_ftl_live`): it
+- Every VLAN client and every NetBird peer routed through the Proxmox host arrives as the
+  host's address, because the host masquerades them. They all share one limit. That is
+  why it is 5000 and not FTL's 1000.
+- NetBird clients behind the `netbird` VM share that VM's address too.
+- Hand Pi-hole out to devices directly through the router's DHCP. If the router forwards
+  its own DNS to Pi-hole instead, every device shows up as the router and shares one
+  limit.
+
+The role applies the rate limit live (`tasks/settings_apply.yml`, `pihole_ftl_live`). It
 reads each FTL setting with `pihole-FTL --config`, writes only what differs and reads it
 back. Like the local records, it is not in the compose environment, so changing it never
 recreates the container. A setting listed in `pihole_ftl_live` must not also be an
 `FTLCONF_` variable, because FTL makes those read-only.
 
-Local records come from `site.dns.local_records` in Vault. An entry with `name` is served
-as `<name>.lan.<domain>`, and the `lan` sub-zone keeps it from shadowing a public name. An
-entry with `fqdn` is served under exactly that name, for split horizon: a public hostname
-answered at home with a home address. The address is `ref`, a path into the site dict, or
-`ip`. The role applies these records, and the gateway's names, to the running Pi-hole with
-`pihole-FTL --config dns.hosts`, only when they differ, so DNS is never interrupted. A
-record added in the UI is removed on the next run. `tests/test_pihole_records.sh` covers
-the rules.
+#### Local records
 
-The block lists are in `pihole_blocklists`: StevenBlack plus a few lists from firebog and
-URLhaus. A change runs a gravity update. Lists added in the web UI are left alone.
+Local records come from `site.dns.local_records` in Vault.
+
+| Entry key | Served as |
+|---|---|
+| `name` | `<name>.lan.<domain>`. The `lan` sub-zone keeps it from shadowing a public name. |
+| `fqdn` | Exactly that name, for split horizon: a public hostname answered at home with a home address. |
+
+The address is `ref`, a path into the site dict, or `ip`. The role applies these records,
+and the gateway's names, to the running Pi-hole with `pihole-FTL --config dns.hosts`. It
+does so only when they differ, so DNS is never interrupted. A record added in the UI is
+removed on the next run. `tests/test_pihole_records.sh` covers the rules.
+
+#### Block lists and deny rules
+
+Block lists and deny rules are code: `pihole_blocklists` and `pihole_deny_regex` in the
+role's defaults. The role keeps them present and enabled. Lists and rules added in the web
+UI are left alone.
+
+- The lists are StevenBlack, AdGuard DNS, EasyPrivacy, Prigent crypto, URLhaus and HaGeZi
+  Multi PRO. A new list runs a gravity update.
+- The deny rules block, with their subdomains, the ad and tracking networks a free torrent
+  client shows ads from: uTorrent's Rainberry service and the ad networks it calls. No
+  list blocks those. A new deny rule reloads the lists.
 
 Pointing the home router and NetBird at Pi-hole are hand steps, in
 [setup.md](setup.md#not-managed-here).
-
-Block lists and deny rules are code (`pihole_blocklists`, `pihole_deny_regex` in the role's
-defaults). The role keeps them present and enabled, and leaves anything added in the web
-UI alone. A new list runs a gravity update. A new deny rule reloads the lists. The lists
-are StevenBlack, AdGuard DNS, EasyPrivacy, Prigent crypto, URLhaus and HaGeZi Multi PRO.
-The deny rules block, with their subdomains, the ad and tracking networks a free torrent
-client shows ads from (uTorrent's Rainberry service and the ad networks it calls), which no
-list blocks.
 
 ### Service gateway
 
@@ -427,116 +452,144 @@ Every web UI in the lab is at `https://<name>.<gateway-domain>`, served by Caddy
 (`caddy` role, compose project `/opt/caddy`) with a publicly trusted certificate.
 
 The gateway domain is `<subdomain>.<domain>`, with the subdomain from
-`site.gateway.subdomain` (for example `internal`), or just `<domain>` when that key is
-empty. `ansible/inventory/group_vars/all/gateway.yml` builds it as `gateway_domain` for the
-caddy, pihole and homepage roles. `site.domain` itself, used for the public tunnel names,
-does not change.
+`site.gateway.subdomain` (for example `internal`). When that key is empty, it is just
+`<domain>`. `ansible/inventory/group_vars/all/gateway.yml` builds it as `gateway_domain`
+for the caddy, pihole and homepage roles. `site.domain` itself, used for the public tunnel
+names, does not change.
 
-The gateway is private. Its names exist only as Pi-hole records that point at the `apps`
-home address, so they work only on the home and lab networks and over NetBird. For NetBird,
-that address must be on a route the peers use. Nothing goes into public DNS, no tunnel or
-port forward points at the gateway, and Caddy listens only on the two `apps` addresses.
-With a subdomain, no public name is shadowed: `frigate.<domain>` still reaches its tunnel,
-and the local name is `frigate.<gateway-domain>`.
+The gateway is private:
+
+- Its names exist only as Pi-hole records that point at the `apps` home address. They work
+  only on the home and lab networks and over NetBird. For NetBird, that address must be on
+  a route the peers use.
+- Nothing goes into public DNS. No tunnel or port forward points at the gateway.
+- Caddy listens only on the two `apps` addresses.
+- With a subdomain, no public name is shadowed. `frigate.<domain>` still reaches its
+  tunnel, and the local name is `frigate.<gateway-domain>`.
 
 Caddy gets one wildcard certificate, `*.<gateway-domain>`, from Let's Encrypt through the
 DNS-01 challenge. It creates the `_acme-challenge` TXT record through the Cloudflare API
-and removes it afterwards, so Certificate Transparency logs show only the wildcard. The API
+and removes it afterwards. Certificate Transparency logs show only the wildcard. The API
 token is `cloudflare_dns_token` in `kv/homelab/apps/caddy`. It may only edit DNS in that
-zone, and it reaches Caddy through a mode 600 env file.
+zone. It reaches Caddy through a mode 600 env file.
 
-One list drives Caddy, Pi-hole and Homepage: `site.services` in Vault. Each entry has a
-name, an upstream (`host`, a path into the site dict, or `container`), a port and a scheme.
-Optional fields cover self-signed upstreams, Vault's CA, websockets, long streams, the
-upstream Host header and absolute redirects to the upstream's own address
-(`rewrite_location`, used by the [switch](cisco-switch.md#web-ui-through-the-gateway)). They are documented in `ansible/roles/caddy/defaults/main.yml`, and
-`tests/test_gateway.sh` covers the rules. See
-[Adding a service](usage.md#adding-a-service-behind-the-gateway). A `static` entry has no
-upstream: Caddy serves files from `/opt/caddy/sites/<static>`, a read-only mount. This
-documentation is one, at `docs.<gateway-domain>` ([Publishing the docs](usage.md#publishing-the-docs)).
+One list drives Caddy, Pi-hole and Homepage: `site.services` in Vault.
+
+- Each entry has a name, an upstream (`host`, a path into the site dict, or `container`), a
+  port and a scheme.
+- Optional fields cover self-signed upstreams, Vault's CA, websockets, long streams, the
+  upstream Host header and absolute redirects to the upstream's own address
+  (`rewrite_location`, used by the [switch](cisco-switch.md#web-ui-through-the-gateway)).
+  They are documented in `ansible/roles/caddy/defaults/main.yml`. `tests/test_gateway.sh`
+  covers the rules. See [Adding a service](usage.md#adding-a-service-behind-the-gateway).
+- A `static` entry has no upstream. Caddy serves files from `/opt/caddy/sites/<static>`, a
+  read-only mount. This documentation is one, at `docs.<gateway-domain>`
+  ([Publishing the docs](usage.md#publishing-the-docs)).
 
 HTTP redirects to HTTPS. Names not in the list get the connection closed. Only HTTP/1.1
 and HTTP/2 are served. No UDP port is published.
 
 The image is Caddy with the `caddy-dns/cloudflare` module, built by xcaddy from the pinned
 `caddy_*` versions and base-image digests. It is built on `ragnarok`, because a Go build
-of Caddy needs more memory than `apps` has free, then copied through the Mac and loaded on
-`apps`. The tag includes a hash of the Dockerfile, so a version change builds a new image.
-The memory cap is 128 MB.
+of Caddy needs more memory than `apps` has free. It is then copied through the Mac and
+loaded on `apps`. The tag includes a hash of the Dockerfile, so a version change builds a
+new image. The memory cap is 128 MB.
 
-The gateway adds no login of its own. Turn on each app's own login. Every client reaches the
-app from the gateway's address, so for qBittorrent, set a password and remove the "bypass
-authentication for clients in whitelisted IP subnets" entry.
+The gateway adds no login of its own. Turn on each app's own login. Every client reaches
+the app from the gateway's address. So for qBittorrent, set a password and remove the
+"bypass authentication for clients in whitelisted IP subnets" entry.
 
 Some routes answer only the operator's devices. Every other client gets 403, checked on
 the real client address before anything else:
 
-- `pass` and `vault` (`caddy_admin_only_routes`): the enclave's operators, see
+- `pass` and `vault` (`caddy_admin_only_routes`): the enclave's operators. See
   [Secrets enclave](#secrets-enclave).
 - The infrastructure pages (`caddy_infra_routes`): `pve`, `ceph`, `idrac`, `switch`, `dns`,
-  `home`, `qbit`, `frigate` and `threadfin`. The sources are `site.admin_sources` and
-  `site.admin_vpn_sources` together, whatever `site.enclave.vpn_only` says, so the Mac
-  keeps LAN access to them. Homepage is one of them because it has no login and its widgets
-  show Proxmox, Pi-hole and ARR data. Threadfin is one because it is the TV lineup's admin page.
-- `tasks/services.yml` refuses any source that is not a single /32, and the Proxmox host's
-  own addresses. VLAN clients and NetBird peers behind the host's masquerade arrive as
-  those addresses, so admitting one would let all of them in.
+  `home`, `qbit`, `frigate` and `threadfin`.
+    - The sources are `site.admin_sources` and `site.admin_vpn_sources` together, whatever
+      `site.enclave.vpn_only` says, so the Mac keeps LAN access to them.
+    - Homepage is one of them because it has no login and its widgets show Proxmox,
+      Pi-hole and ARR data.
+    - Threadfin is one because it is the TV lineup's admin page.
+- `tasks/services.yml` refuses any source that is not a single /32. It also refuses the
+  Proxmox host's own addresses. VLAN clients and NetBird peers behind the host's
+  masquerade arrive as those addresses, so admitting one would let all of them in.
 
-These stay open on the gateway: the ARR apps (API key and login), Filestash (`files`, a
-generated 32-character password) and Gotify (its token), the live TV streams (`tv`) and the
-docs. ntfy has no web login (its topic access rules decide), and Pulse's login was not
-checked. Add either to `caddy_infra_routes` to close it to everyone but the operator.
+These stay open on the gateway:
+
+- the ARR apps (API key and login)
+- Filestash (`files`, a generated 32-character password)
+- Gotify (its token)
+- the live TV streams (`tv`)
+- the docs
+
+ntfy has no web login (its topic access rules decide). Pulse's login was not checked. Add
+either to `caddy_infra_routes` to close it to everyone but the operator.
 
 ### Homepage
 
 `https://home.<gateway-domain>` is a [Homepage](https://gethomepage.dev) dashboard (the
 `home` entry of `site.services`, `homepage` role, compose project `/opt/homepage`). It has
-a link, and a live widget where one exists, for every enabled gateway service. It has no
-login, like the other gateway names.
+a link for every enabled gateway service, and a live widget where one exists. Like the
+other gateway names, it has no login.
 
-The config is generated from `site.services`. Title, group, icon, description and widget
-for each name come from `homepage_catalog` in the role defaults, and an entry in
-`site.services` can override any of them (`widget: none` turns a widget off). A name not
-in the catalog goes to group `Other` with no widget. Disabled entries are left out. The
-groups are Infrastructure, Media, Home, Security and, later, Monitoring.
-`tests/test_homepage.sh` covers the rules.
+The config is generated from `site.services`. `tests/test_homepage.sh` covers the rules.
 
-The config files hold no secrets. Widget keys are `{{HOMEPAGE_VAR_*}}` placeholders that
-Homepage fills from `/opt/homepage/homepage.env` (mode 600, values from Vault).
+- Title, group, icon, description and widget for each name come from `homepage_catalog`
+  in the role defaults.
+- An entry in `site.services` can override any of them. `widget: none` turns a widget off.
+- A name not in the catalog goes to group `Other` with no widget.
+- Disabled entries are left out.
+- The groups are Infrastructure, Media, Home, Security and, later, Monitoring.
+
+The config files hold no secrets. Widget keys are `{{HOMEPAGE_VAR_*}}` placeholders.
+Homepage fills them from `/opt/homepage/homepage.env` (mode 600, values from Vault).
 
 The widgets are Proxmox, Ceph, Pi-hole, Sonarr, Radarr, Prowlarr, qBittorrent, Frigate and
-the container status of Pi-hole. Homepage has no Ceph widget, so the Ceph one reads the
-Proxmox API with the same read-only token. Pi-hole uses an application password, not the
-web password. qBittorrent needs no login. Each credential is made by the role that owns
-the app:
+the container status of Pi-hole.
 
-- `make host ARGS="--tags homepage"`: Proxmox user `homepage@pve`, with no password, and its
-  privilege-separated token, both PVEAuditor
-- `make vm HOST=ragnarok ARGS="--tags homepage"`: the ARR API keys, read from the apps'
-  `config.xml` without changing anything on `ragnarok`
-- `make vm HOST=frigate ARGS="--tags homepage"`: Frigate user `homepage`, role viewer
-- `make vm HOST=apps`: the Pi-hole application password
+- Homepage has no Ceph widget. The Ceph one reads the Proxmox API with the same read-only
+  token.
+- Pi-hole uses an application password, not the web password.
+- qBittorrent needs no login.
+
+Each credential is made by the role that owns the app:
+
+| Command | Credential |
+|---|---|
+| `make host ARGS="--tags homepage"` | Proxmox user `homepage@pve`, with no password, and its privilege-separated token, both PVEAuditor |
+| `make vm HOST=ragnarok ARGS="--tags homepage"` | The ARR API keys, read from the apps' `config.xml` without changing anything on `ragnarok` |
+| `make vm HOST=frigate ARGS="--tags homepage"` | Frigate user `homepage`, role viewer |
+| `make vm HOST=apps` | The Pi-hole application password |
 
 On a new site, run the first three before `make vm HOST=apps`. Each run checks every
 widget through Homepage's API. A widget with an error is a warning, because its app may be
 on another VM. `ARGS="-e homepage_strict_widgets=true"` makes it fail the run instead.
 
-Hardening: the image is pinned by tag and digest. No port is published. Caddy reaches it
-on the project network `homepage_web`. Only `home.<gateway-domain>` is an allowed Host. It
-runs as its own uid with a read-only config directory and a 192 MB memory cap. Container
-status goes through a pinned Docker socket proxy on an internal network that only Homepage
-shares. The proxy allows only `GET /containers/json` and `GET /containers/<id>/stats`, with
-no inspect (container environments hold secrets), logs, exec or writes. Containers on other
-VMs show no status, because a socket proxy there would listen on the lab network, where
-Docker-published ports bypass ufw.
+Hardening:
 
-Look: a dark slate theme, blurred cards, status dots and no version footer.
-Infrastructure and Media use 3 columns, the other groups 2. There is a date and time widget
-but no search widget, which would send what you type to a search engine. Weather
-(Open-Meteo) shows only when `site.homepage.weather` has `latitude` and `longitude`. For a
-background picture, put `~/homelab-assets/homepage-bg.jpg` on the Mac
-(`homepage_background_src`). The run then copies it to `/opt/homepage/images`, restarts
-Homepage once and shows it with blur, saturation, brightness and opacity filters.
+- The image is pinned by tag and digest.
+- No port is published. Caddy reaches it on the project network `homepage_web`.
+- Only `home.<gateway-domain>` is an allowed Host.
+- It runs as its own uid, with a read-only config directory and a 192 MB memory cap.
+- Container status goes through a pinned Docker socket proxy, on an internal network that
+  only Homepage shares. The proxy allows only `GET /containers/json` and
+  `GET /containers/<id>/stats`. It allows no inspect (container environments hold
+  secrets), logs, exec or writes.
+- Containers on other VMs show no status. A socket proxy there would listen on the lab
+  network, where Docker-published ports bypass ufw.
+
+Look:
+
+- A dark slate theme, blurred cards, status dots and no version footer.
+- Infrastructure and Media use 3 columns, the other groups 2.
+- A date and time widget. No search widget, because it would send what you type to a
+  search engine.
+- Weather (Open-Meteo) shows only when `site.homepage.weather` has `latitude` and
+  `longitude`.
+- For a background picture, put `~/homelab-assets/homepage-bg.jpg` on the Mac
+  (`homepage_background_src`). The run copies it to `/opt/homepage/images`, restarts
+  Homepage once and shows it with blur, saturation, brightness and opacity filters.
 
 ### Vaultwarden
 
@@ -547,77 +600,104 @@ manager (the `pass` entry of `site.services`, `vaultwarden` role, compose projec
 extensions use it as a self-hosted server URL.
 
 It runs on the `vaultwarden` VM in the [secrets enclave](#secrets-enclave)
-(`make vm HOST=vaultwarden`). The container is `vaultwarden/server`, pinned by tag and
-digest. The VM has no registry access, so the image is pulled by digest on `ragnarok`,
-exported, copied through the Mac and loaded by tag (never pulled there). The run checks
-that its layer list equals the pulled image's. Docker comes from Ubuntu's archive
-(`docker.io`, `docker-compose-v2`) through the apt cache. The port is published on the VM's
-enclave address only, where the enclave firewall lets only Caddy (`apps`) in. It runs as
-uid 10004 on port 8080, with a read-only root file system, no capabilities and a 128 MB
-memory cap. Websocket notifications (`/notifications/hub`) go through the gateway on the
-same name. On a VM with no database the role refuses to start an empty Vaultwarden.
-The flag `-e vaultwarden_allow_empty_start=true` is for a deliberate fresh install.
+(`make vm HOST=vaultwarden`).
 
-The Vault paths keep the name of the VM it was first set up on: `kv/homelab/apps/vaultwarden`
-and `kv/homelab/apps/vaultwarden-backup`.
+- The container is `vaultwarden/server`, pinned by tag and digest.
+- The VM has no registry access. The image is pulled by digest on `ragnarok`, exported,
+  copied through the Mac and loaded by tag. It is never pulled on the VM. The run checks
+  that its layer list equals the pulled image's.
+- Docker comes from Ubuntu's archive (`docker.io`, `docker-compose-v2`) through the apt
+  cache.
+- The port is published on the VM's enclave address only. There the enclave firewall lets
+  only Caddy (`apps`) in.
+- It runs as uid 10004 on port 8080, with a read-only root file system, no capabilities
+  and a 128 MB memory cap.
+- Websocket notifications (`/notifications/hub`) go through the gateway on the same name.
+- On a VM with no database, the role refuses to start an empty Vaultwarden. The flag
+  `-e vaultwarden_allow_empty_start=true` is for a deliberate fresh install.
+
+The Vault paths keep the name of the VM it was first set up on:
+`kv/homelab/apps/vaultwarden` and `kv/homelab/apps/vaultwarden-backup`.
 
 #### The move from `apps` (2026-10-21)
 
-The `apps` copy's backup job ran one last time and was checked. Then its container was
-stopped, the database was copied with `sqlite3 .backup` (plus `rsa_key.pem`), the new VM
-started on that copy, and the `pass` entry was switched to `host: hosts.vaultwarden.ip`.
-The users and ciphers rows, and digests of both tables, were equal on both sides. After a
-day on the new VM (a fresh backup decrypted, the drill passed, the counts unchanged), the old
-copy on `apps` was removed: its container, `/opt/vaultwarden` (data included), its backup
-units and `/etc/vaultwarden-backup` (the S3 keys), and Caddy left the network
-`vaultwarden_web` (one recreate), which was then removed.
+1. The `apps` copy's backup job ran one last time and was checked.
+2. Its container was stopped. The database was copied with `sqlite3 .backup`, plus
+   `rsa_key.pem`.
+3. The new VM started on that copy, and the `pass` entry was switched to
+   `host: hosts.vaultwarden.ip`.
+4. The users and ciphers rows, and digests of both tables, were equal on both sides.
+5. After a day on the new VM (a fresh backup decrypted, the drill passed, the counts
+   unchanged), the old copy on `apps` was removed: its container, `/opt/vaultwarden`
+   (data included), its backup units and `/etc/vaultwarden-backup` (the S3 keys). Caddy
+   left the network `vaultwarden_web` (one recreate), which was then removed.
 
 `DOMAIN` is the gateway name. Sign-ups are closed (`SIGNUPS_ALLOWED=false`), invitations
 are on, and password hints are never shown.
 
 Don't save settings on the admin page. They go to `data/config.json`, which overrides the
-role's environment. Each run lists the keys there that shadow a role setting. If one
-weakens it (open sign-ups, email verification or email two-step login off while SMTP is
-on, hints shown, no admin token, another domain, fewer iterations, or a pinned
-`admin_token`), the run stops before it touches the container. The fix is in
-[Troubleshooting](usage.md#troubleshooting). The role never deletes or rewrites that file.
+role's environment. Each run lists the keys there that shadow a role setting. The run
+stops before it touches the container if one of them weakens it:
+
+- open sign-ups
+- email verification or email two-step login off while SMTP is on
+- hints shown
+- no admin token
+- another domain
+- fewer iterations
+- a pinned `admin_token`
+
+The fix is in [Troubleshooting](usage.md#troubleshooting). The role never deletes or
+rewrites that file.
 
 The admin token is generated into `kv/homelab/apps/vaultwarden` as `admin_token`.
 Vaultwarden gets only its Argon2id hash, `admin_token_hash`, in
-`/opt/vaultwarden/vaultwarden.env` (mode 600). Each run checks that the hash matches the
-token, the admin page accepts the token, `/alive` answers and an uninvited address cannot
-sign up. To change the token, write a new `admin_token` to Vault and rerun
+`/opt/vaultwarden/vaultwarden.env` (mode 600). Each run checks that:
+
+- the hash matches the token
+- the admin page accepts the token
+- `/alive` answers
+- an uninvited address cannot sign up
+
+To change the token, write a new `admin_token` to Vault and rerun
 `make vm HOST=vaultwarden`.
 
 #### Mail
 
 SMTP is set from `kv/homelab/apps/vaultwarden`. The pair `smtp_username` and
 `smtp_password` turns it on. With only one of the two, the run stops. With SMTP,
-invitations are mailed and `SIGNUPS_VERIFY` is on. `smtp_host`, `smtp_port`,
-`smtp_security` (starttls, force_tls or off) and `smtp_from` are optional. They default to
-`smtp.gmail.com`, 587, starttls and the username.
+invitations are mailed and `SIGNUPS_VERIFY` is on.
 
-- Gmail: `smtp_username` is the Gmail address and `smtp_password` a Google App Password,
+| Key | Default |
+|---|---|
+| `smtp_host` | `smtp.gmail.com` |
+| `smtp_port` | 587 |
+| `smtp_security` (starttls, force_tls or off) | starttls |
+| `smtp_from` | the username |
+
+- Gmail: `smtp_username` is the Gmail address. `smtp_password` is a Google App Password,
   which needs 2-step verification on the account.
-- Another relay: set `smtp_host`, `smtp_username`, `smtp_password` and an address on its
+- Another relay: set `smtp_host`, `smtp_username`, `smtp_password`, and an address on its
   verified domain as `smtp_from`.
 
 Write each value from stdin (see [Secrets in Vault](usage.md#secrets-in-vault)), then run
 `make vm HOST=vaultwarden`. When `smtp_host` or `smtp_port` changed, also run
-`make enclave ARGS="--tags firewall"`: the enclave firewall's mail hole (the relay set and
+`make enclave ARGS="--tags firewall"`. The enclave firewall's mail hole (the relay set and
 its port) is built from them.
 
 #### Two-step login
 
 With SMTP, every account registered from an invitation gets email two-step login
-(`EMAIL_2FA_ENFORCE_ON_VERIFIED_INVITE`). Codes last 10 minutes, 3 tries. That is the only
-factor the server enforces. Add an authenticator app or a passkey as your main second
-factor and save the recovery code (Settings, Security, Two-step login). If you create an
-organization, turn on its "Require two-step login" policy.
+(`EMAIL_2FA_ENFORCE_ON_VERIFIED_INVITE`). Codes last 10 minutes, with 3 tries. That is the
+only factor the server enforces.
 
-`REQUIRE_DEVICE_EMAIL=true`, a mail on every new-device login, is off on purpose: with it,
-every login fails while mail cannot be sent, and you can be locked out of your passwords.
-Add it to `vaultwarden_settings` if you want it.
+- Add an authenticator app or a passkey as your main second factor, and save the recovery
+  code (Settings, Security, Two-step login).
+- If you create an organization, turn on its "Require two-step login" policy.
+
+`REQUIRE_DEVICE_EMAIL=true` sends a mail on every new-device login. It is off on purpose.
+With it, every login fails while mail cannot be sent, and you can be locked out of your
+passwords. Add it to `vaultwarden_settings` if you want it.
 
 #### Creating your account
 
@@ -649,26 +729,30 @@ user every night at about 03:30. The job:
    `vaultwarden-YYYYMMDD-HHMMSS.tar.age` (UTC) and checks the size
 4. keeps the newest 14 of its objects and touches nothing else in the bucket
 
-The plaintext copy and the archive live on tmpfs in `/run/vaultwarden-backup` and are
+The plaintext copy and the archive live on tmpfs in `/run/vaultwarden-backup`. They are
 removed when the job ends. The job stops if there is less than twice the data free there.
 `/run` is about 50 MB on the 512 MB `vaultwarden` VM. The data is well under 1 MB.
 
-The bucket belongs to the S3 user `vaultwarden-backup`, made by `make ceph`. It may own no
-other bucket and cannot read any other. Its keys are in
+The bucket belongs to the S3 user `vaultwarden-backup`, made by `make ceph`. That user may
+own no other bucket and cannot read any other. Its keys are in
 `kv/homelab/apps/vaultwarden-backup`. `make backup` copies the newest object to the Mac.
 
 Not done yet: object versioning or object lock on the bucket. The backup user owns the
-bucket, so a compromised `vaultwarden` VM could delete the backups. Today the copies on the Mac are the second
-copy.
+bucket, so a compromised `vaultwarden` VM could delete the backups. Today the copies on
+the Mac are the second copy.
 
-`make vaultwarden-drill` tests a restore. It takes the newest backup, which must be the
-copy `make backup` pulled, and decrypts it on the Mac straight into a one-time key made on
-the `vaultwarden` VM, so no plaintext touches the Mac's disk and the identity never leaves it. It
-restores into a temporary container `vaultwarden-restore-drill` with no network, no
-gateway route and no admin page, and moves any restored `config.json` aside. It checks
-that `/alive` answers, that the user count equals the live one and that every restored
-user is live, then removes the container and its directory. The real restore is in
-[setup.md](setup.md#rebuilding-on-a-new-box).
+`make vaultwarden-drill` tests a restore:
+
+1. It takes the newest backup, which must be the copy `make backup` pulled.
+2. It decrypts it on the Mac straight into a one-time key made on the `vaultwarden` VM.
+   No plaintext touches the Mac's disk, and the identity never leaves it.
+3. It restores into a temporary container, `vaultwarden-restore-drill`, with no network,
+   no gateway route and no admin page. It moves any restored `config.json` aside.
+4. It checks that `/alive` answers, that the user count equals the live one and that every
+   restored user is live.
+5. It removes the container and its directory.
+
+The real restore is in [setup.md](setup.md#rebuilding-on-a-new-box).
 
 ## Secrets enclave
 
