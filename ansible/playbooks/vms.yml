@@ -3,7 +3,7 @@
 # node_exporter (group node_exporter in the inventory).
 # Run: make vms ARGS="--check --diff"   or one VM: make vm HOST=frigate
 # Tags: base, docker, cloudflared, node_exporter, frigate, docmost, arr, iptv_epg, filestash, iptv,
-# netbird_peer, netbird_home, redis, ntfy, pulse, pulse_agent, grow_disk (only when named), nfs_media, apt_repo, netbird_server, pihole, homepage,
+# netbird_peer, netbird_home, redis, ntfy, pulse, pulse_agent, grow_disk and rotate (only when named), nfs_media, apt_repo, netbird_server, pihole, homepage,
 # vaultwarden, caddy, docs, firewall. The tag docs alone copies only the static sites Caddy
 # serves (make docs-publish). The tag homepage alone also runs the pieces other roles keep
 # for the dashboard (ARR API keys into Vault on ragnarok, the Frigate viewer login, Pi-hole's

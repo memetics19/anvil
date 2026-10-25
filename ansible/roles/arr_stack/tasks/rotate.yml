@@ -1,0 +1,117 @@
+# New API keys for the apps in arr_stack_rotate (anvil rotate). Each app makes its own key
+# with its ResetApiKey command, the same as the reset button in Settings, General. Then:
+#  - Prowlarr's applications get the new Radarr and Sonarr keys (Prowlarr pushes indexers
+#    to them with these keys);
+#  - a new Prowlarr key is pushed into Radarr's and Sonarr's indexers. Prowlarr starts that
+#    sync itself when its key changes. The forced sync here makes sure it runs.
+# Keys go only through headers and request bodies, never argv, the log or the screen.
+# Nothing is restarted. api_keys.yml then copies the keys into Vault.
+- name: Rotate | which apps
+  ansible.builtin.set_fact:
+    arr_stack_rotate_list: "{{ arr_stack_rotate | split(',') | map('trim') | select | unique | list }}"
+
+- name: Rotate | known apps only
+  ansible.builtin.assert:
+    that:
+      - arr_stack_rotate_list | length > 0
+      - arr_stack_rotate_list | difference(arr_stack_api_key_apps) | length == 0
+    fail_msg: "arr_stack_rotate: one or more of {{ arr_stack_api_key_apps | join(', ') }}, comma separated"
+    quiet: true
+
+- name: Rotate | read the keys now
+  ansible.builtin.import_tasks: read_keys.yml
+
+- name: Rotate | the keys before
+  ansible.builtin.set_fact:
+    arr_stack_keys_before: "{{ arr_stack_api_keys }}"
+  no_log: true
+
+- name: Rotate | would make new keys
+  ansible.builtin.debug:
+    msg: "{{ arr_stack_rotate_list | join(', ') }}: a new API key each, then Prowlarr's links updated"
+  changed_when: true
+  when: ansible_check_mode
+
+- name: Rotate | each app makes a new key
+  ansible.builtin.uri:
+    url: "http://{{ arr_stack_api_host }}:{{ arr_stack_api[item].port }}/api/{{ arr_stack_api[item].version }}/command"
+    method: POST
+    headers:
+      X-Api-Key: "{{ arr_stack_keys_before[item ~ '_api_key'] }}"
+    body_format: json
+    body: {name: ResetApiKey}
+    status_code: [200, 201]
+  loop: "{{ arr_stack_rotate_list }}"
+  changed_when: true
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Rotate | the new key is in config.xml
+  ansible.builtin.slurp:
+    src: "{{ arr_stack_config_xml_files[item] }}"
+  register: arr_stack_rotated_xml
+  until: >-
+    (arr_stack_rotated_xml.content | b64decode
+     | regex_search('<ApiKey>([0-9a-f]{32})</ApiKey>', '\\1') | default([''], true) | first)
+    not in ['', arr_stack_keys_before[item ~ '_api_key']]
+  retries: 15
+  delay: 2
+  loop: "{{ arr_stack_rotate_list }}"
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Rotate | read the new keys
+  ansible.builtin.import_tasks: read_keys.yml
+  when: not ansible_check_mode
+
+# Prowlarr: its links to the rotated apps.
+- name: Rotate | Prowlarr's applications
+  ansible.builtin.uri:
+    url: "http://{{ arr_stack_api_host }}:{{ arr_stack_api.prowlarr.port }}/api/v1/applications"
+    headers:
+      X-Api-Key: "{{ arr_stack_api_keys.prowlarr_api_key }}"
+    return_content: true
+  register: arr_stack_prowlarr_apps
+  no_log: true
+  when:
+    - not ansible_check_mode
+    - "'prowlarr' in arr_stack_api_key_apps"
+    - arr_stack_rotate_list | intersect(['radarr', 'sonarr']) | length > 0
+
+- name: Rotate | the new keys into Prowlarr's applications
+  ansible.builtin.uri:
+    url: "http://{{ arr_stack_api_host }}:{{ arr_stack_api.prowlarr.port }}/api/v1/applications/{{ item.id }}"
+    method: PUT
+    headers:
+      X-Api-Key: "{{ arr_stack_api_keys.prowlarr_api_key }}"
+    body_format: json
+    body: >-
+      {%- set key = arr_stack_api_keys[(item.implementation | lower) ~ '_api_key'] -%}
+      {%- set fields = [] -%}
+      {%- for f in item.fields -%}
+      {%- set _ = fields.append(f | combine({'value': key}) if f.name == 'apiKey' else f) -%}
+      {%- endfor -%}
+      {{ item | combine({'fields': fields}) }}
+    status_code: [200, 202]
+  loop: >-
+    {{ (arr_stack_prowlarr_apps.json | default([]))
+       | selectattr('implementation', 'defined')
+       | selectattr('implementation', 'in', arr_stack_rotate_list | map('capitalize') | list) | list }}
+  changed_when: true
+  no_log: true
+  when: arr_stack_prowlarr_apps is not skipped
+
+- name: Rotate | the new Prowlarr key into Radarr's and Sonarr's indexers
+  ansible.builtin.uri:
+    url: "http://{{ arr_stack_api_host }}:{{ arr_stack_api.prowlarr.port }}/api/v1/command"
+    method: POST
+    headers:
+      X-Api-Key: "{{ arr_stack_api_keys.prowlarr_api_key }}"
+    body_format: json
+    body: {name: ApplicationIndexerSync, forceSync: true}
+    status_code: [200, 201]
+  changed_when: true
+  no_log: true
+  when:
+    - not ansible_check_mode
+    - "'prowlarr' in arr_stack_rotate_list"

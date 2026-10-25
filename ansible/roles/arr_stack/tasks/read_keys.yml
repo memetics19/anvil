@@ -1,0 +1,19 @@
+# Each app's API key from its config.xml into arr_stack_api_keys (<app>_api_key).
+# Read only. The keys stay out of the log.
+- name: Keys | read each app's config.xml
+  ansible.builtin.slurp:
+    src: "{{ arr_stack_config_xml_files[item] }}"
+  loop: "{{ arr_stack_api_key_apps }}"
+  register: arr_stack_config_xml
+  no_log: true
+
+- name: Keys | pick them out
+  ansible.builtin.set_fact:
+    arr_stack_api_keys: >-
+      {%- set out = {} -%}
+      {%- for r in arr_stack_config_xml.results -%}
+      {%- set m = r.content | b64decode | regex_search('<ApiKey>([0-9a-f]{32})</ApiKey>', '\\1') -%}
+      {%- set _ = out.update({r.item ~ '_api_key': (m | first) if m else ''}) -%}
+      {%- endfor -%}
+      {{ out }}
+  no_log: true

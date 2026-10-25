@@ -46,6 +46,8 @@ jobs:
         run: tests/test_iptv_web.sh
       - name: Plan guard test
         run: tests/test_plan_guard.sh
+      - name: Rotate test
+        run: tests/test_rotate.sh
       - name: Pi-hole local records test
         run: tests/test_pihole_records.sh
       - name: Service gateway test
