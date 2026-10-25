@@ -33,3 +33,6 @@ build/
 # Release builds (make release-snapshot, GoReleaser)
 dist/
 completions/
+
+# the binary `go build` writes in cli/
+/cli/cli
