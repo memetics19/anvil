@@ -280,6 +280,49 @@ A dry run. It changes nothing. `make tf-plan` saves the plan that `make tf-apply
 later. `--host`, `--tags` and `--args` add to `HOST` and `ARGS`. `--args` refuses
 `--force` and `-target`.
 
+## anvil drift
+
+```sh
+anvil drift                    # check host, vms and tf, push to ntfy if anything drifted
+anvil drift --always           # push "no drift" too
+anvil drift --install          # every night at 03:30 on this machine
+anvil drift --install --at 02:15
+anvil drift --uninstall
+```
+
+It runs what `anvil check` runs with no target. All of it is read-only. When a VM or
+Terraform would change, or a check fails, it sends one ntfy message and exits 1. The
+message names the targets, the VMs with changes and Terraform's counts. It never holds an
+address or a diff. `anvil check <target>` shows the diff.
+
+`--install` schedules it from this checkout with this shell's `PATH`: a launchd agent on
+macOS, a systemd user timer on Linux. A run missed while the machine slept runs when it
+wakes. The log is `~/Library/Logs/anvil/drift.log` on macOS and
+`~/.local/state/anvil/drift.log` on Linux. It keeps the last 7 runs.
+
+It runs on your machine because that is where the lab's keys are. GitHub holds no key to
+the lab, and no lab VM may read Vault. Away from home it needs the VPN. If the lab is out
+of reach, ntfy is too, and the verdict stays in the log.
+
+ntfy, once. On the VM that runs ntfy, in its compose project directory, make a user that
+may only publish to one topic, and a token for it:
+
+```sh
+docker compose exec ntfy ntfy user add anvil
+docker compose exec ntfy ntfy access anvil <topic> write-only
+docker compose exec ntfy ntfy token add anvil
+```
+
+Then on your machine, with the topic URL and the token:
+
+```sh
+security add-generic-password -s homelab -a ntfy-url -w https://<ntfy host>/<topic>
+security add-generic-password -s homelab -a ntfy-token -w
+```
+
+`ANVIL_NTFY_URL` and `ANVIL_NTFY_TOKEN` in the environment take their place. Subscribe to
+the topic in the ntfy app with your own user.
+
 ## anvil apply
 
 ```sh
@@ -440,7 +483,7 @@ route `netstat -rn -f inet` still shows on en0.
 | Code | Meaning |
 |---|---|
 | make's code | The make target failed. anvil passes its code on. |
-| 1 | You declined, or `anvil init` found a problem. |
+| 1 | You declined, `anvil init` found a problem, or `anvil drift` found drift. |
 | 2 | A usage error, or an unknown name. |
 | 3 | `anvil up` stopped at a step that needs you. |
 
