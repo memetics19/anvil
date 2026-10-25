@@ -203,7 +203,8 @@ your terminal app, see [No route to host on macOS](#no-route-to-host-on-macos).
 ## anvil doctor and anvil init
 
 ```sh
-anvil doctor    # the same as anvil init
+anvil doctor          # the same as anvil init
+anvil doctor --fix    # macOS: first remove lab routes that hide the VPN
 ```
 
 `anvil doctor` and `anvil init` run the same checks. It checks, read-only, that this Mac
@@ -219,8 +220,16 @@ can run the lab:
   repo at its tag, a dev build wants the commit it was built from. A mismatch is a
   warning, with the fix: `anvil update` for the fetched copy, `make cli` or a
   `git checkout` for your own
+- macOS only: that no lab address alias or lab route left on the Wi-Fi or a USB adapter
+  hides the VPN's route to the lab. It prints counts and the interface, never an address.
 
 Each problem prints its fix. It exits 1 when something is missing.
+
+`anvil doctor --fix` removes those aliases and routes before the checks. It shows what it
+found, asks first, then runs `ifconfig -alias` and `route delete` with sudo, which asks
+for your password. It only acts when a lab address does not answer, its route uses a
+non-VPN interface, and a VPN route covers it. At home, with a cable into the lab or a
+direct route that works, it finds nothing. Nothing in the lab changes.
 
 ## anvil status
 
@@ -421,8 +430,10 @@ Check that you are on the home or lab network, or connected to the VPN.
 Away from home, a lab address added by hand to the Wi-Fi interface (an alias, used at
 home to reach the lab directly) breaks the VPN route: the alias's
 route is more specific and points into the wrong network. `route -n get <lab address>`
-then names the Wi-Fi interface, not the VPN's. Remove the alias while away:
-`sudo ifconfig en0 -alias <alias address>`.
+then names the Wi-Fi interface, not the VPN's. `anvil doctor` reports it and
+`anvil doctor --fix` removes the alias and its routes. By hand:
+`sudo ifconfig en0 -alias <alias address>`, then `sudo route -n delete` for each lab
+route `netstat -rn -f inet` still shows on en0.
 
 ## Exit codes
 

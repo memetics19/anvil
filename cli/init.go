@@ -17,7 +17,7 @@ import (
 
 const (
 	initUsage   = "usage: anvil init\n       anvil doctor\n" + checksUsage
-	doctorUsage = "usage: anvil doctor\n       anvil init\n" + checksUsage
+	doctorUsage = "usage: anvil doctor [--fix]\n       anvil init\n" + checksUsage + doctorFixUsage
 )
 
 const checksUsage = `
@@ -30,8 +30,16 @@ Checks, read-only, that this Mac can run the lab. doctor and init are the same:
              their names and whether each is there, never a value
   vault      reachable and unsealed
   version    this binary's version matches the repo checkout (a warning)
+  network    macOS only: no lab address alias or route left on the Wi-Fi or a USB
+             adapter hides the VPN's route to the lab
 
 Each problem comes with its fix. Exit 1 when something is missing.
+`
+
+const doctorFixUsage = `
+  --fix      before the checks, remove the lab aliases and routes that hide the VPN
+             (the network check). It shows what it found and asks first. sudo asks
+             for your password. Nothing in the lab changes.
 `
 
 func init() {
@@ -299,7 +307,7 @@ func vaultFinding(v vaultState) finding {
 	case !v.env:
 		f.lv, f.fix = lvFail, "add the Keychain item pve-ip"
 	case !v.reachable:
-		f.lv, f.fix = lvFail, "check the Mac's route to the enclave (docs/setup.md), or set HOMELAB_VAULT_ADDR"
+		f.lv, f.fix = lvFail, "anvil doctor --fix if the network line below fails, else check the Mac's route to the enclave (docs/setup.md) or set HOMELAB_VAULT_ADDR"
 	case !v.initialized:
 		f.lv, f.fix = lvFail, "make vault, then scripts/vault-init.sh once (or anvil up)"
 	case v.sealed:
@@ -314,7 +322,8 @@ func (a *app) initFindings(r *runner) []finding {
 	all = append(all, a.fileFindings()...)
 	all = append(all, a.keychainFindings()...)
 	all = append(all, vaultFinding(parseVaultStatus(r.quiet(vaultStatusScript))))
-	return append(all, a.versionFinding(r.root))
+	all = append(all, a.versionFinding(r.root))
+	return append(all, networkFinding()...)
 }
 
 // versionFinding compares this binary with the repo it runs. A mismatch is a warning: an
@@ -372,11 +381,17 @@ func cmdInit(a *app, args []string) int {
 	}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	usage := initUsage
+	var fix bool
 	if name == "doctor" {
 		usage = doctorUsage
+		fs.BoolVar(&fix, "fix", false, "")
 	}
 	if _, code, ok := a.flags(fs, usage, args); !ok {
 		return code
+	}
+	if fix {
+		fixNetwork(a)
+		fmt.Fprintln(a.stdout)
 	}
 	r, ok := a.runner(false)
 	if !ok {
