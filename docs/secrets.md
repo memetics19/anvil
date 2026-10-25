@@ -1,18 +1,21 @@
 # Secrets in Vault
 
 Secret values live only in Vault (KV v2, mount `kv`) at `kv/homelab/<host>/<app>`. This
-file lists names, never values. Ansible reads them with the `ansible-read` policy
-(`kv/data/homelab/*`). The site dict at `kv/homelab/site` is described in
-[`site/site.example.yml`](../site/site.example.yml).
+page lists names, never values.
 
-To write or read a value by hand, see [Secrets in Vault](usage.md#secrets-in-vault).
+- Ansible reads them with the `ansible-read` policy (`kv/data/homelab/*`).
+- The site dict is at `kv/homelab/site`. [`site/site.example.yml`](../site/site.example.yml)
+  shows its structure.
+- To write or read a value by hand, see [Secrets in Vault](usage.md#secrets-in-vault).
 
 ## Imported from the live VMs
 
 `scripts/import-secrets.sh` reads each value on the VM and pipes it over SSH straight into
-`vault kv put|patch <path> <key>=-`, then checks it by SHA-256. You can rerun it any time:
-matching keys are left alone, a different value is refused unless you pass `--force`, and
-`--verify` only compares.
+`vault kv put|patch <path> <key>=-`, then checks it by SHA-256. It is safe to rerun:
+
+- a matching key is left alone
+- a different value is refused, unless you pass `--force`
+- `--verify` only compares
 
 | Vault path | Key | Source on the VM | Used for |
 |---|---|---|---|
@@ -29,17 +32,20 @@ matching keys are left alone, a different value is refused unless you pass `--fo
 | `kv/homelab/netbird/pulse` | `setup_token` | `make vm HOST=netbird` (pulse role, `openssl rand`), into `/opt/pulse/.env`: `PULSE_SETUP_TOKEN` | Pulse's first-run `/setup` asks for it, so only you can claim a fresh instance. An installed Pulse ignores it. The old `admin_token` key is no longer read. |
 | `kv/homelab/apt/signing` | `private_key`, `public_key`, `fingerprint` | `/opt/apt-repo/gnupg` on `netbird` (the private key, imported) | The apt repository's signing key, made once by `scripts/apt-key-init.sh`. No passphrase: the VM signs unattended. |
 
-The three cloudflared units currently run the same tunnel token.
+The three cloudflared units run the same tunnel token.
 
 ## Created by the roles
 
-Ansible generates these and pipes them straight into Vault, never displaying them or
-writing them to a file. Each write is checked by reading the SHA-256 digests back with
-`scripts/vault-kv-digests.sh`. Each role passes it the mount it writes to (its
-`*_vault_mount`, `kv` by default), so a role whose mount is changed reads and writes the
-same place. A generated secret goes to an empty path by `vault kv put` and to a path that
-already has keys by `vault kv patch`, which keeps the other keys. Pulse's put also has
-`-cas=0`, so Vault refuses it if the path exists after all.
+Ansible generates these and pipes them straight into Vault. It never displays them or
+writes them to a file.
+
+- Each write is checked by reading the SHA-256 digests back with
+  `scripts/vault-kv-digests.sh`.
+- Each role passes that script the mount it writes to (its `*_vault_mount`, `kv` by
+  default). A role whose mount is changed reads and writes the same place.
+- A generated secret goes to an empty path with `vault kv put`, and to a path that already
+  has keys with `vault kv patch`, which keeps the other keys.
+- Pulse's put also has `-cas=0`, so Vault refuses it if the path exists after all.
 
 | Vault path | Key | Created by | Used for |
 |---|---|---|---|
@@ -59,25 +65,34 @@ already has keys by `vault kv patch`, which keeps the other keys. Pulse's put al
 | `kv/homelab/apps/vaultwarden` | `smtp_username`, `smtp_password`. Optional: `smtp_host`, `smtp_port`, `smtp_security`, `smtp_from` | you (`vault kv patch ... <key>=-`) | Vaultwarden mail (a Gmail App Password or a relay's API key), rendered into `/opt/vaultwarden/vaultwarden.env` |
 | `kv/homelab/apps/vaultwarden-backup` | `s3_access_key`, `s3_secret_key` | `make ceph` (S3 user `vaultwarden-backup`) | Nightly Vaultwarden backup upload and `make backup`. Owns only the bucket `vaultwarden-backups`. |
 | `kv/homelab/frigate/frigate` | `homepage_password` | `make vm HOST=frigate ARGS="--tags homepage"` (frigate_stack role, `openssl rand`, set through Frigate's API) | Frigate viewer login `homepage` for the Homepage widget |
+| `kv/homelab/pve/apt-cacher-ng` | `admin_password` | `make enclave` (pve_enclave role, `openssl rand`) | Login `admin` for the apt cache's report page and maintenance jobs (AdminAuth) |
 
 ## Added by you
 
 | Vault path | Key | Used for |
 |---|---|---|
-| `kv/homelab/pve/apt-cacher-ng` | `admin_password` | `make enclave` (pve_enclave role, `openssl rand`) | Login `admin` for the apt cache's report page and maintenance jobs (AdminAuth) |
 | `kv/homelab/pve/netbird` | `setup_key` | Enrolling the Proxmox host in NetBird |
-| `kv/homelab/pve/idrac` | `username`, `password` | The current server's BMC login. Only read only checks use it. |
+| `kv/homelab/pve/idrac` | `username`, `password` | The current server's BMC login. Only read-only checks use it. |
 | `kv/homelab/<box>/bmc` | `username`, `password` | The BMC login of a server to install ([provisioning.md](provisioning.md)) |
 | `kv/homelab/netbird/netbird` | `setup_key` | Enrolling the `netbird` VM. The netbird_peer role reads it only for a client that needs a login. |
 
-Create both as reusable setup keys in the NetBird dashboard. An enrolled client can't give
-its key back, so these are new keys. Write each from stdin:
+Create the two `setup_key` values as new reusable setup keys in the NetBird dashboard. An
+enrolled client cannot give its key back. Write each from stdin:
 `vault kv put -mount=kv homelab/<path> setup_key=-`.
 
 ## Not imported
 
-- Services with no secret in their config. On `frigate`: Mosquitto, Gotify, nginx and Home
-  Assistant. On `netbird`: ntfy and Redis. On `ragnarok`: qBittorrent, Jackett,
-  FlareSolverr and iptv-epg. The ARR API keys are copied for the dashboard only.
+Services with no secret in their config:
+
+| Host | Services |
+|---|---|
+| `frigate` | Mosquitto, Gotify, nginx, Home Assistant |
+| `netbird` | ntfy, Redis |
+| `ragnarok` | qBittorrent, Jackett, FlareSolverr, iptv-epg |
+
+The ARR API keys are copied for the dashboard only.
+
+Also not imported:
+
 - App data, such as user databases and app config directories, stays with each app.
 - NetBird client state. A rebuilt host enrolls again with a setup key.
