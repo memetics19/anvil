@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the docs site into build/site: README.md becomes the home page, docs/*.md the other
-# pages, and scripts/install.sh sits at the root. Links to files outside docs/ point at
-# GitHub, since the site holds only the pages.
+# pages, docs/assets/ their images, and scripts/install.sh sits at the root. Links to files
+# outside docs/ point at GitHub, since the site holds only the pages.
 #   usage: scripts/docs-build.sh   (needs mkdocs from docs/requirements.txt)
 set -euo pipefail
 
@@ -9,7 +9,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 blob=https://github.com/memetics19/anvil/blob/main
 src="$root/build/docs-src"
 mkdir -p "$src"
-rm -f "$src"/*.md "$src/install.sh" # only the copied files live here
+rm -f "$src"/*.md "$src/install.sh" "$src"/assets/* # only the copied files live here
 
 # README links: docs/x.md -> x.md, other repo files -> GitHub
 sed -E -e 's#\]\(docs/#](#g' \
@@ -19,6 +19,9 @@ sed -E -e 's#\]\(docs/#](#g' \
 for f in "$root"/docs/*.md; do
   sed -E "s#\\]\\(\\.\\./#](${blob}/#g" "$f" >"$src/$(basename "$f")"
 done
+# Images, such as the README's demo GIF
+mkdir -p "$src/assets"
+cp "$root"/docs/assets/* "$src/assets/"
 # The one-line installer is served from the site root: <site>/install.sh
 cp "$root/scripts/install.sh" "$src/install.sh"
 
