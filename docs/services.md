@@ -413,6 +413,14 @@ URLhaus. A change runs a gravity update. Lists added in the web UI are left alon
 Pointing the home router and NetBird at Pi-hole are hand steps, in
 [setup.md](setup.md#not-managed-here).
 
+Block lists and deny rules are code (`pihole_blocklists`, `pihole_deny_regex` in the role's
+defaults). The role keeps them present and enabled, and leaves anything added in the web
+UI alone. A new list runs a gravity update. A new deny rule reloads the lists. The lists
+are StevenBlack, AdGuard DNS, EasyPrivacy, Prigent crypto, URLhaus and HaGeZi Multi PRO.
+The deny rules block, with their subdomains, the ad and tracking networks a free torrent
+client shows ads from (uTorrent's Rainberry service and the ad networks it calls), which no
+list blocks.
+
 ### Service gateway
 
 Every web UI in the lab is at `https://<name>.<gateway-domain>`, served by Caddy on `apps`
