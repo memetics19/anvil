@@ -409,6 +409,30 @@ Only the partition at the end of the disk can grow this way. On ragnarok that is
 which holds the media library. Its root partition (`/`) sits before it and cannot grow
 online.
 
+## anvil rotate
+
+Gives an app a new API key and updates everything that uses it. Nothing is restarted.
+
+```sh
+anvil rotate radarr          # one app
+anvil rotate radarr sonarr   # several
+anvil rotate arr             # Radarr, Sonarr and Prowlarr
+```
+
+It runs `make rotate SECRET=<names> CHECK=1` first, asks, then runs it for real (`--yes`
+skips the question). For each app:
+
+1. The app makes itself a new key with its `ResetApiKey` command. That is the same as the
+   reset button in Settings, General. The old key stops working at once.
+2. Prowlarr's applications get the new Radarr and Sonarr keys. A new Prowlarr key goes
+   into Radarr's and Sonarr's indexers with a forced sync.
+3. The keys go into Vault (`kv/homelab/<vm>/arr`), then the Homepage dashboard takes them
+   (`make vms ARGS="--tags homepage"`). `anvil media` reads them from Vault.
+
+Keys only travel in request headers, request bodies and stdin. They never show up on a
+command line, in the log or on screen. If only the dashboard step fails, the keys are
+already rotated and in Vault. Rerun `make vms ARGS="--tags homepage"`.
+
 ## anvil media
 
 Finds and downloads movies and series through Radarr and Sonarr on the media VM. They

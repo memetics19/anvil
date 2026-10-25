@@ -11,10 +11,25 @@ arr_stack_uid: 1000
 arr_stack_gid: 1000
 arr_stack_timezone: "{{ site.timezone | default('Asia/Kolkata') }}"
 
-# API keys of sonarr, radarr and prowlarr (read from each app's config.xml, never changed)
+# API keys of sonarr, radarr and prowlarr (read from each app's config.xml)
 # copied into Vault for the Homepage dashboard's widgets: kv/<arr_stack_vault_path>, keys
 # <app>_api_key. Tag homepage. Only read and compared: no container is touched.
 arr_stack_api_key_apps: [sonarr, radarr, prowlarr]
 arr_stack_vault_mount: kv
 arr_stack_vault_path: "homelab/{{ inventory_hostname }}/arr"
 arr_stack_repo_scripts: "{{ playbook_dir }}/../../scripts"
+# Each app's config.xml, where it keeps its key.
+arr_stack_config_xml_files: >-
+  {{ dict(arr_stack_api_key_apps | zip(arr_stack_api_key_apps | map('regex_replace', '^', arr_stack_dir ~ '/')
+     | map('regex_replace', '$', '/config/config.xml'))) }}
+
+# anvil rotate (tag rotate, never on its own): the apps in arr_stack_rotate, comma
+# separated, make themselves a new key (ResetApiKey, the reset in Settings, General).
+# Prowlarr gets the new Radarr and Sonarr keys, and a new Prowlarr key is synced into
+# their indexers. The keys reach Vault and the dashboard afterwards, with the tag homepage.
+arr_stack_rotate: ""
+arr_stack_api_host: "{{ site.hosts[inventory_hostname].ip }}"
+arr_stack_api:
+  sonarr: {port: 8989, version: v3}
+  radarr: {port: 7878, version: v3}
+  prowlarr: {port: 9696, version: v1}
