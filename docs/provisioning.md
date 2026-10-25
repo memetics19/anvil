@@ -1,29 +1,31 @@
 # Provisioning
 
-How to install Proxmox VE on a new server without sitting at it, and how to rebuild the
-current one the same way. The core is the official Proxmox automated installer: an ISO with
-the answer file inside. It works from any delivery path, so it does not depend on the server
-brand.
+Install Proxmox VE on a new server without sitting at it, or rebuild the current one the
+same way. The repo uses the official Proxmox automated installer: an ISO with the answer
+file inside. Any delivery path works, so the server brand does not matter.
 
-The repo talks to the server's BMC only through standards. That is DMTF Redfish or plain
-IPMI. It uses no vendor tools and no vendor OEM APIs.
+The repo talks to the BMC only through DMTF Redfish or plain IPMI. It uses no vendor tools
+and no vendor OEM APIs.
 
-This runbook has not been run on a real second server yet. A full network install was run
-on a throwaway VM on the Proxmox host, with `media: pxe` and `bmc.type: none`. It booted
-from the network, installed Proxmox VE and came up on SSH with the operator key. The BMC
-calls are tested against a fake Redfish BMC.
+Test status:
+
+- Not yet run on a real second server.
+- A full network install ran on a throwaway VM on the Proxmox host, with `media: pxe` and
+  `bmc.type: none`. It booted from the network, installed Proxmox VE and came up on SSH
+  with the operator key.
+- The BMC calls are tested against a fake Redfish BMC.
 
 ## How it works
 
-1. `make provision-iso NAME=<box>` renders the answer file from the site dict and Vault. It
-   builds the ISO with the answer file inside. For `media: pxe` it turns the ISO into a
+1. `make provision-iso NAME=<box>` renders the answer file from the site dict and Vault,
+   and builds the ISO with it inside. For `media: pxe` it also turns the ISO into a
    netboot kernel and initrd on the Proxmox host.
 2. `make provision NAME=<box>` is a dry run. It checks the guard, reads the BMC and prints
    every call it would make.
 3. `make provision NAME=<box> ARGS="-e provision_confirm=<box>"` installs. It boots the
    server once into the installer, from the network or from virtual media. The installer
-   powers the server off when it is done. Then the run powers it on and waits for SSH.
-4. You hand the new host to the repo: [After the install](#after-the-install).
+   powers the server off when done. The run powers it on and waits for SSH.
+4. Hand the new host to the repo: [After the install](#after-the-install).
 
 Pick the media per machine:
 
@@ -62,8 +64,8 @@ vault kv patch -mount=kv homelab/<box>/bmc password=-
 
 ### Disks
 
-The installer picks disks by udev properties or by kernel name. The repo allows three
-forms, and nothing else:
+The installer picks disks by udev properties or by kernel name. The repo allows only these
+three forms:
 
 - One udev filter, such as `[{ID_SERIAL: "<serial>"}]` or `[{ID_MODEL: "<model>"}]`. The
   installer puts ext4 on LVM on the first disk that matches. A value that is only
@@ -71,17 +73,17 @@ forms, and nothing else:
 - One kernel name, such as `[sda]` or `[nvme0n1]`. ext4 on LVM on that disk.
 - Two kernel names, such as `[sda, sdb]`. A ZFS mirror of those two disks.
 
-A mirror by filter is refused. The installer would put every disk the filter matches into
-the mirror. The installer's filters do not match on size. Find the serial or model in the
-BMC's storage inventory, or boot the ISO once and run `proxmox-auto-install-assistant
+A mirror by filter is refused, because the installer would put every matching disk into
+the mirror. The filters do not match on size. To find the serial or model, read the BMC's
+storage inventory, or boot the ISO once and run `proxmox-auto-install-assistant
 device-info`.
 
-A RAID controller that only offers virtual disks shows each virtual disk to the installer.
-Then filter on that virtual disk, or name it.
+A RAID controller that only offers virtual disks shows each one to the installer. Filter on
+that virtual disk, or name it.
 
 ## The guard
 
-The current server runs everything, so the repo refuses it as a target.
+The repo refuses the current server as a target, because it runs everything.
 `site.provision.refuse` lists its identifiers:
 
 - `bmc_addresses`: extra BMC addresses. `site.pve.idrac_ip`, `site.pve.ip`,
@@ -92,19 +94,25 @@ The current server runs everything, so the repo refuses it as a target.
 
 While `macs` or `serials` is empty, every target is refused.
 
-Before any request, a run refuses a machine whose BMC address, NIC MAC or `serial` is on the
-list. It also refuses a static address that a lab host already uses. Then it reads the
-target's BMC. It refuses when the BMC reports a serial of the current server, or does not
-report the machine's `serial`. A real run also needs:
+Checks before any request:
+
+- a BMC address, NIC MAC or `serial` on the list is refused
+- a static address that a lab host already uses is refused
+
+Then the run reads the target's BMC. It refuses when the BMC reports a serial of the
+current server, or does not report the machine's `serial`. A real run also needs:
 
 - `-e provision_confirm=<box>`, equal to the name
 - the ISO in `build/provision/<box>.iso`
 - the server powered off. A run never resets a running server.
 
-To fill the refuse list, read the current server's NIC MACs on the Proxmox host
-(`/sys/class/net/<nic>/address` for each physical NIC). Read the serials from its BMC
-(Redfish `GET /redfish/v1/Systems/<id>`, fields `SerialNumber` and `SKU`) and from
-`dmidecode -s system-serial-number` on the host.
+To fill the refuse list:
+
+| Value | Where to read it |
+|---|---|
+| NIC MACs | `/sys/class/net/<nic>/address` on the Proxmox host, for each physical NIC |
+| Serials | The BMC: Redfish `GET /redfish/v1/Systems/<id>`, fields `SerialNumber` and `SKU` |
+| Serials | `dmidecode -s system-serial-number` on the host |
 
 ## Build the ISO
 
@@ -112,7 +120,7 @@ To fill the refuse list, read the current server's NIC MACs on the Proxmox host
 make provision-iso NAME=<box>
 ```
 
-It runs these steps:
+Steps:
 
 1. It checks the machine entry and the guard.
 2. It generates the root password once into `kv/homelab/<box>/install`, key
@@ -127,20 +135,20 @@ It runs these steps:
 The pinned version is Proxmox VE 8.4-1, the same Debian release the `pve_host` role
 expects. Its URL and SHA-256 are at the top of `scripts/provision-iso.sh`.
 
-The build host is the Proxmox host, `root@<proxmox-address>`. Set `PROVISION_BUILD_HOST` to
-use another Debian host with the Proxmox repository. To rebuild the current server, build
-on the other server. The build host needs the assistant once:
+The build host is the Proxmox host, `root@<proxmox-address>`. `PROVISION_BUILD_HOST` picks
+another Debian host with the Proxmox repository. To rebuild the current server, build on
+the other server. The build host needs the assistant once:
 
 ```sh
 apt-get install proxmox-auto-install-assistant xorriso
 ```
 
-The answer file and the result stay on the build host only in a mode 700 directory under
-`/var/tmp/anvil-provision`, and the run removes it. The base ISO stays cached there. It
+On the build host, the answer file and the result live only in a mode 700 directory under
+`/var/tmp/anvil-provision`, which the run removes. The base ISO stays cached there. It
 holds no secrets.
 
-The ISO holds the password hash. Treat it as a secret. `make provision` deletes it after a
-Redfish media install. Otherwise delete it yourself once the install is done:
+The built ISO holds the password hash. Treat it as a secret. `make provision` deletes it
+after a Redfish media install. Otherwise delete it yourself after the install:
 
 ```sh
 make provision-clean NAME=<box>
@@ -150,25 +158,27 @@ make provision-clean NAME=<box>
 
 ### Network boot (pxe)
 
-With `media: pxe`, `make provision-iso` builds the netboot payload on the Proxmox host. That
-is the installer kernel, and its initrd with the prepared ISO appended as `/proxmox.iso`.
-The 8.4 initrd looks for the ISO there. Proxmox documents network boot for the automated
-installer as `prepare-iso --pxe`. That option exists only in newer assistants than the
-pinned 8.4 one, and builds the same kernel and initrd. The payload lives in
-`/var/tmp/anvil-provision/pxe-<box>`, mode 700, and holds the password hash. Nothing is
-copied to the Mac. The build host must be the Proxmox host that serves the netboot.
+With `media: pxe`, `make provision-iso` builds the netboot payload on the Proxmox host: the
+installer kernel, and its initrd with the prepared ISO appended as `/proxmox.iso`. The 8.4
+initrd looks for the ISO there.
 
-`make provision` then starts a netboot service on the Proxmox host for this run only. It is
-two transient systemd units, `anvil-netboot-<box>-dhcp` and `anvil-netboot-<box>-http`,
-with their config in `/run/anvil-netboot-<box>`:
+- Proxmox documents this as `prepare-iso --pxe`, which builds the same kernel and initrd.
+  That option exists only in assistants newer than the pinned 8.4 one.
+- The payload lives in `/var/tmp/anvil-provision/pxe-<box>`, mode 700, and holds the
+  password hash. Nothing is copied to the Mac.
+- The build host must be the Proxmox host that serves the netboot.
+
+`make provision` then starts a netboot service on the Proxmox host, for this run only: two
+transient systemd units, `anvil-netboot-<box>-dhcp` and `anvil-netboot-<box>-http`, with
+their config in `/run/anvil-netboot-<box>`:
 
 - dnsmasq in proxyDHCP mode only: `dhcp-range=<network>,proxy` and `port=0`. It hands out
   no addresses and answers no DNS. The ONT stays the only DHCP server.
 - It answers PXE requests only from the target's MAC (`dhcp-host` with a tag, and
   `dhcp-ignore` for every other client). Others get no reply at all.
 - It listens only on the `vmbr` bridge that holds `site.pve.uplink_ip`, the network the
-  ONT serves. dnsmasq always adds loopback. It never listens on the VLAN or enclave
-  interfaces, and the run refuses a bridge that is a VLAN interface.
+  ONT serves, plus loopback, which dnsmasq always adds. It never listens on the VLAN or
+  enclave interfaces. The run refuses a bridge that is a VLAN interface.
 - TFTP serves iPXE (`ipxe.efi` for UEFI, `undionly.kpxe` for BIOS) and a `boot.ipxe`
   script. They sit in a directory named after the target's MAC (`tftp-unique-root=mac`),
   so no other client can fetch them.
@@ -179,10 +189,9 @@ iPXE comes from the Debian bookworm `ipxe` package, pinned by version and by the
 the `.deb`, at the top of `scripts/provision-iso.sh`. It is cached in
 `/var/tmp/anvil-provision/ipxe`.
 
-As soon as the initrd has been served once, the run stops both units, removes their
-directory and deletes the payload. The installer runs from memory by then. A failed run,
-Ctrl-C, a closed terminal or a kill does the same. Each unit also stops itself after 4
-hours.
+Once the initrd has been served, the run stops both units, removes their directory and
+deletes the payload. The installer runs from memory by then. A failed run, Ctrl-C, a closed
+terminal or a kill cleans up the same way. Each unit also stops itself after 4 hours.
 
 The server needs:
 
@@ -192,19 +201,21 @@ The server needs:
 - at least 4 GB of memory, because the initrd with the ISO is 1.6 GB
 
 UEFI is tested, on a VM with the firmware's own PXE. BIOS boot through `undionly.kpxe` is
-not tested yet.
+not tested.
 
 ### Redfish virtual media
 
 With `bmc.type: redfish` and `media: redfish`, the run uses the standard
-`VirtualMedia.InsertMedia` action with an HTTP URL. It checks at runtime that the BMC
-offers InsertMedia and EjectMedia for a virtual CD, and that HTTP is an allowed transfer
-protocol. If not, it refuses and tells you to use `media: manual`.
+`VirtualMedia.InsertMedia` action with an HTTP URL. It first checks that the BMC offers
+InsertMedia and EjectMedia for a virtual CD, and allows HTTP as a transfer protocol. If
+not, it refuses and tells you to use `media: manual`.
 
-The Mac serves the ISO for this run only. The server binds to the Mac's address on the
-route to the BMC, on a random port and a random path. It answers byte range requests,
-because BMCs read the ISO in ranges. If the macOS firewall asks, allow incoming
-connections for Python.
+The Mac serves the ISO for this run only:
+
+- on the Mac's address on the route to the BMC, a random port and a random path
+- with byte range requests, because BMCs read the ISO in ranges
+
+If the macOS firewall asks, allow incoming connections for Python.
 
 ### Manual media
 
@@ -217,9 +228,9 @@ sudo dd if=build/provision/<box>.iso of=/dev/rdiskN bs=4m
 diskutil eject /dev/diskN
 ```
 
-Or write it with balenaEtcher, or mount it as virtual CD in the BMC web UI. Then run with
-`-e provision_media_ready=true` as well. The run sets the boot device once and powers on.
-When the installer has powered the server off, remove the media and power it on.
+Or use balenaEtcher, or mount the ISO as a virtual CD in the BMC web UI. Then add
+`-e provision_media_ready=true` to the run. The run sets the boot device once and powers
+on. When the installer has powered the server off, remove the media and power it on.
 
 ### Power and boot once
 
@@ -234,16 +245,16 @@ ipmitool`.
 
 ### The current server's iDRAC8
 
-A read only check of the current server's iDRAC8 (firmware 2.43, Redfish 1.0.2) found:
+A read-only check of the current server's iDRAC8 (firmware 2.43, Redfish 1.0.2) found:
 
 - `ComputerSystem.Reset` offers `On`, `ForceOff`, `GracefulRestart`, `PushPowerButton` and
   `Nmi`.
 - The boot override offers `Pxe` and `Cd` among others. The boot mode is UEFI.
 - The virtual CD has no InsertMedia or EjectMedia action.
 
-So rebuilding that server would use `media: pxe` with Redfish boot once to `Pxe` and power
-on. No USB stick is needed. It is one example of a Redfish BMC. BMCs of any brand that
-offer InsertMedia can also use `media: redfish`.
+Rebuilding that server would use `media: pxe`, with a Redfish boot once to `Pxe` and power
+on. No USB stick is needed. BMCs of any brand that offer InsertMedia can also use
+`media: redfish`.
 
 ## The dry run
 
@@ -251,7 +262,7 @@ offer InsertMedia can also use `media: redfish`.
 make provision NAME=<box>
 ```
 
-It prints one line per step, and never a secret:
+It prints one line per step, never a secret:
 
 ```
 provision <box>: dry run, nothing changes. Apply with -e provision_confirm=<box>
@@ -274,7 +285,7 @@ plan: wait for SSH on <address>:22
 
 The dry run sends only GET requests. When the BMC does not answer, or Vault has no login
 for it yet, it skips the reads and still prints the plan. With `media: pxe` the plan
-starts with the netboot service and boots once to `Pxe`:
+starts the netboot service and boots once to `Pxe`:
 
 ```
 plan: on the Proxmox host, start anvil-netboot-<box>-dhcp: dnsmasq proxyDHCP (no addresses, no DNS) and TFTP on the bridge with the uplink address, PXE answers for <mac> only
@@ -294,14 +305,17 @@ plan: wait for SSH on <address>:22
 make provision NAME=<box> ARGS="-e provision_confirm=<box>"
 ```
 
-The real run prints `do:` where the dry run printed `plan:`. If it stops after the ISO was
-attached, it ejects it and stops serving. If it stops while the netboot runs, it stops and
-removes the service and deletes the payload. The installer powers the server off at the
-end, so attached media cannot start a second install.
+The real run prints `do:` where the dry run printed `plan:`. Cleanup when it stops early:
+
+- after the ISO was attached: it ejects the ISO and stops serving
+- while the netboot runs: it stops and removes the service, and deletes the payload
+
+The installer powers the server off at the end, so attached media cannot start a second
+install.
 
 ## The network boot test
 
-The full chain was tested on the Proxmox host with throwaway VMs, deleted afterwards:
+The full chain was tested on the Proxmox host with throwaway VMs, deleted afterwards.
 
 1. A UEFI VM with a fake MAC, Secure Boot off and its NIC's own boot ROM off, so the
    firmware's PXE loaded `ipxe.efi` over TFTP. A temporary site entry with `media: pxe` and
@@ -318,16 +332,15 @@ The full chain was tested on the Proxmox host with throwaway VMs, deleted afterw
 ## After the install
 
 The new host has the root password from `kv/homelab/<box>/install` and your SSH key for
-root. Then hand it to the repo, as in [First build](setup.md#first-build):
+root. Hand it to the repo, as in [First build](setup.md#first-build):
 
 1. Add it to `ansible/inventory/hosts.yml` and give it its own `site` values. The
    `pve_host` and `pve_network` roles read `site.pve`, the current server, so a second
    Proxmox host needs its own variables first. That is the next roadmap step.
-2. `make bootstrap-ssh ARGS="--limit <box>"` installs the operator key. The installer has
-   already put it there, so this only checks it. If the box took over the address of an
-   older machine, run `make forget-host HOST=<box>` first: its new SSH key is refused
-   otherwise. It reads the root password from the
-   Keychain item `pve-root-password`.
+2. `make bootstrap-ssh ARGS="--limit <box>"` installs the operator key. The installer
+   already put it there, so this only checks it. It reads the root password from the
+   Keychain item `pve-root-password`. If the box took over the address of an older
+   machine, run `make forget-host HOST=<box>` first, or its new SSH key is refused.
 3. `make host ARGS="--limit <box> --check --diff"`, then without `--check`.
 4. Continue with the other steps of [First build](setup.md#first-build) or
    [Rebuilding on a new box](setup.md#rebuilding-on-a-new-box).
