@@ -70,10 +70,11 @@ func newTestLab(t *testing.T) *testLab {
 		t.Fatal(err)
 	}
 	l.tool("make", fakeMake)
-	// The Mac's routing is never read in tests (netfix_test.go replaces these itself).
-	oldAddrs := labAddrs
+	// The Mac's routing and Keychain values are never read in tests.
+	oldAddrs, oldKeychain := labAddrs, keychainValue
 	labAddrs = func() []netip.Addr { return nil }
-	t.Cleanup(func() { labAddrs = oldAddrs })
+	keychainValue = func(*app, string) string { return "" }
+	t.Cleanup(func() { labAddrs, keychainValue = oldAddrs, oldKeychain })
 	l.env = map[string]string{
 		"PATH":                    l.bin + ":" + os.Getenv("PATH"),
 		"HOME":                    dir,
