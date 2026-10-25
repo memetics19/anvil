@@ -164,56 +164,56 @@ Then add `/mnt/media/movies` and `/mnt/media/tv` as libraries in Jellyfin.
 ## netbird
 
 `make vm HOST=netbird` runs the "Netbird workloads" play. This VM is the emergency VPN
-path, so never run it in the same Ansible run as `make host-network`.
+path. Never run it in the same Ansible run as `make host-network`.
 
 ### NetBird client
 
 The `netbird_peer` role installs the client from NetBird's apt repository, with the
 signing key pinned by checksum. It is the routing peer on NetBird's cloud service.
 
-The package is pinned to `netbird_peer_version` and held, so neither a run nor
-unattended-upgrades moves it. Bumping that variable is the upgrade, and it restarts the
-client. Otherwise the service is never restarted.
+- The package is pinned to `netbird_peer_version` and held. Neither a run nor
+  unattended-upgrades moves it.
+- Bumping that variable is the upgrade, and it restarts the client. Otherwise the service
+  is never restarted.
+- A connected client is left alone: no `netbird up`, no `down`, no re-enrollment, and
+  Vault is not read.
+- Only a client in state `NeedsLogin` is enrolled, with `setup_key` from
+  `kv/homelab/netbird/netbird`. The run stops with instructions if that key is missing.
+- Any other state is reported and left alone.
+- At the end, the run checks that the client is still connected.
 
-A connected client is left alone: no `netbird up`, no `down`, no re-enrollment, and Vault
-is not read. Only a client in state `NeedsLogin` is enrolled, with `setup_key` from
-`kv/homelab/netbird/netbird`. The run stops with instructions if that key is missing. Any
-other state is reported and left alone. At the end the run checks that the client is
-still connected. Routes, groups and ACLs stay in the NetBird dashboard.
+Routes, groups and ACLs stay in the NetBird dashboard.
 
 ### Self-hosted NetBird server
 
-The `netbird_server` role runs a NetBird server on this VM next to the cloud client. It
-runs only when `site.netbird_domain` is set (for example `sync.<domain>`, a neutral name). Compose
-project `/opt/netbird-server` has three containers, each with a memory cap:
+The `netbird_server` role runs a NetBird server on this VM, next to the cloud client. It
+runs only when `site.netbird_domain` is set, for example `sync.<domain>` (a neutral name).
+The compose project `/opt/netbird-server` has three containers, each with a memory cap:
 
-- `netbird-server`: NetBird's combined server (management, signal, relay and the built in
-  identity provider), pinned by tag and digest. Its plain HTTP port is on the VM's loopback
-  only, for the role's API calls.
-- `netbird-dashboard`: the web dashboard.
-- `netbird-caddy`: TLS with its own internal CA on the VM's lab address, port 8443. It is
-  the Cloudflare tunnel's origin for `site.netbird_domain` and sends gRPC (HTTP/2
-  cleartext), the relay, the API and the identity provider to the server, and everything
-  else to the dashboard.
+| Container | What it does |
+|---|---|
+| `netbird-server` | NetBird's combined server: management, signal, relay and the built in identity provider. Pinned by tag and digest. Its plain HTTP port is on the VM's loopback only, for the role's API calls. |
+| `netbird-dashboard` | The web dashboard |
+| `netbird-caddy` | TLS with its own internal CA on the VM's lab address, port 8443. The Cloudflare tunnel's origin for `site.netbird_domain`. Sends gRPC (HTTP/2 cleartext), the relay, the API and the identity provider to the server, and everything else to the dashboard. |
 
-The public name is neutral. Caddy drops the `Server` and `Via` headers and replaces the
-dashboard's Content-Security-Policy, which lists the vendor's domains and trackers, with one
-that names only this host. The page titles of the dashboard and the login page still say
-NetBird. Neither is configurable.
+The public name is neutral. Caddy drops the `Server` and `Via` headers. It replaces the
+dashboard's Content-Security-Policy, which lists the vendor's domains and trackers, with
+one that names only this host. The page titles of the dashboard and the login page still
+say NetBird. Neither is configurable.
 
-STUN uses public servers only (Cloudflare and Google). The server opens no UDP port. When
-hole punching fails the relay carries the connection, over WebSocket through the tunnel.
-There is no port forward on the home router.
-
-Secrets come from `kv/homelab/netbird-srv`. The role creates any that are missing.
-`config.yaml` holds them with mode 600. A change to it or to the Caddyfile recreates that
-container through a hash label in the compose file.
+- STUN uses public servers only (Cloudflare and Google). The server opens no UDP port.
+- When hole punching fails, the relay carries the connection, over WebSocket through the
+  tunnel. There is no port forward on the home router.
+- Secrets come from `kv/homelab/netbird-srv`. The role creates any that are missing.
+  `config.yaml` holds them with mode 600.
+- A change to `config.yaml` or to the Caddyfile recreates that container, through a hash
+  label in the compose file.
 
 The role then sets up the server through its API (`files/netbird_api.py`, run on the VM):
 
-1. On a new server it creates the owner user (`site.email`, the password from Vault) and a
-   personal access token, before the public name is routed. Both go to Vault. The token is
-   replaced when it has less than 30 days left.
+1. On a new server, it creates the owner user (`site.email`, the password from Vault) and
+   a personal access token, before the public name is routed. Both go to Vault. The token
+   is replaced when it has less than 30 days left.
 2. The network range `site.netbird_server.network_range`.
 3. Groups `operator` and `routers`. Every device the owner logs in joins `operator`.
 4. One access policy, `operator` to `routers`. The All to All policy `Default` is deleted.
@@ -228,19 +228,24 @@ Objects are matched by name. Anything else you add in the dashboard is left alon
 
 The self-hosted network's routing peer is a second NetBird client service on this VM,
 `netbird-home` (the netbird_peer role, `tasks/home.yml`). It uses the same held package as
-the cloud client but its own state directory, socket, log, interface `wt1` and WireGuard
-port 51821. It has its own nftables table and no custom routing rules or eBPF proxy, which
-are host wide and belong to the cloud client. It starts after Docker and the cloud client,
-and only once the `ip filter` table exists. With that table NetBird picks its nftables
-backend, so `netbird-home` never touches the cloud client's iptables chains.
+the cloud client, with its own:
 
-It runs with DNS and client routes off: it only routes. A client that needs a login is
-enrolled once the public name answers, with a new one-off setup key that the role creates
-through the API and stores in Vault. A connected client is never brought up, down or
-re-enrolled. Its unit is restarted only when the unit file changes. The cloud client is
-never touched.
+- state directory, socket and log
+- interface `wt1` and WireGuard port 51821
+- nftables table
 
-Check it on the VM with
+It has no custom routing rules or eBPF proxy. Those are host wide and belong to the cloud
+client. It starts after Docker and the cloud client, and only once the `ip filter` table
+exists. With that table NetBird picks its nftables backend, so `netbird-home` never
+touches the cloud client's iptables chains.
+
+- DNS and client routes are off. It only routes.
+- A client that needs a login is enrolled once the public name answers. The role creates
+  a new one-off setup key through the API for it and stores the key in Vault.
+- A connected client is never brought up, down or re-enrolled.
+- Its unit restarts only when the unit file changes. The cloud client is never touched.
+
+Check it on the VM:
 `sudo netbird status -d --daemon-addr unix:///var/run/netbird-home.sock`.
 
 ### Other services
@@ -253,50 +258,58 @@ Check it on the VM with
   docs site, in the compose project `/opt/pulse` (Pulse, and Caddy on port 80). `.env` is
   rendered from Vault with mode 600.
 
-The VM keeps Pulse current by itself. Nothing on GitHub can reach it. `pulse-update`, run
-every 10 minutes by `pulse-update.timer` and once by the role, does two things:
+The VM keeps Pulse current by itself. Nothing on GitHub can reach it. `pulse-update` runs
+every 10 minutes from `pulse-update.timer`, and once from the role. It does the following.
 
-- It deploys the newest `vX.Y.Z` tag of the major version it follows as the image the release workflow pushed,
-  `ghcr.io/memetics19/pulse:X.Y.Z`. Before the switch it stops Pulse and copies its data
-  volume to `/opt/pulse/backups/` (the newest 5 are kept). If the new version does not
-  answer `/healthz` within 90 seconds, the image that ran before and that copy come back,
-  and the run fails. The failed tag is written to `/opt/pulse/state/failed` and later runs
-  skip it, so a bad release does not restart Pulse every 10 minutes. The next newer tag is
-  tried as usual. `sudo pulse-update --retry` tries the failed one again. Old data copies
-  are dropped after a failed deploy too. A release that is only slower to start than 90
-  seconds is rolled back the same way, as it cannot be told from a broken one. Raise
-  `pulse_health_timeout`, then run `sudo pulse-update --retry`.
-- A first install has no earlier image to go back to. If it does not answer in time, it is
-  left running and written to `/opt/pulse/state/pending`, not marked failed. Later runs
-  leave it alone and record it as soon as it answers, so a slow first migration needs no
-  help.
-- It follows one major version (`pulse_track: "3"`), so a 4.0 release, which may break
-  things, is never deployed by itself.
-- Before it stops anything, it checks the pulled image's cosign signature: the digest must
-  be signed by Pulse's release workflow and logged in Rekor (`pulse_signer`). Pulse then
-  runs that exact digest. It is the digest listed for `ghcr.io/memetics19/pulse`, even when
-  the image is known under other names as well. An unsigned or tampered image, or one with
-  no such digest, is not deployed and Pulse keeps running. The check runs in a pinned
-  cosign container (`pulse_cosign_image`) and needs internet access to Sigstore. `pulse_verify_signature: false` turns it off, for example
-  to pin a release older than 3.0.0, which is not signed.
-- It builds the docs site from the head of `main` with mkdocs into `/opt/pulse/docs/` and
+- Deploys the newest `vX.Y.Z` tag of the major version it follows, as the image the
+  release workflow pushed, `ghcr.io/memetics19/pulse:X.Y.Z`.
+    - Before the switch, it stops Pulse and copies its data volume to
+      `/opt/pulse/backups/`. The newest 5 copies are kept.
+    - If the new version does not answer `/healthz` within 90 seconds, the previous image
+      and that copy come back, and the run fails.
+    - The failed tag goes to `/opt/pulse/state/failed`. Later runs skip it, so a bad
+      release does not restart Pulse every 10 minutes. The next newer tag is tried as usual.
+      `sudo pulse-update --retry` tries the failed one again.
+    - Old data copies are dropped after a failed deploy too.
+    - A release that only starts slower than 90 seconds is rolled back the same way, since
+      it cannot be told from a broken one. Raise `pulse_health_timeout`, then run
+      `sudo pulse-update --retry`.
+- A first install has no earlier image to go back to. If it does not answer in time, it
+  is left running and written to `/opt/pulse/state/pending`, not marked failed. Later runs
+  leave it alone and record it once it answers, so a slow first migration needs no help.
+- Follows one major version (`pulse_track: "3"`). A 4.0 release, which may break things,
+  is never deployed by itself.
+- Checks the pulled image's cosign signature before it stops anything.
+    - The digest must be signed by Pulse's release workflow and logged in Rekor
+      (`pulse_signer`). Pulse then runs that exact digest: the one listed for
+      `ghcr.io/memetics19/pulse`, even when the image has other names too.
+    - An unsigned or tampered image, or one without that digest, is not deployed. Pulse
+      keeps running.
+    - The check runs in a pinned cosign container (`pulse_cosign_image`) and needs internet
+      access to Sigstore.
+    - `pulse_verify_signature: false` turns it off, for example to pin a release older than
+      3.0.0, which is not signed.
+- Builds the docs site from the head of `main` with mkdocs into `/opt/pulse/docs/` and
   moves the `current` link to it.
 
 Caddy sends names that start with `docs.` to the docs site and every other name to Pulse.
 The Cloudflare tunnel publishes both names.
 
-`sudo pulse-update --check` shows what the next run would do. To move to a new major
-version, read its release notes, then set `pulse_track: "4"` in
-`inventory/host_vars/netbird.yml` and run `make vm HOST=netbird ARGS="--tags pulse"`.
-`pulse_track: v3.1.0` pins one release, and `latest` follows every major. `sudo pulse-compose ps` (or `logs`) runs
-docker compose for the project. `journalctl -u pulse-update` has the deploy history.
+| Command or setting | What it does |
+|---|---|
+| `sudo pulse-update --check` | Shows what the next run would do |
+| `pulse_track: "4"` in `inventory/host_vars/netbird.yml`, then `make vm HOST=netbird ARGS="--tags pulse"` | Moves to a new major version. Read its release notes first. |
+| `pulse_track: v3.1.0` | Pins one release |
+| `pulse_track: latest` | Follows every major |
+| `sudo pulse-compose ps` (or `logs`) | Runs docker compose for the project |
+| `journalctl -u pulse-update` | The deploy history |
 
-If a rollback cannot copy the data back, Pulse stays stopped and the name of the data copy
+If a rollback cannot copy the data back, Pulse stays stopped. The name of the data copy
 goes to `/opt/pulse/state/hold`. Until that file is gone, every run stops at once and
 changes nothing. No new release lands on the broken data, and the copy is never dropped.
 `sudo pulse-update --check` shows the hold. `/opt/pulse/release.env` already names the
-image that ran before. To clear the hold, put the copy back by hand, start Pulse, check it,
-then remove the file:
+previous image. To clear the hold, put the copy back by hand, start Pulse, check it, then
+remove the file:
 
 ```sh
 name=$(cat /opt/pulse/state/hold)
@@ -307,39 +320,48 @@ curl -fsS http://localhost/healthz && sudo rm /opt/pulse/state/hold
 ```
 
 - `pulse_agent` (every VM in `guests` and `apps_servers`): host metrics for Pulse. Run it
-  with `make vms ARGS="--tags pulse_agent"`. The role adds the homelab apt repository from
-  the netbird VM's lab address (port 8082). It installs its key only if the fingerprint is
-  `E583 2FE9 662C 5F40 21A7 D4A5 2DE3 AD52 8436 9C1D`. Then it installs `pulse-agent`, and
-  registers the VM in Pulse under its inventory name, through `pulse.<gateway-domain>` with
-  the API key in `kv/homelab/netbird/pulse` (`api_key`, scope `agents:write`). Pulse shows
-  the agent token once: it goes straight into `kv/homelab/<vm>/pulse-agent` (`token`) and
-  into `/etc/pulse-agent/token` (mode 640, group `pulse-agent`). The agent reports every
-  30 seconds to Pulse over the lab network. The netbird VM uses loopback. The enclave VMs
-  get no agent: they have no route to Pulse, and opening one would weaken the enclave.
-  To register a VM again, delete its agent in Pulse's admin and its token in Vault, then
-  run the role.
+  with `make vms ARGS="--tags pulse_agent"`. The role:
+    1. Adds the homelab apt repository from the netbird VM's lab address (port 8082). It
+       installs its key only if the fingerprint is
+       `E583 2FE9 662C 5F40 21A7 D4A5 2DE3 AD52 8436 9C1D`.
+    2. Installs `pulse-agent`.
+    3. Registers the VM in Pulse under its inventory name, through `pulse.<gateway-domain>`,
+       with the API key in `kv/homelab/netbird/pulse` (`api_key`, scope `agents:write`).
+    4. Pulse shows the agent token once. It goes straight into
+       `kv/homelab/<vm>/pulse-agent` (`token`) and into `/etc/pulse-agent/token` (mode 640,
+       group `pulse-agent`).
+
+    The agent reports every 30 seconds to Pulse over the lab network. The netbird VM uses
+    loopback. The enclave VMs get no agent. They have no route to Pulse, and opening one
+    would weaken the enclave. To register a VM again, delete its agent in Pulse's admin and
+    its token in Vault, then run the role.
 - `apt_repo`: the signed apt repository for the .deb packages of anvil and pulse
-  (`apt_repo_sources`), in `/opt/apt-repo`,
-  served read-only by Caddy on port 8082 (compose project `apt-repo`), which the Cloudflare
-  tunnel publishes as `apt.<domain>`.
+  (`apt_repo_sources`), in `/opt/apt-repo`. Caddy serves it read-only on port 8082
+  (compose project `apt-repo`). The Cloudflare tunnel publishes it as `apt.<domain>`.
 
-`apt-publish`, run every 30 minutes by `apt-publish.timer` and once by the role, takes the
-.deb files of each new `vX.Y.Z` release of every source, checks them against the release's
-checksum file (`checksums.txt` for anvil, `SHA256SUMS` for pulse), and keeps them in
-`pool/`. The signing key is published as `key.gpg` and `key.asc`, and also as `anvil.gpg`
-and `anvil.asc` for machines set up with the first instructions. When something is new it builds a fresh tree
-with `apt-ftparchive`, signs `InRelease` and `Release.gpg`, checks both signatures with the
-key it publishes, and moves the `site/current` link to the new tree. A .deb that does not
-match its checksum stops the run, and the live tree stays as it was. The tree is rebuilt
-from the releases and the key at any time, so it has no backup.
+`apt-publish` runs every 30 minutes from `apt-publish.timer`, and once from the role:
 
-`sudo apt-publish --check` shows what the next run would do. `journalctl -u apt-publish`
-has the history. The key is made once with `scripts/apt-key-init.sh`, which writes it
-straight into Vault. To rotate it, delete `kv/homelab/apt/signing` and
-`/opt/apt-repo/gnupg`, rerun the script and the role, and tell users to fetch `key.gpg` again.
+1. It takes the .deb files of each new `vX.Y.Z` release of every source.
+2. It checks them against the release's checksum file (`checksums.txt` for anvil,
+   `SHA256SUMS` for pulse) and keeps them in `pool/`.
+3. When something is new, it builds a fresh tree with `apt-ftparchive` and signs
+   `InRelease` and `Release.gpg`.
+4. It checks both signatures with the key it publishes, then moves the `site/current` link
+   to the new tree.
+
+A .deb that does not match its checksum stops the run, and the live tree stays as it was.
+The signing key is published as `key.gpg` and `key.asc`, and also as `anvil.gpg` and
+`anvil.asc` for machines set up with the first instructions. The tree can be rebuilt from
+the releases and the key at any time, so it has no backup.
+
+- `sudo apt-publish --check` shows what the next run would do.
+- `journalctl -u apt-publish` has the history.
+- `scripts/apt-key-init.sh` makes the key once and writes it straight into Vault.
+- To rotate the key, delete `kv/homelab/apt/signing` and `/opt/apt-repo/gnupg`, rerun the
+  script and the role, and tell users to fetch `key.gpg` again.
 
 PHP is kept off this VM. `php*`, `composer` and `jsonlint` were removed by hand on
-2026-10-21 (php2shell, CVE-2026-109618/109619), and the role purges them if they come back.
+2026-10-21 (php2shell, CVE-2026-109618/109619). The role purges them if they come back.
 The list is `guest_base_absent_packages` in `inventory/host_vars/netbird.yml`, tag
 `packages_absent`. There is no autoremove.
 
