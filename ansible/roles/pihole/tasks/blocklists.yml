@@ -66,3 +66,55 @@
   changed_when: false
   check_mode: false
   failed_when: pihole_gravity_count.rc != 0 or (pihole_gravity_count.stdout | int) == 0
+
+# --- deny regexes (domainlist, type 3) -------------------------------------------------------
+- name: Deny regexes in gravity (domain|enabled)
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - pihole
+      - pihole-FTL
+      - sqlite3
+      - /etc/pihole/gravity.db
+      - SELECT domain, enabled FROM domainlist WHERE type = 3
+  register: pihole_regex_now
+  changed_when: false
+  check_mode: false
+
+- name: Work out which deny regexes to add or enable
+  ansible.builtin.set_fact:
+    pihole_regex_fix: >-
+      {%- set have = {} -%}
+      {%- for l in pihole_regex_now.stdout_lines if '|' in l -%}
+      {%-   set _ = have.update({l.rsplit('|', 1)[0]: l.rsplit('|', 1)[1] == '1'}) -%}
+      {%- endfor -%}
+      {{ pihole_deny_regex | rejectattr('regex', 'in', have | dict2items | selectattr('value') | map(attribute='key') | list) | list }}
+    pihole_regex_unmanaged: >-
+      {{ pihole_regex_now.stdout_lines | map('regex_replace', '\|[01]$', '')
+         | reject('in', pihole_deny_regex | map(attribute='regex') | list) | list | length }}
+
+- name: Report the deny regexes
+  ansible.builtin.debug:
+    msg: >-
+      deny regexes: {{ pihole_deny_regex | length }} managed, add or enable {{ pihole_regex_fix | length }}{{
+      '; ' ~ pihole_regex_unmanaged ~ ' added by hand (left alone)' if pihole_regex_unmanaged | int > 0 else '' }}
+
+- name: Add or enable the managed deny regexes
+  ansible.builtin.command:
+    argv: [docker, exec, -i, pihole, pihole-FTL, sqlite3, /etc/pihole/gravity.db]
+    stdin: |
+      {% for r in pihole_regex_fix %}
+      INSERT INTO domainlist (type, domain, enabled, comment)
+        VALUES (3, '{{ r.regex | replace("'", "''") }}', 1, '{{ r.comment | replace("'", "''") }}')
+        ON CONFLICT(domain, type) DO UPDATE SET enabled = 1;
+      {% endfor %}
+  changed_when: true
+  when: pihole_regex_fix | length > 0
+
+# FTL reads the domain list on a reload, without a gravity update.
+- name: Reload Pi-hole's lists
+  ansible.builtin.command:
+    argv: [docker, exec, pihole, pihole, reloadlists]
+  changed_when: true
+  when: pihole_regex_fix | length > 0 and pihole_adlist.fix | length == 0

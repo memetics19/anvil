@@ -74,6 +74,23 @@ pihole_blocklists:
     comment: Prigent crypto (cryptojacking)
   - url: https://urlhaus.abuse.ch/downloads/hostfile/
     comment: URLhaus (malware)
+  # Ads, trackers, telemetry, phishing, scams. Adblock syntax: a listed domain blocks its
+  # subdomains too (Pi-hole 6 reads it).
+  - url: https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt
+    comment: HaGeZi Multi PRO
+
+# Domains blocked by regex (Pi-hole's domain list, type deny regex), with their subdomains.
+# Kept present and enabled. Entries added in the web UI are left alone. These are the ad and
+# tracking networks a free torrent client (uTorrent) shows ads from, which no list above
+# blocks.
+pihole_deny_regex:
+  - {regex: '(^|\.)rainberrytv\.com$', comment: uTorrent's ad and media service (Rainberry)}
+  - {regex: '(^|\.)seedtag\.com$', comment: ad network}
+  - {regex: '(^|\.)smartadserver\.com$', comment: ad network}
+  - {regex: '(^|\.)sascdn\.com$', comment: Smart AdServer CDN}
+  - {regex: '(^|\.)e-planning\.net$', comment: ad network}
+  - {regex: '(^|\.)betweendigital\.com$', comment: ad network}
+  - {regex: '(^|\.)id5-sync\.com$', comment: cross-site tracking ID}
 
 # Hard caps, swap included. The apps VM is shared with Vaultwarden.
 pihole_mem_limit: 384m
