@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,6 +70,10 @@ func newTestLab(t *testing.T) *testLab {
 		t.Fatal(err)
 	}
 	l.tool("make", fakeMake)
+	// The Mac's routing is never read in tests (netfix_test.go replaces these itself).
+	oldAddrs := labAddrs
+	labAddrs = func() []netip.Addr { return nil }
+	t.Cleanup(func() { labAddrs = oldAddrs })
 	l.env = map[string]string{
 		"PATH":                    l.bin + ":" + os.Getenv("PATH"),
 		"HOME":                    dir,
