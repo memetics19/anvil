@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.0](https://github.com/memetics19/anvil/compare/v0.6.4...v0.7.0) (2026-10-25)
+
+
+### Features
+
+* anvil rotate gives Radarr, Sonarr and Prowlarr new API keys ([#63](https://github.com/memetics19/anvil/issues/63)) ([57538cc](https://github.com/memetics19/anvil/commit/57538cc33c5dc7ff9abc769b3cf4d185df58b192))
+* **cli:** anvil doctor --fix removes lab routes that hide the VPN ([#59](https://github.com/memetics19/anvil/issues/59)) ([879ec2b](https://github.com/memetics19/anvil/commit/879ec2bbac4c782518336967f1d89962a5a4531a))
+* **cli:** anvil drift, the nightly check with a push to ntfy ([#64](https://github.com/memetics19/anvil/issues/64)) ([d5caab1](https://github.com/memetics19/anvil/commit/d5caab1373168e48f60a7700a874c037acf731d2))
+* **pihole:** HaGeZi Multi PRO and deny regexes as code ([#54](https://github.com/memetics19/anvil/issues/54)) ([0f68b40](https://github.com/memetics19/anvil/commit/0f68b40fa74d97dba2745d5c8816a4f44dd77182))
+
 ## [0.6.4](https://github.com/memetics19/anvil/compare/v0.6.3...v0.6.4) (2026-10-24)
 
 
