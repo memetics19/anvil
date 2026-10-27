@@ -130,16 +130,19 @@ converge, and a host that matches the code reports `changed=0`.
 | Command | What it does |
 |---|---|
 | `anvil up [service ...]` | Build or converge the whole lab, or deploy named services |
-| `anvil doctor`, `anvil init` | Check the tools, the Keychain items and Vault, read-only |
+| `anvil doctor`, `anvil init` | Check the tools, the Keychain items and Vault, read-only. `doctor --fix` removes Mac routes that hide the VPN |
 | `anvil status` | A read-only dashboard of the lab |
 | `anvil check <target>` | Dry run a target: `--check --diff`, `tf-plan` or the switch plan |
 | `anvil apply <target>` | Check a target, then apply it after confirmation |
+| `anvil drift` | The nightly check. Pushes to ntfy when the lab drifted. `--install` schedules it |
 | `anvil services` | List the services, VMs and lab targets that `check`, `apply` and `up` accept |
 | `anvil backup` | Run `make backup` |
 | `anvil restore <part>` | The documented restore steps, with confirmation |
 | `anvil provision-iso <name>` | Build the Proxmox auto-install ISO for a new server |
 | `anvil provision <name>` | Install Proxmox on a new server, a dry run unless `--install` |
+| `anvil pools <name>` | Create the ZFS data pools of a newly installed server |
 | `anvil increase-disk <vm> <size>` | Grow a VM's disk while it runs |
+| `anvil rotate <secret>` | New API keys for Radarr, Sonarr or Prowlarr, and everything that uses them |
 | `anvil media <command>` | Search, download and follow movies and series (Radarr, Sonarr) |
 | `anvil fetch`, `anvil update` | Clone the repo for a packaged install, or move it to this binary's version |
 | `anvil version` | Print the version, commit, build date, Go version and platform |
