@@ -326,7 +326,8 @@ ok("no BMC: manual steps only", code == 0 and "manual: " in out and "plan: POST"
 F.reset()
 code, out, err = cli(site_file(media="pxe"))
 plan = [l for l in out.splitlines() if l.startswith(("plan: ", "manual: "))]
-want = ["plan: on the Proxmox host, start anvil-netboot-pve2-dhcp: dnsmasq proxyDHCP (no addresses, no DNS) and TFTP on the bridge with the uplink address, PXE answers for 02:00:00:00:00:20 only",
+want = ["plan: check the netboot payload on the Proxmox host first (make provision-iso NAME=pve2 builds it)",
+        "plan: on the Proxmox host, start anvil-netboot-pve2-dhcp: dnsmasq proxyDHCP (no addresses, no DNS) and TFTP on the bridge with the uplink address, PXE answers for 02:00:00:00:00:20 only",
         "plan: on the Proxmox host, start anvil-netboot-pve2-http: the installer kernel and initrd over HTTP on the uplink address, port 18199, at a random path",
         'plan: PATCH /redfish/v1/Systems/1 {"Boot": {"BootSourceOverrideEnabled": "Once", "BootSourceOverrideTarget": "Pxe"}}',
         'plan: POST /redfish/v1/Systems/1/Actions/ComputerSystem.Reset {"ResetType": "On"}',
@@ -336,7 +337,17 @@ want = ["plan: on the Proxmox host, start anvil-netboot-pve2-dhcp: dnsmasq proxy
         'plan: POST /redfish/v1/Systems/1/Actions/ComputerSystem.Reset {"ResetType": "On"}',
         "plan: wait for SSH on 192.0.2.12:22"]
 ok("pxe dry run with Redfish: plan shape", code == 0 and plan == want)
-ok("pxe dry run sends only GETs and needs no ISO", not writes() and "make provision-iso" not in out)
+ok("pxe dry run sends only GETs and needs no ISO", not writes() and "does not exist yet" not in out)
+
+# the install run checks the netboot payload before any request to the BMC
+F.reset(power="On")
+os.environ.update(PROVISION_BMC_CREDENTIALS_FILE=creds, PROVISION_TEST_REDFISH_URL=f"http://127.0.0.1:{srv.server_address[1]}")
+real_remote = p.remote
+p.remote = lambda host, script, *a, **k: subprocess.CompletedProcess([], 1, "", "")
+e = _raises(lambda: p.run(site_with_m(SITE, media="pxe", bmc={"type": "redfish", "address": "127.0.0.1"}), "pve2",
+                          {"provision_confirm": "pve2", "provision_power_off": "true"}, out=lambda line: None))
+p.remote = real_remote
+ok("pxe install: a missing payload stops the run before any BMC request", e is not None and "make provision-iso" in str(e) and F.log == [])
 code, out, err = cli(site_file(media="pxe", bmc={"type": "ipmi", "address": "127.0.0.1"}), creds_file=nocreds)
 ok("pxe dry run with IPMI", code == 0 and "plan: ipmitool -I lanplus -H <bmc> -U <user> -E chassis bootdev pxe options=efiboot" in out
    and "plan: ipmitool -I lanplus -H <bmc> -U <user> -E chassis power on" in out)
@@ -549,6 +560,18 @@ srv.shutdown()
 import shutil; shutil.rmtree(tmp)
 sys.exit(1 if fails else 0)
 PY3
+
+# The netboot HTTP server runs provision.py alone on the Proxmox host: it must start with no
+# other file next to it.
+alone=$(mktemp -d)
+cp scripts/provision.py "$alone/"
+printf 'x' >"$alone/f"
+(cd "$alone" && exec python3 -I provision.py serve --bind 127.0.0.1 --port 0 --token t --file f="$alone/f" >"$alone/out" 2>&1) &
+serve_pid=$!
+for _ in $(seq 30); do grep -q "^serving\|Error" "$alone/out" 2>/dev/null && break; sleep 0.1; done
+kill "$serve_pid" 2>/dev/null; wait "$serve_pid" 2>/dev/null
+if grep -q "^serving 1 files" "$alone/out"; then echo "ok   provision.py serve runs alone"; else echo "FAIL provision.py serve alone: $(tail -2 "$alone/out")"; rc=1; fi
+rm -rf "$alone"
 
 # The CLI exits 3 on a refusal and never echoes the password.
 out=$(printf 'test-only-cli-value\n' | PROVISION_SITE_FILE=site/site.example.yml python3 scripts/provision.py answer --name pve2 --ssh-key /dev/null 2>&1)

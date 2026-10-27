@@ -48,9 +48,6 @@ import time
 import urllib.error
 import urllib.request
 
-sys.dont_write_bytecode = True  # no __pycache__ in scripts/ (tests/test_media_untouched.sh scans the tree)
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import provision_dell  # noqa: E402  (the opt-in Dell controller step)
 
 
 class Refused(Exception):
@@ -616,6 +613,16 @@ def run(site, name, opts, out=print):
         raise Refused(f"{rel} is missing: make provision-iso NAME={name}")
     if not pxe and not os.path.exists(iso):
         out(f"note: {rel} does not exist yet (make provision-iso NAME={name})")
+    # The netboot payload lives on the Proxmox host. Checked before any request to the BMC,
+    # so a missing one stops the run before the server is touched.
+    if pxe and apply:
+        host = netboot_host(site)
+        r = remote(host, NETBOOT_PAYLOAD_CHECK, name, check=False)
+        if r.returncode != 0:
+            raise Refused(f"no netboot payload for {name} on {host}: make provision-iso NAME={name}")
+        out(f"read: the netboot payload for {name} is on the Proxmox host")
+    elif pxe:
+        out(f"plan: check the netboot payload on the Proxmox host first (make provision-iso NAME={name} builds it)")
     static_ip = None if m["network"] == "dhcp" else str(ipaddress.ip_interface(m["network"]["cidr"]).ip)
 
     if bmc["type"] == "none" and pxe:
@@ -665,6 +672,11 @@ def run(site, name, opts, out=print):
 
     # After the serial check: the BMC is the target's, never the current server's.
     if m.get("controller"):
+        # Imported here, not at the top: the netboot HTTP server runs this file alone on the
+        # Proxmox host (provision.py serve), where provision_dell.py is not copied.
+        sys.dont_write_bytecode = True  # no __pycache__ in scripts/ (tests/test_media_untouched.sh)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import provision_dell
         if info:
             ws = provision_dell.WSMan(bmc["address"], *creds, bmc_ssl_context())
             try:
@@ -847,6 +859,11 @@ def ipmi_steps(name, m, ip, iso, rel, static_ip, apply, media_ready, word, out):
 # --- media pxe: a temporary netboot service on the Proxmox host --------------------------------
 
 NETBOOT_BASE = "/var/tmp/anvil-provision"
+
+# Exit 0 when the netboot payload of $1 is there. Read-only.
+NETBOOT_PAYLOAD_CHECK = r"""p=/var/tmp/anvil-provision/pxe-$1
+[ -s "$p/linux26" ] && [ -s "$p/initrd" ]
+"""
 
 # Starts the netboot service. Args: name mac addr prefix port token max_seconds.
 # dnsmasq: proxyDHCP only (dhcp-range ... proxy, no DNS), on the vmbr bridge that holds the
