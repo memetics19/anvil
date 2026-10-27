@@ -93,6 +93,11 @@ jobs:
         run: |
           sudo apt-get install -y -qq gdisk cloud-guest-utils lvm2 parted
           tests/test_grow_disk.sh
+      - name: ZFS data pools (loop devices, real ZFS)
+        run: |
+          sudo apt-get install -y -qq zfsutils-linux
+          sudo modprobe zfs
+          tests/test_zfs_pools.sh
       - name: SSH host keys are checked
         run: tests/test_host_keys.sh
       - name: forget-host removes one host's key

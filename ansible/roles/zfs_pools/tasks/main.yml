@@ -1,0 +1,24 @@
+# ZFS data pools, as declared. The script (files/zfs-pools.py, run from the role) never
+# changes or destroys an existing pool, refuses disks in use, and wipes old signatures only
+# for the pool named in zfs_pools_wipe. In check mode it runs with --check, which only reads.
+- name: Pools | ZFS tools
+  ansible.builtin.command:
+    argv: [zpool, version]
+  changed_when: false
+  check_mode: false
+
+- name: Pools | the disks, and what would change
+  ansible.builtin.script:
+    cmd: >-
+      zfs-pools.py {{ '--check' if ansible_check_mode else '' }}
+      {{ ('--wipe ' ~ (zfs_pools_wipe | quote)) if zfs_pools_wipe else '' }}
+      --byid-dir {{ zfs_pools_byid_dir | quote }} {{ zfs_pools_list | to_json | quote }}
+    executable: python3
+  register: zfs_pools_run
+  changed_when: zfs_pools_run.stdout_lines | select('match', '^(would|do:) ') | list | length > 0
+  failed_when: zfs_pools_run.rc != 0
+  check_mode: false
+
+- name: Pools | report
+  ansible.builtin.debug:
+    msg: "{{ zfs_pools_run.stdout_lines }}"

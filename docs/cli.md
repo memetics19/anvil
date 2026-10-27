@@ -452,6 +452,19 @@ Only the partition at the end of the disk can grow this way. On ragnarok that is
 which holds the media library. Its root partition (`/`) sits before it and cannot grow
 online.
 
+## anvil pools
+
+```sh
+anvil pools pve2               # check, ask, then create the missing pools
+anvil pools pve2 --wipe tank   # wipe old signatures on tank's disks first
+```
+
+Creates the ZFS data pools of a host that `anvil provision` installed. The pools are
+declared in `site.provision.machines.<machine>.pools`. It runs `make pools HOST=<machine>
+ARGS=--check` first, which lists the host's disks by their by-id names and what would
+change, asks, then runs it for real. An existing pool is never changed. Details:
+[provisioning.md](provisioning.md#data-pools).
+
 ## anvil rotate
 
 Gives an app a new API key and updates everything that uses it. Nothing is restarted.

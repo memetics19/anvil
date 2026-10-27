@@ -114,6 +114,14 @@ site:
         bmc: {type: redfish, address: 192.0.2.124}
         media: redfish
         serial: EXAMPLE2
+        # ZFS data pools after the install (make pools HOST=pve2, role zfs_pools). Disks by
+        # their names under /dev/disk/by-id: anvil pools lists them. Layouts: mirror,
+        # raidz1, raidz2, raidz3. proxmox_storage adds the pool for VM disks and containers.
+        pools:
+          - {name: vmdata, layout: mirror, disks: [wwn-0x5000c500aaaa0002, wwn-0x5000c500aaaa0003], proxmox_storage: true}
+          - name: tank
+            layout: raidz1
+            disks: [wwn-0x5000c500aaaa0004, wwn-0x5000c500aaaa0005, wwn-0x5000c500aaaa0006, wwn-0x5000c500aaaa0007]
   # Addresses the frigate stack's config refers to (frigate_stack role).
   frigate_stack:
     genai_ollama_ip: 192.0.2.127

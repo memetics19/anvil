@@ -6,7 +6,7 @@ HVAC_CHECK := py=$$(ansible-playbook --version | sed -n 's/^  python version = .
 	"$${py:-python3}" -c 'import hvac' 2>/dev/null || { \
 	  echo "hvac is missing in the Python that runs Ansible; fix: \"$$py\" -m pip install hvac" >&2; exit 1; }
 
-.PHONY: lint secrets-scan bootstrap-ssh forget-host grow-disk rotate host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply provision-iso provision provision-clean docs docs-publish cli release-snapshot
+.PHONY: lint secrets-scan bootstrap-ssh forget-host grow-disk rotate pools host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply provision-iso provision provision-clean docs docs-publish cli release-snapshot
 
 lint:
 	@set -eu -o pipefail; \
@@ -96,6 +96,13 @@ rotate:
 	  { echo "usage: make rotate SECRET=<name>[,<name>] [CHECK=1]" >&2; exit 1; }; \
 	$(ENV); $(HVAC_CHECK); \
 	scripts/rotate.sh $(if $(CHECK),--check) "$(SECRET)"
+
+# ZFS data pools on a provisioned Proxmox host (site.provision.machines.<host>.pools).
+# make pools HOST=pve2 [ARGS="--check"] [WIPE=<pool>]
+pools:
+	@set -eu -o pipefail; [ -n "$(HOST)" ] || { echo "usage: make pools HOST=<machine> [WIPE=<pool>]" >&2; exit 1; }; \
+	$(ENV); $(HVAC_CHECK); \
+	cd ansible && ansible-playbook playbooks/pools.yml -e pools_host="$(HOST)" $(if $(WIPE),-e zfs_pools_wipe="$(WIPE)") $(ARGS)
 
 # One VM at a time: make vm HOST=frigate
 vm:
