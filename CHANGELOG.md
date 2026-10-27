@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/memetics19/anvil/compare/v0.8.0...v0.8.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* **provision:** two fixes from the first real install run ([#76](https://github.com/memetics19/anvil/issues/76)) ([93778b2](https://github.com/memetics19/anvil/commit/93778b2e269c58ddf8eac4a40f2a47327094f410))
+
 ## [0.8.0](https://github.com/memetics19/anvil/compare/v0.7.0...v0.8.0) (2026-10-27)
 
 
