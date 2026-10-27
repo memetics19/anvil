@@ -416,11 +416,13 @@ Restoring Vault and Vaultwarden is not scripted. `anvil restore vault` and
 anvil provision-iso pve2             # make provision-iso NAME=pve2
 anvil provision pve2                 # make provision NAME=pve2, a dry run
 anvil provision pve2 --install       # the dry run, the name typed, then the install
+anvil provision pve2 --install --power-off   # shut it down first if it runs
 ```
 
 | Flag | Adds |
 |---|---|
 | `--install` | `ARGS="-e provision_confirm=<name>"` |
+| `--power-off` | `-e provision_power_off=true`: shut a running target down gracefully first, never forced. Also on the dry run, to see the plan |
 | `--media-ready` | `-e provision_media_ready=true`, for manual media |
 
 The guard in `scripts/provision.py` still refuses the current server. See

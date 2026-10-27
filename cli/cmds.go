@@ -74,7 +74,7 @@ Runs make provision-iso NAME=<name>: the Proxmox VE automated install ISO for
 site.provision.machines.<name>, in build/provision/<name>.iso (docs/provisioning.md).
 `
 
-const provisionUsage = `usage: anvil provision <name> [--install] [--media-ready] [--dry-run]
+const provisionUsage = `usage: anvil provision <name> [--install] [--power-off] [--media-ready] [--dry-run]
 
 Without --install: make provision NAME=<name>, a dry run (the guard, read-only BMC reads,
 the planned Redfish or IPMI calls).
@@ -83,6 +83,11 @@ With --install: the dry run first, then the name typed, then
 make provision NAME=<name> ARGS="-e provision_confirm=<name>". The guard in
 scripts/provision.py still refuses the current server. --media-ready adds
 -e provision_media_ready=true, for manual media (docs/provisioning.md).
+
+--power-off adds -e provision_power_off=true: a running target is shut down gracefully
+(never forced) before the install, after the serial check proved it is the target. A
+machine with a controller step (controller: {vendor: dell, mode: nonraid}) needs it,
+because that step reboots the server.
 `
 
 func init() {
@@ -394,8 +399,9 @@ func cmdProvisionISO(a *app, args []string) int {
 
 func cmdProvision(a *app, args []string) int {
 	fs := flag.NewFlagSet("provision", flag.ContinueOnError)
-	var install, mediaReady, dry bool
+	var install, mediaReady, powerOff, dry bool
 	fs.BoolVar(&install, "install", false, "")
+	fs.BoolVar(&powerOff, "power-off", false, "")
 	fs.BoolVar(&mediaReady, "media-ready", false, "")
 	fs.BoolVar(&dry, "dry-run", false, "")
 	pos, code, ok := a.flags(fs, provisionUsage, args)
@@ -415,7 +421,11 @@ func cmdProvision(a *app, args []string) int {
 	if !ok {
 		return 1
 	}
-	if code := r.make(newMake("provision", "NAME", name), nil); code != 0 || !install {
+	check := newMake("provision", "NAME", name)
+	if powerOff {
+		check = newMake("provision", "NAME", name, "ARGS", "-e provision_power_off=true")
+	}
+	if code := r.make(check, nil); code != 0 || !install {
 		return code
 	}
 	if !dry && !askTyped(a.stdin, a.stdout, "This installs Proxmox VE on "+name+" and wipes its disks.", name) {
@@ -425,6 +435,9 @@ func cmdProvision(a *app, args []string) int {
 	extra := "-e provision_confirm=" + name
 	if mediaReady {
 		extra += " -e provision_media_ready=true"
+	}
+	if powerOff {
+		extra += " -e provision_power_off=true"
 	}
 	return r.make(newMake("provision", "NAME", name, "ARGS", extra), nil)
 }

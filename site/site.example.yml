@@ -114,6 +114,9 @@ site:
         bmc: {type: redfish, address: 192.0.2.124}
         media: redfish
         serial: EXAMPLE2
+        # Dell only, optional: turn the RAID controller's Ready disks into Non-RAID disks
+        # before the install (docs/provisioning.md, The RAID controller).
+        # controller: {vendor: dell, mode: nonraid}
         # ZFS data pools after the install (make pools HOST=pve2, role zfs_pools). Disks by
         # their names under /dev/disk/by-id: anvil pools lists them. Layouts: mirror,
         # raidz1, raidz2, raidz3. proxmox_storage adds the pool for VM disks and containers.

@@ -8,6 +8,7 @@ driven only through standard DMTF Redfish or plain IPMI.
   provision.py check --name <box>
       checks the machine entry and the guard against the current server, no network
   provision.py run --name <box> [-e provision_confirm=<box>] [-e provision_media_ready=true]
+                   [-e provision_power_off=true]
       a dry run by default: the guard, read-only BMC reads, then the plan, one line per
       Redfish or IPMI call (no secrets). With provision_confirm equal to the name it runs:
       serve the ISO over HTTP, insert it (media redfish), boot once from CD, power on, wait
@@ -15,6 +16,9 @@ driven only through standard DMTF Redfish or plain IPMI.
       media pxe: a temporary proxyDHCP, TFTP and HTTP netboot service on the Proxmox host
       answers only the target's MAC, boots it once from the network into the installer,
       and is stopped and removed at the end, also when the run fails.
+      controller: {vendor: dell, mode: nonraid} first turns Ready disks into Non-RAID
+      disks (scripts/provision_dell.py, the one vendor-specific part). provision_power_off
+      shuts a running target down gracefully (never forced) before the install.
   provision.py serve --bind <addr> --port <n> --token <t> --file <name>=<path> ...
       the netboot HTTP server (run on the Proxmox host by media pxe)
   provision.py get --name <box> --key <key>
@@ -43,6 +47,10 @@ import threading
 import time
 import urllib.error
 import urllib.request
+
+sys.dont_write_bytecode = True  # no __pycache__ in scripts/ (tests/test_media_untouched.sh scans the tree)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import provision_dell  # noqa: E402  (the opt-in Dell controller step)
 
 
 class Refused(Exception):
@@ -129,6 +137,12 @@ def machine(site, name):
     else:
         raise Refused(f"{name}: network is dhcp or a dict with cidr, gateway, dns and mac")
     m["network"] = net
+    ctl = m.get("controller")
+    if ctl is not None:
+        if ctl != {"vendor": "dell", "mode": "nonraid"}:
+            raise Refused(f"{name}: controller is {{vendor: dell, mode: nonraid}} or absent")
+        if bmc["type"] == "none":
+            raise Refused(f"{name}: controller needs a BMC (bmc.type redfish or ipmi)")
     m["disk_setup"] = disk_setup(name, m.get("disks"))
     # The NIC that boots from the network: network.mac, or mac for a DHCP network.
     boot_mac = m.get("mac") or (net.get("mac") if isinstance(net, dict) else None)
@@ -308,6 +322,18 @@ def read_ssh_keys(path):
 
 # --- BMC access: standard DMTF Redfish or plain IPMI only -------------------------------------
 
+def bmc_ssl_context():
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE  # BMCs have self-signed certificates
+    try:
+        ctx.set_ciphers("DEFAULT:@SECLEVEL=0")  # older BMC firmware
+    except ssl.SSLError:
+        pass
+    ctx.options |= getattr(ssl, "OP_LEGACY_SERVER_CONNECT", 0)
+    return ctx
+
+
 class Redfish:
     """Basic auth on every request (no session is created). get() is read-only."""
 
@@ -315,15 +341,7 @@ class Redfish:
         self.base = os.environ.get("PROVISION_TEST_REDFISH_URL") or f"https://{address}"  # the URL override is for tests only
         self.auth = "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
         self.timeout = timeout
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE  # BMCs have self-signed certificates
-        try:
-            ctx.set_ciphers("DEFAULT:@SECLEVEL=0")  # older BMC firmware
-        except ssl.SSLError:
-            pass
-        ctx.options |= getattr(ssl, "OP_LEGACY_SERVER_CONNECT", 0)
-        self.ctx = ctx
+        self.ctx = bmc_ssl_context()
 
     def request(self, method, path, body=None):
         data = None if body is None else json.dumps(body).encode()
@@ -547,8 +565,9 @@ def bmc_credentials(name):
 
 def wait_for(what, check, timeout, every, out):
     out(f"wait: {what} (up to {timeout // 60} min)")
-    every *= float(os.environ.get("PROVISION_TEST_POLL_SCALE", "1"))  # tests only
-    end = time.monotonic() + timeout
+    scale = float(os.environ.get("PROVISION_TEST_POLL_SCALE", "1"))  # tests only
+    every *= scale
+    end = time.monotonic() + timeout * scale
     while time.monotonic() < end:
         if check():
             return
@@ -572,7 +591,7 @@ def handoff(name, m, out):
 
 
 def run(site, name, opts, out=print):
-    unknown = set(opts) - {"provision_confirm", "provision_media_ready"}
+    unknown = set(opts) - {"provision_confirm", "provision_media_ready", "provision_power_off"}
     if unknown:
         raise Refused("unknown option: " + ", ".join(sorted(unknown)))
     m = machine(site, name)
@@ -581,6 +600,10 @@ def run(site, name, opts, out=print):
     if apply and opts["provision_confirm"] != name:
         raise Refused(f"provision_confirm must be {name}")
     media_ready = str(opts.get("provision_media_ready", "")).lower() in ("true", "yes", "1")
+    power_off = str(opts.get("provision_power_off", "")).lower() in ("true", "yes", "1")
+    if apply and m.get("controller") and not power_off:
+        raise Refused("the controller step reboots the server, so it is running afterwards. Add --power-off "
+                      "(-e provision_power_off=true) to shut it down before the install")
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     iso = os.path.join(os.environ.get("PROVISION_ISO_DIR") or os.path.join(root, "build", "provision"), f"{name}.iso")  # the override is for tests only
     rel = os.path.relpath(iso, root)
@@ -636,8 +659,31 @@ def run(site, name, opts, out=print):
     if info:
         live_guard(site, name, m, info["serials"])
         out(f"read: serial check ok, power {info['power']}")
-        if info["power"] != "Off":
-            msg = f"{name} is powered {info['power']}. Shut it down first: this tool never resets a running server"
+
+    def power_now():
+        return rf.get(info["system"]).get("PowerState") if bmc["type"] == "redfish" else ip.power()
+
+    # After the serial check: the BMC is the target's, never the current server's.
+    if m.get("controller"):
+        if info:
+            ws = provision_dell.WSMan(bmc["address"], *creds, bmc_ssl_context())
+            try:
+                if provision_dell.nonraid(ws, apply, word, out, wait_for):
+                    info["power"] = power_now()
+            except provision_dell.DellError as e:
+                if apply:
+                    raise Refused(str(e)) from None
+                out(f"note: {e}")
+        else:
+            out("plan: Dell controller: turn Ready disks into Non-RAID disks (no reads: the BMC did not answer)")
+
+    if info and info["power"] != "Off":
+        if power_off:
+            shut_down(bmc["type"], rf if bmc["type"] == "redfish" else None, ip if bmc["type"] == "ipmi" else None,
+                      info, power_now, apply, word, out)
+        else:
+            msg = (f"{name} is powered {info['power']}. Shut it down first, or add --power-off "
+                   "(-e provision_power_off=true): this tool never resets a running server")
             if apply:
                 raise Refused(msg)
             out("note: " + msg)
@@ -667,6 +713,32 @@ def run(site, name, opts, out=print):
         ops = IpmiPower(m, ip if info else None, apply, word, out)
         return pxe_steps(site, name, m, ops, ops.boot_once_pxe, ops.power_on, static_ip, apply, word, out)
     return ipmi_steps(name, m, ip if info else None, iso, rel, static_ip, apply, media_ready, word, out)
+
+
+def shut_down(kind, rf, ip, info, power_now, apply, word, out):
+    """A graceful shutdown of the target, then wait until it is off. Never a forced one: a
+    server that does not shut down is refused, for the operator to look at."""
+    if kind == "redfish":
+        types = info.get("reset_types") or []
+        how = next((t for t in ("GracefulShutdown", "PushPowerButton") if t in types), None)
+        if not how:
+            raise Refused("the BMC offers neither GracefulShutdown nor PushPowerButton. Shut the server down by hand")
+        out(f"{word}: POST {info['reset']} " + json.dumps({"ResetType": how}))
+        if apply:
+            rf.request("POST", info["reset"], {"ResetType": how})
+    else:
+        out(f"{word}: " + Ipmi("", "", "").shown(["chassis", "power", "soft"]))
+        if apply:
+            ip.call(["chassis", "power", "soft"])
+    if apply:
+        try:
+            wait_for("the server to shut down", lambda: power_now() == "Off", 15 * 60, 15, out)
+        except Refused:
+            raise Refused("the server did not shut down in 15 min. This tool never forces it off: "
+                          "look at its console, shut it down, then rerun") from None
+        info["power"] = "Off"
+    else:
+        out("plan: wait for the server to shut down (up to 15 min, never forced)")
 
 
 def manual_media_steps(name, rel, out):

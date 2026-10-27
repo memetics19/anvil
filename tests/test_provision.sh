@@ -360,6 +360,196 @@ import shutil; shutil.rmtree(tmp)
 sys.exit(1 if fails else 0)
 PY2
 
+# --- the Dell controller step and --power-off, against a fake Redfish and WS-Man BMC -------------
+python3 - scripts/provision.py site/site.example.yml <<'PY3' || rc=1
+import base64, copy, http.server, importlib.util, json, os, re, subprocess, sys, tempfile, threading, urllib.request, yaml
+with open(sys.argv[2]) as f:
+    SITE = yaml.safe_load(f)["site"]
+fails = 0
+def ok(name, cond):
+    global fails
+    print(("ok   " if cond else "FAIL ") + name)
+    fails += 0 if cond else 1
+
+USER, PW = "bmc-user", "test-only-" + "bmc-secret"
+AUTH = "Basic " + base64.b64encode(f"{USER}:{PW}".encode()).decode()
+CD = "/redfish/v1/Managers/1/VirtualMedia/CD"
+CTRL = "RAID.Integrated.1-1"
+BAYS = [f"Disk.Bay.{i}:Enclosure.Internal.0-1:{CTRL}" for i in range(4)]
+
+class Fake:
+    def reset(self, power="On", states=("1", "1", "8", "8"), reset_types=("On", "GracefulShutdown", "PushPowerButton"), job_ends="Completed", shuts=True):
+        self.power, self.states, self.reset_types, self.job_ends, self.shuts = power, list(states), list(reset_types), job_ends, shuts
+        self.log, self.ws, self.fetched, self.gets, self.job_polls = [], [], None, 0, 0
+
+def system():
+    F.gets += 1
+    if F.power == "On" and F.fetched and F.gets > 3:
+        F.power = "Off"
+    return {"PowerState": F.power, "SerialNumber": "EXAMPLE2", "SKU": "",
+            "Boot": {"BootSourceOverrideTarget@Redfish.AllowableValues": ["Pxe", "Cd", "Hdd"]},
+            "Actions": {"#ComputerSystem.Reset": {"target": "/redfish/v1/Systems/1/Actions/ComputerSystem.Reset",
+                                                   "ResetType@Redfish.AllowableValues": F.reset_types}},
+            "Links": {"ManagedBy": [{"@odata.id": "/redfish/v1/Managers/1"}]}}
+
+GETS = {"/redfish/v1": lambda: {"Systems": {"@odata.id": "/redfish/v1/Systems"}},
+        "/redfish/v1/Systems": lambda: {"Members": [{"@odata.id": "/redfish/v1/Systems/1"}]},
+        "/redfish/v1/Systems/1": system,
+        "/redfish/v1/Managers/1": lambda: {"VirtualMedia": {"@odata.id": "/redfish/v1/Managers/1/VirtualMedia"}},
+        "/redfish/v1/Managers/1/VirtualMedia": lambda: {"Members": [{"@odata.id": CD}]},
+        CD: lambda: {"MediaTypes": ["CD"], "Inserted": False,
+                     "Actions": {"#VirtualMedia.InsertMedia": {"target": CD + "/Actions/VirtualMedia.InsertMedia"},
+                                 "#VirtualMedia.EjectMedia": {"target": CD + "/Actions/VirtualMedia.EjectMedia"}}}}
+
+def soap(inner):
+    return ('<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:n1="urn:x" '
+            'xmlns:wsen="http://schemas.xmlsoap.org/ws/2004/09/enumeration"><s:Body>' + inner + "</s:Body></s:Envelope>")
+
+def wsman(body):
+    action = re.search(r"<a:Action[^>]*>([^<]+)<", body).group(1)
+    F.ws.append(action.rsplit("/", 1)[-1])
+    if action.endswith("/Enumerate"):
+        items = "".join(f"<n1:DCIM_PhysicalDiskView><n1:FQDD>{b}</n1:FQDD><n1:Model>ST1000NX0373</n1:Model>"
+                        f"<n1:RaidStatus>{s}</n1:RaidStatus></n1:DCIM_PhysicalDiskView>" for b, s in zip(BAYS, F.states))
+        return soap(f"<wsen:EnumerateResponse><wsman:Items xmlns:wsman='urn:w'>{items}</wsman:Items><wsman:EndOfSequence xmlns:wsman='urn:w'/></wsen:EnumerateResponse>")
+    if action.endswith("/ConvertToNonRAID"):
+        F.converted = re.findall(r"<p:PDArray>([^<]+)<", body)
+        return soap("<n1:ConvertToNonRAID_OUTPUT><n1:RebootRequired>YES</n1:RebootRequired><n1:ReturnValue>0</n1:ReturnValue></n1:ConvertToNonRAID_OUTPUT>")
+    if action.endswith("/CreateTargetedConfigJob"):
+        F.job_args = re.findall(r"<p:(Target|RebootJobType|ScheduledStartTime)>([^<]+)<", body)
+        return soap("<n1:CreateTargetedConfigJob_OUTPUT><n1:Job><wsa:ReferenceParameters xmlns:wsa='urn:a'><wsman:SelectorSet xmlns:wsman='urn:w'>"
+                    "<wsman:Selector Name='InstanceID'>JID_000000000001</wsman:Selector></wsman:SelectorSet></wsa:ReferenceParameters></n1:Job>"
+                    "<n1:ReturnValue>4096</n1:ReturnValue></n1:CreateTargetedConfigJob_OUTPUT>")
+    if action.endswith("/Get"):
+        F.job_polls += 1
+        status = "Running" if F.job_polls < 2 else F.job_ends
+        if status == "Completed":
+            F.states = ["8" if s == "1" else s for s in F.states]
+            F.power = "On"
+        return soap(f"<n1:DCIM_LifecycleJob><n1:InstanceID>JID_000000000001</n1:InstanceID><n1:JobStatus>{status}</n1:JobStatus>"
+                    "<n1:Message>test</n1:Message></n1:DCIM_LifecycleJob>")
+    return soap("<s:Fault><s:Reason>unknown</s:Reason></s:Fault>")
+
+class H(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def reply(self, code, data=b"", ctype="application/json"):
+        self.send_response(code); self.send_header("Content-Type", ctype); self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+    def handle_any(self, method):
+        n = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(n)
+        if self.headers.get("Authorization") != AUTH:
+            return self.reply(401)
+        if self.path == "/wsman":
+            return self.reply(200, wsman(raw.decode()).encode(), "application/soap+xml")
+        body = json.loads(raw or b"null")
+        F.log.append((method, self.path, body))
+        if method == "GET":
+            return self.reply(200, json.dumps(GETS[self.path]()).encode()) if self.path in GETS else self.reply(404)
+        if self.path.endswith("VirtualMedia.InsertMedia"):
+            with urllib.request.urlopen(urllib.request.Request(body["Image"], headers={"Range": "bytes=0-9"})) as r:
+                F.fetched = r.status
+        elif self.path.endswith("ComputerSystem.Reset"):
+            if body["ResetType"] == "On":
+                F.power = "On"; F.gets = 0
+            elif body["ResetType"] in ("GracefulShutdown", "PushPowerButton") and F.shuts:
+                F.power = "Off"
+        self.reply(204)
+    def do_GET(self): self.handle_any("GET")
+    def do_POST(self): self.handle_any("POST")
+    def do_PATCH(self): self.handle_any("PATCH")
+
+F = Fake(); F.reset()
+srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+threading.Thread(target=srv.serve_forever, daemon=True).start()
+base = f"http://127.0.0.1:{srv.server_address[1]}"
+tmp = tempfile.mkdtemp()
+creds = os.path.join(tmp, "creds.json")
+with open(creds, "w") as f:
+    json.dump({"username": USER, "password": PW}, f)
+isodir = os.path.join(tmp, "iso"); os.mkdir(isodir)
+
+def site_file(**machine):
+    s = copy.deepcopy(SITE)
+    s["provision"]["machines"]["pve2"].update({"bmc": {"type": "redfish", "address": "127.0.0.1"}, "network": "dhcp",
+                                               "mac": "02:00:00:00:00:20", "controller": {"vendor": "dell", "mode": "nonraid"}}, **machine)
+    path = os.path.join(tmp, "site.json")
+    with open(path, "w") as f:
+        json.dump({"site": s}, f)
+    return path
+
+def cli(site, *extra):
+    env = dict(os.environ, PROVISION_SITE_FILE=site, PROVISION_BMC_CREDENTIALS_FILE=creds, PROVISION_TEST_REDFISH_URL=base,
+               PROVISION_TEST_WSMAN_URL=base + "/wsman", PROVISION_ISO_DIR=isodir, PROVISION_TEST_POLL_SCALE="0.001")
+    r = subprocess.run([sys.executable, sys.argv[1], "run", "--name", "pve2", *extra], env=env, capture_output=True, text=True, timeout=120)
+    return r.returncode, r.stdout, r.stderr
+
+def writes():
+    return [(m, p.rsplit("/", 1)[-1], b) for m, p, b in F.log if m != "GET"]
+
+def iso():
+    with open(os.path.join(isodir, "pve2.iso"), "wb") as f:
+        f.write(b"x" * 4096)
+
+code, out, err = cli(site_file(controller={"vendor": "hp"}))
+ok("controller: only dell nonraid", code == 3 and "controller is" in err)
+code, out, err = cli(site_file(bmc={"type": "none"}, media="manual"))
+ok("controller needs a BMC", code == 3 and "controller needs a BMC" in err)
+
+F.reset()
+code, out, err = cli(site_file())
+ok("dry run without --power-off notes the running server", code == 0 and "or add --power-off" in out)
+F.reset()
+code, out, err = cli(site_file(), "-e", "provision_power_off=true")
+ok("dry run exits 0", code == 0)
+ok("dry run plans the conversion of the Ready disks", "plan: WS-Man DCIM_RAIDService.ConvertToNonRAID, 2 Ready disks on " + CTRL in out)
+ok("dry run plans a graceful shutdown", 'plan: POST /redfish/v1/Systems/1/Actions/ComputerSystem.Reset {"ResetType": "GracefulShutdown"}' in out
+   and "never forced" in out)
+ok("dry run: WS-Man reads only, no Redfish writes", F.ws == ["Enumerate"] and not writes())
+ok("dry run prints no password", PW not in out + err)
+
+F.reset()
+iso()
+code, out, err = cli(site_file(), "-e", "provision_confirm=pve2")
+ok("the controller step needs --power-off", code == 3 and "--power-off" in err and F.ws == [] and not writes())
+
+F.reset(states=("1", "2", "8", "8"))
+code, out, err = cli(site_file(), "-e", "provision_confirm=pve2", "-e", "provision_power_off=true")
+ok("a disk in a RAID volume is refused, nothing written", code == 3 and "never deletes one" in err and F.ws == ["Enumerate"] and not writes())
+
+F.reset()
+iso()
+code, out, err = cli(site_file(), "-e", "provision_confirm=pve2", "-e", "provision_power_off=true")
+ok("install with the controller step and --power-off exits 0", code == 0)
+ok("only the Ready disks are converted", F.converted == BAYS[:2])
+ok("one job, graceful reboot, now", dict(F.job_args) == {"Target": CTRL, "RebootJobType": "3", "ScheduledStartTime": "TIME_NOW"})
+ok("WS-Man order", F.ws[:3] == ["Enumerate", "ConvertToNonRAID", "CreateTargetedConfigJob"] and F.ws[-1] == "Enumerate")
+seq = [(m, p, (b or {}).get("ResetType")) for m, p, b in writes()]
+ok("shut down gracefully, then the install", seq[0] == ("POST", "ComputerSystem.Reset", "GracefulShutdown")
+   and ("POST", "VirtualMedia.InsertMedia", None) in seq and "ForceOff" not in json.dumps(seq))
+ok("no password printed", PW not in out + err)
+
+F.reset(states=("8", "8", "8", "8"), reset_types=("On", "PushPowerButton"))
+iso()
+code, out, err = cli(site_file(), "-e", "provision_confirm=pve2", "-e", "provision_power_off=true")
+ok("all Non-RAID: no job; PushPowerButton when no GracefulShutdown", code == 0 and F.ws == ["Enumerate"]
+   and writes()[0][2] == {"ResetType": "PushPowerButton"})
+
+F.reset(states=("8", "8", "8", "8"), shuts=False)
+iso()
+code, out, err = cli(site_file(), "-e", "provision_confirm=pve2", "-e", "provision_power_off=true")
+ok("a server that does not shut down is refused, never forced", code == 3 and "never forces it off" in err
+   and not any(b and b.get("ResetType") == "ForceOff" for _, _, b in writes()))
+
+F.reset(job_ends="Failed")
+iso()
+code, out, err = cli(site_file(), "-e", "provision_confirm=pve2", "-e", "provision_power_off=true")
+ok("a failed job stops the run before the install", code == 3 and "Failed" in err and not writes())
+
+srv.shutdown()
+import shutil; shutil.rmtree(tmp)
+sys.exit(1 if fails else 0)
+PY3
+
 # The CLI exits 3 on a refusal and never echoes the password.
 out=$(printf 'test-only-cli-value\n' | PROVISION_SITE_FILE=site/site.example.yml python3 scripts/provision.py answer --name pve2 --ssh-key /dev/null 2>&1)
 code=$?
