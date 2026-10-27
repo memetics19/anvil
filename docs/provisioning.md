@@ -4,8 +4,18 @@ Install Proxmox VE on a new server without sitting at it, or rebuild the current
 same way. The repo uses the official Proxmox automated installer: an ISO with the answer
 file inside. Any delivery path works, so the server brand does not matter.
 
-The repo talks to the BMC only through DMTF Redfish or plain IPMI. It uses no vendor tools
-and no vendor OEM APIs.
+The repo talks to the BMC through DMTF Redfish or plain IPMI. There is one opt-in
+exception: turning a Dell RAID controller's disks into Non-RAID disks, which no vendor
+neutral standard covers. See [The RAID controller](#the-raid-controller).
+
+From bare metal to data pools, every step is an anvil command:
+
+```sh
+anvil provision-iso <box>                          # the answer file and the ISO
+anvil provision <box> --power-off                  # dry run: reads only, prints every call
+anvil provision <box> --install --power-off        # controller, shutdown, install, SSH
+anvil pools <box>                                  # the ZFS data pools
+```
 
 Test status:
 
@@ -52,6 +62,7 @@ Each server is an entry under `site.provision.machines`. The structure is in
 | `media` | `pxe`, `redfish` or `manual`. Default `manual`. |
 | `boot_mode` | `uefi` or `bios`. Only the IPMI boot device calls use it. |
 | `serial` | Optional. The serial the BMC must report before anything changes. |
+| `controller` | Optional. `{vendor: dell, mode: nonraid}`: turn the RAID controller's Ready disks into Non-RAID disks before the install. |
 
 The BMC login goes into Vault at `kv/homelab/<box>/bmc`, keys `username` and `password`.
 Write each value from stdin:
@@ -256,6 +267,46 @@ Rebuilding that server would use `media: pxe`, with a Redfish boot once to `Pxe`
 on. No USB stick is needed. BMCs of any brand that offer InsertMedia can also use
 `media: redfish`.
 
+## The RAID controller
+
+Disks in "Ready" state under a RAID controller are not visible to the installer or to ZFS.
+They must be Non-RAID (pass-through, also called HBA or IT mode). Redfish has no standard
+action for that, so:
+
+- Dell iDRAC 7, 8 and 9: set `controller: {vendor: dell, mode: nonraid}` on the machine.
+  anvil does it as part of `anvil provision`. This is the only vendor-specific code, in
+  `scripts/provision_dell.py`.
+- Any other brand: set the disks to Non-RAID or HBA mode in the controller's setup or the
+  BMC's web UI before the install.
+
+What the Dell step does, after the serial check proved the BMC is the target's:
+
+1. It reads every physical disk's RAID state over the iDRAC's WS-Man interface
+   (`DCIM_PhysicalDiskView`).
+2. Disks already Non-RAID are left alone. When all are, it does nothing.
+3. Ready disks go to Non-RAID with `DCIM_RAIDService.ConvertToNonRAID`, then one
+   Lifecycle Controller job per controller (`CreateTargetedConfigJob`, graceful reboot).
+   The server reboots once, about 10 minutes. The run waits for the job.
+4. It reads the disks again and stops unless every one is Non-RAID.
+
+It refuses, before any change, a disk inside a RAID volume, and a disk that is Foreign,
+Failed, Offline or Blocked. anvil never deletes or changes a RAID volume. Delete it in the
+iDRAC, then rerun. The job leaves the server running, so a machine with `controller` needs
+`--power-off`.
+
+## Power off
+
+`anvil provision` never resets a running server. With `--power-off`
+(`-e provision_power_off=true`) it shuts a running target down first:
+
+- Redfish: `ComputerSystem.Reset` with `GracefulShutdown`, or `PushPowerButton` when the BMC
+  has no `GracefulShutdown`. Both ask the OS to shut down.
+- IPMI: `ipmitool chassis power soft`.
+
+It runs only after the serial check, so it can only reach the target. It waits up to 15
+minutes. A server that does not shut down is refused: anvil never forces one off. Look at
+its console, shut it down, then rerun.
+
 ## The dry run
 
 ```sh
@@ -383,7 +434,5 @@ Rules:
   `--wipe <pool>` wipes the signatures on that pool's disks first. Use it only when nothing
   on them is needed.
 
-ZFS wants each disk on its own. A RAID controller must pass the disks through: set them to
-Non-RAID (or HBA or IT mode) in the controller's setup or the BMC's web UI before the
-install. Disks in "Ready" state under a RAID controller are not visible to the installer.
-anvil does not change controller settings, because there is no vendor-neutral way to.
+ZFS wants each disk on its own. A RAID controller must pass the disks through, see
+[The RAID controller](#the-raid-controller).
