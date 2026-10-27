@@ -54,15 +54,17 @@ It is a work in progress. See the [Roadmap](#roadmap).
 
 ### Hardware
 
-| Part | Model |
-|---|---|
-| Server | Dell PowerEdge T130 tower |
-| CPU | Intel Xeon E3-1220 v6 @ 3.00GHz, 4 cores, 4 threads |
-| RAM | 32GB DDR4-2400 ECC (4 × 8GB) |
-| RAID controller | PERC H730, each disk is its own virtual disk |
-| Disks | 4TB Seagate Exos 7200 rpm (Proxmox, VM disks, media), 1TB Seagate Exos 7200 rpm (Ceph OSD) |
-| Network | 2 × 1GbE (Broadcom BCM5720), Cisco managed switch |
-| Out-of-band | iDRAC8 |
+| | `pve`, runs the lab | `pve2`, backups and new work (being installed) |
+|---|---|---|
+| Server | Dell PowerEdge T130 tower | Dell PowerEdge R620, 1U |
+| CPU | Xeon E3-1220 v6, 4 cores | 2 × Xeon E5-2640 v2, 16 cores, 32 threads |
+| RAM | 32 GB DDR4 ECC | 128 GB DDR3 ECC |
+| Disks | 4 TB + 1 TB (Ceph OSD) | 4 × 1 TB + 4 × 2 TB, ZFS: mirror, mirror, RAIDZ1 |
+| Network | 2 × 1 GbE | 2 × 10 GbE + 2 × 1 GbE |
+| Out-of-band | iDRAC8 | iDRAC7 |
+
+Switch: Cisco SG300-52, managed as code. Details, disk layout and limits:
+[docs/hardware.md](docs/hardware.md).
 
 ## Install
 
@@ -194,6 +196,7 @@ The docs site is <https://memetics19.github.io/anvil/>. `make docs` builds it lo
 | [usage.md](docs/usage.md) | Make targets, adding a service, secrets, backups, safety rails, upgrades, tests, troubleshooting |
 | [cli.md](docs/cli.md) | Every `anvil` command |
 | [provisioning.md](docs/provisioning.md) | Installing Proxmox VE on a new server with the automated installer ISO, Redfish or IPMI |
+| [hardware.md](docs/hardware.md) | The two servers and the switch: models, disk layout, roles and limits |
 | [services.md](docs/services.md) | What each host and role does |
 | [secrets.md](docs/secrets.md) | Every Vault path and key |
 | [cisco-switch.md](docs/cisco-switch.md) | The Cisco switch: what `make switch` manages and what is set by hand |
