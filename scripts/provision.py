@@ -48,9 +48,6 @@ import time
 import urllib.error
 import urllib.request
 
-sys.dont_write_bytecode = True  # no __pycache__ in scripts/ (tests/test_media_untouched.sh scans the tree)
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import provision_dell  # noqa: E402  (the opt-in Dell controller step)
 
 
 class Refused(Exception):
@@ -675,6 +672,11 @@ def run(site, name, opts, out=print):
 
     # After the serial check: the BMC is the target's, never the current server's.
     if m.get("controller"):
+        # Imported here, not at the top: the netboot HTTP server runs this file alone on the
+        # Proxmox host (provision.py serve), where provision_dell.py is not copied.
+        sys.dont_write_bytecode = True  # no __pycache__ in scripts/ (tests/test_media_untouched.sh)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import provision_dell
         if info:
             ws = provision_dell.WSMan(bmc["address"], *creds, bmc_ssl_context())
             try:

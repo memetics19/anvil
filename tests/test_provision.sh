@@ -561,6 +561,18 @@ import shutil; shutil.rmtree(tmp)
 sys.exit(1 if fails else 0)
 PY3
 
+# The netboot HTTP server runs provision.py alone on the Proxmox host: it must start with no
+# other file next to it.
+alone=$(mktemp -d)
+cp scripts/provision.py "$alone/"
+printf 'x' >"$alone/f"
+(cd "$alone" && exec python3 -I provision.py serve --bind 127.0.0.1 --port 0 --token t --file f="$alone/f" >"$alone/out" 2>&1) &
+serve_pid=$!
+for _ in $(seq 30); do grep -q "^serving\|Error" "$alone/out" 2>/dev/null && break; sleep 0.1; done
+kill "$serve_pid" 2>/dev/null; wait "$serve_pid" 2>/dev/null
+if grep -q "^serving 1 files" "$alone/out"; then echo "ok   provision.py serve runs alone"; else echo "FAIL provision.py serve alone: $(tail -2 "$alone/out")"; rc=1; fi
+rm -rf "$alone"
+
 # The CLI exits 3 on a refusal and never echoes the password.
 out=$(printf 'test-only-cli-value\n' | PROVISION_SITE_FILE=site/site.example.yml python3 scripts/provision.py answer --name pve2 --ssh-key /dev/null 2>&1)
 code=$?
