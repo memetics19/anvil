@@ -346,3 +346,44 @@ root. Hand it to the repo, as in [First build](setup.md#first-build):
    [Rebuilding on a new box](setup.md#rebuilding-on-a-new-box).
 
 Delete the ISO and the netboot payload if the run did not: `make provision-clean NAME=<box>`.
+
+## Data pools
+
+The installer only builds the boot pool `rpool`, on the disks in `disks`. The other disks
+become ZFS data pools, declared under the machine's `pools`:
+
+```yaml
+pools:
+  - {name: vmdata, layout: mirror, disks: [<by-id>, <by-id>], proxmox_storage: true}
+  - {name: tank, layout: raidz1, disks: [<by-id>, <by-id>, <by-id>, <by-id>]}
+```
+
+| Field | Meaning |
+|---|---|
+| `name` | The pool name. Not `rpool` or `bpool`. |
+| `layout` | `mirror` (2 disks or more), `raidz1` (3), `raidz2` (4) or `raidz3` (5). |
+| `disks` | Whole disks by their names under `/dev/disk/by-id`. Never `sdX`, which can change at boot. |
+| `proxmox_storage` | `true` adds the pool as Proxmox storage for VM disks and containers. |
+
+```sh
+anvil pools <box>               # lists the disks and what it would do, asks, then creates
+anvil pools <box> --wipe tank   # a disk of tank has old signatures and nothing on it is needed
+```
+
+The first run lists every disk with its by-id name, size, model and use, so you can copy
+the names into the site dict. Pools get `ashift=12`, `compression=lz4`, `atime=off`,
+`xattr=sa` and `acltype=posixacl`.
+
+Rules:
+
+- An existing pool with the declared disks is left as it is. One with other disks is an
+  error. anvil never changes, grows or destroys a pool.
+- A disk in any pool, mounted or used as swap is refused.
+- A disk with partitions or signatures (an old filesystem, RAID or ZFS label) is refused.
+  `--wipe <pool>` wipes the signatures on that pool's disks first. Use it only when nothing
+  on them is needed.
+
+ZFS wants each disk on its own. A RAID controller must pass the disks through: set them to
+Non-RAID (or HBA or IT mode) in the controller's setup or the BMC's web UI before the
+install. Disks in "Ready" state under a RAID controller are not visible to the installer.
+anvil does not change controller settings, because there is no vendor-neutral way to.

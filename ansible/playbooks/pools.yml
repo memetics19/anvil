@@ -1,0 +1,29 @@
+# ZFS data pools on a provisioned Proxmox host (role zfs_pools): make pools HOST=<machine>.
+# The host is an entry of site.provision.machines, reached at its static address as root.
+- name: The machine
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: A machine of site.provision.machines with a static address
+      ansible.builtin.assert:
+        that:
+          - pools_host | default('') | length > 0
+          - pools_host in (site.provision.machines | default({}))
+          - site.provision.machines[pools_host].network.cidr is defined
+        fail_msg: >-
+          pools_host must name an entry of site.provision.machines with network.cidr
+          (one of: {{ (site.provision.machines | default({})).keys() | join(', ') }})
+        quiet: true
+
+    - name: Add it
+      ansible.builtin.add_host:
+        name: "{{ pools_host }}"
+        groups: provisioned
+        ansible_host: "{{ site.provision.machines[pools_host].network.cidr | split('/') | first }}"
+        ansible_user: root
+
+- name: ZFS data pools
+  hosts: provisioned
+  gather_facts: false
+  roles:
+    - role: zfs_pools
