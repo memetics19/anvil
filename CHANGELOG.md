@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/memetics19/anvil/compare/v0.7.0...v0.8.0) (2026-10-27)
+
+
+### Features
+
+* anvil pools creates the ZFS data pools of a provisioned host ([#71](https://github.com/memetics19/anvil/issues/71)) ([c8ecd17](https://github.com/memetics19/anvil/commit/c8ecd1715f15400791645bcfd35b480de0c050aa))
+* **provision:** power off the target and set Dell disks to Non-RAID ([#74](https://github.com/memetics19/anvil/issues/74)) ([6b16603](https://github.com/memetics19/anvil/commit/6b166031a40003e86dfb81b0bc84ec7712c5f252))
+
 ## [0.7.0](https://github.com/memetics19/anvil/compare/v0.6.4...v0.7.0) (2026-10-25)
 
 
