@@ -73,6 +73,14 @@ def mounted():
     return devs
 
 
+def vdev_disk(path):
+    """The whole disk of a pool member. ZFS partitions a whole disk it is given, so a member
+    may be <path>-part1, which need not exist as a link: then the path without -partN."""
+    if not os.path.exists(path):
+        path = re.sub(r"-part\d+$", "", path)
+    return base(os.path.realpath(path))
+
+
 def pool_members():
     """{pool: set of whole-disk device names} for the imported pools."""
     out = {}
@@ -80,8 +88,8 @@ def pool_members():
         devs = set()
         for line in run(["zpool", "status", "-P", name]).stdout.splitlines():
             f = line.split()
-            if f and f[0].startswith("/dev/"):
-                devs.add(base(os.path.realpath(f[0])))
+            if f and f[0].startswith("/") and not f[0].startswith("/dev/zvol"):
+                devs.add(vdev_disk(f[0]))
         out[name] = devs
     return out
 
