@@ -1,16 +1,21 @@
 # Managed by Ansible (role caddy): Caddy {{ caddy_version }} with caddy-dns/cloudflare
-# {{ caddy_cloudflare_version }} and golang.org/x/net {{ caddy_x_net_version }}, built by xcaddy
-# {{ caddy_xcaddy_version }} with {{ caddy_go_version }}
+# {{ caddy_cloudflare_version }}, built by xcaddy {{ caddy_xcaddy_version }} with {{ caddy_go_version }}.
+# Modules replaced with a fixed version: golang.org/x/net {{ caddy_x_net_version }},
+# go-jose/v4 {{ caddy_go_jose_version }} and chi/v5 {{ caddy_chi_version }}
 # (module checksums verified by Go's sum database).
 FROM {{ caddy_builder_image }} AS build
 ENV GOTOOLCHAIN=local CGO_ENABLED=0
 RUN go install github.com/caddyserver/xcaddy/cmd/xcaddy@{{ caddy_xcaddy_version }} \
  && xcaddy build v{{ caddy_version }} --output /caddy \
       --with github.com/caddy-dns/cloudflare@{{ caddy_cloudflare_version }} \
-      --replace golang.org/x/net=golang.org/x/net@{{ caddy_x_net_version }}
+      --replace golang.org/x/net=golang.org/x/net@{{ caddy_x_net_version }} \
+      --replace github.com/go-jose/go-jose/v4=github.com/go-jose/go-jose/v4@{{ caddy_go_jose_version }} \
+      --replace github.com/go-chi/chi/v5=github.com/go-chi/chi/v5@{{ caddy_chi_version }}
 
 FROM {{ caddy_base_image }}
 COPY --from=build /caddy /usr/bin/caddy
 RUN caddy list-modules | grep -qx 'dns.providers.cloudflare' \
  && caddy build-info | grep -qE '^go[[:space:]]+{{ caddy_go_version }}$' \
- && caddy build-info | grep -qE '^=>[[:space:]]+golang.org/x/net[[:space:]]+{{ caddy_x_net_version }}([[:space:]]|$)'
+ && caddy build-info | grep -qE '^=>[[:space:]]+golang.org/x/net[[:space:]]+{{ caddy_x_net_version }}([[:space:]]|$)' \
+ && caddy build-info | grep -qE '^=>[[:space:]]+github.com/go-jose/go-jose/v4[[:space:]]+{{ caddy_go_jose_version }}([[:space:]]|$)' \
+ && caddy build-info | grep -qE '^=>[[:space:]]+github.com/go-chi/chi/v5[[:space:]]+{{ caddy_chi_version }}([[:space:]]|$)'

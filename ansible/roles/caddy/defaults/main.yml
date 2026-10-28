@@ -18,9 +18,13 @@ caddy_dir: /opt/caddy
 caddy_version: 2.11.7
 caddy_cloudflare_version: v0.2.4
 caddy_xcaddy_version: v0.4.7
-# Caddy 2.11.7's go.mod brings golang.org/x/net 0.59 or 0.60 (CVE-2026-78669): xcaddy
-# replaces it with this version.
-caddy_x_net_version: v0.61.0
+# Modules xcaddy replaces with a fixed version, as Caddy 2.11.7's go.mod brings an
+# older one: golang.org/x/net 0.59 or 0.60 (CVE-2026-78669, CVE-2026-78661 and
+# CVE-2026-97045), github.com/go-jose/go-jose/v4 4.1.5 (CVE-2026-116587) and
+# github.com/go-chi/chi/v5 5.3.2 (CVE-2026-114437).
+caddy_x_net_version: v0.62.0
+caddy_go_jose_version: v4.1.6
+caddy_chi_version: v5.4.0
 caddy_builder_image: golang:1.26.10-alpine@sha256:27f2d3b83cfc5803c8078f8e730af0f7c431bf067afaec8f60a36fb763187cba
 caddy_go_version: go1.26.10
 caddy_base_image: caddy:2.11.7-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
