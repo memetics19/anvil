@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -38,7 +39,7 @@ func (s service) target(host string) (target, error) {
 		help: fmt.Sprintf("tag %s (%s) on %s", s.name, strings.Join(s.roles, ", "), strings.Join(s.hosts, ", "))}
 	switch {
 	case host != "":
-		if !contains(s.hosts, host) {
+		if !slices.Contains(s.hosts, host) {
 			return target{}, fmt.Errorf("%s runs on %s, not %s", s.name, strings.Join(s.hosts, ", "), host)
 		}
 		t.make, t.host = "vm", host
@@ -227,7 +228,7 @@ func loadCatalog(root string) (*catalog, error) {
 		for _, h := range hosts {
 			hostsOf[tag][h] = true
 		}
-		if role != "" && !contains(rolesOf[tag], role) {
+		if role != "" && !slices.Contains(rolesOf[tag], role) {
 			rolesOf[tag] = append(rolesOf[tag], role)
 		}
 	}
@@ -278,7 +279,7 @@ func (c *catalog) service(name string) (service, bool) {
 	}
 	var byRole []service
 	for _, s := range c.services {
-		if contains(s.roles, n) {
+		if slices.Contains(s.roles, n) {
 			byRole = append(byRole, s)
 		}
 	}

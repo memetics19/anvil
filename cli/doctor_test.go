@@ -5,38 +5,41 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/memetics19/anvil/cli/internal/app"
+	"github.com/memetics19/anvil/cli/internal/testlab"
 )
 
 func TestDoctorIsInitWithAVersionCheck(t *testing.T) {
 	l := newTestLab(t)
-	fakeTools(l)
-	l.env["PATH"] = l.bin + ":/usr/bin:/bin"
+	testlab.FakeTools(l)
+	l.Env["PATH"] = l.Bin + ":/usr/bin:/bin"
 	// The real git, on a checkout tagged v1.2.3.
-	os.Remove(filepath.Join(l.bin, "git"))
-	home := l.env["HOME"]
-	gitT(t, home, l.root, "init", "-q", "-b", "main")
-	gitT(t, home, l.root, "add", "Makefile", "scripts/env.sh")
-	gitT(t, home, l.root, "commit", "-q", "-m", "one")
-	gitT(t, home, l.root, "tag", "v1.2.3")
-	head := gitT(t, home, l.root, "rev-parse", "HEAD")
+	os.Remove(filepath.Join(l.Bin, "git"))
+	home := l.Env["HOME"]
+	testlab.Git(t, home, l.Root, "init", "-q", "-b", "main")
+	testlab.Git(t, home, l.Root, "add", "Makefile", "scripts/env.sh")
+	testlab.Git(t, home, l.Root, "commit", "-q", "-m", "one")
+	testlab.Git(t, home, l.Root, "tag", "v1.2.3")
+	head := testlab.Git(t, home, l.Root, "rev-parse", "HEAD")
 
-	setVersion(t, "1.2.3")
-	if code := l.run("", "init"); code != 0 {
-		t.Fatalf("init: exit %d:\n%s", code, l.output())
+	testlab.SetVersion(t, "1.2.3")
+	if code := l.Run("", "init"); code != 0 {
+		t.Fatalf("init: exit %d:\n%s", code, l.Output())
 	}
-	initOut := l.output()
-	if code := l.run("", "doctor"); code != 0 {
-		t.Fatalf("doctor: exit %d:\n%s", code, l.output())
+	initOut := l.Output()
+	if code := l.Run("", "doctor"); code != 0 {
+		t.Fatalf("doctor: exit %d:\n%s", code, l.Output())
 	}
-	if strings.ReplaceAll(l.output(), "doctor: ready", "init: ready") != initOut {
-		t.Errorf("doctor and init differ:\n%s\n---\n%s", initOut, l.output())
+	if strings.ReplaceAll(l.Output(), "doctor: ready", "init: ready") != initOut {
+		t.Errorf("doctor and init differ:\n%s\n---\n%s", initOut, l.Output())
 	}
-	if !strings.Contains(l.output(), "ok    anvil 1.2.3 matches the repo (v1.2.3)") {
-		t.Errorf("tagged:\n%s", l.output())
+	if !strings.Contains(l.Output(), "ok    anvil 1.2.3 matches the repo (v1.2.3)") {
+		t.Errorf("tagged:\n%s", l.Output())
 	}
 
-	oldCommit := commit
-	t.Cleanup(func() { commit = oldCommit })
+	oldCommit := app.Commit
+	t.Cleanup(func() { app.Commit = oldCommit })
 	cases := []struct {
 		version, commit, want string
 	}{
@@ -46,13 +49,13 @@ func TestDoctorIsInitWithAVersionCheck(t *testing.T) {
 		{"dev", "", "ok    anvil dev, a build without a commit, not compared"},
 	}
 	for _, tc := range cases {
-		version, commit = tc.version, tc.commit
+		app.Version, app.Commit = tc.version, tc.commit
 		// A mismatch is a warning: doctor still passes.
-		if code := l.run("", "doctor"); code != 0 || !strings.Contains(l.output(), tc.want) {
-			t.Errorf("%s %s: exit %d, want %q in:\n%s", tc.version, tc.commit, code, tc.want, l.output())
+		if code := l.Run("", "doctor"); code != 0 || !strings.Contains(l.Output(), tc.want) {
+			t.Errorf("%s %s: exit %d, want %q in:\n%s", tc.version, tc.commit, code, tc.want, l.Output())
 		}
 	}
-	if !strings.Contains(l.output(), "doctor: ready") {
-		t.Errorf("doctor's verdict:\n%s", l.output())
+	if !strings.Contains(l.Output(), "doctor: ready") {
+		t.Errorf("doctor's verdict:\n%s", l.Output())
 	}
 }

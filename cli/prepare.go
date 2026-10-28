@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/memetics19/anvil/cli/internal/app"
+	"github.com/memetics19/anvil/cli/internal/run"
 	"gopkg.in/yaml.v3"
 )
 
@@ -15,22 +17,22 @@ import (
 // needs a manual make or install first: Terraform's backend (a fresh clone or worktree
 // has no .terraform) and the Ansible collections in ansible/requirements.yml. A dry run
 // only prints what it would do.
-func (a *app) prepare(r *runner) bool {
-	return a.prepareTerraform(r) && a.prepareCollections(r)
+func prepare(a *app.App, r *run.Runner) bool {
+	return prepareTerraform(a, r) && prepareCollections(a, r)
 }
 
-func (a *app) prepareTerraform(r *runner) bool {
-	if _, err := os.Stat(filepath.Join(r.root, "terraform", ".terraform", "terraform.tfstate")); err == nil {
+func prepareTerraform(a *app.App, r *run.Runner) bool {
+	if _, err := os.Stat(filepath.Join(r.Root, "terraform", ".terraform", "terraform.tfstate")); err == nil {
 		return true
 	}
-	if !r.dryRun {
-		fmt.Fprintln(a.stderr, "anvil: this checkout has no Terraform setup yet, running tf-init first")
+	if !r.DryRun {
+		fmt.Fprintln(a.Stderr, "anvil: this checkout has no Terraform setup yet, running tf-init first")
 	}
-	if !a.canReach(r, "tf-init") {
+	if !canReach(a, r, "tf-init") {
 		return false
 	}
-	if code := r.make(newMake("tf-init"), nil); code != 0 {
-		fmt.Fprintf(a.stderr, "anvil: tf-init failed (exit %d)\n", code)
+	if code := r.Make(run.NewMake("tf-init"), nil); code != 0 {
+		fmt.Fprintf(a.Stderr, "anvil: tf-init failed (exit %d)\n", code)
 		return false
 	}
 	return true
@@ -38,8 +40,8 @@ func (a *app) prepareTerraform(r *runner) bool {
 
 // prepareCollections installs the collections ansible/requirements.yml names when any is
 // missing. Without ansible-galaxy it does nothing: anvil init reports the missing tool.
-func (a *app) prepareCollections(r *runner) bool {
-	b, err := os.ReadFile(filepath.Join(r.root, "ansible", "requirements.yml"))
+func prepareCollections(a *app.App, r *run.Runner) bool {
+	b, err := os.ReadFile(filepath.Join(r.Root, "ansible", "requirements.yml"))
 	if err != nil {
 		return true
 	}
@@ -49,12 +51,12 @@ func (a *app) prepareCollections(r *runner) bool {
 		} `yaml:"collections"`
 	}
 	if err := yaml.Unmarshal(b, &req); err != nil {
-		fmt.Fprintf(a.stderr, "anvil: ansible/requirements.yml: %v\n", err)
+		fmt.Fprintf(a.Stderr, "anvil: ansible/requirements.yml: %v\n", err)
 		return false
 	}
 	// Through bash so the lookup uses the child environment's PATH, like every make run.
 	cmd := exec.Command("bash", "-c", "ansible-galaxy collection list --format json 2>/dev/null")
-	cmd.Dir, cmd.Env = r.root, r.env
+	cmd.Dir, cmd.Env = r.Root, r.Env
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if cmd.Run() != nil {
@@ -79,11 +81,11 @@ func (a *app) prepareCollections(r *runner) bool {
 	if missing == 0 {
 		return true
 	}
-	if !r.dryRun {
-		fmt.Fprintf(a.stderr, "anvil: %d Ansible collection(s) missing, installing ansible/requirements.yml\n", missing)
+	if !r.DryRun {
+		fmt.Fprintf(a.Stderr, "anvil: %d Ansible collection(s) missing, installing ansible/requirements.yml\n", missing)
 	}
-	if code := r.shell("bash scripts/install-collections.sh ~/.ansible/collections", nil); code != 0 {
-		fmt.Fprintf(a.stderr, "anvil: installing the Ansible collections failed (exit %d)\n", code)
+	if code := r.Shell("bash scripts/install-collections.sh ~/.ansible/collections", nil); code != 0 {
+		fmt.Fprintf(a.Stderr, "anvil: installing the Ansible collections failed (exit %d)\n", code)
 		return false
 	}
 	return true

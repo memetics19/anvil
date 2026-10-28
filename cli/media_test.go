@@ -9,6 +9,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/memetics19/anvil/cli/internal/app"
+	"github.com/memetics19/anvil/cli/internal/testlab"
 )
 
 const testArrSentinel = "sentinel-arr-value-7d31"
@@ -93,32 +96,32 @@ const twoMovies = `[
  {"title":"Dune","year":1984,"tmdbId":841,"overview":"The 1984 film."}]`
 
 // mediaLab is a test lab whose media endpoints are two fake servers.
-func mediaLab(t *testing.T, radarr, sonarr *fakeArr) *testLab {
+func mediaLab(t *testing.T, radarr, sonarr *fakeArr) *testlab.Lab {
 	t.Helper()
 	l := newTestLab(t)
 	rs, ss := radarr.server(t), sonarr.server(t)
 	old := mediaEnv
-	mediaEnv = func(*app) (mediaConfig, error) {
+	mediaEnv = func(*app.App) (mediaConfig, error) {
 		return mediaConfig{Radarr: arrEndpoint{rs.URL, testArrSentinel}, Sonarr: arrEndpoint{ss.URL, testArrSentinel}}, nil
 	}
 	t.Cleanup(func() { mediaEnv = old })
 	return l
 }
 
-func noKeyIn(t *testing.T, l *testLab) {
+func noKeyIn(t *testing.T, l *testlab.Lab) {
 	t.Helper()
-	if strings.Contains(l.out.String()+l.err.String(), testArrSentinel) {
-		t.Fatalf("the API key reached the output:\n%s%s", l.out.String(), l.err.String())
+	if strings.Contains(l.Out.String()+l.Err.String(), testArrSentinel) {
+		t.Fatalf("the API key reached the output:\n%s%s", l.Out.String(), l.Err.String())
 	}
 }
 
 func TestMediaSearchListsMatches(t *testing.T) {
 	radarr := &fakeArr{lookup: `[{"title":"Dune","year":2021,"overview":"x"},{"title":"Dune","year":1984,"id":7,"hasFile":true}]`}
 	l := mediaLab(t, radarr, &fakeArr{tv: true})
-	if code := l.run("", "media", "search", "dune"); code != 0 {
-		t.Fatalf("exit %d: %s", code, l.err.String())
+	if code := l.Run("", "media", "search", "dune"); code != 0 {
+		t.Fatalf("exit %d: %s", code, l.Err.String())
 	}
-	out := l.out.String()
+	out := l.Out.String()
 	for _, want := range []string{"1. Dune (2021)", "2. Dune (1984)  [in the library]"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
@@ -130,8 +133,8 @@ func TestMediaSearchListsMatches(t *testing.T) {
 func TestMediaGetAsksWhichOneAndAddsWithSearch(t *testing.T) {
 	radarr := &fakeArr{lookup: twoMovies, free: 200 << 30}
 	l := mediaLab(t, radarr, &fakeArr{tv: true})
-	if code := l.run("1\n", "media", "get", "dune"); code != 0 {
-		t.Fatalf("exit %d: %s", code, l.err.String())
+	if code := l.Run("1\n", "media", "get", "dune"); code != 0 {
+		t.Fatalf("exit %d: %s", code, l.Err.String())
 	}
 	adds := radarr.posts["movie"]
 	if len(adds) != 1 {
@@ -144,8 +147,8 @@ func TestMediaGetAsksWhichOneAndAddsWithSearch(t *testing.T) {
 	if opts, _ := got["addOptions"].(map[string]any); opts["searchForMovie"] != true {
 		t.Errorf("the add does not start a search: %v", got["addOptions"])
 	}
-	if !strings.Contains(l.out.String(), "Which one? [1-2]") || !strings.Contains(l.out.String(), "Added Dune (2021) (HD-1080p") {
-		t.Errorf("output:\n%s", l.out.String())
+	if !strings.Contains(l.Out.String(), "Which one? [1-2]") || !strings.Contains(l.Out.String(), "Added Dune (2021) (HD-1080p") {
+		t.Errorf("output:\n%s", l.Out.String())
 	}
 	noKeyIn(t, l)
 }
@@ -154,28 +157,28 @@ func TestMediaGetPrefersThePolicyProfile(t *testing.T) {
 	radarr := &fakeArr{lookup: twoMovies, free: 200 << 30,
 		profiles: `[{"id":1,"name":"Any"},{"id":4,"name":"HD-1080p"},{"id":7,"name":"1080p+"}]`}
 	l := mediaLab(t, radarr, &fakeArr{tv: true})
-	if code := l.run("", "media", "get", "dune", "--pick", "1"); code != 0 {
-		t.Fatalf("exit %d: %s", code, l.err.String())
+	if code := l.Run("", "media", "get", "dune", "--pick", "1"); code != 0 {
+		t.Fatalf("exit %d: %s", code, l.Err.String())
 	}
 	if got := radarr.posts["movie"][0]; got["qualityProfileId"] != float64(7) {
 		t.Errorf("add body = %v, want profile 1080p+ (7)", got)
 	}
-	if !strings.Contains(l.out.String(), "(1080p+") {
-		t.Errorf("output:\n%s", l.out.String())
+	if !strings.Contains(l.Out.String(), "(1080p+") {
+		t.Errorf("output:\n%s", l.Out.String())
 	}
 }
 
 func TestMediaGetPickAndQuality(t *testing.T) {
 	radarr := &fakeArr{lookup: twoMovies, free: 200 << 30}
 	l := mediaLab(t, radarr, &fakeArr{tv: true})
-	if code := l.run("", "media", "get", "dune", "--pick", "2", "--quality", "ultra-hd"); code != 0 {
-		t.Fatalf("exit %d: %s", code, l.err.String())
+	if code := l.Run("", "media", "get", "dune", "--pick", "2", "--quality", "ultra-hd"); code != 0 {
+		t.Fatalf("exit %d: %s", code, l.Err.String())
 	}
 	got := radarr.posts["movie"][0]
 	if got["tmdbId"] != float64(841) || got["qualityProfileId"] != float64(5) {
 		t.Errorf("add body = %v", got)
 	}
-	if strings.Contains(l.out.String(), "Which one?") {
+	if strings.Contains(l.Out.String(), "Which one?") {
 		t.Error("--pick still asked")
 	}
 }
@@ -183,11 +186,11 @@ func TestMediaGetPickAndQuality(t *testing.T) {
 func TestMediaGetUnknownQualityNamesTheProfiles(t *testing.T) {
 	radarr := &fakeArr{lookup: twoMovies, free: 200 << 30}
 	l := mediaLab(t, radarr, &fakeArr{tv: true})
-	if code := l.run("", "media", "get", "dune", "--pick", "1", "--quality", "4K"); code != 1 {
+	if code := l.Run("", "media", "get", "dune", "--pick", "1", "--quality", "4K"); code != 1 {
 		t.Fatalf("exit %d, want 1", code)
 	}
-	if !strings.Contains(l.err.String(), `no quality profile "4K" (it has: Any, HD-1080p, Ultra-HD)`) {
-		t.Errorf("stderr: %s", l.err.String())
+	if !strings.Contains(l.Err.String(), `no quality profile "4K" (it has: Any, HD-1080p, Ultra-HD)`) {
+		t.Errorf("stderr: %s", l.Err.String())
 	}
 	if len(radarr.posts["movie"]) != 0 {
 		t.Error("added despite the unknown profile")
@@ -197,25 +200,25 @@ func TestMediaGetUnknownQualityNamesTheProfiles(t *testing.T) {
 func TestMediaGetNoAnswerAddsNothing(t *testing.T) {
 	radarr := &fakeArr{lookup: twoMovies, free: 200 << 30}
 	l := mediaLab(t, radarr, &fakeArr{tv: true})
-	if code := l.run("", "media", "get", "dune"); code != 1 {
+	if code := l.Run("", "media", "get", "dune"); code != 1 {
 		t.Fatalf("exit %d, want 1", code)
 	}
-	if len(radarr.posts["movie"]) != 0 || !strings.Contains(l.out.String(), "Nothing added.") {
-		t.Errorf("posts %v, output:\n%s", radarr.posts, l.out.String())
+	if len(radarr.posts["movie"]) != 0 || !strings.Contains(l.Out.String(), "Nothing added.") {
+		t.Errorf("posts %v, output:\n%s", radarr.posts, l.Out.String())
 	}
 }
 
 func TestMediaGetLowSpaceAsks(t *testing.T) {
 	radarr := &fakeArr{lookup: `[{"title":"Dune","year":2021,"tmdbId":1}]`, free: 3 << 30}
 	l := mediaLab(t, radarr, &fakeArr{tv: true})
-	if code := l.run("n\n", "media", "get", "dune"); code != 1 {
+	if code := l.Run("n\n", "media", "get", "dune"); code != 1 {
 		t.Fatalf("exit %d, want 1", code)
 	}
-	if len(radarr.posts["movie"]) != 0 || !strings.Contains(l.out.String(), "Only 3.0 GB free in /movies.") {
-		t.Errorf("output:\n%s", l.out.String())
+	if len(radarr.posts["movie"]) != 0 || !strings.Contains(l.Out.String(), "Only 3.0 GB free in /movies.") {
+		t.Errorf("output:\n%s", l.Out.String())
 	}
-	if code := l.run("", "media", "get", "dune", "--yes"); code != 0 {
-		t.Fatalf("--yes: exit %d: %s", code, l.err.String())
+	if code := l.Run("", "media", "get", "dune", "--yes"); code != 0 {
+		t.Fatalf("--yes: exit %d: %s", code, l.Err.String())
 	}
 	if len(radarr.posts["movie"]) != 1 {
 		t.Error("--yes did not add")
@@ -225,8 +228,8 @@ func TestMediaGetLowSpaceAsks(t *testing.T) {
 func TestMediaGetExistingSearchesAgain(t *testing.T) {
 	radarr := &fakeArr{lookup: `[{"title":"Inherent Vice","year":2014,"id":12,"hasFile":false}]`}
 	l := mediaLab(t, radarr, &fakeArr{tv: true})
-	if code := l.run("", "media", "get", "inherent vice"); code != 0 {
-		t.Fatalf("exit %d: %s", code, l.err.String())
+	if code := l.Run("", "media", "get", "inherent vice"); code != 0 {
+		t.Fatalf("exit %d: %s", code, l.Err.String())
 	}
 	cmds := radarr.posts["command"]
 	if len(cmds) != 1 || cmds[0]["name"] != "MoviesSearch" || len(radarr.posts["movie"]) != 0 {
@@ -241,8 +244,8 @@ func TestMediaGetExistingSearchesAgain(t *testing.T) {
 func TestMediaGetSeries(t *testing.T) {
 	sonarr := &fakeArr{tv: true, lookup: `[{"title":"The Expanse","year":2015,"tvdbId":280619}]`, free: 200 << 30}
 	l := mediaLab(t, &fakeArr{}, sonarr)
-	if code := l.run("", "media", "get", "the", "expanse", "--tv"); code != 0 {
-		t.Fatalf("exit %d: %s", code, l.err.String())
+	if code := l.Run("", "media", "get", "the", "expanse", "--tv"); code != 0 {
+		t.Fatalf("exit %d: %s", code, l.Err.String())
 	}
 	got := sonarr.posts["series"][0]
 	opts, _ := got["addOptions"].(map[string]any)
@@ -255,11 +258,11 @@ func TestMediaGetSeries(t *testing.T) {
 func TestMediaGetShowsArrError(t *testing.T) {
 	radarr := &fakeArr{lookup: `[{"title":"Dune","year":2021,"tmdbId":1}]`, free: 200 << 30, addError: 400}
 	l := mediaLab(t, radarr, &fakeArr{tv: true})
-	if code := l.run("", "media", "get", "dune"); code != 1 {
+	if code := l.Run("", "media", "get", "dune"); code != 1 {
 		t.Fatalf("exit %d, want 1", code)
 	}
-	if !strings.Contains(l.err.String(), "This movie has already been added") {
-		t.Errorf("stderr: %s", l.err.String())
+	if !strings.Contains(l.Err.String(), "This movie has already been added") {
+		t.Errorf("stderr: %s", l.Err.String())
 	}
 	noKeyIn(t, l)
 }
@@ -274,10 +277,10 @@ func TestMediaStatus(t *testing.T) {
 	sonarr := &fakeArr{tv: true, free: 19 << 30,
 		missing: `{"records":[{"series":{"title":"Angie Tribeca"}},{"series":{"title":"Angie Tribeca"}}]}`}
 	l := mediaLab(t, radarr, sonarr)
-	if code := l.run("", "media", "status"); code != 0 {
-		t.Fatalf("exit %d: %s", code, l.err.String())
+	if code := l.Run("", "media", "status"); code != 0 {
+		t.Fatalf("exit %d: %s", code, l.Err.String())
 	}
-	out := l.out.String()
+	out := l.Out.String()
 	for _, want := range []string{
 		" 75%  Dune (2021)", "eta 00:12:00", "downloading",
 		"Heat (1995)", "No files found are eligible for import",
@@ -306,8 +309,8 @@ func TestMediaUsageErrors(t *testing.T) {
 		{[]string{"media", "status", "dune"}, "takes no title"},
 		{[]string{"media", "fly"}, `unknown command "fly"`},
 	} {
-		if code := l.run("", c.args...); code != 2 || !strings.Contains(l.err.String(), c.want) {
-			t.Errorf("%v: exit %d, stderr %q", c.args, code, l.err.String())
+		if code := l.Run("", c.args...); code != 2 || !strings.Contains(l.Err.String(), c.want) {
+			t.Errorf("%v: exit %d, stderr %q", c.args, code, l.Err.String())
 		}
 	}
 }
@@ -315,21 +318,21 @@ func TestMediaUsageErrors(t *testing.T) {
 func TestMediaEnvErrorIsShown(t *testing.T) {
 	l := newTestLab(t)
 	old := mediaEnv
-	mediaEnv = func(*app) (mediaConfig, error) { return mediaConfig{}, errors.New("no site dict") }
+	mediaEnv = func(*app.App) (mediaConfig, error) { return mediaConfig{}, errors.New("no site dict") }
 	t.Cleanup(func() { mediaEnv = old })
-	if code := l.run("", "media", "status"); code != 1 || !strings.Contains(l.err.String(), "anvil: media: no site dict") {
-		t.Errorf("exit %d, stderr %q", code, l.err.String())
+	if code := l.Run("", "media", "status"); code != 1 || !strings.Contains(l.Err.String(), "anvil: media: no site dict") {
+		t.Errorf("exit %d, stderr %q", code, l.Err.String())
 	}
 }
 
 func TestMediaVaultUnreachableHint(t *testing.T) {
 	l := newTestLab(t)
 	old := mediaEnv
-	mediaEnv = func(*app) (mediaConfig, error) {
+	mediaEnv = func(*app.App) (mediaConfig, error) {
 		return mediaConfig{}, errors.New("site-source: cannot read kv/homelab/site: Vault (Keychain vault-ip) is unreachable or returned an error.")
 	}
 	t.Cleanup(func() { mediaEnv = old })
-	if code := l.run("", "media", "status"); code != 1 || !strings.Contains(l.err.String(), "Vault must answer: be at home or on the VPN") {
-		t.Errorf("exit %d, stderr %q", code, l.err.String())
+	if code := l.Run("", "media", "status"); code != 1 || !strings.Contains(l.Err.String(), "Vault must answer: be at home or on the VPN") {
+		t.Errorf("exit %d, stderr %q", code, l.Err.String())
 	}
 }

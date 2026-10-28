@@ -9,12 +9,14 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/memetics19/anvil/cli/internal/testlab"
 )
 
 type ntfyMsg struct{ title, tags, auth, body string }
 
 // fakeNtfy records what anvil drift posts.
-func fakeNtfy(t *testing.T, l *testLab) *[]ntfyMsg {
+func fakeNtfy(t *testing.T, l *testlab.Lab) *[]ntfyMsg {
 	t.Helper()
 	var mu sync.Mutex
 	var got []ntfyMsg
@@ -25,8 +27,8 @@ func fakeNtfy(t *testing.T, l *testLab) *[]ntfyMsg {
 		mu.Unlock()
 	}))
 	t.Cleanup(srv.Close)
-	l.env["ANVIL_NTFY_URL"] = srv.URL + "/lab"
-	l.env["ANVIL_NTFY_TOKEN"] = "tk_" + sentinelEnv
+	l.Env["ANVIL_NTFY_URL"] = srv.URL + "/lab"
+	l.Env["ANVIL_NTFY_TOKEN"] = "tk_" + testlab.SentinelEnv
 	return &got
 }
 
@@ -35,17 +37,17 @@ const tfNoChanges = "No changes. Your infrastructure matches the configuration.\
 func TestDriftQuietWhenNothingChanged(t *testing.T) {
 	l := newTestLab(t)
 	got := fakeNtfy(t, l)
-	l.setCheckOutput(recapNoChanges + tfNoChanges)
-	if code := l.run("", "drift"); code != 0 {
-		t.Fatalf("exit %d:\n%s", code, l.output())
+	l.SetCheckOutput(testlab.RecapNoChanges + tfNoChanges)
+	if code := l.Run("", "drift"); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, l.Output())
 	}
-	if want := []string{"host ARGS=--check --diff", "vms ARGS=--check --diff", "tf-plan"}; strings.Join(l.makeCalls(), "|") != strings.Join(want, "|") {
-		t.Errorf("make calls %q", l.makeCalls())
+	if want := []string{"host ARGS=--check --diff", "vms ARGS=--check --diff", "tf-plan"}; strings.Join(l.MakeCalls(), "|") != strings.Join(want, "|") {
+		t.Errorf("make calls %q", l.MakeCalls())
 	}
 	if len(*got) != 0 {
 		t.Errorf("sent %v", *got)
 	}
-	if code := l.run("", "drift", "--always"); code != 0 || len(*got) != 1 || (*got)[0].title != "anvil: no drift" {
+	if code := l.Run("", "drift", "--always"); code != 0 || len(*got) != 1 || (*got)[0].title != "anvil: no drift" {
 		t.Errorf("--always: exit %d, sent %v", code, *got)
 	}
 }
@@ -53,15 +55,15 @@ func TestDriftQuietWhenNothingChanged(t *testing.T) {
 func TestDriftSendsChanges(t *testing.T) {
 	l := newTestLab(t)
 	got := fakeNtfy(t, l)
-	l.setCheckOutput(recapChanges + "frigate : ok=3 changed=0 unreachable=0 failed=0\nPlan: 1 to add, 0 to change, 0 to destroy.\n")
-	if code := l.run("", "drift"); code != 1 {
-		t.Fatalf("exit %d, want 1:\n%s", code, l.output())
+	l.SetCheckOutput(testlab.RecapChanges + "frigate : ok=3 changed=0 unreachable=0 failed=0\nPlan: 1 to add, 0 to change, 0 to destroy.\n")
+	if code := l.Run("", "drift"); code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", code, l.Output())
 	}
 	if len(*got) != 1 {
 		t.Fatalf("sent %v", *got)
 	}
 	m := (*got)[0]
-	if m.title != "anvil: the lab drifted" || m.tags != "warning" || m.auth != "Bearer tk_"+sentinelEnv {
+	if m.title != "anvil: the lab drifted" || m.tags != "warning" || m.auth != "Bearer tk_"+testlab.SentinelEnv {
 		t.Errorf("message %+v", m)
 	}
 	for _, want := range []string{"vms: changes: apps changed=2\n", "tf: changes: 1 to add, 0 to change, 0 to destroy"} {
@@ -72,16 +74,16 @@ func TestDriftSendsChanges(t *testing.T) {
 	if strings.Contains(m.body, "frigate") {
 		t.Errorf("a VM without changes is in the message:\n%s", m.body)
 	}
-	if strings.Contains(l.output(), sentinelEnv) {
-		t.Errorf("the token is in the output:\n%s", l.output())
+	if strings.Contains(l.Output(), testlab.SentinelEnv) {
+		t.Errorf("the token is in the output:\n%s", l.Output())
 	}
 }
 
 func TestDriftSendsFailures(t *testing.T) {
 	l := newTestLab(t)
 	got := fakeNtfy(t, l)
-	l.env["FAKE_RC"] = "2"
-	if code := l.run("", "drift"); code != 1 {
+	l.Env["FAKE_RC"] = "2"
+	if code := l.Run("", "drift"); code != 1 {
 		t.Fatalf("exit %d", code)
 	}
 	if len(*got) != 1 || (*got)[0].title != "anvil: drift check failed" || !strings.Contains((*got)[0].body, "tf: the check failed (exit 2)") {
@@ -91,18 +93,18 @@ func TestDriftSendsFailures(t *testing.T) {
 
 func TestDriftWithoutNtfyOnlyPrints(t *testing.T) {
 	l := newTestLab(t)
-	l.setCheckOutput(recapChanges + tfNoChanges)
-	if code := l.run("", "drift"); code != 1 || !strings.Contains(l.output(), "ntfy is not set up") {
-		t.Errorf("exit %d:\n%s", code, l.output())
+	l.SetCheckOutput(testlab.RecapChanges + tfNoChanges)
+	if code := l.Run("", "drift"); code != 1 || !strings.Contains(l.Output(), "ntfy is not set up") {
+		t.Errorf("exit %d:\n%s", code, l.Output())
 	}
 }
 
 func TestDriftLogKeepsSevenRuns(t *testing.T) {
 	l := newTestLab(t)
-	l.setCheckOutput(recapNoChanges + tfNoChanges)
+	l.SetCheckOutput(testlab.RecapNoChanges + tfNoChanges)
 	log := filepath.Join(t.TempDir(), "logs", "drift.log")
 	for i := 0; i < 9; i++ {
-		l.run("", "drift", "--log", log)
+		l.Run("", "drift", "--log", log)
 	}
 	b, err := os.ReadFile(log)
 	if err != nil || !strings.Contains(string(b), "anvil drift:\nhost: no changes") {
@@ -121,7 +123,7 @@ func TestDriftLogKeepsSevenRuns(t *testing.T) {
 
 func TestDriftInstall(t *testing.T) {
 	l := newTestLab(t)
-	home := l.env["HOME"]
+	home := l.Env["HOME"]
 	var ran []string
 	oldSched, oldOS := runSched, goos
 	t.Cleanup(func() { runSched, goos = oldSched, oldOS })
@@ -131,8 +133,8 @@ func TestDriftInstall(t *testing.T) {
 	}
 
 	goos = "darwin"
-	if code := l.run("", "drift", "--install", "--at", "4:05"); code != 0 {
-		t.Fatalf("exit %d:\n%s", code, l.output())
+	if code := l.Run("", "drift", "--install", "--at", "4:05"); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, l.Output())
 	}
 	b, err := os.ReadFile(filepath.Join(home, "Library", "LaunchAgents", driftLabel+".plist"))
 	if err != nil {
@@ -140,7 +142,7 @@ func TestDriftInstall(t *testing.T) {
 	}
 	plist := string(b)
 	for _, want := range []string{"<string>drift</string><string>--log</string>", "<integer>4</integer>", "<integer>5</integer>",
-		"<key>ANVIL_REPO</key><string>" + l.root + "</string>", filepath.Join(home, "Library", "Logs", "anvil", "drift.log")} {
+		"<key>ANVIL_REPO</key><string>" + l.Root + "</string>", filepath.Join(home, "Library", "Logs", "anvil", "drift.log")} {
 		if !strings.Contains(plist, want) {
 			t.Errorf("want %q in plist:\n%s", want, plist)
 		}
@@ -148,14 +150,14 @@ func TestDriftInstall(t *testing.T) {
 	if len(ran) != 2 || !strings.HasPrefix(ran[1], "launchctl bootstrap gui/") {
 		t.Errorf("ran %q", ran)
 	}
-	if !strings.Contains(l.output(), "every night at 04:05") {
-		t.Errorf("output:\n%s", l.output())
+	if !strings.Contains(l.Output(), "every night at 04:05") {
+		t.Errorf("output:\n%s", l.Output())
 	}
 
 	ran = nil
 	goos = "linux"
-	if code := l.run("", "drift", "--install"); code != 0 {
-		t.Fatalf("linux: exit %d:\n%s", code, l.output())
+	if code := l.Run("", "drift", "--install"); code != 0 {
+		t.Fatalf("linux: exit %d:\n%s", code, l.Output())
 	}
 	tmr, _ := os.ReadFile(filepath.Join(home, ".config", "systemd", "user", "anvil-drift.timer"))
 	svc, _ := os.ReadFile(filepath.Join(home, ".config", "systemd", "user", "anvil-drift.service"))
@@ -166,14 +168,14 @@ func TestDriftInstall(t *testing.T) {
 		t.Errorf("ran %q", ran)
 	}
 
-	if code := l.run("", "drift", "--uninstall"); code != 0 {
+	if code := l.Run("", "drift", "--uninstall"); code != 0 {
 		t.Fatalf("uninstall: exit %d", code)
 	}
 	if _, err := os.Stat(filepath.Join(home, ".config", "systemd", "user", "anvil-drift.timer")); err == nil {
 		t.Errorf("the timer is still there")
 	}
 
-	if code := l.run("", "drift", "--install", "--at", "25:00"); code != 2 {
+	if code := l.Run("", "drift", "--install", "--at", "25:00"); code != 2 {
 		t.Errorf("--at 25:00: exit %d, want 2", code)
 	}
 }
