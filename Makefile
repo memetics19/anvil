@@ -149,7 +149,7 @@ site-to-vault:
 	scripts/site-to-vault.sh $(ARGS)
 
 # Terraform state + Vault Raft snapshot into ~/homelab-backups, plus a copy of the newest
-# Vaultwarden backup from the Ceph S3 bucket (keeps the newest 30 of each).
+# Vaultwarden and Authentik backups from their Ceph S3 buckets (keeps the newest 30 of each).
 backup:
 	@set -eu -o pipefail; $(ENV); \
 	scripts/backup.sh

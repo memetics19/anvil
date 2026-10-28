@@ -1,0 +1,52 @@
+#!/bin/bash
+# Managed by Ansible (role authentik). Backs up Authentik's database to the Ceph S3 gateway;
+# run nightly by authentik-backup.timer (authentik-backup.service, which also supplies the
+# S3 remote "akb" through rclone's environment).
+#   1. pg_dump of the database in Postgres' custom format (compressed, consistent while
+#      Authentik writes), run in the Postgres container;
+#   2. streamed straight into age, encrypted to the recipients file (the operator's public
+#      key: nothing on this host can decrypt a backup). The plaintext dump exists only in
+#      the pipe, never in a file;
+#   3. uploaded as authentik-YYYYMMDD-HHMMSS.dump.age, then checked by size;
+#   4. of the objects named like that, all but the newest KEEP are deleted (nothing else in
+#      the bucket is touched).
+# The encrypted file waits in a work directory under $TMPDIR, the unit's private /var/tmp.
+# Settings come from the environment (the unit), with these defaults.
+set -euo pipefail
+
+container=${AK_BACKUP_CONTAINER:-{{ authentik_backup_container }}}
+recipients=${AK_BACKUP_RECIPIENTS:-{{ authentik_backup_etc }}/age-recipients}
+remote=${AK_BACKUP_REMOTE:-akb:{{ authentik_backup_bucket }}}
+keep=${AK_BACKUP_KEEP:-{{ authentik_backup_keep }}}
+pattern='^authentik-[0-9]{8}-[0-9]{6}\.dump\.age$'
+
+die() { echo "authentik-backup: $*" >&2; exit 1; }
+[ -s "$recipients" ] || die "no age recipients file $recipients"
+case $keep in '' | *[!0-9]* | 0) die "KEEP must be a positive number" ;; esac
+[ "$(docker inspect --format '{{ '{{' }}.State.Running{{ '}}' }}' "$container" 2>/dev/null)" = true ] ||
+  die "the Postgres container $container is not running"
+
+umask 077
+# The compressed dump is smaller than the database: need its size free in the work directory.
+size_db=$(docker exec "$container" psql -U authentik -d authentik -tAc 'SELECT pg_database_size(current_database())')
+case $size_db in '' | *[!0-9]*) die "cannot read the database size" ;; esac
+need=$((size_db / 1024 + 1024))
+free=$(df -Pk "${TMPDIR:-/var/tmp}" | awk 'NR == 2 {print $4}')
+[ "$need" -lt "$free" ] || die "work space ${TMPDIR:-/var/tmp} has ${free} KiB free, needs ${need} KiB (the database size)"
+name="authentik-$(date -u +%Y%m%d-%H%M%S).dump.age"
+work=$(mktemp -d "${TMPDIR:-/var/tmp}/authentik-backup.XXXXXX")
+trap 'rm -rf "$work"' EXIT
+
+docker exec "$container" pg_dump -U authentik -d authentik --format=custom |
+  age -R "$recipients" -o "$work/$name" || die "pg_dump or encryption failed"
+size=$(wc -c <"$work/$name" | tr -d ' ')
+# An empty dump encrypts to about 200 bytes. A real one holds Authentik's whole schema.
+[ "$size" -gt 4096 ] || die "$name: only $size bytes, the dump is empty"
+
+rclone copyto --s3-no-check-bucket "$work/$name" "$remote/$name"
+[ "$(rclone lsf --format s "$remote/$name")" = "$size" ] || die "$name: the uploaded size differs"
+
+rclone lsf --files-only "$remote" | { grep -E "$pattern" || true; } | sort -r | tail -n "+$((keep + 1))" |
+  while IFS= read -r old; do rclone deletefile "$remote/$old"; echo "authentik-backup: deleted $old"; done
+
+echo "authentik-backup: uploaded $name ($size bytes); keeping the newest $keep"

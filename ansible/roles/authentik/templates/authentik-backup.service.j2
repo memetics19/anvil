@@ -1,0 +1,40 @@
+# Managed by Ansible (role authentik). Started by authentik-backup.timer, or by hand:
+#   sudo systemctl start authentik-backup && journalctl -u authentik-backup -n 20
+[Unit]
+Description=Authentik database backup to the Ceph S3 gateway (age-encrypted)
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+# Root, for docker exec into the Postgres container (the Docker socket is root's anyway).
+User=root
+# The S3 remote "akb" for rclone (endpoint and keys). Read by systemd as root; mode 600.
+EnvironmentFile={{ authentik_backup_etc }}/rclone.env
+ExecStart=/usr/local/sbin/authentik-backup
+# The work directory holds only the encrypted dump, in the unit's private /var/tmp (removed
+# by systemd when the job ends). HOME there too, so neither docker nor rclone looks in /root.
+# Everything else is read-only.
+PrivateTmp=true
+Environment=TMPDIR=/var/tmp HOME=/var/tmp
+ProtectSystem=strict
+ProtectHome=true
+PrivateDevices=true
+NoNewPrivileges=true
+CapabilityBoundingSet=
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+MemoryMax=192M
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=30min

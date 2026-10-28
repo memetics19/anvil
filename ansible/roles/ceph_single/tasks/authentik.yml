@@ -1,0 +1,166 @@
+# S3 user for the Authentik database backups on the identity VM. It owns one bucket and may
+# own no other (--max-buckets=1): its keys reach that bucket and nothing else in the gateway.
+# Its keys go from radosgw-admin straight into Vault (kv/<ceph_single_authentik_vault_path>,
+# keys s3_access_key/s3_secret_key) on stdin: never to a file, the log or the screen.
+# The user and the bucket are created only when absent. The same steps as tasks/vaultwarden.yml.
+
+- name: Authentik backups | look up the S3 user
+  ansible.builtin.command:
+    argv: [radosgw-admin, user, info, --uid, "{{ ceph_single_authentik_user }}"]
+  register: ceph_single_ak_user_info
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+  when: ceph_single_live | bool
+
+- name: Authentik backups | create the S3 user
+  ansible.builtin.command:
+    argv:
+      - radosgw-admin
+      - user
+      - create
+      - --uid
+      - "{{ ceph_single_authentik_user }}"
+      - --display-name
+      - Authentik backups
+      - --max-buckets=1
+  register: ceph_single_ak_user_new
+  changed_when: true
+  no_log: true
+  when: ceph_single_ak_user_info is skipped or ceph_single_ak_user_info.rc != 0
+
+- name: Authentik backups | S3 user to create
+  ansible.builtin.debug:
+    msg: "create the S3 user {{ ceph_single_authentik_user }}"
+  changed_when: true
+  when: ansible_check_mode and (ceph_single_ak_user_info.rc | default(1)) != 0
+
+- name: Authentik backups | pick the user's S3 keys and bucket limit
+  ansible.builtin.set_fact:
+    ceph_single_ak_info: >-
+      {{ (ceph_single_ak_user_info.stdout if ceph_single_ak_user_info.rc == 0
+          else ceph_single_ak_user_new.stdout) | from_json }}
+  no_log: true
+  when: >-
+    (ceph_single_ak_user_info.rc | default(1)) == 0
+    or (ceph_single_ak_user_new.stdout | default('')) | length > 0
+
+- name: Authentik backups | the user may own one bucket only
+  ansible.builtin.assert:
+    that: ceph_single_ak_info.max_buckets | int == 1
+    fail_msg: "RGW user {{ ceph_single_authentik_user }}: max_buckets is {{ ceph_single_ak_info.max_buckets }}, want 1"
+    quiet: true
+  when: ceph_single_ak_info is defined
+
+- name: Authentik backups | the user's keys
+  ansible.builtin.set_fact:
+    ceph_single_ak_keys: >-
+      {{ ceph_single_ak_info['keys'] | selectattr('user', 'equalto', ceph_single_authentik_user) | first }}
+  no_log: true
+  when: ceph_single_ak_info is defined
+
+# --- keys into Vault ---------------------------------------------------------------------
+- name: Authentik backups | key digests stored in Vault
+  ansible.builtin.command:
+    argv: ["{{ ceph_single_repo_scripts }}/vault-kv-digests.sh", "{{ ceph_single_authentik_vault_path }}", "kv"]
+  delegate_to: localhost
+  become: false
+  register: ceph_single_ak_vault
+  changed_when: false
+  check_mode: false
+  when: ceph_single_ak_keys is defined
+
+- name: Authentik backups | what Vault should hold
+  ansible.builtin.set_fact:
+    ceph_single_ak_vault_have: "{{ dict(ceph_single_ak_vault.stdout_lines | map('split', ' ')) }}"
+    ceph_single_ak_vault_want:
+      s3_access_key: "{{ ceph_single_ak_keys.access_key | hash('sha256') }}"
+      s3_secret_key: "{{ ceph_single_ak_keys.secret_key | hash('sha256') }}"
+  no_log: true
+  when: ceph_single_ak_keys is defined
+
+- name: Authentik backups | write the keys straight into Vault
+  ansible.builtin.command:
+    argv:
+      - vault
+      - kv
+      - "{{ 'patch' if ceph_single_ak_vault_have else 'put' }}"
+      - -mount=kv
+      - "{{ ceph_single_authentik_vault_path }}"
+      - "-"
+    stdin: >-
+      {{ {'s3_access_key': ceph_single_ak_keys.access_key,
+          's3_secret_key': ceph_single_ak_keys.secret_key} | to_json }}
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  no_log: true
+  when:
+    - ceph_single_ak_keys is defined
+    - ceph_single_ak_vault_have | dict2items | selectattr('key', 'in', ['s3_access_key', 's3_secret_key'])
+      | items2dict != ceph_single_ak_vault_want
+
+- name: Authentik backups | read the digests back from Vault
+  ansible.builtin.command:
+    argv: ["{{ ceph_single_repo_scripts }}/vault-kv-digests.sh", "{{ ceph_single_authentik_vault_path }}", "kv"]
+  delegate_to: localhost
+  become: false
+  register: ceph_single_ak_vault_after
+  changed_when: false
+  when: ceph_single_ak_keys is defined and not ansible_check_mode
+
+- name: Authentik backups | Vault holds the user's keys
+  ansible.builtin.assert:
+    that:
+      - (dict(ceph_single_ak_vault_after.stdout_lines | map('split', ' '))).s3_access_key == ceph_single_ak_vault_want.s3_access_key
+      - (dict(ceph_single_ak_vault_after.stdout_lines | map('split', ' '))).s3_secret_key == ceph_single_ak_vault_want.s3_secret_key
+    fail_msg: "the keys read back from kv/{{ ceph_single_authentik_vault_path }} differ (digest check)"
+    quiet: true
+  when: ceph_single_ak_keys is defined and not ansible_check_mode
+
+# --- the bucket, created by the user itself (so it is the owner) ---------------------------
+- name: Authentik backups | look up the bucket
+  ansible.builtin.command:
+    argv: [radosgw-admin, bucket, stats, --bucket, "{{ ceph_single_authentik_bucket }}"]
+  register: ceph_single_ak_bucket_info
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: ceph_single_live | bool
+
+- name: Authentik backups | bucket to create
+  ansible.builtin.debug:
+    msg: "create the bucket {{ ceph_single_authentik_bucket }} (owner {{ ceph_single_authentik_user }})"
+  changed_when: true
+  when: ansible_check_mode and (ceph_single_ak_bucket_info.rc | default(1)) != 0
+
+# The keys reach the aws CLI only through its environment, on a task with no_log.
+- name: Authentik backups | create the bucket
+  ansible.builtin.command:
+    argv: [aws, --endpoint-url, "{{ ceph_single_rgw_endpoint }}", s3api, create-bucket, --bucket, "{{ ceph_single_authentik_bucket }}"]
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ ceph_single_ak_keys.access_key }}"
+    AWS_SECRET_ACCESS_KEY: "{{ ceph_single_ak_keys.secret_key }}"
+    AWS_SHARED_CREDENTIALS_FILE: /dev/null
+    AWS_CONFIG_FILE: /dev/null
+    AWS_REGION: us-east-1
+    AWS_EC2_METADATA_DISABLED: "true"
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  no_log: true
+  when:
+    - not ansible_check_mode
+    - ceph_single_ak_keys is defined
+    - (ceph_single_ak_bucket_info.rc | default(1)) != 0
+
+- name: Authentik backups | the bucket exists and the backup user owns it
+  ansible.builtin.command:
+    argv: [radosgw-admin, bucket, stats, --bucket, "{{ ceph_single_authentik_bucket }}"]
+  register: ceph_single_ak_bucket_after
+  changed_when: false
+  failed_when: >-
+    ceph_single_ak_bucket_after.rc != 0
+    or (ceph_single_ak_bucket_after.stdout | from_json).owner != ceph_single_authentik_user
+  when: not ansible_check_mode
