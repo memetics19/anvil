@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.1](https://github.com/memetics19/anvil/compare/v0.10.0...v0.10.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* **security:** bump Docmost to 0.97.0 (163 fixable CVEs) ([#94](https://github.com/memetics19/anvil/issues/94)) ([2ec7f5e](https://github.com/memetics19/anvil/commit/2ec7f5e07adfe6e4316dcd5d69fd6cbd9bddcad0))
+* **security:** bump Gotify to 3.1.1 (34 fixable CVEs) ([#92](https://github.com/memetics19/anvil/issues/92)) ([51f072a](https://github.com/memetics19/anvil/commit/51f072aa41516059b299a3a9c0f15346e579c25a))
+* **security:** bump Homepage to v2.7.0 (11 fixable CVEs) ([#98](https://github.com/memetics19/anvil/issues/98)) ([90b5ac8](https://github.com/memetics19/anvil/commit/90b5ac8d97e6c03ed5b4296eb13c5224137844e1))
+* **security:** bump mkdocs-material to 9.8.0 (158 fixable CVEs) ([#100](https://github.com/memetics19/anvil/issues/100)) ([5e125a9](https://github.com/memetics19/anvil/commit/5e125a9e2e07f88e101fa7f80eae1c706258023f))
+* **security:** bump NetBird server to 0.81.5 and dashboard to v2.96.0 (80 fixable CVEs) ([#97](https://github.com/memetics19/anvil/issues/97)) ([0607fc2](https://github.com/memetics19/anvil/commit/0607fc249e20b8c6f845246d0abef4538ad3441a))
+* **zfs_pools:** --wipe takes several pools, comma separated ([#93](https://github.com/memetics19/anvil/issues/93)) ([00212f6](https://github.com/memetics19/anvil/commit/00212f6a7e1a2e666c00ef2349518e19e55eb66e))
+
 ## [0.10.0](https://github.com/memetics19/anvil/compare/v0.9.0...v0.10.0) (2026-10-28)
 
 
