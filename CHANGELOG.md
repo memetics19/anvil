@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.0](https://github.com/memetics19/anvil/compare/v0.8.1...v0.9.0) (2026-10-28)
+
+
+### Features
+
+* **arr_stack:** the quality policy as code, 1080p and up ([#78](https://github.com/memetics19/anvil/issues/78)) ([cb63a90](https://github.com/memetics19/anvil/commit/cb63a908173789a32d6ac199a0e222b5494622da))
+* **network_switch:** DHCP snooping, so only real DHCP servers answer ([#80](https://github.com/memetics19/anvil/issues/80)) ([3001f4c](https://github.com/memetics19/anvil/commit/3001f4c482cce5488c160ee9952391c34597b5e8))
+
 ## [0.8.1](https://github.com/memetics19/anvil/compare/v0.8.0...v0.8.1) (2026-10-27)
 
 
