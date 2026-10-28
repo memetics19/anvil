@@ -3,8 +3,8 @@
 # never touches the compose file that mounts the media library, and its state lives on the
 # root disk (the media disk is nearly full).
 filestash_dir: /opt/filestash
-# Upstream publishes only "latest"; the digest pins the build (2026-10-21).
-filestash_image: machines/filestash:latest@sha256:e2414c26545a1ee99a4a70fb374756de8d12febf237cc1e255c1f6bdcb8c3de2
+# Upstream publishes only "latest". The digest pins the build (2026-10-28).
+filestash_image: machines/filestash:latest@sha256:724b1c058ffd615e3305689dcc12e838f67dd5c02da6a949a1630248e712ab57
 # Filestash runs as its own host user (uid/gid 10001, created by the role), not as the
 # image's uid 1000, which is the VM's first user (owner of the media library). Only that
 # user can read the state directory (S3 keys and the admin hash in config.json).
