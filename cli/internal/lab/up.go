@@ -1,4 +1,4 @@
-package main
+package lab
 
 import (
 	"encoding/json"
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/memetics19/anvil/cli/internal/app"
+	"github.com/memetics19/anvil/cli/internal/doctor"
 	"github.com/memetics19/anvil/cli/internal/repo"
 	"github.com/memetics19/anvil/cli/internal/run"
 )
@@ -73,7 +74,7 @@ type stage struct {
 	name    string
 	touches string
 	kind    stageKind
-	t       target
+	t       Target
 	cmd     run.MakeCmd
 	// done is a read-only bash probe. Exit 0: the stage has nothing to do.
 	done     string
@@ -99,11 +100,11 @@ func keychainHas(items ...string) string {
 func upStages() []stage {
 	ans := func(name, mk, args, touches string) stage {
 		return stage{name: name, touches: touches, kind: skCheckApply,
-			t: target{name: name, make: mk, args: args, checkArgs: checkDiff, summarize: ansibleSummary}}
+			t: Target{Name: name, make: mk, args: args, checkArgs: checkDiff, summarize: ansibleSummary}}
 	}
 	labT := func(name, touches string) stage {
 		for _, t := range labTargets() {
-			if t.name == name {
+			if t.Name == name {
 				return stage{name: name, touches: touches, kind: skCheckApply, t: t}
 			}
 		}
@@ -168,6 +169,15 @@ unset keys`},
 		runOnly("backup", "backup", "step 10: Terraform state, a Vault snapshot, Vaultwarden, into ~/homelab-backups"),
 		{name: "status", kind: skStatus, touches: "anvil status"},
 	}
+}
+
+// StageNames are anvil up's stages, in order.
+func StageNames() []string {
+	var out []string
+	for _, s := range upStages() {
+		out = append(out, s.name)
+	}
+	return out
 }
 
 const stateFile = "build/anvil-up.state"
@@ -284,7 +294,7 @@ const exitNeedsYou = 3
 func runStage(a *app.App, r *run.Runner, s stage, st *upState, yes bool) (int, outcome) {
 	switch s.kind {
 	case skCheckApply:
-		return checkThenApply(a, r, s.t, targetOpts{}, nil)
+		return checkThenApply(a, r, s.t, TargetOpts{}, nil)
 	case skRun:
 		if s.done != "" {
 			if _, code := r.Quiet(s.done); code == 0 {
@@ -367,19 +377,6 @@ func runAll(a *app.App, names []string, step func(i int) (int, outcome)) (int, i
 	return stop, code
 }
 
-func preflightChecks(a *app.App, r *run.Runner) bool {
-	all := initFindings(a, r)
-	printFindings(a.Stdout, a.Pal(), all)
-	for _, f := range all {
-		if f.upNeeds && f.lv == lvFail {
-			fmt.Fprintln(a.Stderr, "anvil up: fix the FAIL lines above first (Vault may still be down: up builds it)")
-			return false
-		}
-	}
-	fmt.Fprintln(a.Stdout)
-	return true
-}
-
 func cmdUp(a *app.App, args []string) int {
 	fs := flag.NewFlagSet("up", flag.ContinueOnError)
 	var yes, dry bool
@@ -394,10 +391,10 @@ func cmdUp(a *app.App, args []string) int {
 		return code
 	}
 	if a.Preflight == nil {
-		a.Preflight = preflightChecks
+		a.Preflight = doctor.Preflight
 	}
 	if a.Status == nil {
-		a.Status = printStatus
+		a.Status = doctor.Status
 	}
 	if len(pos) > 0 {
 		if from != "" || only != "" || skip != "" {
@@ -462,13 +459,13 @@ func cmdUp(a *app.App, args []string) int {
 
 // upServices deploys named services: check, then apply where the check shows changes.
 func upServices(a *app.App, names []string, yes, dry bool) int {
-	r, c, ok := setup(a, dry)
+	r, c, ok := Setup(a, dry)
 	if !ok {
 		return 1
 	}
-	var ts []target
+	var ts []Target
 	for _, n := range names {
-		t, err := c.resolve(n, "")
+		t, err := c.Resolve(n, "")
 		if err != nil {
 			fmt.Fprintf(a.Stderr, "anvil: %v\n", err)
 			return 2
@@ -477,7 +474,7 @@ func upServices(a *app.App, names []string, yes, dry bool) int {
 	}
 	if dry {
 		for _, t := range ts {
-			_, _ = checkThenApply(a, r, t, targetOpts{}, nil)
+			_, _ = checkThenApply(a, r, t, TargetOpts{}, nil)
 		}
 		return 0
 	}
@@ -487,24 +484,24 @@ func upServices(a *app.App, names []string, yes, dry bool) int {
 	fmt.Fprintln(a.Stdout, "anvil up: deploy, each one checked first and applied only when the check shows changes:")
 	var plain []string
 	for _, t := range ts {
-		fmt.Fprintf(a.Stdout, "  %-15s %s\n", t.name, t.help)
+		fmt.Fprintf(a.Stdout, "  %-15s %s\n", t.Name, t.help)
 		fmt.Fprintf(a.Stdout, "    check  %s\n    apply  %s\n", t.checkCmd("", ""), t.applyCmd("", ""))
 		if !t.risky {
-			plain = append(plain, t.name)
+			plain = append(plain, t.Name)
 		}
 	}
 	if len(plain) > 0 && !yes && !app.AskYesNo(a.Stdin, a.Stdout, "Deploy "+strings.Join(plain, ", ")+"?") {
 		fmt.Fprintln(a.Stdout, "anvil: nothing run")
 		return 1
 	}
-	confirm := func(t target) bool { return !t.risky || confirmApply(a.Stdin, a.Stdout, t, yes) }
+	confirm := func(t Target) bool { return !t.risky || confirmApply(a.Stdin, a.Stdout, t, yes) }
 	tnames := make([]string, len(ts))
 	for i, t := range ts {
-		tnames[i] = t.name
+		tnames[i] = t.Name
 	}
-	stop, code := runAll(a, tnames, func(i int) (int, outcome) { return checkThenApply(a, r, ts[i], targetOpts{}, confirm) })
+	stop, code := runAll(a, tnames, func(i int) (int, outcome) { return checkThenApply(a, r, ts[i], TargetOpts{}, confirm) })
 	if code != 0 {
-		fmt.Fprintf(a.Stderr, "anvil up: %s stopped (exit %d). Resume: anvil up %s\n", ts[stop].name, code, strings.Join(names[stop:], " "))
+		fmt.Fprintf(a.Stderr, "anvil up: %s stopped (exit %d). Resume: anvil up %s\n", ts[stop].Name, code, strings.Join(names[stop:], " "))
 	}
 	return code
 }

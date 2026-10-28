@@ -1,4 +1,4 @@
-package main
+package doctor
 
 // The Mac's own routing, for anvil doctor. Away from home on the VPN, a lab address added
 // by hand to the Wi-Fi (an alias) and the routes it left behind are more specific than the
@@ -8,18 +8,31 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"net"
 	"net/netip"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
+	"time"
 
 	"github.com/memetics19/anvil/cli/internal/app"
 )
 
+// Ping asks /sbin/ping, which macOS lets through, whether host answers.
+func Ping(host string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, "/sbin/ping", "-c", "1", "-t", "2", host).Run() == nil
+}
+
 // The parts that touch the system. Tests replace them.
 var (
+	pingOK = Ping
+	goos   = runtime.GOOS
+
 	// labAddrs: the Proxmox host and Vault, from the Keychain (service homelab).
 	labAddrs = func() []netip.Addr {
 		var out []netip.Addr

@@ -1,4 +1,7 @@
-package main
+// Package lab is what anvil runs on the lab: the catalog of targets and services, check
+// and apply, anvil up and its stages, backup and restore, and the reachability check
+// before each make run.
+package lab
 
 import (
 	"fmt"
@@ -34,13 +37,13 @@ type service struct {
 	hosts []string
 }
 
-func (s service) target(host string) (target, error) {
-	t := target{name: s.name, tags: s.name, checkArgs: checkDiff, summarize: ansibleSummary,
+func (s service) target(host string) (Target, error) {
+	t := Target{Name: s.name, tags: s.name, checkArgs: checkDiff, summarize: ansibleSummary,
 		help: fmt.Sprintf("tag %s (%s) on %s", s.name, strings.Join(s.roles, ", "), strings.Join(s.hosts, ", "))}
 	switch {
 	case host != "":
 		if !slices.Contains(s.hosts, host) {
-			return target{}, fmt.Errorf("%s runs on %s, not %s", s.name, strings.Join(s.hosts, ", "), host)
+			return Target{}, fmt.Errorf("%s runs on %s, not %s", s.name, strings.Join(s.hosts, ", "), host)
 		}
 		t.make, t.host = "vm", host
 	case len(s.hosts) == 1:
@@ -51,7 +54,8 @@ func (s service) target(host string) (target, error) {
 	return t, nil
 }
 
-type catalog struct {
+// Catalog is every VM and service of ansible/playbooks/vms.yml.
+type Catalog struct {
 	vms      []string
 	services []service
 }
@@ -202,7 +206,8 @@ func (inv inventory) hosts(pattern string) ([]string, error) {
 	return sortedKeys(set), nil
 }
 
-func loadCatalog(root string) (*catalog, error) {
+// LoadCatalog reads the playbook and the inventory of the repo at root.
+func LoadCatalog(root string) (*Catalog, error) {
 	inv, err := loadInventory(filepath.Join(root, inventoryPath))
 	if err != nil {
 		return nil, err
@@ -251,7 +256,7 @@ func loadCatalog(root string) (*catalog, error) {
 			}
 		}
 	}
-	c := &catalog{vms: sortedKeys(vms)}
+	c := &Catalog{vms: sortedKeys(vms)}
 	for _, tag := range sortedKeys(hostsOf) {
 		roles := rolesOf[tag]
 		if len(roles) == 0 {
@@ -267,7 +272,7 @@ func normalize(name string) string {
 }
 
 // service finds a service by tag, role name or alias.
-func (c *catalog) service(name string) (service, bool) {
+func (c *Catalog) service(name string) (service, bool) {
 	if a, ok := serviceAliases[strings.ToLower(name)]; ok {
 		name = a
 	}
@@ -292,11 +297,11 @@ func (c *catalog) service(name string) (service, bool) {
 	return service{}, false
 }
 
-// names is every name resolve accepts.
-func (c *catalog) names() []string {
+// Names is every name resolve accepts.
+func (c *Catalog) Names() []string {
 	set := map[string]bool{}
 	for _, t := range labTargets() {
-		set[t.name] = true
+		set[t.Name] = true
 	}
 	for a := range targetAliases {
 		set[a] = true
@@ -318,10 +323,10 @@ func (c *catalog) names() []string {
 	return sortedKeys(set)
 }
 
-func (c *catalog) unknown(name string) error {
+func (c *Catalog) unknown(name string) error {
 	var near []string
 	n := normalize(name)
-	for _, cand := range c.names() {
+	for _, cand := range c.Names() {
 		cn := normalize(cand)
 		if levenshtein(n, cn) <= 2 || commonPrefix(n, cn) >= 5 ||
 			(len(n) >= 3 && (strings.Contains(cn, n) || strings.Contains(n, cn) && len(cn) >= 3)) {

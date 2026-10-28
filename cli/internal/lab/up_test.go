@@ -1,4 +1,4 @@
-package main
+package lab
 
 import (
 	"encoding/json"
@@ -39,7 +39,7 @@ func TestUpStageOrder(t *testing.T) {
 }
 
 func TestUpDryRunPrintsThePlan(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	if code := l.Run("", "up", "--dry-run"); code != 0 {
 		t.Fatalf("exit %d: %s", code, l.Output())
 	}
@@ -81,7 +81,7 @@ func TestUpDryRunPrintsThePlan(t *testing.T) {
 }
 
 func TestUpSkipsApplyWhenChecksShowNoChanges(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	testlab.FakeTools(l)
 	l.SetCheckOutput(testlab.RecapNoChanges)
 	if code := l.Run("", "up", "--only", "host,enclave,vms", "--yes"); code != 0 {
@@ -104,7 +104,7 @@ func TestUpSkipsApplyWhenChecksShowNoChanges(t *testing.T) {
 }
 
 func TestUpAsksOnce(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	testlab.FakeTools(l)
 	l.SetCheckOutput(testlab.RecapChanges)
 	if code := l.Run("y\n", "up", "--only", "vms"); code != 1 || l.MakeCalls() != nil {
@@ -117,7 +117,7 @@ func TestUpAsksOnce(t *testing.T) {
 }
 
 func TestUpStopsOnFailureAndResumes(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	testlab.FakeTools(l)
 	l.SetCheckOutput(testlab.RecapNoChanges)
 	l.Env["FAKE_RC"] = "5"
@@ -158,7 +158,7 @@ func readState(t *testing.T, l *testlab.Lab) upState {
 }
 
 func TestUpPausesForPeople(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	testlab.FakeTools(l)
 
 	// Already done: the Keychain has the items.
@@ -201,7 +201,7 @@ func TestUpPausesForPeople(t *testing.T) {
 }
 
 func TestUpOnlyAndSkip(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	cases := map[string][]string{
 		"--only=vms,host": {"host", "vms"},
 		"--skip=" + strings.Join(docsOrder[1:], ","): {"bootstrap-ssh-host"},
@@ -246,7 +246,7 @@ func TestUpOnlyAndSkip(t *testing.T) {
 }
 
 func TestUpServices(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	testlab.FakeTools(l)
 	l.SetCheckOutput(testlab.RecapNoChanges)
 	if code := l.Run("", "up", "pihole", "homepage", "--yes"); code != 0 {

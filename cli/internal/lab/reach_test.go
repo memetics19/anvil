@@ -1,4 +1,4 @@
-package main
+package lab
 
 import (
 	"net"
@@ -25,7 +25,7 @@ func freePort(t *testing.T) string {
 }
 
 func TestUnreachableEndpointsStopBeforeMake(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	testlab.FakeTools(l)
 	l.RealReach = true
 	l.Write("scripts/env.sh", "export PVE_IP=127.0.0.1\n")
@@ -112,7 +112,7 @@ func TestLocalNetworkPermissionHint(t *testing.T) {
 	}
 
 	// Through anvil: the dial fails with no route, ping answers. Vault too, from VAULT_ADDR.
-	l := newTestLab(t)
+	l := testlab.New(t)
 	testlab.FakeTools(l)
 	l.RealReach = true
 	l.Write("scripts/env.sh", "export PVE_IP=192.0.2.10 VAULT_ADDR=https://192.0.2.20:8200\n")

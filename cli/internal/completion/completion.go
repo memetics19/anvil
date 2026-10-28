@@ -1,11 +1,16 @@
-package main
+// Package completion prints anvil's bash, zsh and fish completion scripts (anvil
+// completion). The names come from the command registry, the catalog and anvil up's stages.
+package completion
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/memetics19/anvil/cli/internal/app"
+	"github.com/memetics19/anvil/cli/internal/lab"
 	"github.com/memetics19/anvil/cli/internal/repo"
 )
 
@@ -59,33 +64,18 @@ func commandFlags(c app.Command) []string {
 			}
 		}
 	}
-	return sortedKeys(set)
-}
-
-func stageNames() []string {
-	var out []string
-	for _, s := range upStages() {
-		out = append(out, s.name)
-	}
-	return out
+	return slices.Sorted(maps.Keys(set))
 }
 
 // completionNames is every name check, apply and up accept: the catalog when a repo is
 // found, else the lab targets and their aliases.
 func completionNames(a *app.App) []string {
 	if root, err := repo.Root(a); err == nil {
-		if c, err := loadCatalog(root); err == nil {
-			return c.names()
+		if c, err := lab.LoadCatalog(root); err == nil {
+			return c.Names()
 		}
 	}
-	set := map[string]bool{}
-	for _, t := range labTargets() {
-		set[t.name] = true
-	}
-	for k := range targetAliases {
-		set[k] = true
-	}
-	return sortedKeys(set)
+	return lab.TargetNames()
 }
 
 func cmdCompletion(a *app.App, args []string) int {
@@ -155,7 +145,7 @@ _anvil() {
   esac
   if [[ $cur == -* ]]; then
     case $cmd in
-`, sq(strings.Join(names, " ")), sq(strings.Join(append(cmdNames(), "--help", "--version", "--no-color"), " ")), sq(strings.Join(stageNames(), " ")))
+`, sq(strings.Join(names, " ")), sq(strings.Join(append(cmdNames(), "--help", "--version", "--no-color"), " ")), sq(strings.Join(lab.StageNames(), " ")))
 	for _, c := range app.Commands() {
 		fmt.Fprintf(&b, "      %s) words=%s ;;\n", c.Name, sq(strings.Join(commandFlags(c), " ")))
 	}
@@ -168,7 +158,7 @@ _anvil() {
 `)
 	fmt.Fprintf(&b, "    %s) words=$(_anvil_names) ;;\n", strings.Join(nameCommands, "|"))
 	sub := subWords()
-	for _, k := range sortedKeys(sub) {
+	for _, k := range slices.Sorted(maps.Keys(sub)) {
 		fmt.Fprintf(&b, "    %s) [ \"$COMP_CWORD\" -eq 2 ] || return; words=%s ;;\n", k, sq(strings.Join(sub[k], " ")))
 	}
 	b.WriteString(`    *) return ;;
@@ -196,7 +186,7 @@ func zshCompletion(names []string) string {
   esac
   if [[ ${words[CURRENT]} == -* ]]; then
     case ${words[2]} in
-`, strings.Join(stageNames(), " "))
+`, strings.Join(lab.StageNames(), " "))
 	for _, c := range app.Commands() {
 		fmt.Fprintf(&b, "      %s) compadd -- %s ;;\n", c.Name, strings.Join(commandFlags(c), " "))
 	}
@@ -207,7 +197,7 @@ func zshCompletion(names []string) string {
       compadd -- $names ;;
 `, strings.Join(nameCommands, "|"), strings.Join(names, " "))
 	sub := subWords()
-	for _, k := range sortedKeys(sub) {
+	for _, k := range slices.Sorted(maps.Keys(sub)) {
 		fmt.Fprintf(&b, "    %s) (( CURRENT == 3 )) && compadd -- %s ;;\n", k, strings.Join(sub[k], " "))
 	}
 	b.WriteString(`  esac
@@ -238,7 +228,7 @@ complete -c anvil -f
 	}
 	fmt.Fprintf(&b, "complete -c anvil -n '__fish_seen_subcommand_from %s' -a '(__anvil_names)'\n", strings.Join(nameCommands, " "))
 	sub := subWords()
-	for _, k := range sortedKeys(sub) {
+	for _, k := range slices.Sorted(maps.Keys(sub)) {
 		fmt.Fprintf(&b, "complete -c anvil -n '__fish_seen_subcommand_from %s' -a %s\n", k, fq(strings.Join(sub[k], " ")))
 	}
 	for _, c := range app.Commands() {
@@ -246,6 +236,6 @@ complete -c anvil -f
 			fmt.Fprintf(&b, "complete -c anvil -n '__fish_seen_subcommand_from %s' -l %s\n", c.Name, strings.TrimPrefix(f, "--"))
 		}
 	}
-	fmt.Fprintf(&b, "complete -c anvil -n '__fish_seen_subcommand_from up; and __fish_prev_arg_in --from --only --skip' -a %s\n", fq(strings.Join(stageNames(), " ")))
+	fmt.Fprintf(&b, "complete -c anvil -n '__fish_seen_subcommand_from up; and __fish_prev_arg_in --from --only --skip' -a %s\n", fq(strings.Join(lab.StageNames(), " ")))
 	return b.String()
 }

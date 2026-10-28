@@ -15,11 +15,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/memetics19/anvil/cli/internal/app"
+	"github.com/memetics19/anvil/cli/internal/lab"
 	"github.com/memetics19/anvil/cli/internal/repo"
 )
 
@@ -55,6 +57,9 @@ Without them it only prints the verdict.
 `
 
 const driftLabel = "com.github.memetics19.anvil.drift"
+
+// goos picks launchd or systemd. Tests replace it.
+var goos = runtime.GOOS
 
 var atRE = regexp.MustCompile(`^([01]?\d|2[0-3]):([0-5]\d)$`)
 
@@ -100,7 +105,7 @@ func cmdDrift(a *app.App, args []string) int {
 		fmt.Fprintf(f, "anvil drift, %s\n", time.Now().Format(time.RFC1123))
 	}
 
-	r, c, ok := setup(a, false)
+	r, c, ok := lab.Setup(a, false)
 	if !ok {
 		notify(a, "anvil: drift check failed", "it could not start: no repo or no site dict", "x", 4)
 		return 1
@@ -108,19 +113,19 @@ func cmdDrift(a *app.App, args []string) int {
 	var lines []string
 	drift, failed := false, false
 	for _, n := range []string{"host", "vms", "tf"} {
-		t, err := c.resolve(n, "")
+		t, err := c.Resolve(n, "")
 		if err != nil {
 			fmt.Fprintf(a.Stderr, "anvil: %v\n", err)
 			return 2
 		}
-		code, s := runCheck(a, r, t, targetOpts{})
+		code, s := lab.RunCheck(a, r, t, lab.TargetOpts{})
 		switch {
 		case code != 0:
 			failed = true
-			lines = append(lines, fmt.Sprintf("%s: the check failed (exit %d)", t.name, code))
+			lines = append(lines, fmt.Sprintf("%s: the check failed (exit %d)", t.Name, code))
 		default:
-			drift = drift || !s.known || s.changes
-			lines = append(lines, t.name+": "+driftLine(s))
+			drift = drift || !s.Known || s.Changes
+			lines = append(lines, t.Name+": "+driftLine(s))
 		}
 	}
 	body := strings.Join(lines, "\n")
@@ -140,17 +145,17 @@ func cmdDrift(a *app.App, args []string) int {
 }
 
 // driftLine is a check's summary without the VMs that would not change.
-func driftLine(s summary) string {
-	if !s.known || !s.changes {
+func driftLine(s lab.Summary) string {
+	if !s.Known || !s.Changes {
 		return s.String()
 	}
 	var keep []string
-	for _, l := range s.lines {
+	for _, l := range s.Lines {
 		if !strings.HasSuffix(l, " changed=0") {
 			keep = append(keep, l)
 		}
 	}
-	s.lines = keep
+	s.Lines = keep
 	return s.String()
 }
 

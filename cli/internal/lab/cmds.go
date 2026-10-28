@@ -1,4 +1,4 @@
-package main
+package lab
 
 import (
 	"bufio"
@@ -74,44 +74,21 @@ const restoreUsage = `usage: anvil restore <what> [file] [--yes] [--dry-run]
   vaultwarden      not scripted: docs/setup.md, Rebuilding on a new box, step 8
 `
 
-const provisionISOUsage = `usage: anvil provision-iso <name> [--dry-run]
-
-Runs make provision-iso NAME=<name>: the Proxmox VE automated install ISO for
-site.provision.machines.<name>, in build/provision/<name>.iso (docs/provisioning.md).
-`
-
-const provisionUsage = `usage: anvil provision <name> [--install] [--power-off] [--media-ready] [--dry-run]
-
-Without --install: make provision NAME=<name>, a dry run (the guard, read-only BMC reads,
-the planned Redfish or IPMI calls).
-
-With --install: the dry run first, then the name typed, then
-make provision NAME=<name> ARGS="-e provision_confirm=<name>". The guard in
-scripts/provision.py still refuses the current server. --media-ready adds
--e provision_media_ready=true, for manual media (docs/provisioning.md).
-
---power-off adds -e provision_power_off=true: a running target is shut down gracefully
-(never forced) before the install, after the serial check proved it is the target. A
-machine with a controller step (controller: {vendor: dell, mode: nonraid}) needs it,
-because that step reboots the server.
-`
-
 func init() {
 	app.Register(app.Command{Name: "check", Summary: "dry run a target (--check --diff, tf-plan, the switch plan)", Usage: checkUsage, Run: cmdCheck, Order: 20})
 	app.Register(app.Command{Name: "apply", Summary: "check a target, then apply it after confirmation", Usage: applyUsage, Run: cmdApply, Order: 21})
 	app.Register(app.Command{Name: "services", Summary: "list the deployable services, VMs and lab targets", Usage: servicesUsage, Run: cmdServices, Order: 22})
 	app.Register(app.Command{Name: "backup", Summary: "make backup", Usage: backupUsage, Run: cmdBackup, Order: 30})
 	app.Register(app.Command{Name: "restore", Summary: "the documented restore commands, with confirmation", Usage: restoreUsage, Run: cmdRestore, Order: 31})
-	app.Register(app.Command{Name: "provision-iso", Summary: "make provision-iso NAME=<name>", Usage: provisionISOUsage, Run: cmdProvisionISO, Order: 40})
-	app.Register(app.Command{Name: "provision", Summary: "make provision NAME=<name> (a dry run unless --install)", Usage: provisionUsage, Run: cmdProvision, Order: 41})
 }
 
-type targetOpts struct {
+// TargetOpts are the options of check and apply.
+type TargetOpts struct {
 	host, tags, args string
 	yes, dryRun      bool
 }
 
-func targetFlags(fs *flag.FlagSet, o *targetOpts, withYes bool) {
+func targetFlags(fs *flag.FlagSet, o *TargetOpts, withYes bool) {
 	fs.StringVar(&o.host, "host", "", "")
 	fs.StringVar(&o.tags, "tags", "", "")
 	fs.StringVar(&o.args, "args", "", "")
@@ -121,13 +98,13 @@ func targetFlags(fs *flag.FlagSet, o *targetOpts, withYes bool) {
 	}
 }
 
-// setup parses nothing more: it finds the repo and loads the catalog.
-func setup(a *app.App, dryRun bool) (*run.Runner, *catalog, bool) {
+// Setup parses nothing more: it finds the repo and loads the catalog.
+func Setup(a *app.App, dryRun bool) (*run.Runner, *Catalog, bool) {
 	r, ok := repo.Runner(a, dryRun)
 	if !ok {
 		return nil, nil, false
 	}
-	c, err := loadCatalog(r.Root)
+	c, err := LoadCatalog(r.Root)
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "anvil: %v\n", err)
 		return nil, nil, false
@@ -138,16 +115,16 @@ func setup(a *app.App, dryRun bool) (*run.Runner, *catalog, bool) {
 	return r, c, true
 }
 
-// runCheck runs one target's dry run and returns its exit code and summary.
-func runCheck(a *app.App, r *run.Runner, t target, o targetOpts) (int, summary) {
+// RunCheck runs one target's dry run and returns its exit code and summary.
+func RunCheck(a *app.App, r *run.Runner, t Target, o TargetOpts) (int, Summary) {
 	m := t.checkCmd(o.tags, o.args)
 	if !canReach(a, r, m.Target) {
-		return 1, summary{}
+		return 1, Summary{}
 	}
 	var out bytes.Buffer
 	code := r.Make(m, &out)
 	if code != 0 || r.DryRun {
-		return code, summary{}
+		return code, Summary{}
 	}
 	return 0, t.summarize(out.String())
 }
@@ -155,26 +132,26 @@ func runCheck(a *app.App, r *run.Runner, t target, o targetOpts) (int, summary) 
 // checkThenApply runs the check, prints its summary and, when it shows changes and
 // confirm agrees, the real run. A nil confirm applies without asking. It returns the exit
 // code and what happened.
-func checkThenApply(a *app.App, r *run.Runner, t target, o targetOpts, confirm func(target) bool) (int, outcome) {
+func checkThenApply(a *app.App, r *run.Runner, t Target, o TargetOpts, confirm func(Target) bool) (int, outcome) {
 	if r.DryRun {
-		fmt.Fprintf(a.Stdout, "# %s: check\n", t.name)
+		fmt.Fprintf(a.Stdout, "# %s: check\n", t.Name)
 		r.Make(t.checkCmd(o.tags, o.args), nil)
-		fmt.Fprintf(a.Stdout, "# %s: apply, only when the check shows changes\n", t.name)
+		fmt.Fprintf(a.Stdout, "# %s: apply, only when the check shows changes\n", t.Name)
 		r.Make(t.applyCmd(o.tags, o.args), nil)
 		return 0, outSkipped
 	}
-	code, s := runCheck(a, r, t, o)
+	code, s := RunCheck(a, r, t, o)
 	if code != 0 {
-		fmt.Fprintf(a.Stderr, "anvil: the check of %s failed (exit %d); nothing applied\n", t.name, code)
+		fmt.Fprintf(a.Stderr, "anvil: the check of %s failed (exit %d); nothing applied\n", t.Name, code)
 		return code, outFailed
 	}
-	fmt.Fprintf(a.Stdout, "anvil: %s check: %s\n", t.name, s)
-	if s.known && !s.changes {
-		fmt.Fprintf(a.Stdout, "anvil: %s has nothing to apply\n", t.name)
+	fmt.Fprintf(a.Stdout, "anvil: %s check: %s\n", t.Name, s)
+	if s.Known && !s.Changes {
+		fmt.Fprintf(a.Stdout, "anvil: %s has nothing to apply\n", t.Name)
 		return 0, outUnchanged
 	}
 	if confirm != nil && !confirm(t) {
-		fmt.Fprintf(a.Stdout, "anvil: %s not applied\n", t.name)
+		fmt.Fprintf(a.Stdout, "anvil: %s not applied\n", t.Name)
 		return 1, outSkipped
 	}
 	if code := r.Make(t.applyCmd(o.tags, o.args), nil); code != 0 {
@@ -185,7 +162,7 @@ func checkThenApply(a *app.App, r *run.Runner, t target, o targetOpts, confirm f
 
 func cmdCheck(a *app.App, args []string) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
-	var o targetOpts
+	var o TargetOpts
 	targetFlags(fs, &o, false)
 	pos, code, ok := a.Flags(fs, checkUsage, args)
 	if !ok {
@@ -199,7 +176,7 @@ func cmdCheck(a *app.App, args []string) int {
 		fmt.Fprintf(a.Stderr, "anvil: %v\n", err)
 		return 2
 	}
-	r, c, ok := setup(a, o.dryRun)
+	r, c, ok := Setup(a, o.dryRun)
 	if !ok {
 		return 1
 	}
@@ -212,18 +189,18 @@ func cmdCheck(a *app.App, args []string) int {
 	}
 	first := 0
 	for _, n := range names {
-		t, err := c.resolve(n, o.host)
+		t, err := c.Resolve(n, o.host)
 		if err != nil {
 			fmt.Fprintf(a.Stderr, "anvil: %v\n", err)
 			return 2
 		}
-		code, s := runCheck(a, r, t, o)
+		code, s := RunCheck(a, r, t, o)
 		switch {
 		case r.DryRun:
 		case code != 0:
-			fmt.Fprintf(a.Stderr, "anvil: the check of %s failed (exit %d)\n", t.name, code)
+			fmt.Fprintf(a.Stderr, "anvil: the check of %s failed (exit %d)\n", t.Name, code)
 		default:
-			fmt.Fprintf(a.Stdout, "anvil: %s check: %s\n", t.name, s)
+			fmt.Fprintf(a.Stdout, "anvil: %s check: %s\n", t.Name, s)
 		}
 		if code != 0 && first == 0 {
 			first = code
@@ -234,7 +211,7 @@ func cmdCheck(a *app.App, args []string) int {
 
 func cmdApply(a *app.App, args []string) int {
 	fs := flag.NewFlagSet("apply", flag.ContinueOnError)
-	var o targetOpts
+	var o TargetOpts
 	targetFlags(fs, &o, true)
 	pos, code, ok := a.Flags(fs, applyUsage, args)
 	if !ok {
@@ -248,16 +225,16 @@ func cmdApply(a *app.App, args []string) int {
 		fmt.Fprintf(a.Stderr, "anvil: %v\n", err)
 		return 2
 	}
-	r, c, ok := setup(a, o.dryRun)
+	r, c, ok := Setup(a, o.dryRun)
 	if !ok {
 		return 1
 	}
-	t, err := c.resolve(pos[0], o.host)
+	t, err := c.Resolve(pos[0], o.host)
 	if err != nil {
 		fmt.Fprintf(a.Stderr, "anvil: %v\n", err)
 		return 2
 	}
-	code, _ = checkThenApply(a, r, t, o, func(t target) bool { return confirmApply(a.Stdin, a.Stdout, t, o.yes) })
+	code, _ = checkThenApply(a, r, t, o, func(t Target) bool { return confirmApply(a.Stdin, a.Stdout, t, o.yes) })
 	return code
 }
 
@@ -266,27 +243,27 @@ func cmdServices(a *app.App, args []string) int {
 	if _, code, ok := a.Flags(fs, servicesUsage, args); !ok {
 		return code
 	}
-	_, c, ok := setup(a, false)
+	_, c, ok := Setup(a, false)
 	if !ok {
 		return 1
 	}
 	w := a.Stdout
 	fmt.Fprintf(w, "Services (role tags in %s):\n", playbookPath)
 	for _, s := range c.services {
-		t, err := c.resolve(s.name, "")
+		t, err := c.Resolve(s.name, "")
 		if err != nil {
 			continue
 		}
 		note := ""
 		if t.tags == "" {
-			note = "  (the name means the whole " + t.name + " target; add --tags " + s.name + " for the tag alone)"
+			note = "  (the name means the whole " + t.Name + " target; add --tags " + s.name + " for the tag alone)"
 		}
 		fmt.Fprintf(w, "  %-15s %-44s %s%s\n", s.name, strings.Join(s.hosts, ","), t.applyCmd("", ""), note)
 	}
 	fmt.Fprintln(w, "\nVMs (every guest play for one VM):")
 	for _, v := range c.vms {
 		note := ""
-		if t, err := c.resolve(v, ""); err != nil || t.make != "vm" {
+		if t, err := c.Resolve(v, ""); err != nil || t.make != "vm" {
 			note = "  (as vm --host " + v + "; the name " + v + " is the lab target)"
 		}
 		fmt.Fprintf(w, "  %-15s %s%s\n", v, c.vmTarget(v).applyCmd("", ""), note)
@@ -297,7 +274,7 @@ func cmdServices(a *app.App, args []string) int {
 		if t.risky {
 			risk = "risky"
 		}
-		fmt.Fprintf(w, "  %-15s %-6s %s\n", t.name, risk, t.help)
+		fmt.Fprintf(w, "  %-15s %-6s %s\n", t.Name, risk, t.help)
 	}
 	fmt.Fprintln(w, "\nAliases:")
 	for _, k := range sortedKeys(serviceAliases) {
@@ -387,75 +364,14 @@ func cmdRestore(a *app.App, args []string) int {
 	return 2
 }
 
-func cmdProvisionISO(a *app.App, args []string) int {
-	pos, _, dry, code, ok := simpleFlags(a, "provision-iso", provisionISOUsage, args, false)
-	if !ok {
-		return code
-	}
-	if len(pos) != 1 {
-		fmt.Fprint(a.Stderr, provisionISOUsage)
-		return 2
-	}
-	r, ok := repo.Runner(a, dry)
-	if !ok {
-		return 1
-	}
-	return r.Make(run.NewMake("provision-iso", "NAME", pos[0]), nil)
-}
-
-func cmdProvision(a *app.App, args []string) int {
-	fs := flag.NewFlagSet("provision", flag.ContinueOnError)
-	var install, mediaReady, powerOff, dry bool
-	fs.BoolVar(&install, "install", false, "")
-	fs.BoolVar(&powerOff, "power-off", false, "")
-	fs.BoolVar(&mediaReady, "media-ready", false, "")
-	fs.BoolVar(&dry, "dry-run", false, "")
-	pos, code, ok := a.Flags(fs, provisionUsage, args)
-	if !ok {
-		return code
-	}
-	if len(pos) != 1 || (mediaReady && !install) {
-		fmt.Fprint(a.Stderr, provisionUsage)
-		return 2
-	}
-	name := pos[0]
-	if !run.ShellSafe(name) || strings.ContainsAny(name, "=:,@%+") {
-		fmt.Fprintf(a.Stderr, "anvil: %q is not a machine name\n", name)
-		return 2
-	}
-	r, ok := repo.Runner(a, dry)
-	if !ok {
-		return 1
-	}
-	check := run.NewMake("provision", "NAME", name)
-	if powerOff {
-		check = run.NewMake("provision", "NAME", name, "ARGS", "-e provision_power_off=true")
-	}
-	if code := r.Make(check, nil); code != 0 || !install {
-		return code
-	}
-	if !dry && !app.AskTyped(a.Stdin, a.Stdout, "This installs Proxmox VE on "+name+" and wipes its disks.", name) {
-		fmt.Fprintln(a.Stdout, "anvil: not installed")
-		return 1
-	}
-	extra := "-e provision_confirm=" + name
-	if mediaReady {
-		extra += " -e provision_media_ready=true"
-	}
-	if powerOff {
-		extra += " -e provision_power_off=true"
-	}
-	return r.Make(run.NewMake("provision", "NAME", name, "ARGS", extra), nil)
-}
-
 // confirmApply is the confirmation before a real run. Every target needs a yes, which
 // --yes gives. A risky target also needs its name typed, which --yes does not skip.
-func confirmApply(in *bufio.Reader, out io.Writer, t target, yes bool) bool {
+func confirmApply(in *bufio.Reader, out io.Writer, t Target, yes bool) bool {
 	if t.risky {
-		return app.AskTyped(in, out, fmt.Sprintf("%s is a risky target (%s).", t.name, t.help), t.name)
+		return app.AskTyped(in, out, fmt.Sprintf("%s is a risky target (%s).", t.Name, t.help), t.Name)
 	}
 	if yes {
 		return true
 	}
-	return app.AskYesNo(in, out, fmt.Sprintf("Apply %s?", t.name))
+	return app.AskYesNo(in, out, fmt.Sprintf("Apply %s?", t.Name))
 }

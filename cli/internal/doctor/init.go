@@ -1,4 +1,6 @@
-package main
+// Package doctor checks that this machine can run the lab: anvil init and anvil doctor,
+// doctor --fix for the Mac's routing, and anvil status, the read-only dashboard.
+package doctor
 
 import (
 	"encoding/json"
@@ -274,6 +276,12 @@ func parseVaultStatus(out string, code int) vaultState {
 	return v
 }
 
+// VaultReachable reports whether Vault answers, through the vault binary as the stages
+// use it.
+func VaultReachable(r *run.Runner) bool {
+	return parseVaultStatus(r.Quiet(vaultStatusScript)).reachable
+}
+
 func vaultFinding(v vaultState) finding {
 	f := finding{group: "vault", text: "Vault " + v.String()}
 	switch {
@@ -392,4 +400,18 @@ func cmdInit(a *app.App, args []string) int {
 	}
 	fmt.Fprintln(a.Stdout, p.Ok(name+": ready"))
 	return 0
+}
+
+// Preflight is anvil up's first step: the init checks. It stops on a FAIL that up needs.
+func Preflight(a *app.App, r *run.Runner) bool {
+	all := initFindings(a, r)
+	printFindings(a.Stdout, a.Pal(), all)
+	for _, f := range all {
+		if f.upNeeds && f.lv == lvFail {
+			fmt.Fprintln(a.Stderr, "anvil up: fix the FAIL lines above first (Vault may still be down: up builds it)")
+			return false
+		}
+	}
+	fmt.Fprintln(a.Stdout)
+	return true
 }
