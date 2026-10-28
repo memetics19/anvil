@@ -214,8 +214,9 @@ Run each step with `ARGS="--check --diff"` first, then without.
    make ceph
    ```
 
-   This run creates the `tfstate` bucket and its S3 user. The `filestash` and
-   `vaultwarden-backup` users need Vault. You rerun `make ceph` for them in step 7.
+   This run creates the `tfstate` bucket and its S3 user. The `filestash`,
+   `vaultwarden-backup` and `authentik-backup` users need Vault. You rerun `make ceph` for
+   them in step 7.
 
    Copy the state bucket's keys into the Keychain:
 
@@ -269,7 +270,7 @@ Run each step with `ARGS="--check --diff"` first, then without.
    Then finish the steps that needed Vault:
 
    ```sh
-   make ceph                          # S3 users for Filestash and the Vaultwarden backups
+   make ceph                          # S3 users for Filestash and the Vaultwarden and Authentik backups
    make host ARGS="--tags homepage"   # read-only Proxmox token for the dashboard
    ```
 
@@ -322,7 +323,8 @@ Then do the hand steps in [Not managed here](#not-managed-here).
 This runbook is not yet tested on a second server. You need:
 
 - the Mac's Keychain (service `homelab`)
-- `~/homelab-backups`, with `tfstate-*.json.age`, `vault-*.snap` and `vaultwarden-*.tar.age`
+- `~/homelab-backups`, with `tfstate-*.json.age`, `vault-*.snap`, `vaultwarden-*.tar.age` and
+  `authentik-*.dump.age`
 - the offline copies of the unseal keys and the age identity, if the Keychain is lost
 
 The repo does not back up the disks of `frigate`, `netbird` and `ragnarok`. They hold the
@@ -395,7 +397,10 @@ new VMs to create. Do not apply that plan.
    If the run warns that `data/config.json` overrides settings, see
    [Troubleshooting](usage.md#troubleshooting).
 
-9. Run `make backup` and redo the hand steps below.
+9. If the identity VM exists, run `make vm HOST=identity`, then restore Authentik's
+   database from the newest `authentik-*.dump.age`. The steps are in
+   [Authentik backups](services.md#authentik-backups).
+10. Run `make backup` and redo the hand steps below.
 
 ## Not managed here
 

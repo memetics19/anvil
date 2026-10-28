@@ -878,6 +878,43 @@ First login, right after the first run:
 Add a Pulse monitor for Authentik's health endpoint, `/-/health/ready/`, by hand. The role
 does not create one.
 
+#### Authentik backups
+
+Authentik's Postgres holds the user directory and the whole configuration.
+`authentik-backup.timer` runs `/usr/local/sbin/authentik-backup` every night at about
+03:45. The job:
+
+1. runs `pg_dump` in the `authentik-db` container, in Postgres' custom format
+2. pipes the dump straight into `age`, encrypted to Keychain `backup-age-recipient`, the
+   same key as the other backups. The plaintext dump is never written to a file, and the
+   VM holds nothing that can decrypt it
+3. uploads it to the Ceph bucket `authentik-backups` as
+   `authentik-YYYYMMDD-HHMMSS.dump.age` (UTC) and checks the size
+4. keeps the newest 14 of its objects and touches nothing else in the bucket
+
+The job runs as root, because it uses `docker exec`. The encrypted file waits in the unit's
+private `/var/tmp`, which systemd removes when the job ends. A failed dump, a stopped
+database or a wrong upload size fails the job before anything is pruned.
+
+The bucket belongs to the S3 user `authentik-backup`, made by `make ceph`. That user may
+own no other bucket. Its keys are in `kv/homelab/identity/authentik-backup`. The role
+stops if they are missing, so run `make ceph` before the first run. `make backup` copies
+the newest object to the Mac.
+
+The `data` volume (uploaded icons and brand images) is not backed up. The secrets are in
+Vault, and Vault has its own backup. A restore needs the same `secret_key`.
+
+To restore into a fresh install (the role has run once, so the database exists):
+
+```sh
+age -d -i <(security find-generic-password -s homelab -a backup-age-identity -w) \
+    ~/homelab-backups/authentik-<YYYYMMDD-HHMMSS>.dump.age |
+  ssh ubuntu@<identity-address> 'sudo docker stop authentik-server authentik-worker &&
+    sudo docker exec -i authentik-db pg_restore -U authentik -d authentik --clean --if-exists --no-owner &&
+    sudo docker start authentik-server authentik-worker'
+make vm HOST=identity ARGS="--tags authentik"   # checks /-/health/ready/
+```
+
 ## Secrets enclave
 
 Vault and Vaultwarden live on their own network: the SDN vnet `secrets`, in the simple
@@ -1269,7 +1306,8 @@ pool size 1. It also adds:
 
 - a RADOS Gateway on port 7480 of the host's address
 - the S3 user `terraform` and the bucket `tfstate`, for Terraform state
-- the S3 users `filestash` (read-only) and `vaultwarden-backup`, whose keys go into Vault
+- the S3 users `filestash` (read-only), `vaultwarden-backup` and `authentik-backup`, whose
+  keys go into Vault
 
 The OSD disk is the `/dev/disk/by-id/` name in `site.pve.ceph_osd_disk_id`, else in
 Keychain `ceph-osd-disk-id`. `-e ceph_osd_device=/dev/disk/by-id/...` overrides both.

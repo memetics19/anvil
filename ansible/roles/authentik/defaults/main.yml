@@ -30,3 +30,25 @@ authentik_vault_mount: kv
 authentik_vault_path: "homelab/{{ inventory_hostname }}/authentik"
 authentik_secret_keys: [secret_key, postgres_password, bootstrap_password, bootstrap_token]
 authentik_repo_scripts: "{{ playbook_dir }}/../../scripts"
+
+# --- backups ---------------------------------------------------------------------------------
+# A systemd timer runs authentik-backup nightly: pg_dump of Authentik's database (users,
+# groups, applications, tokens, the whole configuration) streamed into age, encrypted to the
+# operator's backup recipient, uploaded to the Ceph S3 bucket below, keeping the newest
+# authentik_backup_keep of the objects it wrote. `make backup` copies the newest to
+# ~/homelab-backups. The data volume (uploaded icons) is not backed up.
+authentik_backup_bucket: authentik-backups
+authentik_backup_keep: 14
+authentik_backup_calendar: "*-*-* 03:45:00"
+authentik_backup_etc: /etc/authentik-backup
+authentik_backup_packages: [age, rclone]
+authentik_backup_container: authentik-db
+# The RGW user's keys (made by `make ceph`, ceph_single tasks/authentik.yml).
+authentik_backup_vault_path: homelab/identity/authentik-backup
+authentik_backup_endpoint: "http://{{ site.pve.ip }}:7480"
+# The public key the tfstate and Vaultwarden backups use (Keychain backup-age-recipient on
+# the controller, scripts/backup-key-init.sh): only the operator's identity can read a
+# backup, and the VM holds nothing that can decrypt one.
+authentik_backup_age_recipient: >-
+  {{ lookup('ansible.builtin.pipe',
+            'security find-generic-password -s homelab -a backup-age-recipient -w 2>/dev/null || true') }}

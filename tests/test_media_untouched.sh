@@ -36,6 +36,8 @@ exceptions=(
   'ansible/roles/iptv/templates/Dockerfile.j2|rm -rf /var/lib/apt/lists/*'
   # the Vaultwarden backup job's mktemp work directory (apps VM), removed on exit
   'ansible/roles/vaultwarden/templates/vaultwarden-backup.sh.j2|rm -rf "$work"'
+  # the Authentik backup job's mktemp work directory (identity VM), removed on exit
+  'ansible/roles/authentik/templates/authentik-backup.sh.j2|rm -rf "$work"'
   # provision-iso.sh: its mktemp answer directory on the Mac and its mktemp build directory
   # on the build host, removed on exit
   'scripts/provision-iso.sh|rm -rf "$tmp"'

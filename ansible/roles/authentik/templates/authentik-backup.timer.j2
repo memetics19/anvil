@@ -1,0 +1,12 @@
+# Managed by Ansible (role authentik).
+[Unit]
+Description=Nightly Authentik database backup
+
+[Timer]
+OnCalendar={{ authentik_backup_calendar }}
+RandomizedDelaySec=20m
+# A run missed while the VM was off happens at the next boot.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
