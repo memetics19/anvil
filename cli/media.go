@@ -34,7 +34,8 @@ the download to qBittorrent. The addresses and API keys come from Vault
   get <title> [--tv]          add it and start the download. Asks which one when several
                               match.
       --pick N                take match N of the list without asking
-      --quality NAME          quality profile (default HD-1080p, else the first one)
+      --quality NAME          quality profile (default 1080p+, the one role arr_stack keeps:
+                              1080p and 4K, never 720p. Else HD-1080p, else the first)
       --yes                   do not ask before adding when the disk is nearly full
   status [--watch]            downloads in progress, what is still searched for, and the
                               free space. --watch refreshes every 10 seconds.
@@ -441,21 +442,25 @@ func (c arr) profile(want string) (int, string, error) {
 	if len(ps) == 0 {
 		return 0, "", fmt.Errorf("%s has no quality profile", c.name())
 	}
-	name := want
-	if name == "" {
-		name = "HD-1080p"
+	names := []string{want}
+	if want == "" {
+		// 1080p+ is the policy profile (role arr_stack, tag arr_quality). HD-1080p is the
+		// apps' own default, for a setup where the role has not run yet.
+		names = []string{"1080p+", "HD-1080p"}
 	}
-	for _, p := range ps {
-		if strings.EqualFold(p.Name, name) {
-			return p.ID, p.Name, nil
+	for _, name := range names {
+		for _, p := range ps {
+			if strings.EqualFold(p.Name, name) {
+				return p.ID, p.Name, nil
+			}
 		}
 	}
 	if want != "" {
-		names := make([]string, len(ps))
+		have := make([]string, len(ps))
 		for i, p := range ps {
-			names[i] = p.Name
+			have[i] = p.Name
 		}
-		return 0, "", fmt.Errorf("%s has no quality profile %q (it has: %s)", c.name(), want, strings.Join(names, ", "))
+		return 0, "", fmt.Errorf("%s has no quality profile %q (it has: %s)", c.name(), want, strings.Join(have, ", "))
 	}
 	return ps[0].ID, ps[0].Name, nil
 }

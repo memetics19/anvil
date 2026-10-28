@@ -48,6 +48,8 @@ jobs:
         run: tests/test_plan_guard.sh
       - name: Rotate test
         run: tests/test_rotate.sh
+      - name: Sonarr and Radarr quality policy
+        run: tests/test_arr_quality.sh
       - name: Pi-hole local records test
         run: tests/test_pihole_records.sh
       - name: Service gateway test

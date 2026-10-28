@@ -507,7 +507,10 @@ anvil media status --watch               # the free space, refreshed every 10 se
 
 `get` details:
 
-- It uses the quality profile `HD-1080p` unless `--quality` names another.
+- It uses the quality profile `1080p+` unless `--quality` names another. `1080p+` takes
+  1080p and 4K, never 720p or SD, and no remuxes or disc images. A 1080p release is final
+  and is not replaced by a 4K one. The `arr_stack` role keeps it (tag `arr_quality`, see
+  [services.md](services.md)). Without it, `HD-1080p`.
 - It uses the first root folder.
 - A movie or series that is already added but has no file gets a new search, not a second
   add.
