@@ -1,0 +1,124 @@
+# Authentik on the identity VM: four secrets from Vault (generated once by this role), two
+# env files (mode 600, one for Authentik, one for Postgres), and the compose project.
+# Authentik migrates its own database at start. The first start also creates the akadmin
+# account with the bootstrap password and API token from Vault.
+
+# --- secrets -------------------------------------------------------------------------------
+- name: Key digests stored in Vault
+  ansible.builtin.command:
+    argv: ["{{ authentik_repo_scripts }}/vault-kv-digests.sh", "{{ authentik_vault_path }}", "{{ authentik_vault_mount }}"]
+  delegate_to: localhost
+  become: false
+  register: authentik_vault_digests
+  changed_when: false
+  check_mode: false
+
+- name: Keys stored in Vault
+  ansible.builtin.set_fact:
+    authentik_vault_keys: "{{ authentik_vault_digests.stdout_lines | map('split', ' ') | map('first') | list }}"
+
+# Each value goes from openssl into a shell variable and on to Vault as JSON on stdin (printf
+# is a builtin): never on a command line, displayed or logged. A path with keys gets patch,
+# which keeps the others. An empty path gets put -cas=0, which refuses to replace anything.
+# Only missing keys are generated: an existing secret is never replaced.
+- name: Generate the missing secrets into Vault
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail; s=;
+      for k in {{ authentik_missing | join(' ') }}; do
+      s="$s${s:+,}\"$k\":\"$(openssl rand -hex 32)\""; done;
+      printf '{{ "{%s}" }}' "$s" |
+      vault kv {{ 'patch' if authentik_vault_keys else 'put -cas=0' }} -mount={{ authentik_vault_mount }}
+      {{ authentik_vault_path }} - >/dev/null
+    executable: /bin/bash
+  vars:
+    authentik_missing: "{{ authentik_secret_keys | difference(authentik_vault_keys) }}"
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  when: authentik_missing | length > 0
+
+# In check mode secrets that would be generated above do not exist yet.
+- name: Authentik secrets are readable
+  ansible.builtin.set_fact:
+    authentik_have_secrets: "{{ not (ansible_check_mode and (authentik_secret_keys | difference(authentik_vault_keys))) }}"
+
+- name: Read the Authentik secrets from Vault
+  ansible.builtin.set_fact:
+    authentik_secrets: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', authentik_vault_path,
+                engine_mount_point=authentik_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
+  no_log: true
+  when: authentik_have_secrets | bool
+
+# Plain tokens only: they are written unquoted into env files.
+- name: The secrets are present
+  ansible.builtin.assert:
+    that:
+      - >-
+        authentik_secrets | dict2items | selectattr('key', 'in', authentik_secret_keys) | map(attribute='value')
+        | map('string') | select('match', '^[A-Za-z0-9]{32,}$') | list | length == authentik_secret_keys | length
+    fail_msg: "kv/{{ authentik_vault_path }}: one of {{ authentik_secret_keys }} is missing, shorter than 32 characters or not alphanumeric"
+    quiet: true
+  no_log: true
+  when: authentik_have_secrets | bool
+
+- name: The bootstrap email is a plain address
+  ansible.builtin.assert:
+    that: authentik_bootstrap_email is match('^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
+    fail_msg: "authentik_bootstrap_email (site.email by default) is not an email address"
+    quiet: true
+
+# --- files ---------------------------------------------------------------------------------
+- name: Project directory
+  ansible.builtin.file:
+    path: "{{ authentik_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The compose config hash includes the env files, so a changed secret recreates its container.
+- name: Env files (secrets from Vault)
+  ansible.builtin.copy:
+    content: "{{ lookup('ansible.builtin.template', item + '.j2') }}"
+    dest: "{{ authentik_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: [authentik.env, db.env]
+  no_log: true
+  diff: false
+  when: authentik_have_secrets | bool
+
+- name: Are the env files there
+  ansible.builtin.stat:
+    path: "{{ authentik_dir }}/authentik.env"
+  register: authentik_env_stat
+
+# --- compose -------------------------------------------------------------------------------
+- name: Authentik compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ authentik_dir }}"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+    # Holds the VM's and the gateway's addresses: keep them out of --diff output.
+    compose_project_diff: false
+  # In check mode on a new host the env files the compose file names do not exist yet.
+  when: authentik_env_stat.stat.exists or not ansible_check_mode
+
+# Ready means the server answers and reaches Postgres. The first start migrates the database
+# and applies the default blueprints, which takes a few minutes.
+- name: Authentik answers
+  ansible.builtin.uri:
+    url: "http://{{ authentik_bind_ip }}:{{ authentik_port }}/-/health/ready/"
+    status_code: 200
+  register: authentik_health
+  retries: 60
+  delay: 5
+  until: authentik_health.status == 200
+  when: not ansible_check_mode

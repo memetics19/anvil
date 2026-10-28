@@ -177,6 +177,8 @@ site:
     - {name: home, container: homepage, port: 3000, scheme: http}
     - {name: wiki, host: hosts.frigate.ip, port: 3000, scheme: http, websocket: true}
     - {name: pass, host: hosts.vaultwarden.ip, port: 8080, scheme: http, websocket: true}
+    # Authentik (role authentik on the identity VM). Its admin pages use a WebSocket.
+    - {name: auth, host: hosts.identity.ip, port: 9000, scheme: http, websocket: true}
     - {name: switch, host: network.switch_ip, port: 80, scheme: http, rewrite_location: true}
 
   homepage:
