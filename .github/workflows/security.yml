@@ -205,15 +205,22 @@ jobs:
         run: |
           short=${IMAGE%%@*}
           echo "short=$short" >>"$GITHUB_OUTPUT"
-          echo "category=trivy-image-$(echo "$short" | tr '/:' '--')" >>"$GITHUB_OUTPUT"
+          # One category per image, without its tag: a bump replaces the old results, so
+          # the CVEs it fixed close. With the tag in the name, every bump left the old
+          # version's alerts open forever and added the new ones on top.
+          echo "category=trivy-image-$(echo "${short%:*}" | tr '/' '-')" >>"$GITHUB_OUTPUT"
       - name: Scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: ${{ matrix.image }}
           scanners: vuln
-          severity: HIGH,CRITICAL
+          # Every CVE that has a patch, of any severity: those are the ones a bump can fix.
+          # The action applies severity and ignore-unfixed to SARIF only with
+          # limit-severities-for-sarif, so without it code scanning got every CVE.
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           ignore-unfixed: true
+          limit-severities-for-sarif: true
           skip-files: ${{ startsWith(matrix.image, 'caddy:') && 'usr/bin/caddy' || '' }}
           format: sarif
           output: trivy-image.sarif
@@ -228,7 +235,7 @@ jobs:
           SHORT: ${{ steps.name.outputs.short }}
         run: |
           {
-            echo "| image | fixable HIGH and CRITICAL |"
+            echo "| image | fixable, by severity |"
             echo "|---|---|"
             jq -r --arg img "$SHORT" '
               [.runs[].results[]? | (.message.text | capture("Severity: (?<s>[A-Z]+)").s // "UNKNOWN")]
