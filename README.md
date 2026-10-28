@@ -230,6 +230,7 @@ The docs site is <https://memetics19.github.io/anvil/>. `make docs` builds it lo
 | [cli.md](docs/cli.md) | Every `anvil` command |
 | [provisioning.md](docs/provisioning.md) | Installing Proxmox VE on a new server with the automated installer ISO, Redfish or IPMI |
 | [hardware.md](docs/hardware.md) | The two servers and the switch: models, disk layout, roles and limits |
+| [packer.md](docs/packer.md) | The plan for Packer VM images: design, checks, phases and risks |
 | [services.md](docs/services.md) | What each host and role does |
 | [secrets.md](docs/secrets.md) | Every Vault path and key |
 | [cisco-switch.md](docs/cisco-switch.md) | The Cisco switch: what `make switch` manages and what is set by hand |
@@ -313,6 +314,8 @@ Planned:
   Linux secret service, or the macOS Keychain). The scripts drop macOS-only commands
   (`security`, `networksetup`, `pbcopy`, BSD `sed` and `stat`).
 - [ ] The rebuild runbook, tested on a second server
+- [ ] Packer images: VM templates built from code, scanned and boot-tested, so new VMs
+  start ready. Plan: [docs/packer.md](docs/packer.md)
 
 ## Known issues
 

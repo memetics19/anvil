@@ -25,6 +25,7 @@ nav:
   - CLI: cli.md
   - Provisioning: provisioning.md
   - Hardware: hardware.md
+  - Packer images (roadmap): packer.md
   - Services: services.md
   - Secrets: secrets.md
   - Cisco switch: cisco-switch.md
