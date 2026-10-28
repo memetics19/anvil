@@ -6,13 +6,15 @@
 [![go](https://img.shields.io/github/go-mod/go-version/memetics19/anvil?filename=cli%2Fgo.mod)](https://github.com/memetics19/anvil/blob/main/cli/go.mod)
 [![license](https://img.shields.io/github/license/memetics19/anvil)](LICENSE)
 
-Terraform, Ansible and a Go CLI for a single-node Proxmox homelab. Every host is built
-from this repo. A broken host is rebuilt from it, not fixed by hand.
+Terraform, Ansible and a Go CLI for a Proxmox homelab. Every host is built from this repo.
+A broken host is rebuilt from it, not fixed by hand.
 
 ![anvil installed with the one-line installer, then anvil version, anvil --help, anvil media --help and anvil services --help](docs/assets/anvil.gif)
 
 ## Contents
 
+- [What anvil is](#what-anvil-is)
+- [Why the name](#why-the-name)
 - [What it sets up](#what-it-sets-up)
 - [Install](#install)
 - [Quick start](#quick-start)
@@ -25,6 +27,30 @@ from this repo. A broken host is rebuilt from it, not fixed by hand.
 - [Known issues](#known-issues)
 - [Contributing](#contributing)
 - [License](#license)
+
+## What anvil is
+
+anvil builds and runs a homelab from code. One repository holds the whole lab:
+
+- **Terraform** creates the virtual machines on Proxmox VE.
+- **Ansible** configures the hosts and every service on them.
+- **The `anvil` CLI** wraps both. It checks first, shows what would change, asks, and then
+  applies. It also installs Proxmox on a new server from bare metal, rotates API keys and
+  checks every night that the lab still matches the code.
+- **Vault** holds the secrets and the site values: addresses, names, logins. The repository
+  is public and holds none of them.
+
+A new server goes from bare metal to a running Proxmox host with anvil commands. A host
+that breaks is rebuilt from the repository, not repaired by hand. It runs a real lab, two
+Dell servers and a Cisco switch, and anyone can reuse it with their own site values.
+
+## Why the name
+
+A blacksmith shapes metal on an anvil. The anvil itself does not change: the same block
+shapes piece after piece, and a piece that cracks goes back on it and is shaped again.
+
+This repository is that block for the lab. Hosts and services are shaped on it. When one
+breaks, it is rebuilt from the same code, the same way every time.
 
 ## What it sets up
 
