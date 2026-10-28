@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.1](https://github.com/memetics19/anvil/compare/v0.13.0...v0.13.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* **terraform:** refuse a two-NIC VM whose NICs share one MAC ([#118](https://github.com/memetics19/anvil/issues/118)) ([da489da](https://github.com/memetics19/anvil/commit/da489da2085b04c76d0885d929d3c2b323d093a3))
+
 ## [0.13.0](https://github.com/memetics19/anvil/compare/v0.12.0...v0.13.0) (2026-10-28)
 
 
