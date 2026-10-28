@@ -22,6 +22,10 @@ site:
   # group_vars/proxmox.yml tagged) and protected (no traffic to another protected port).
   # Ports not listed are never touched. keep_ports: ports the plan must never name and that
   # must not be protected, such as the router uplink and the access point.
+  # The Proxmox cluster (make cluster, role pve_cluster): the main host creates it, the
+  # machines in members (entries of provision.machines) join. votes: the main host's 2
+  # votes keep it in charge alone when a member is down.
+  cluster: {name: lab, votes: {pve: 2}, members: [pve2]}
   network:
     switch_ip: 198.51.100.24
     switch:

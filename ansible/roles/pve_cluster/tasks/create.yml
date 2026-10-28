@@ -1,0 +1,72 @@
+# On the main host: create the cluster once, then keep its host-only storage to itself.
+# Creating a cluster restarts pve-cluster and starts corosync. Guests keep running.
+- name: Create | the node name is the inventory name
+  ansible.builtin.command:
+    argv: [hostname, -s]
+  register: pve_cluster__hostname
+  changed_when: false
+  check_mode: false
+  failed_when: pve_cluster__hostname.stdout != inventory_hostname
+
+- name: Create | is it in a cluster
+  ansible.builtin.stat:
+    path: /etc/pve/corosync.conf
+  register: pve_cluster__conf
+
+- name: Create | the cluster name in use
+  ansible.builtin.command:
+    argv: [awk, '/cluster_name:/ { print $2 }', /etc/pve/corosync.conf]
+  register: pve_cluster__have_name
+  changed_when: false
+  check_mode: false
+  when: pve_cluster__conf.stat.exists
+
+- name: Create | an existing cluster has the declared name
+  ansible.builtin.assert:
+    that: pve_cluster__have_name.stdout == pve_cluster_name
+    fail_msg: >-
+      {{ inventory_hostname }} is in cluster {{ pve_cluster__have_name.stdout }}, the site dict says
+      {{ pve_cluster_name }}. anvil never renames or leaves a cluster: fix site.cluster.name.
+    quiet: true
+  when: pve_cluster__conf.stat.exists
+
+- name: Create | would create the cluster
+  ansible.builtin.debug:
+    msg: >-
+      would run: pvecm create {{ pve_cluster_name }} --link0 {{ pve_cluster_main_address }}
+      --votes {{ pve_cluster_votes[inventory_hostname] | default(1) }}
+  changed_when: true
+  when: ansible_check_mode and not pve_cluster__conf.stat.exists
+
+- name: Create | the cluster
+  ansible.builtin.command:
+    argv:
+      - pvecm
+      - create
+      - "{{ pve_cluster_name }}"
+      - --link0
+      - "{{ pve_cluster_main_address }}"
+      - --votes
+      - "{{ pve_cluster_votes[inventory_hostname] | default(1) | string }}"
+  changed_when: true
+  when: not ansible_check_mode and not pve_cluster__conf.stat.exists
+
+- name: Create | storage of this host only
+  ansible.builtin.command:
+    argv: [pvesh, get, "/storage/{{ item }}", --output-format, json]
+  loop: "{{ pve_cluster_main_only_storage }}"
+  register: pve_cluster__storage
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Create | limit it to this host
+  ansible.builtin.command:
+    argv: [pvesm, set, "{{ item.item }}", --nodes, "{{ inventory_hostname }}"]
+  loop: "{{ pve_cluster__storage.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.rc == 0
+    - (item.stdout | from_json).nodes | default('') != inventory_hostname
+  changed_when: true

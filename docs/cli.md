@@ -387,7 +387,7 @@ guards in the scripts still apply, and anvil adds no force flag.
 | Target | Check | Apply |
 |---|---|---|
 | `bootstrap-ssh`, `host`, `ceph`, `vault`, `vms` | `make <target> ARGS="--check --diff"` | `make <target>` |
-| `host-network`, `enclave`, `vlans` | `make <target> ARGS="--check --diff"` | `make <target>`, name typed |
+| `host-network`, `enclave`, `vlans`, `cluster` | `make <target> ARGS="--check --diff"` | `make <target>`, name typed |
 | `switch` | `make switch` | `make switch ARGS="-e network_switch_apply=true"`, name typed |
 | `tf` (`tf-plan`, `tf-apply`) | `make tf-plan` | `make tf-apply`, name typed |
 | a VM, or `vm --host <vm>` | `make vm HOST=<vm> ARGS="--check --diff"` | `make vm HOST=<vm>` |
