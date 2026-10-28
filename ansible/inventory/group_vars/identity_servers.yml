@@ -1,0 +1,6 @@
+ansible_user: ubuntu
+ansible_become: true
+ansible_become_password: "{{ lookup('env', 'ANSIBLE_BECOME_PASSWORD') }}"
+# Two NICs, both addressed by cloud-init (terraform/vm_identity.tf). guest_base leaves the
+# netplan alone, as on the apps VM.
+guest_base_manage_netplan: false

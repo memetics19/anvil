@@ -97,7 +97,7 @@ func TestServicesComeFromThePlaybook(t *testing.T) {
 			t.Errorf("target alias %s -> %s: %v", alias, name, err)
 		}
 	}
-	if !reflect.DeepEqual(c.vms, []string{"apps", "frigate", "netbird", "ragnarok", "vault", "vaultwarden"}) {
+	if !reflect.DeepEqual(c.vms, []string{"apps", "frigate", "identity", "netbird", "ragnarok", "vault", "vaultwarden"}) {
 		t.Errorf("VMs = %v", c.vms)
 	}
 }
