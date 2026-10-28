@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.10.0](https://github.com/memetics19/anvil/compare/v0.9.0...v0.10.0) (2026-10-28)
+
+
+### Features
+
+* anvil apply cluster joins a provisioned server to the Proxmox cluster ([#85](https://github.com/memetics19/anvil/issues/85)) ([badb5ff](https://github.com/memetics19/anvil/commit/badb5ff37b0d2fcf57ceca7480f740c71c6b701d))
+* **homepage,caddy:** pve2 on the gateway and the dashboard ([#86](https://github.com/memetics19/anvil/issues/86)) ([acd846e](https://github.com/memetics19/anvil/commit/acd846e5f9e035077c540520a3a6586011f66da6))
+
+
+### Bug Fixes
+
+* **docs:** the anvil picture on the docs site ([#90](https://github.com/memetics19/anvil/issues/90)) ([1ae2a28](https://github.com/memetics19/anvil/commit/1ae2a28527819f6153b94324307028b87b530a3a))
+* **security:** bump eclipse-mosquitto to 2.0.22 (101 fixable CVEs) ([#84](https://github.com/memetics19/anvil/issues/84)) ([635b1e5](https://github.com/memetics19/anvil/commit/635b1e5243f05442e76e39e21f1e5bdf3b4a67c0))
+* **security:** bump frigate-notify to v0.5.4 (19 fixable CVEs) ([#89](https://github.com/memetics19/anvil/issues/89)) ([bb62ca6](https://github.com/memetics19/anvil/commit/bb62ca6e675b2075cfe42e66920e3068b657fdd4))
+* **security:** bump patched Caddy modules x/net, go-jose and chi (4 fixable CVEs) ([#83](https://github.com/memetics19/anvil/issues/83)) ([2fa0ffa](https://github.com/memetics19/anvil/commit/2fa0ffa2ae4c6612b56f015e41674a1e63dd268d))
+
 ## [0.9.0](https://github.com/memetics19/anvil/compare/v0.8.1...v0.9.0) (2026-10-28)
 
 
