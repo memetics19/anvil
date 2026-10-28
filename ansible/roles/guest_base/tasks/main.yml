@@ -16,11 +16,15 @@
     state: present
     update_cache: true
     cache_valid_time: 3600
+  register: guest_base_agent_package
 
+# In check mode on a new VM the package is not really installed, so its unit does not
+# exist yet: skip this step then (a real run installs it first).
 - name: Enable qemu-guest-agent at boot
   ansible.builtin.systemd_service:
     name: qemu-guest-agent
     enabled: true
+  when: not (ansible_check_mode and guest_base_agent_package is changed)
 
 - name: Weekly fstrim (frees thin-pool space; the VM disks have discard on)
   ansible.builtin.systemd_service:
