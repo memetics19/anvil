@@ -1,7 +1,12 @@
 name: ci
 on:
   push:
+  # A pull request that changes only the README runs no CI. Its merge still runs CI on
+  # main, so the weekly release (release-please.yml) always finds main checked.
   pull_request:
+    paths-ignore:
+      - README.md
+      - docs/assets/anvil-*.svg
 
 permissions:
   contents: read
