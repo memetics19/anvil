@@ -16,6 +16,9 @@ CI runs the same, plus Trivy (`.github/workflows/security.yml`). Some tests need
 tools (`tests/test_apt_repo.sh` needs `dpkg-deb` and `apt-ftparchive`): CI runs them on
 Ubuntu.
 
+The CLI's layout is in [docs/cli.md](docs/cli.md#code-layout). A new command goes in its
+own package under `cli/internal/` and is imported in `cli/cmd/anvil/main.go`.
+
 Nothing site specific goes in a commit: no IP or MAC addresses, no internal names, no
 secrets. They live in Vault and are read at run time ([docs/secrets.md](docs/secrets.md)).
 `make secrets-scan` checks for the obvious ones.
