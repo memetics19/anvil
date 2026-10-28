@@ -3,7 +3,7 @@ name: security
 # Trivy, on pull requests, on main and weekly (new advisories appear after a merge):
 #   repo     the repository: Go and Python dependencies, Terraform, committed secrets
 #   binary   the anvil binary as a release builds it (Go's standard library is inside it)
-#   caddy    the patched Caddy role caddy builds (Go, golang.org/x/net), as every host runs it
+#   caddy    the patched Caddy role caddy builds (Go, replaced modules), as every host runs it
 #   images   every container image the roles pin (tag@sha256), as the lab runs them
 # repo, binary and caddy fail on a fixable HIGH or CRITICAL finding: anvil builds them. images
 # only reports, and only fixable HIGH or CRITICAL findings, so the Security tab lists what a
@@ -125,6 +125,8 @@ jobs:
             echo "cloudflare=$(get caddy_cloudflare_version)"
             echo "xcaddy=$(get caddy_xcaddy_version)"
             echo "xnet=$(get caddy_x_net_version)"
+            echo "gojose=$(get caddy_go_jose_version)"
+            echo "chi=$(get caddy_chi_version)"
             echo "go=$(get caddy_go_version | sed 's/^go//')"
           } | tee -a "$GITHUB_OUTPUT"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
@@ -138,7 +140,9 @@ jobs:
           go install "github.com/caddyserver/xcaddy/cmd/xcaddy@${{ steps.v.outputs.xcaddy }}"
           "$(go env GOPATH)/bin/xcaddy" build "v${{ steps.v.outputs.caddy }}" --output build/caddy \
             --with "github.com/caddy-dns/cloudflare@${{ steps.v.outputs.cloudflare }}" \
-            --replace "golang.org/x/net=golang.org/x/net@${{ steps.v.outputs.xnet }}"
+            --replace "golang.org/x/net=golang.org/x/net@${{ steps.v.outputs.xnet }}" \
+            --replace "github.com/go-jose/go-jose/v4=github.com/go-jose/go-jose/v4@${{ steps.v.outputs.gojose }}" \
+            --replace "github.com/go-chi/chi/v5=github.com/go-chi/chi/v5@${{ steps.v.outputs.chi }}"
       - name: Report to the Security tab
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
