@@ -40,6 +40,7 @@ homepage_groups: [Infrastructure, Media, Home, Monitoring, Security, Other]
 # any of them with the same optional fields (`widget: none` turns a widget off).
 homepage_catalog:
   pve: {title: Proxmox, group: Infrastructure, icon: proxmox.png, description: Virtualization host, widget: proxmox}
+  pve2: {title: Proxmox pve2, group: Infrastructure, icon: proxmox.png, description: Second server, widget: proxmox_pve2}
   ceph: {title: Ceph, group: Infrastructure, icon: ceph.png, description: Storage cluster, widget: ceph}
   vault: {title: Vault, group: Infrastructure, icon: hashicorp-vault.png, description: Secrets}
   dns: {title: Pi-hole, group: Infrastructure, icon: pi-hole.png, description: DNS and ad blocking, widget: pihole}
@@ -74,10 +75,19 @@ homepage_frigate_user: homepage
 # end of a run (every widget must answer without an error): the key of the widget's API
 # mapping in Homepage (its proxy refuses other endpoints).
 homepage_widgets:
+  # One tile per node: `node` keeps each tile to its own server once they form a cluster
+  # (without it the widget adds up the whole cluster). The token is cluster-wide.
   proxmox:
     type: proxmox
     username: "{{ homepage_pve_token_id }}"
     password: ${PVE_TOKEN}
+    node: pve
+    check: cluster/resources
+  proxmox_pve2:
+    type: proxmox
+    username: "{{ homepage_pve_token_id }}"
+    password: ${PVE_TOKEN}
+    node: pve2
     check: cluster/resources
   # No Homepage widget for Ceph, and the Ceph dashboard API needs a session login that a
   # custom widget cannot do: the Ceph status comes from the Proxmox API (pveceph), with the
