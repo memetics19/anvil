@@ -25,6 +25,7 @@ type fakeArr struct {
 	posts    map[string][]map[string]any
 	badKey   bool
 	addError int
+	profiles string // JSON array for qualityprofile; empty: Any, HD-1080p, Ultra-HD
 }
 
 func (f *fakeArr) server(t *testing.T) *httptest.Server {
@@ -57,6 +58,10 @@ func (f *fakeArr) server(t *testing.T) *httptest.Server {
 		case strings.HasSuffix(p, "/lookup"):
 			_, _ = io.WriteString(w, f.lookup)
 		case p == "qualityprofile":
+			if f.profiles != "" {
+				_, _ = io.WriteString(w, f.profiles)
+				break
+			}
 			_, _ = io.WriteString(w, `[{"id":1,"name":"Any"},{"id":4,"name":"HD-1080p"},{"id":5,"name":"Ultra-HD"}]`)
 		case p == "rootfolder":
 			root := "/movies"
@@ -143,6 +148,21 @@ func TestMediaGetAsksWhichOneAndAddsWithSearch(t *testing.T) {
 		t.Errorf("output:\n%s", l.out.String())
 	}
 	noKeyIn(t, l)
+}
+
+func TestMediaGetPrefersThePolicyProfile(t *testing.T) {
+	radarr := &fakeArr{lookup: twoMovies, free: 200 << 30,
+		profiles: `[{"id":1,"name":"Any"},{"id":4,"name":"HD-1080p"},{"id":7,"name":"1080p+"}]`}
+	l := mediaLab(t, radarr, &fakeArr{tv: true})
+	if code := l.run("", "media", "get", "dune", "--pick", "1"); code != 0 {
+		t.Fatalf("exit %d: %s", code, l.err.String())
+	}
+	if got := radarr.posts["movie"][0]; got["qualityProfileId"] != float64(7) {
+		t.Errorf("add body = %v, want profile 1080p+ (7)", got)
+	}
+	if !strings.Contains(l.out.String(), "(1080p+") {
+		t.Errorf("output:\n%s", l.out.String())
+	}
 }
 
 func TestMediaGetPickAndQuality(t *testing.T) {

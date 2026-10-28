@@ -33,3 +33,19 @@ arr_stack_api:
   sonarr: {port: 8989, version: v3}
   radarr: {port: 7878, version: v3}
   prowlarr: {port: 9696, version: v1}
+
+# The quality policy of Sonarr and Radarr (tag arr_quality, files/arr-quality.py): one
+# profile that takes every quality of at least arr_stack_quality_min_resolution, except
+# the names holding an exclude word (remuxes and disc images are 30 to 80 GB). Its cutoff
+# is the first quality at exactly that resolution, so a 1080p release is final and is not
+# replaced by a 4K one. `anvil media get` adds with this profile. Other profiles and the
+# series or movies are never changed.
+arr_stack_quality_profile: "1080p+"
+arr_stack_quality_min_resolution: 1080
+arr_stack_quality_exclude: [remux, br-disk, raw-hd]
+# Minimum sizes in MB per minute. 4K web releases in x265 run about 10 to 20 MB/min,
+# under the apps' default minimum of 35, which would reject them as fakes.
+arr_stack_quality_min_sizes:
+  WEBDL-2160p: 10
+  WEBRip-2160p: 10
+arr_stack_quality_apps: [sonarr, radarr]

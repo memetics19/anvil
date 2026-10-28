@@ -1,0 +1,30 @@
+# Sonarr's and Radarr's quality profile and minimum sizes, as declared in the defaults.
+# The script reads each API key from the app's config.xml on the VM: no key reaches argv,
+# the log or the controller. In check mode it runs with --check, which only reads.
+- name: Quality | the policy
+  ansible.builtin.set_fact:
+    arr_stack_quality_policy:
+      profile: "{{ arr_stack_quality_profile }}"
+      min_resolution: "{{ arr_stack_quality_min_resolution }}"
+      exclude: "{{ arr_stack_quality_exclude }}"
+      min_sizes: "{{ arr_stack_quality_min_sizes }}"
+      apps: >-
+        {%- set out = {} -%}
+        {%- for a in arr_stack_quality_apps -%}
+        {%- set _ = out.update({a: {'url': 'http://' ~ arr_stack_api_host ~ ':' ~ arr_stack_api[a].port,
+                                    'config_xml': arr_stack_config_xml_files[a]}}) -%}
+        {%- endfor -%}
+        {{ out }}
+
+- name: Quality | profile and minimum sizes
+  ansible.builtin.script:
+    cmd: >-
+      arr-quality.py {{ '--check' if ansible_check_mode else '' }} {{ arr_stack_quality_policy | to_json | quote }}
+    executable: python3
+  register: arr_stack_quality_run
+  changed_when: "arr_stack_quality_run.stdout_lines | select('search', ': (would|do:) ') | list | length > 0"
+  check_mode: false
+
+- name: Quality | report
+  ansible.builtin.debug:
+    msg: "{{ arr_stack_quality_run.stdout_lines }}"

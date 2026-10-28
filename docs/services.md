@@ -71,6 +71,23 @@ Jackett, FlareSolverr, Radarr and Sonarr. The apps keep their settings and API k
 `./<app>/config`, which is not templated. The media library appears in the template only
 as bind-mount sources.
 
+One part of the apps' settings is code: the quality policy (tag `arr_quality`, defaults
+`arr_stack_quality_*`). Through each app's API it keeps:
+
+| Setting | Value |
+|---|---|
+| Quality profile `1080p+` in Sonarr and Radarr | Every quality of 1080p and higher, never 720p or SD. No remuxes or disc images (30 to 80 GB each) |
+| Its cutoff | The first 1080p quality. A 1080p release is final, it is not replaced by a 4K one |
+| Minimum size of WEB 2160p | 10 MB per minute. 4K x265 web releases run 10 to 20 MB/min, under the apps' default of 35 |
+
+`anvil media get` adds with `1080p+`. The policy never deletes a profile and never changes
+a series or movie. To move one to the policy, pick `1080p+` in its Edit dialog.
+
+```sh
+make vm HOST=ragnarok ARGS="--tags arr_quality --check"   # what would change
+make vm HOST=ragnarok ARGS="--tags arr_quality"
+```
+
 ### Guide server
 
 The `iptv_epg` role runs nginx on port 8899. It serves `/home/ubuntu/iptv-epg/output`,
