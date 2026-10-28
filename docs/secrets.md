@@ -66,6 +66,8 @@ writes them to a file.
 | `kv/homelab/apps/vaultwarden-backup` | `s3_access_key`, `s3_secret_key` | `make ceph` (S3 user `vaultwarden-backup`) | Nightly Vaultwarden backup upload and `make backup`. Owns only the bucket `vaultwarden-backups`. |
 | `kv/homelab/frigate/frigate` | `homepage_password` | `make vm HOST=frigate ARGS="--tags homepage"` (frigate_stack role, `openssl rand`, set through Frigate's API) | Frigate viewer login `homepage` for the Homepage widget |
 | `kv/homelab/pve/apt-cacher-ng` | `admin_password` | `make enclave` (pve_enclave role, `openssl rand`) | Login `admin` for the apt cache's report page and maintenance jobs (AdminAuth) |
+| `kv/homelab/identity/authentik` | `secret_key`, `postgres_password` | `make vm HOST=identity` (authentik role, `openssl rand`) | Authentik's signing key and its Postgres password, in `/opt/authentik/authentik.env` and `db.env` (mode 600) |
+| `kv/homelab/identity/authentik` | `bootstrap_password`, `bootstrap_token` | `make vm HOST=identity` (authentik role, `openssl rand`) | The first password of `akadmin` and an API token for it, read by Authentik on its first start only |
 
 ## Added by you
 

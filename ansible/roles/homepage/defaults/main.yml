@@ -62,6 +62,8 @@ homepage_catalog:
   pulse: {title: Pulse, group: Home, icon: pulse.png, description: Proxmox monitoring}
   grafana: {title: Grafana, group: Monitoring, icon: grafana.png, description: Dashboards}
   pass: {title: Vaultwarden, group: Security, icon: vaultwarden.png, description: Passwords}
+  # Homepage's Authentik widget needs an API token: none, rather than handing it one.
+  auth: {title: Authentik, group: Security, icon: authentik.png, description: Single sign-on, widget: none}
 
 # Read-only Proxmox API token (role pve_host, tag homepage: user with PVEAuditor, privilege-
 # separated token with PVEAuditor). Not secret; the token's secret is HOMEPAGE_VAR_PVE_TOKEN.
