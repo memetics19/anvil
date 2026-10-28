@@ -1,5 +1,26 @@
+# A check run on a new VM: Docker is not installed, and the steps below cannot be previewed
+# (the apt repository is not really added, so its packages are not found). Say so and skip
+# them. A real run installs Docker.
+- name: Is Docker installed
+  ansible.builtin.command:
+    argv: [docker, --version]
+  register: docker_installed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Preview of a first install
+  ansible.builtin.set_fact:
+    docker_preview: "{{ ansible_check_mode and docker_installed.rc != 0 }}"
+
+- name: Docker is not installed yet
+  ansible.builtin.debug:
+    msg: "Docker is not installed yet: a real run installs it ({{ docker_source }})"
+  changed_when: true
+  when: docker_preview | bool
+
 - name: Docker from Docker's repository
-  when: docker_source == 'docker_ce'
+  when: docker_source == 'docker_ce' and not docker_preview | bool
   block:
     - name: Docker apt signing key
       ansible.builtin.get_url:
@@ -33,10 +54,11 @@
     state: present
     update_cache: true
     cache_valid_time: 3600
-  when: docker_source == 'ubuntu'
+  when: docker_source == 'ubuntu' and not docker_preview | bool
 
 - name: Docker running and enabled
   ansible.builtin.systemd_service:
     name: docker
     enabled: true
     state: started
+  when: not docker_preview | bool
