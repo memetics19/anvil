@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.0](https://github.com/memetics19/anvil/compare/v0.12.0...v0.13.0) (2026-10-28)
+
+
+### Features
+
+* **authentik:** nightly encrypted backups of the Authentik database ([#114](https://github.com/memetics19/anvil/issues/114)) ([49eb517](https://github.com/memetics19/anvil/commit/49eb517e7bc1cec0f954488943a8fa844dd6f413))
+* **authentik:** nightly encrypted backups of the Authentik database ([#116](https://github.com/memetics19/anvil/issues/116)) ([c73efff](https://github.com/memetics19/anvil/commit/c73efff21200c5222df40be2f9fa5cdb4f356a4e))
+
 ## [0.12.0](https://github.com/memetics19/anvil/compare/v0.11.0...v0.12.0) (2026-10-28)
 
 
