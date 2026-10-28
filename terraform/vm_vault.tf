@@ -90,6 +90,9 @@ resource "proxmox_virtual_environment_vm" "vault" {
     }
 
     dns {
+      # Set here, not taken from the host's resolv.conf, which changes at boot (NetBird
+      # rewrites it). Any change to this config makes cloud-init treat the VM as new.
+      domain  = local.site.domain
       servers = local.site.guest_dns
     }
 
