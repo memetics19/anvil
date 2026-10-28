@@ -104,6 +104,12 @@ resource "proxmox_virtual_environment_vm" "apps" {
 
   lifecycle {
     prevent_destroy = true
+    # Two NICs with one MAC: cloud-init refuses to configure either ("duplicate mac found"),
+    # and the VM boots with no network at all.
+    precondition {
+      condition     = lower(local.site.hosts.apps.mac) != lower(local.site.hosts.apps.home_mac)
+      error_message = "The VM's two NICs need different MACs (mac and home_mac in the site dict)."
+    }
     # import_from only matters when the disk is created (see vm_vault.tf).
     ignore_changes = [disk[0].import_from]
   }
