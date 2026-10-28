@@ -4,6 +4,25 @@
   ansible.builtin.include_tasks: netplan.yml
   when: guest_base_manage_netplan | bool
 
+# Cloud-init deletes and remakes the SSH host keys when it sees a new instance, which
+# happens whenever the VM's cloud-init config changes. Keep them: a new key makes every
+# SSH client refuse the host.
+- name: Is cloud-init installed
+  ansible.builtin.stat:
+    path: /etc/cloud/cloud.cfg.d
+  register: guest_base_cloud_cfg_d
+
+- name: Cloud-init keeps the SSH host keys
+  ansible.builtin.copy:
+    content: |
+      # Managed by anvil (role guest_base). Keep the SSH host keys on a new instance.
+      ssh_deletekeys: false
+    dest: /etc/cloud/cloud.cfg.d/99-anvil-keep-host-keys.cfg
+    owner: root
+    group: root
+    mode: "0644"
+  when: guest_base_cloud_cfg_d.stat.isdir | default(false)
+
 - name: Timezone
   community.general.timezone:
     name: "{{ guest_base_timezone }}"
