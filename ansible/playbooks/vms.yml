@@ -20,7 +20,7 @@
       tags: [base, enclave]
 
 - name: Guest base
-  hosts: guests:vault_servers:apps_servers:vaultwarden_servers
+  hosts: guests:vault_servers:apps_servers:vaultwarden_servers:identity_servers
   pre_tasks:
     - name: Resolve the site dict once for this run
       ansible.builtin.import_tasks: tasks/site.yml
@@ -30,7 +30,7 @@
       tags: [base]
 
 - name: Docker
-  hosts: guests
+  hosts: guests:identity_servers
   roles:
     - role: docker
       tags: [docker]
@@ -68,14 +68,14 @@
 # After Proxmox made a VM's disk bigger (make grow-disk): grow the partition and filesystem
 # at its end, online. Only with --tags grow_disk.
 - name: Grow disk
-  hosts: guests:apps_servers:vault_servers:vaultwarden_servers
+  hosts: guests:apps_servers:vault_servers:vaultwarden_servers:identity_servers
   roles:
     - role: grow_disk
       tags: [never, grow_disk]
 
 # Host metrics for Pulse, on every VM that reaches it. The enclave has no route to Pulse.
 - name: Pulse agent
-  hosts: guests:apps_servers
+  hosts: guests:apps_servers:identity_servers
   roles:
     - role: pulse_agent
       tags: [pulse_agent]

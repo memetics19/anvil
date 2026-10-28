@@ -812,6 +812,21 @@ the Mac are the second copy.
 
 The real restore is in [setup.md](setup.md#rebuilding-on-a-new-box).
 
+## identity
+
+The single sign-on VM, on the second Proxmox node (`terraform/vm_identity.tf`). It is
+created only when `site.hosts.identity` exists:
+
+| Field | Meaning |
+|---|---|
+| `node` | The cluster node it runs on |
+| `vmid`, `ip`, `home_ip`, `mac`, `home_mac` | As for the apps VM: a lab NIC with the default route, a home NIC without |
+| `datastore` | Its disk. Default `vmdata` |
+| `cores`, `memory_mb`, `disk_gb` | Defaults 2, 3072 and 32 |
+
+It gets the base guest roles (guest base, Docker, Pulse agent). Authentik and the LDAP
+directory come next (planned in the README roadmap).
+
 ## Secrets enclave
 
 Vault and Vaultwarden live on their own network: the SDN vnet `secrets`, in the simple

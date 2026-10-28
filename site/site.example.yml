@@ -43,6 +43,9 @@ site:
     frigate: {ip: 192.0.2.114, vmid: 9001, mac: "02:00:00:00:00:01"}
     netbird: {ip: 192.0.2.115, vmid: 9002, mac: "02:00:00:00:00:02"}
     ragnarok: {ip: 192.0.2.119, vmid: 9003, mac: "02:00:00:00:00:03"}
+    # Single sign-on and LDAP (terraform/vm_identity.tf), on the second node. Optional:
+    # without it no identity VM is planned. datastore, cores and memory_mb have defaults.
+    identity: {node: pve2, vmid: 9005, ip: 192.0.2.125, home_ip: 198.51.100.48, mac: "02:00:00:00:00:05", home_mac: "02:00:00:00:00:06", disk_gb: 32}
     # In the secrets enclave: ip is its enclave address, enclave_mac its enclave NIC. While it
     # keeps its first NIC on the lab network: lab_ip and mac (that NIC); lab_nic_retired: true
     # takes it out (docs/services.md, Vault on the enclave).

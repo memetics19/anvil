@@ -82,6 +82,7 @@ It is a work in progress. See the [Roadmap](#roadmap).
 | `vault` | HashiCorp Vault, in the secrets enclave (no internet) |
 | `vaultwarden` | Vaultwarden, in the secrets enclave (no internet, one mail hole) |
 | `apps` | Pi-hole and Unbound, the Caddy service gateway, Homepage |
+| `identity` | Single sign-on (Authentik) and the LDAP directory, on the second server. Being built |
 
 [docs/services.md](docs/services.md) describes each one.
 
