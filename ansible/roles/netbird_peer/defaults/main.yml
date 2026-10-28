@@ -32,3 +32,7 @@ netbird_peer_home_memory_max: 256M
 netbird_peer_home_management_url: "https://{{ site.netbird_domain | default('') }}:443"
 # Groups its setup key puts it in (role netbird_server: the routers of its networks).
 netbird_peer_home_groups: [routers]
+
+# The end-of-run check waits this many times 10 seconds for the client to reconnect to its
+# management server before it fails the run (tasks/verify.yml).
+netbird_peer_verify_retries: 18

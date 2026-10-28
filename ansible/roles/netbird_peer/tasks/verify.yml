@@ -1,4 +1,23 @@
 # End of the play: a client that was connected at the start still is. Read-only.
+# A change during the run (a firewall or Docker network reload) can break the client's
+# long-lived link to the management server. It reconnects by itself after a short backoff,
+# so this waits for that first (netbird_peer_verify_retries x 10 s) and fails only when the
+# client stays disconnected.
+- name: Wait for the NetBird client to be connected
+  ansible.builtin.command:
+    argv: [netbird, status, --json]
+  register: netbird_peer_verify_wait
+  until: >-
+    netbird_peer_verify_wait.rc == 0
+    and netbird_peer_verify_wait.stdout is match('\s*[{]')
+    and (netbird_peer_verify_wait.stdout | from_json).management.connected | default(false)
+  retries: "{{ netbird_peer_verify_retries }}"
+  delay: 10
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+
 - name: Read the NetBird client status at the end of the run
   ansible.builtin.import_tasks: status.yml
 
