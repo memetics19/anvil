@@ -1,12 +1,14 @@
-package main
+package rotate
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/memetics19/anvil/cli/internal/testlab"
 )
 
 func TestRotateChecksAsksThenRotates(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	if code := l.Run("y\n", "rotate", "radarr", "Sonarr,radarr"); code != 0 {
 		t.Fatalf("exit %d: %s", code, l.Err.String())
 	}
@@ -20,7 +22,7 @@ func TestRotateChecksAsksThenRotates(t *testing.T) {
 }
 
 func TestRotateNoMeansNoChange(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	if code := l.Run("n\n", "rotate", "arr"); code != 1 {
 		t.Fatalf("exit %d", code)
 	}
@@ -30,7 +32,7 @@ func TestRotateNoMeansNoChange(t *testing.T) {
 }
 
 func TestRotateRefusesUnknown(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	for _, args := range [][]string{{"rotate"}, {"rotate", "vault"}, {"rotate", "radarr,jellyfin"}} {
 		if code := l.Run("", args...); code != 2 {
 			t.Errorf("%v: exit %d, want 2", args, code)

@@ -1,6 +1,6 @@
-package main
-
-// anvil pools: the ZFS data pools of a provisioned Proxmox host (make pools).
+// Package pools is anvil pools: the ZFS data pools of a provisioned Proxmox host
+// (make pools).
+package pools
 
 import (
 	"flag"

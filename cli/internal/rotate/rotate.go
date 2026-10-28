@@ -1,6 +1,5 @@
-package main
-
-// anvil rotate: new secrets, as code (make rotate).
+// Package rotate is anvil rotate: new secrets, as code (make rotate).
+package rotate
 
 import (
 	"flag"

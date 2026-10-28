@@ -1,10 +1,9 @@
-package main
-
-// anvil drift: the nightly check. It runs what anvil check runs with no target (host, vms,
-// tf), and pushes the verdict to ntfy when something drifted or a check failed. It runs on
-// the operator machine, which already holds the lab's keys: GitHub holds none, and no lab
-// VM may read Vault. --install schedules it (launchd on macOS, a systemd user timer on
-// Linux).
+// Package drift is anvil drift: the nightly check. It runs what anvil check runs with no
+// target (host, vms, tf), and pushes the verdict to ntfy when something drifted or a
+// check failed. It runs on the operator machine, which already holds the lab's keys:
+// GitHub holds none, and no lab VM may read Vault. --install schedules it (launchd on
+// macOS, a systemd user timer on Linux).
+package drift
 
 import (
 	"bytes"
