@@ -9,10 +9,14 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/memetics19/anvil/cli/internal/app"
+	"github.com/memetics19/anvil/cli/internal/repo"
+	"github.com/memetics19/anvil/cli/internal/run"
 )
 
 func init() {
-	register(command{"increase-disk", "make a VM's disk bigger while it runs (make grow-disk)", increaseDiskUsage, cmdIncreaseDisk, 45})
+	app.Register(app.Command{Name: "increase-disk", Summary: "make a VM's disk bigger while it runs (make grow-disk)", Usage: increaseDiskUsage, Run: cmdIncreaseDisk, Order: 45})
 }
 
 const increaseDiskUsage = `usage: anvil increase-disk <vm> <size> [--mount PATH] [--yes] [--dry-run]
@@ -54,32 +58,32 @@ func parseGB(s string) (int, error) {
 	return int(n), nil
 }
 
-func cmdIncreaseDisk(a *app, args []string) int {
+func cmdIncreaseDisk(a *app.App, args []string) int {
 	var mount string
 	var yes, dry bool
 	fs := flag.NewFlagSet("increase-disk", flag.ContinueOnError)
 	fs.StringVar(&mount, "mount", "", "")
 	fs.BoolVar(&yes, "yes", false, "")
 	fs.BoolVar(&dry, "dry-run", false, "")
-	pos, code, ok := a.flags(fs, increaseDiskUsage, interleaveFlags(args, "--mount", "-mount"))
+	pos, code, ok := a.Flags(fs, increaseDiskUsage, app.InterleaveFlags(args, "--mount", "-mount"))
 	if !ok {
 		return code
 	}
 	switch {
 	case len(pos) == 1 && sizeRE.MatchString(strings.ToLower(pos[0])):
-		fmt.Fprintf(a.stderr, "anvil: increase-disk: which VM? Name it before the size: anvil increase-disk <vm> %s (for example ragnarok)\n", pos[0])
+		fmt.Fprintf(a.Stderr, "anvil: increase-disk: which VM? Name it before the size: anvil increase-disk <vm> %s (for example ragnarok)\n", pos[0])
 		return 2
 	case len(pos) != 2:
-		fmt.Fprint(a.stderr, increaseDiskUsage)
+		fmt.Fprint(a.Stderr, increaseDiskUsage)
 		return 2
 	}
 	vm := pos[0]
 	gb, err := parseGB(pos[1])
 	if err != nil {
-		fmt.Fprintf(a.stderr, "anvil: increase-disk: %v\n", err)
+		fmt.Fprintf(a.Stderr, "anvil: increase-disk: %v\n", err)
 		return 2
 	}
-	r, ok := a.runner(dry)
+	r, ok := repo.Runner(a, dry)
 	if !ok {
 		return 1
 	}
@@ -87,33 +91,12 @@ func cmdIncreaseDisk(a *app, args []string) int {
 	if mount != "" {
 		vars = append(vars, "MOUNT", mount)
 	}
-	if code := r.make(newMake("grow-disk", append(vars, "CHECK", "1")...), nil); code != 0 {
+	if code := r.Make(run.NewMake("grow-disk", append(vars, "CHECK", "1")...), nil); code != 0 {
 		return code
 	}
-	if !dry && !yes && !askYesNo(a.stdin, a.stdout, fmt.Sprintf("Add %d GB to %s's disk now?", gb, vm)) {
-		fmt.Fprintln(a.stdout, "Nothing changed.")
+	if !dry && !yes && !app.AskYesNo(a.Stdin, a.Stdout, fmt.Sprintf("Add %d GB to %s's disk now?", gb, vm)) {
+		fmt.Fprintln(a.Stdout, "Nothing changed.")
 		return 1
 	}
-	return r.make(newMake("grow-disk", vars...), nil)
-}
-
-// interleaveFlags puts flags (and the value of each flag in valued) before the words, so
-// `increase-disk ragnarok 600gb --yes` parses like `increase-disk --yes ragnarok 600gb`.
-func interleaveFlags(args []string, valued ...string) []string {
-	var flags, words []string
-	for i := 0; i < len(args); i++ {
-		s := args[i]
-		if !strings.HasPrefix(s, "-") {
-			words = append(words, s)
-			continue
-		}
-		flags = append(flags, s)
-		for _, v := range valued {
-			if s == v && i+1 < len(args) {
-				flags = append(flags, args[i+1])
-				i++
-			}
-		}
-	}
-	return append(flags, words...)
+	return r.Make(run.NewMake("grow-disk", vars...), nil)
 }

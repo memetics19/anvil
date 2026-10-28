@@ -7,10 +7,14 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/memetics19/anvil/cli/internal/app"
+	"github.com/memetics19/anvil/cli/internal/repo"
+	"github.com/memetics19/anvil/cli/internal/run"
 )
 
 func init() {
-	register(command{"pools", "create the ZFS data pools of a new Proxmox host (make pools)", poolsUsage, cmdPools, 47})
+	app.Register(app.Command{Name: "pools", Summary: "create the ZFS data pools of a new Proxmox host (make pools)", Usage: poolsUsage, Run: cmdPools, Order: 47})
 }
 
 const poolsUsage = `usage: anvil pools <machine> [--wipe POOL[,POOL...]] [--yes] [--dry-run]
@@ -35,28 +39,28 @@ Example: anvil pools pve2
 
 var poolNameRE = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,30}$`)
 
-func cmdPools(a *app, args []string) int {
+func cmdPools(a *app.App, args []string) int {
 	var wipe string
 	var yes, dry bool
 	fs := flag.NewFlagSet("pools", flag.ContinueOnError)
 	fs.StringVar(&wipe, "wipe", "", "")
 	fs.BoolVar(&yes, "yes", false, "")
 	fs.BoolVar(&dry, "dry-run", false, "")
-	pos, code, ok := a.flags(fs, poolsUsage, interleaveFlags(args, "--wipe", "-wipe"))
+	pos, code, ok := a.Flags(fs, poolsUsage, app.InterleaveFlags(args, "--wipe", "-wipe"))
 	if !ok {
 		return code
 	}
 	if len(pos) != 1 || !poolNameRE.MatchString(pos[0]) {
-		fmt.Fprint(a.stderr, poolsUsage)
+		fmt.Fprint(a.Stderr, poolsUsage)
 		return 2
 	}
 	for _, w := range strings.Split(wipe, ",") {
 		if wipe != "" && !poolNameRE.MatchString(w) {
-			fmt.Fprintf(a.stderr, "anvil: pools: --wipe wants pool names, comma separated, got %q\n", wipe)
+			fmt.Fprintf(a.Stderr, "anvil: pools: --wipe wants pool names, comma separated, got %q\n", wipe)
 			return 2
 		}
 	}
-	r, ok := a.runner(dry)
+	r, ok := repo.Runner(a, dry)
 	if !ok {
 		return 1
 	}
@@ -64,16 +68,16 @@ func cmdPools(a *app, args []string) int {
 	if wipe != "" {
 		vars = append(vars, "WIPE", wipe)
 	}
-	if code := r.make(newMake("pools", append(vars, "ARGS", "--check")...), nil); code != 0 {
+	if code := r.Make(run.NewMake("pools", append(vars, "ARGS", "--check")...), nil); code != 0 {
 		return code
 	}
 	q := fmt.Sprintf("Create the missing pools on %s now?", pos[0])
 	if wipe != "" {
 		q = fmt.Sprintf("Wipe the disks of %s and create the missing pools on %s now?", strings.ReplaceAll(wipe, ",", ", "), pos[0])
 	}
-	if !dry && !yes && !askYesNo(a.stdin, a.stdout, q) {
-		fmt.Fprintln(a.stdout, "Nothing changed.")
+	if !dry && !yes && !app.AskYesNo(a.Stdin, a.Stdout, q) {
+		fmt.Fprintln(a.Stdout, "Nothing changed.")
 		return 1
 	}
-	return r.make(newMake("pools", vars...), nil)
+	return r.Make(run.NewMake("pools", vars...), nil)
 }

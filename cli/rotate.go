@@ -5,11 +5,16 @@ package main
 import (
 	"flag"
 	"fmt"
+	"slices"
 	"strings"
+
+	"github.com/memetics19/anvil/cli/internal/app"
+	"github.com/memetics19/anvil/cli/internal/repo"
+	"github.com/memetics19/anvil/cli/internal/run"
 )
 
 func init() {
-	register(command{"rotate", "give an app a new API key, and update what uses it (make rotate)", rotateUsage, cmdRotate, 46})
+	app.Register(app.Command{Name: "rotate", Summary: "give an app a new API key, and update what uses it (make rotate)", Usage: rotateUsage, Run: cmdRotate, Order: 46})
 }
 
 const rotateUsage = `usage: anvil rotate <secret>... [--yes] [--dry-run]
@@ -32,17 +37,17 @@ Example: anvil rotate radarr sonarr
 
 var rotatable = []string{"radarr", "sonarr", "prowlarr", "arr"}
 
-func cmdRotate(a *app, args []string) int {
+func cmdRotate(a *app.App, args []string) int {
 	var yes, dry bool
 	fs := flag.NewFlagSet("rotate", flag.ContinueOnError)
 	fs.BoolVar(&yes, "yes", false, "")
 	fs.BoolVar(&dry, "dry-run", false, "")
-	pos, code, ok := a.flags(fs, rotateUsage, interleaveFlags(args))
+	pos, code, ok := a.Flags(fs, rotateUsage, app.InterleaveFlags(args))
 	if !ok {
 		return code
 	}
 	if len(pos) == 0 {
-		fmt.Fprint(a.stderr, rotateUsage)
+		fmt.Fprint(a.Stderr, rotateUsage)
 		return 2
 	}
 	var secrets []string
@@ -51,26 +56,26 @@ func cmdRotate(a *app, args []string) int {
 			if s == "" {
 				continue
 			}
-			if !contains(rotatable, s) {
-				fmt.Fprintf(a.stderr, "anvil: rotate: no rotation for %q. These can rotate: %s\n", s, strings.Join(rotatable, ", "))
+			if !slices.Contains(rotatable, s) {
+				fmt.Fprintf(a.Stderr, "anvil: rotate: no rotation for %q. These can rotate: %s\n", s, strings.Join(rotatable, ", "))
 				return 2
 			}
-			if !contains(secrets, s) {
+			if !slices.Contains(secrets, s) {
 				secrets = append(secrets, s)
 			}
 		}
 	}
-	r, ok := a.runner(dry)
+	r, ok := repo.Runner(a, dry)
 	if !ok {
 		return 1
 	}
 	list := strings.Join(secrets, ",")
-	if code := r.make(newMake("rotate", "SECRET", list, "CHECK", "1"), nil); code != 0 {
+	if code := r.Make(run.NewMake("rotate", "SECRET", list, "CHECK", "1"), nil); code != 0 {
 		return code
 	}
-	if !dry && !yes && !askYesNo(a.stdin, a.stdout, fmt.Sprintf("Rotate %s now? The old keys stop working.", strings.Join(secrets, ", "))) {
-		fmt.Fprintln(a.stdout, "Nothing changed.")
+	if !dry && !yes && !app.AskYesNo(a.Stdin, a.Stdout, fmt.Sprintf("Rotate %s now? The old keys stop working.", strings.Join(secrets, ", "))) {
+		fmt.Fprintln(a.Stdout, "Nothing changed.")
 		return 1
 	}
-	return r.make(newMake("rotate", "SECRET", list), nil)
+	return r.Make(run.NewMake("rotate", "SECRET", list), nil)
 }

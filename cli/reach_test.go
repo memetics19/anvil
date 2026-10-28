@@ -3,10 +3,13 @@ package main
 import (
 	"net"
 	"os"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/memetics19/anvil/cli/internal/testlab"
 )
 
 // freePort returns a local port with nothing listening on it.
@@ -23,9 +26,9 @@ func freePort(t *testing.T) string {
 
 func TestUnreachableEndpointsStopBeforeMake(t *testing.T) {
 	l := newTestLab(t)
-	fakeTools(l)
-	l.realReach = true
-	l.write("scripts/env.sh", "export PVE_IP=127.0.0.1\n")
+	testlab.FakeTools(l)
+	l.RealReach = true
+	l.Write("scripts/env.sh", "export PVE_IP=127.0.0.1\n")
 	oldPort, oldPause := stateStorePort, reachPause
 	t.Cleanup(func() { stateStorePort, reachPause = oldPort, oldPause })
 	reachPause = 10 * time.Millisecond
@@ -33,12 +36,12 @@ func TestUnreachableEndpointsStopBeforeMake(t *testing.T) {
 	// The state store is closed: no Terraform runs, from check tf or from up's tf-init.
 	stateStorePort = freePort(t)
 	for _, args := range [][]string{{"check", "tf"}, {"up", "--only", "tf-init", "--yes"}} {
-		l.resetCalls()
-		if code := l.run("", args...); code == 0 || l.makeCalls() != nil {
-			t.Fatalf("%v: exit %d, calls %q", args, code, l.makeCalls())
+		l.ResetCalls()
+		if code := l.Run("", args...); code == 0 || l.MakeCalls() != nil {
+			t.Fatalf("%v: exit %d, calls %q", args, code, l.MakeCalls())
 		}
-		if !strings.Contains(l.output(), msgStateStore) || strings.Contains(l.output(), "127.0.0.1") {
-			t.Errorf("%v output:\n%s", args, l.output())
+		if !strings.Contains(l.Output(), msgStateStore) || strings.Contains(l.Output(), "127.0.0.1") {
+			t.Errorf("%v output:\n%s", args, l.Output())
 		}
 	}
 
@@ -49,30 +52,30 @@ func TestUnreachableEndpointsStopBeforeMake(t *testing.T) {
 	}
 	defer ln.Close()
 	_, stateStorePort, _ = net.SplitHostPort(ln.Addr().String())
-	l.resetCalls()
-	l.setCheckOutput("No changes.\n")
-	if code := l.run("", "check", "tf"); code != 0 || len(l.makeCalls()) != 1 {
-		t.Fatalf("open: exit %d, calls %q:\n%s", code, l.makeCalls(), l.output())
+	l.ResetCalls()
+	l.SetCheckOutput("No changes.\n")
+	if code := l.Run("", "check", "tf"); code != 0 || len(l.MakeCalls()) != 1 {
+		t.Fatalf("open: exit %d, calls %q:\n%s", code, l.MakeCalls(), l.Output())
 	}
 
 	// Vault is in use (VAULT_TOKEN is set) and does not answer: nothing runs.
-	l.env["FAKE_VAULT_RC"], l.env["FAKE_VAULT_JSON"] = "1", ""
-	l.resetCalls()
-	if code := l.run("", "check", "apps"); code == 0 || l.makeCalls() != nil || !strings.Contains(l.output(), msgVault) {
-		t.Fatalf("vault closed: exit %d, calls %q:\n%s", code, l.makeCalls(), l.output())
+	l.Env["FAKE_VAULT_RC"], l.Env["FAKE_VAULT_JSON"] = "1", ""
+	l.ResetCalls()
+	if code := l.Run("", "check", "apps"); code == 0 || l.MakeCalls() != nil || !strings.Contains(l.Output(), msgVault) {
+		t.Fatalf("vault closed: exit %d, calls %q:\n%s", code, l.MakeCalls(), l.Output())
 	}
 	// Without the root token the site comes from the Keychain, so Vault is not needed.
-	delete(l.env, "VAULT_TOKEN")
-	l.setCheckOutput(recapNoChanges)
-	if code := l.run("", "check", "apps"); code != 0 {
-		t.Fatalf("no token: exit %d:\n%s", code, l.output())
+	delete(l.Env, "VAULT_TOKEN")
+	l.SetCheckOutput(testlab.RecapNoChanges)
+	if code := l.Run("", "check", "apps"); code != 0 {
+		t.Fatalf("no token: exit %d:\n%s", code, l.Output())
 	}
-	l.env["VAULT_TOKEN"] = sentinelEnv
-	delete(l.env, "FAKE_VAULT_RC")
-	delete(l.env, "FAKE_VAULT_JSON")
-	l.resetCalls()
-	if code := l.run("", "check", "apps"); code != 0 || len(l.makeCalls()) != 1 {
-		t.Fatalf("vault open: exit %d, calls %q:\n%s", code, l.makeCalls(), l.output())
+	l.Env["VAULT_TOKEN"] = testlab.SentinelEnv
+	delete(l.Env, "FAKE_VAULT_RC")
+	delete(l.Env, "FAKE_VAULT_JSON")
+	l.ResetCalls()
+	if code := l.Run("", "check", "apps"); code != 0 || len(l.MakeCalls()) != 1 {
+		t.Fatalf("vault open: exit %d, calls %q:\n%s", code, l.MakeCalls(), l.Output())
 	}
 }
 
@@ -110,9 +113,9 @@ func TestLocalNetworkPermissionHint(t *testing.T) {
 
 	// Through anvil: the dial fails with no route, ping answers. Vault too, from VAULT_ADDR.
 	l := newTestLab(t)
-	fakeTools(l)
-	l.realReach = true
-	l.write("scripts/env.sh", "export PVE_IP=192.0.2.10 VAULT_ADDR=https://192.0.2.20:8200\n")
+	testlab.FakeTools(l)
+	l.RealReach = true
+	l.Write("scripts/env.sh", "export PVE_IP=192.0.2.10 VAULT_ADDR=https://192.0.2.20:8200\n")
 	oldPause := reachPause
 	t.Cleanup(func() { reachPause = oldPause })
 	reachPause = time.Millisecond
@@ -120,18 +123,18 @@ func TestLocalNetworkPermissionHint(t *testing.T) {
 	var dialed []string
 	dialTCP = func(addr string) error { dialed = append(dialed, addr); return noRoute }
 	pingOK = func(string) bool { return true }
-	if code := l.run("", "check", "tf"); code == 0 || l.makeCalls() != nil || !strings.Contains(l.output(), msgLocalNetwork) {
-		t.Fatalf("state store: exit %d, calls %q:\n%s", code, l.makeCalls(), l.output())
+	if code := l.Run("", "check", "tf"); code == 0 || l.MakeCalls() != nil || !strings.Contains(l.Output(), msgLocalNetwork) {
+		t.Fatalf("state store: exit %d, calls %q:\n%s", code, l.MakeCalls(), l.Output())
 	}
 	if len(dialed) != 3 || dialed[0] != "192.0.2.10:7480" {
 		t.Errorf("dialed %q", dialed)
 	}
-	l.env["FAKE_VAULT_RC"], l.env["FAKE_VAULT_JSON"] = "1", ""
+	l.Env["FAKE_VAULT_RC"], l.Env["FAKE_VAULT_JSON"] = "1", ""
 	dialed = nil
-	if code := l.run("", "check", "apps"); code == 0 || !strings.Contains(l.output(), msgLocalNetwork) || !contains(dialed, "192.0.2.20:8200") {
-		t.Fatalf("vault: exit %d, dialed %q:\n%s", code, dialed, l.output())
+	if code := l.Run("", "check", "apps"); code == 0 || !strings.Contains(l.Output(), msgLocalNetwork) || !slices.Contains(dialed, "192.0.2.20:8200") {
+		t.Fatalf("vault: exit %d, dialed %q:\n%s", code, dialed, l.Output())
 	}
-	if strings.Contains(l.output(), "192.0.2") {
-		t.Errorf("printed an address:\n%s", l.output())
+	if strings.Contains(l.Output(), "192.0.2") {
+		t.Errorf("printed an address:\n%s", l.Output())
 	}
 }

@@ -11,6 +11,9 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/memetics19/anvil/cli/internal/app"
+	"github.com/memetics19/anvil/cli/internal/run"
 )
 
 // The endpoints a run needs, checked before make starts, so an unreachable lab gives a
@@ -39,6 +42,15 @@ var (
 	reachPause     = 3 * time.Second
 	stateStorePort = "7480"
 )
+
+// canReach checks the endpoints of one make target before it runs. a.Reach replaces the
+// real check in tests.
+func canReach(a *app.App, r *run.Runner, makeTarget string) bool {
+	if a.Reach != nil {
+		return a.Reach(a, r, makeTarget)
+	}
+	return reachable(a, r, needsOf(makeTarget))
+}
 
 // needs says which endpoints a run uses.
 type needs struct{ state, vault bool }
@@ -124,17 +136,17 @@ func hostPort(addr string) string {
 // reachable checks the endpoints n names, and prints the plain message for the first
 // that does not answer. A dry run checks nothing. An endpoint that answered once in this
 // run is not checked again.
-func reachable(a *app, r *runner, n needs) bool {
-	if r.dryRun || (!n.state && !n.vault) {
+func reachable(a *app.App, r *run.Runner, n needs) bool {
+	if r.DryRun || (!n.state && !n.vault) {
 		return true
 	}
-	if a.reached == nil {
-		a.reached = map[string]bool{}
+	if a.Reached == nil {
+		a.Reached = map[string]bool{}
 	}
-	if (!n.state || a.reached["state"]) && (!n.vault || a.reached["vault"]) {
+	if (!n.state || a.Reached["state"]) && (!n.vault || a.Reached["vault"]) {
 		return true
 	}
-	out, code := r.quiet(reachScript)
+	out, code := r.Quiet(reachScript)
 	if code != 0 {
 		// env.sh failed (no Keychain pve-ip). make reports that itself.
 		return true
@@ -142,28 +154,28 @@ func reachable(a *app, r *runner, n needs) bool {
 	lines := append(strings.Split(out, "\n"), "", "", "")
 	pve, vaultAddr := strings.TrimSpace(lines[0]), strings.TrimSpace(lines[1])
 	vaultInUse := strings.TrimSpace(lines[2]) == "yes"
-	if n.state && !a.reached["state"] && pve != "" {
+	if n.state && !a.Reached["state"] && pve != "" {
 		// A Go dial from anvil is a third-party binary like terraform, so macOS treats it
 		// the same way.
 		addr := net.JoinHostPort(pve, stateStorePort)
 		var err error
 		if !retry(func() bool { err = dialTCP(addr); return err == nil }) {
-			fmt.Fprintln(a.stderr, "anvil: "+a.pal().fail(unreachable(msgStateStore, addr, err)))
+			fmt.Fprintln(a.Stderr, "anvil: "+a.Pal().Fail(unreachable(msgStateStore, addr, err)))
 			return false
 		}
-		a.reached["state"] = true
+		a.Reached["state"] = true
 	}
-	if n.vault && !a.reached["vault"] && vaultInUse {
+	if n.vault && !a.Reached["vault"] && vaultInUse {
 		// The vault binary, as the stages use it.
-		if !retry(func() bool { return parseVaultStatus(r.quiet(vaultStatusScript)).reachable }) {
+		if !retry(func() bool { return parseVaultStatus(r.Quiet(vaultStatusScript)).reachable }) {
 			msg := msgVault
 			if addr := hostPort(vaultAddr); addr != "" {
 				msg = unreachable(msgVault, addr, dialTCP(addr))
 			}
-			fmt.Fprintln(a.stderr, "anvil: "+a.pal().fail(msg))
+			fmt.Fprintln(a.Stderr, "anvil: "+a.Pal().Fail(msg))
 			return false
 		}
-		a.reached["vault"] = true
+		a.Reached["vault"] = true
 	}
 	return true
 }

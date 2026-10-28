@@ -7,8 +7,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
+
+	"github.com/memetics19/anvil/cli/internal/app"
+	"github.com/memetics19/anvil/cli/internal/repo"
+	"github.com/memetics19/anvil/cli/internal/run"
 )
 
 const upUsage = `usage: anvil up [--yes] [--dry-run] [--from S] [--only S,...] [--skip S,...]
@@ -48,7 +53,7 @@ provision is never part of anvil up: it is for new hardware only (anvil provisio
 `
 
 func init() {
-	register(command{"up", "build or converge the whole lab, or deploy named services", upUsage, cmdUp, 1})
+	app.Register(app.Command{Name: "up", Summary: "build or converge the whole lab, or deploy named services", Usage: upUsage, Run: cmdUp, Order: 1})
 }
 
 type stageKind int
@@ -69,7 +74,7 @@ type stage struct {
 	touches string
 	kind    stageKind
 	t       target
-	cmd     makeCmd
+	cmd     run.MakeCmd
 	// done is a read-only bash probe. Exit 0: the stage has nothing to do.
 	done     string
 	doneText string
@@ -104,8 +109,8 @@ func upStages() []stage {
 		}
 		panic("no lab target " + name)
 	}
-	run := func(name, mk, touches string) stage {
-		return stage{name: name, touches: touches, kind: skRun, cmd: newMake(mk)}
+	runOnly := func(name, mk, touches string) stage {
+		return stage{name: name, touches: touches, kind: skRun, cmd: run.NewMake(mk)}
 	}
 	return []stage{
 		ans("bootstrap-ssh-host", "bootstrap-ssh", "--limit proxmox", "step 1: the operator SSH key on the Proxmox host"),
@@ -119,16 +124,16 @@ keys=$(ssh root@"$PVE_IP" cat /root/.ceph-rgw-terraform.json)
 jq -r .access_key <<<"$keys" | kc_store_stdin ceph-s3-access-key
 jq -r .secret_key <<<"$keys" | kc_store_stdin ceph-s3-secret-key
 unset keys`},
-		run("tf-init", "tf-init", "step 5: terraform init, with the S3 backend"),
+		runOnly("tf-init", "tf-init", "step 5: terraform init, with the S3 backend"),
 		labT("tf", "step 5: Terraform, the VMs and SDN (tf-plan with the plan guard, then tf-apply)"),
 		labT("vault", "step 6: the Vault server. It leaves Vault sealed"),
 		{name: "vault-init", kind: skHuman, touches: "step 6: you initialize Vault once, the keys go to the Keychain",
 			done: keychainHas("vault-init-json"), doneText: "the Keychain has vault-init-json",
 			steps: `scripts/vault-init.sh    # once: 5 unseal keys and the root token go to Keychain vault-init-json
 # It tells you how to print the unseal keys for an offline paper copy. Keep one.`},
-		run("vault-unseal", "vault-unseal", "step 6: unseal with 3 of the 5 keys (prints already unsealed)"),
-		run("vault-policies", "vault-policies", "step 6: Vault policies, each written only when it differs"),
-		{name: "site-to-vault", kind: skRun, cmd: newMake("site-to-vault"), touches: "step 6: the Keychain site dict into Vault",
+		runOnly("vault-unseal", "vault-unseal", "step 6: unseal with 3 of the 5 keys (prints already unsealed)"),
+		runOnly("vault-policies", "vault-policies", "step 6: Vault policies, each written only when it differs"),
+		{name: "site-to-vault", kind: skRun, cmd: run.NewMake("site-to-vault"), touches: "step 6: the Keychain site dict into Vault",
 			done:     `source scripts/env.sh >/dev/null 2>&1 && [ "$(scripts/site-source.sh 2>/dev/null)" = vault ]`,
 			doneText: "Vault already holds kv/homelab/site"},
 		{name: "backup-key", kind: skHuman, touches: "step 6: you create the age key pair for backups",
@@ -160,7 +165,7 @@ unset keys`},
 #   Self-hosted NetBird: the Cloudflare route, the return route, the device profiles
 #   The Mac's route to the secrets enclave
 #   The Wi-Fi access point and the app settings`},
-		run("backup", "backup", "step 10: Terraform state, a Vault snapshot, Vaultwarden, into ~/homelab-backups"),
+		runOnly("backup", "backup", "step 10: Terraform state, a Vault snapshot, Vaultwarden, into ~/homelab-backups"),
 		{name: "status", kind: skStatus, touches: "anvil status"},
 	}
 }
@@ -207,7 +212,7 @@ func selectStages(all []stage, from, only, skip string) ([]stage, error) {
 		names[i] = s.name
 	}
 	check := func(n string) error {
-		if contains(names, n) {
+		if slices.Contains(names, n) {
 			return nil
 		}
 		msg := fmt.Sprintf("unknown stage %q", n)
@@ -239,7 +244,7 @@ func selectStages(all []stage, from, only, skip string) ([]stage, error) {
 		if s.name == from {
 			started = true
 		}
-		if !started || (len(onlyL) > 0 && !contains(onlyL, s.name)) || contains(skipL, s.name) {
+		if !started || (len(onlyL) > 0 && !slices.Contains(onlyL, s.name)) || slices.Contains(skipL, s.name) {
 			continue
 		}
 		out = append(out, s)
@@ -276,26 +281,26 @@ func printPlan(w io.Writer, stages []stage, all int) {
 // exitNeedsYou is a stop that waits for a person, not a failure of make.
 const exitNeedsYou = 3
 
-func (a *app) runStage(r *runner, s stage, st *upState, yes bool) (int, outcome) {
+func runStage(a *app.App, r *run.Runner, s stage, st *upState, yes bool) (int, outcome) {
 	switch s.kind {
 	case skCheckApply:
-		return a.checkThenApply(r, s.t, targetOpts{}, nil)
+		return checkThenApply(a, r, s.t, targetOpts{}, nil)
 	case skRun:
 		if s.done != "" {
-			if _, code := r.quiet(s.done); code == 0 {
-				fmt.Fprintf(a.stdout, "anvil: %s: already done (%s)\n", s.name, s.doneText)
+			if _, code := r.Quiet(s.done); code == 0 {
+				fmt.Fprintf(a.Stdout, "anvil: %s: already done (%s)\n", s.name, s.doneText)
 				return 0, outSkipped
 			}
 		}
-		if !a.canReach(r, s.cmd.target) {
+		if !canReach(a, r, s.cmd.Target) {
 			return 1, outFailed
 		}
-		if code := r.make(s.cmd, nil); code != 0 {
+		if code := r.Make(s.cmd, nil); code != 0 {
 			return code, outFailed
 		}
 		return 0, outApplied
 	case skStatus:
-		if code := a.status(a, r); code != 0 {
+		if code := a.Status(a, r); code != 0 {
 			return code, outFailed
 		}
 		return 0, outUnchanged
@@ -303,25 +308,25 @@ func (a *app) runStage(r *runner, s stage, st *upState, yes bool) (int, outcome)
 	// skHuman
 	isDone := func() bool {
 		if s.ack {
-			return contains(st.Acknowledged, s.name)
+			return slices.Contains(st.Acknowledged, s.name)
 		}
-		_, code := r.quiet(s.done)
+		_, code := r.Quiet(s.done)
 		return code == 0
 	}
 	if isDone() {
-		fmt.Fprintf(a.stdout, "anvil: %s: already done (%s)\n", s.name, s.doneText)
+		fmt.Fprintf(a.Stdout, "anvil: %s: already done (%s)\n", s.name, s.doneText)
 		return 0, outSkipped
 	}
-	fmt.Fprintf(a.stdout, "anvil: %s needs you: %s\n\n%s\n\n", s.name, s.touches, s.steps)
+	fmt.Fprintf(a.Stdout, "anvil: %s needs you: %s\n\n%s\n\n", s.name, s.touches, s.steps)
 	hint := fmt.Sprintf("Do the steps above, then resume: anvil up --from %s", s.name)
 	if yes {
-		fmt.Fprintf(a.stderr, "anvil: stopped at %s (--yes never waits). %s\n", s.name, hint)
+		fmt.Fprintf(a.Stderr, "anvil: stopped at %s (--yes never waits). %s\n", s.name, hint)
 		return exitNeedsYou, outStopped
 	}
-	fmt.Fprint(a.stdout, "Press Enter when done, or type q to stop: ")
-	ans, ok := readLine(a.stdin)
+	fmt.Fprint(a.Stdout, "Press Enter when done, or type q to stop: ")
+	ans, ok := app.ReadLine(a.Stdin)
 	if !ok || ans == "q" {
-		fmt.Fprintf(a.stderr, "\nanvil: stopped at %s. %s\n", s.name, hint)
+		fmt.Fprintf(a.Stderr, "\nanvil: stopped at %s. %s\n", s.name, hint)
 		return exitNeedsYou, outStopped
 	}
 	if s.ack {
@@ -329,7 +334,7 @@ func (a *app) runStage(r *runner, s stage, st *upState, yes bool) (int, outcome)
 		return 0, outApplied
 	}
 	if !isDone() {
-		fmt.Fprintf(a.stderr, "anvil: %s is still not done (%s is not true). %s\n", s.name, s.doneText, hint)
+		fmt.Fprintf(a.Stderr, "anvil: %s is still not done (%s is not true). %s\n", s.name, s.doneText, hint)
 		return exitNeedsYou, outStopped
 	}
 	return 0, outApplied
@@ -338,18 +343,18 @@ func (a *app) runStage(r *runner, s stage, st *upState, yes bool) (int, outcome)
 // runAll runs steps in order with a header and a timed footer for each, and prints the
 // summary table at the end, also when a step stops the run. It returns the index of the
 // step that stopped it (or len(names)) and its exit code.
-func (a *app) runAll(names []string, step func(i int) (int, outcome)) (int, int) {
-	p := a.pal()
+func runAll(a *app.App, names []string, step func(i int) (int, outcome)) (int, int) {
+	p := a.Pal()
 	start := time.Now()
 	var rs []stageResult
 	stop, code := len(names), 0
 	for i, n := range names {
-		stageHeader(a.stdout, p, i+1, len(names), n)
+		stageHeader(a.Stdout, p, i+1, len(names), n)
 		t0 := time.Now()
 		c, out := step(i)
 		r := stageResult{name: n, out: out, dur: since(t0)}
 		rs = append(rs, r)
-		stageFooter(a.stdout, p, i+1, len(names), r)
+		stageFooter(a.Stdout, p, i+1, len(names), r)
 		if c != 0 {
 			stop, code = i, c
 			for _, rest := range names[i+1:] {
@@ -358,24 +363,24 @@ func (a *app) runAll(names []string, step func(i int) (int, outcome)) (int, int)
 			break
 		}
 	}
-	printSummary(a.stdout, p, rs, since(start))
+	printSummary(a.Stdout, p, rs, since(start))
 	return stop, code
 }
 
-func preflightChecks(a *app, r *runner) bool {
-	all := a.initFindings(r)
-	printFindings(a.stdout, a.pal(), all)
+func preflightChecks(a *app.App, r *run.Runner) bool {
+	all := initFindings(a, r)
+	printFindings(a.Stdout, a.Pal(), all)
 	for _, f := range all {
 		if f.upNeeds && f.lv == lvFail {
-			fmt.Fprintln(a.stderr, "anvil up: fix the FAIL lines above first (Vault may still be down: up builds it)")
+			fmt.Fprintln(a.Stderr, "anvil up: fix the FAIL lines above first (Vault may still be down: up builds it)")
 			return false
 		}
 	}
-	fmt.Fprintln(a.stdout)
+	fmt.Fprintln(a.Stdout)
 	return true
 }
 
-func cmdUp(a *app, args []string) int {
+func cmdUp(a *app.App, args []string) int {
 	fs := flag.NewFlagSet("up", flag.ContinueOnError)
 	var yes, dry bool
 	var from, only, skip string
@@ -384,46 +389,46 @@ func cmdUp(a *app, args []string) int {
 	fs.StringVar(&from, "from", "", "")
 	fs.StringVar(&only, "only", "", "")
 	fs.StringVar(&skip, "skip", "", "")
-	pos, code, ok := a.flags(fs, upUsage, args)
+	pos, code, ok := a.Flags(fs, upUsage, args)
 	if !ok {
 		return code
 	}
-	if a.preflight == nil {
-		a.preflight = preflightChecks
+	if a.Preflight == nil {
+		a.Preflight = preflightChecks
 	}
-	if a.status == nil {
-		a.status = printStatus
+	if a.Status == nil {
+		a.Status = printStatus
 	}
 	if len(pos) > 0 {
 		if from != "" || only != "" || skip != "" {
-			fmt.Fprintf(a.stderr, "anvil: --from, --only and --skip are for the whole lab, not services\n")
+			fmt.Fprintf(a.Stderr, "anvil: --from, --only and --skip are for the whole lab, not services\n")
 			return 2
 		}
-		return a.upServices(pos, yes, dry)
+		return upServices(a, pos, yes, dry)
 	}
 	all := upStages()
 	stages, err := selectStages(all, from, only, skip)
 	if err != nil {
-		fmt.Fprintf(a.stderr, "anvil: %v\n", err)
+		fmt.Fprintf(a.Stderr, "anvil: %v\n", err)
 		return 2
 	}
-	r, ok := a.runner(dry)
+	r, ok := repo.Runner(a, dry)
 	if !ok {
 		return 1
 	}
 	if dry {
-		printPlan(a.stdout, stages, len(all))
+		printPlan(a.Stdout, stages, len(all))
 		return 0
 	}
-	if !a.preflight(a, r) {
+	if !a.Preflight(a, r) {
 		return 1
 	}
-	printPlan(a.stdout, stages, len(all))
-	if !yes && !askTyped(a.stdin, a.stdout, fmt.Sprintf("This runs %d stages on the lab.", len(stages)), "up") {
-		fmt.Fprintln(a.stdout, "anvil: nothing run")
+	printPlan(a.Stdout, stages, len(all))
+	if !yes && !app.AskTyped(a.Stdin, a.Stdout, fmt.Sprintf("This runs %d stages on the lab.", len(stages)), "up") {
+		fmt.Fprintln(a.Stdout, "anvil: nothing run")
 		return 1
 	}
-	st := loadState(r.root)
+	st := loadState(r.Root)
 	if from == "" {
 		st.Completed = nil
 		st.Started = time.Now().UTC().Format(time.RFC3339)
@@ -432,14 +437,14 @@ func cmdUp(a *app, args []string) int {
 	for i, s := range stages {
 		names[i] = s.name
 	}
-	stop, code := a.runAll(names, func(i int) (int, outcome) {
+	stop, code := runAll(a, names, func(i int) (int, outcome) {
 		s := stages[i]
-		code, out := a.runStage(r, s, &st, yes)
-		if code == 0 && !contains(st.Completed, s.name) {
+		code, out := runStage(a, r, s, &st, yes)
+		if code == 0 && !slices.Contains(st.Completed, s.name) {
 			st.Completed = append(st.Completed, s.name)
 		}
-		if err := saveState(r.root, st); err != nil {
-			fmt.Fprintf(a.stderr, "anvil: cannot write %s: %v\n", stateFile, err)
+		if err := saveState(r.Root, st); err != nil {
+			fmt.Fprintf(a.Stderr, "anvil: cannot write %s: %v\n", stateFile, err)
 		}
 		return code, out
 	})
@@ -448,16 +453,16 @@ func cmdUp(a *app, args []string) int {
 		return code
 	case code != 0:
 		n := stages[stop].name
-		fmt.Fprintf(a.stderr, "anvil up: stage %s failed (exit %d). Fix it, then resume: anvil up --from %s\n", n, code, n)
+		fmt.Fprintf(a.Stderr, "anvil up: stage %s failed (exit %d). Fix it, then resume: anvil up --from %s\n", n, code, n)
 		return code
 	}
-	fmt.Fprintf(a.stdout, "\nanvil up: done, %d stages\n", len(stages))
+	fmt.Fprintf(a.Stdout, "\nanvil up: done, %d stages\n", len(stages))
 	return 0
 }
 
 // upServices deploys named services: check, then apply where the check shows changes.
-func (a *app) upServices(names []string, yes, dry bool) int {
-	r, c, ok := a.setup(dry)
+func upServices(a *app.App, names []string, yes, dry bool) int {
+	r, c, ok := setup(a, dry)
 	if !ok {
 		return 1
 	}
@@ -465,41 +470,41 @@ func (a *app) upServices(names []string, yes, dry bool) int {
 	for _, n := range names {
 		t, err := c.resolve(n, "")
 		if err != nil {
-			fmt.Fprintf(a.stderr, "anvil: %v\n", err)
+			fmt.Fprintf(a.Stderr, "anvil: %v\n", err)
 			return 2
 		}
 		ts = append(ts, t)
 	}
 	if dry {
 		for _, t := range ts {
-			_, _ = a.checkThenApply(r, t, targetOpts{}, nil)
+			_, _ = checkThenApply(a, r, t, targetOpts{}, nil)
 		}
 		return 0
 	}
-	if !a.preflight(a, r) {
+	if !a.Preflight(a, r) {
 		return 1
 	}
-	fmt.Fprintln(a.stdout, "anvil up: deploy, each one checked first and applied only when the check shows changes:")
+	fmt.Fprintln(a.Stdout, "anvil up: deploy, each one checked first and applied only when the check shows changes:")
 	var plain []string
 	for _, t := range ts {
-		fmt.Fprintf(a.stdout, "  %-15s %s\n", t.name, t.help)
-		fmt.Fprintf(a.stdout, "    check  %s\n    apply  %s\n", t.checkCmd("", ""), t.applyCmd("", ""))
+		fmt.Fprintf(a.Stdout, "  %-15s %s\n", t.name, t.help)
+		fmt.Fprintf(a.Stdout, "    check  %s\n    apply  %s\n", t.checkCmd("", ""), t.applyCmd("", ""))
 		if !t.risky {
 			plain = append(plain, t.name)
 		}
 	}
-	if len(plain) > 0 && !yes && !askYesNo(a.stdin, a.stdout, "Deploy "+strings.Join(plain, ", ")+"?") {
-		fmt.Fprintln(a.stdout, "anvil: nothing run")
+	if len(plain) > 0 && !yes && !app.AskYesNo(a.Stdin, a.Stdout, "Deploy "+strings.Join(plain, ", ")+"?") {
+		fmt.Fprintln(a.Stdout, "anvil: nothing run")
 		return 1
 	}
-	confirm := func(t target) bool { return !t.risky || confirmApply(a.stdin, a.stdout, t, yes) }
+	confirm := func(t target) bool { return !t.risky || confirmApply(a.Stdin, a.Stdout, t, yes) }
 	tnames := make([]string, len(ts))
 	for i, t := range ts {
 		tnames[i] = t.name
 	}
-	stop, code := a.runAll(tnames, func(i int) (int, outcome) { return a.checkThenApply(r, ts[i], targetOpts{}, confirm) })
+	stop, code := runAll(a, tnames, func(i int) (int, outcome) { return checkThenApply(a, r, ts[i], targetOpts{}, confirm) })
 	if code != 0 {
-		fmt.Fprintf(a.stderr, "anvil up: %s stopped (exit %d). Resume: anvil up %s\n", ts[stop].name, code, strings.Join(names[stop:], " "))
+		fmt.Fprintf(a.Stderr, "anvil up: %s stopped (exit %d). Resume: anvil up %s\n", ts[stop].name, code, strings.Join(names[stop:], " "))
 	}
 	return code
 }

@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/memetics19/anvil/cli/internal/testlab"
 )
 
 // Placeholder addresses only (RFC 5737): 198.51.100.0/24 plays the lab, 192.0.2.0/24 the
@@ -135,10 +137,10 @@ func TestFindShadowNothingToFix(t *testing.T) {
 
 func TestDoctorNetworkLine(t *testing.T) {
 	l := newTestLab(t)
-	fakeTools(l)
+	testlab.FakeTools(l)
 	stubNet(t, awayNetstat, awayIfconfig, "en0", false)
-	l.run("", "doctor")
-	out := l.output()
+	l.Run("", "doctor")
+	out := l.Output()
 	if !strings.Contains(out, "network\n  FAIL  1 lab address alias(es) and 4 lab route(s) on en0 hide the VPN's route to the lab. Fix: anvil doctor --fix") {
 		t.Errorf("doctor:\n%s", out)
 	}
@@ -147,25 +149,25 @@ func TestDoctorNetworkLine(t *testing.T) {
 	}
 
 	goos = "linux"
-	l.run("", "doctor")
-	if strings.Contains(l.output(), "network") {
-		t.Errorf("doctor on Linux has a network line:\n%s", l.output())
+	l.Run("", "doctor")
+	if strings.Contains(l.Output(), "network") {
+		t.Errorf("doctor on Linux has a network line:\n%s", l.Output())
 	}
 }
 
 func TestDoctorFix(t *testing.T) {
 	l := newTestLab(t)
-	fakeTools(l)
+	testlab.FakeTools(l)
 
 	ran := stubNet(t, awayNetstat, awayIfconfig, "en0", false)
-	l.run("n\n", "doctor", "--fix")
-	if len(*ran) != 0 || !strings.Contains(l.output(), "Nothing changed.") {
-		t.Errorf("declined: ran %v\n%s", *ran, l.output())
+	l.Run("n\n", "doctor", "--fix")
+	if len(*ran) != 0 || !strings.Contains(l.Output(), "Nothing changed.") {
+		t.Errorf("declined: ran %v\n%s", *ran, l.Output())
 	}
 
 	ran = stubNet(t, awayNetstat, awayIfconfig, "en0", false)
-	l.run("y\n", "doctor", "--fix")
-	out := l.output()
+	l.Run("y\n", "doctor", "--fix")
+	out := l.Output()
 	if len(*ran) != 5 || (*ran)[0][0] != "ifconfig" {
 		t.Errorf("accepted: ran %v", *ran)
 	}
@@ -176,13 +178,13 @@ func TestDoctorFix(t *testing.T) {
 	}
 
 	ran = stubNet(t, awayNetstat, awayIfconfig, "utun100", false)
-	l.run("", "doctor", "--fix")
-	if len(*ran) != 0 || !strings.Contains(l.output(), "doctor --fix: nothing to fix") {
-		t.Errorf("nothing to fix: ran %v\n%s", *ran, l.output())
+	l.Run("", "doctor", "--fix")
+	if len(*ran) != 0 || !strings.Contains(l.Output(), "doctor --fix: nothing to fix") {
+		t.Errorf("nothing to fix: ran %v\n%s", *ran, l.Output())
 	}
 
 	// init has no --fix.
-	if code := l.run("", "init", "--fix"); code != 2 {
+	if code := l.Run("", "init", "--fix"); code != 2 {
 		t.Errorf("init --fix: exit %d, want 2", code)
 	}
 }

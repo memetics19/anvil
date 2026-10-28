@@ -5,17 +5,20 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/memetics19/anvil/cli/internal/app"
 )
 
 func TestCompletionScriptsHoldTheNames(t *testing.T) {
 	l := newTestLab(t)
 	for _, sh := range []string{"bash", "zsh", "fish"} {
-		if code := l.run("", "completion", sh); code != 0 {
-			t.Fatalf("%s: exit %d:\n%s", sh, code, l.output())
+		if code := l.Run("", "completion", sh); code != 0 {
+			t.Fatalf("%s: exit %d:\n%s", sh, code, l.Output())
 		}
-		out := l.out.String()
+		out := l.Out.String()
 		// Services from the playbook, an alias, a VM, a lab target, commands, stages, flags.
 		for _, want := range []string{"pihole", "caddy", "homepage", "gateway", "apps", "vlans",
 			"doctor", "fetch", "completion", "vault-unseal", "dry-run", "no-color", "anvil completion names"} {
@@ -24,31 +27,31 @@ func TestCompletionScriptsHoldTheNames(t *testing.T) {
 			}
 		}
 	}
-	l.run("", "completion", "names")
-	names := strings.Split(strings.TrimSpace(l.out.String()), "\n")
+	l.Run("", "completion", "names")
+	names := strings.Split(strings.TrimSpace(l.Out.String()), "\n")
 	for _, want := range []string{"pihole", "arr_stack", "apps", "tf"} {
-		if !contains(names, want) {
+		if !slices.Contains(names, want) {
 			t.Errorf("names: missing %q in %q", want, names)
 		}
 	}
-	if code := l.run("", "completion", "tcsh"); code != 2 {
+	if code := l.Run("", "completion", "tcsh"); code != 2 {
 		t.Errorf("tcsh: exit %d", code)
 	}
 
 	// Without a repo: the lab targets only, and no error.
-	l.cwd(t.TempDir())
-	if code := l.run("", "completion", "names"); code != 0 || !strings.Contains(l.out.String(), "vlans\n") || strings.Contains(l.out.String(), "pihole") {
-		t.Errorf("no repo: exit %d:\n%s", code, l.output())
+	l.Cwd(t.TempDir())
+	if code := l.Run("", "completion", "names"); code != 0 || !strings.Contains(l.Out.String(), "vlans\n") || strings.Contains(l.Out.String(), "pihole") {
+		t.Errorf("no repo: exit %d:\n%s", code, l.Output())
 	}
 }
 
 func TestCompletionFlagsComeFromUsage(t *testing.T) {
-	c, _ := findCommand("check")
+	c, _ := app.FindCommand("check")
 	if got, want := commandFlags(c), []string{"--args", "--dry-run", "--help", "--host", "--no-color", "--tags"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("check flags %q, want %q", got, want)
 	}
-	c, _ = findCommand("up")
-	if got := commandFlags(c); !contains(got, "--from") || !contains(got, "--yes") || contains(got, "--check") {
+	c, _ = app.FindCommand("up")
+	if got := commandFlags(c); !slices.Contains(got, "--from") || !slices.Contains(got, "--yes") || slices.Contains(got, "--check") {
 		t.Errorf("up flags %q", got)
 	}
 }
@@ -56,11 +59,11 @@ func TestCompletionFlagsComeFromUsage(t *testing.T) {
 // completionScript writes anvil completion <sh> to a file.
 func completionScript(t *testing.T, sh string) string {
 	l := newTestLab(t)
-	if code := l.run("", "completion", sh); code != 0 {
+	if code := l.Run("", "completion", sh); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
 	p := filepath.Join(t.TempDir(), "anvil."+sh)
-	if err := os.WriteFile(p, l.out.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(p, l.Out.Bytes(), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return p

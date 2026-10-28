@@ -18,10 +18,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/memetics19/anvil/cli/internal/app"
+	"github.com/memetics19/anvil/cli/internal/repo"
 )
 
 func init() {
-	register(command{"media", "search, download and follow movies and series (Radarr, Sonarr)", mediaUsage, cmdMedia, 50})
+	app.Register(app.Command{Name: "media", Summary: "search, download and follow movies and series (Radarr, Sonarr)", Usage: mediaUsage, Run: cmdMedia, Order: 50})
 }
 
 const mediaUsage = `usage: anvil media <command> [flags]
@@ -55,14 +58,14 @@ type mediaConfig struct {
 }
 
 // mediaEnv returns the endpoints. Tests replace it.
-var mediaEnv = func(a *app) (mediaConfig, error) {
-	root, err := a.repoRoot()
+var mediaEnv = func(a *app.App) (mediaConfig, error) {
+	root, err := repo.Root(a)
 	if err != nil {
 		return mediaConfig{}, err
 	}
 	var out, errOut bytes.Buffer
 	cmd := exec.Command("bash", "scripts/media-env.sh")
-	cmd.Dir, cmd.Env = root, a.env
+	cmd.Dir, cmd.Env = root, a.Env
 	cmd.Stdout, cmd.Stderr = &out, &errOut
 	if err := cmd.Run(); err != nil {
 		// stderr carries only reasons (env.sh warnings, media-env's own), never a key: the
@@ -216,9 +219,9 @@ type mediaOpts struct {
 	quality        string
 }
 
-func cmdMedia(a *app, args []string) int {
+func cmdMedia(a *app.App, args []string) int {
 	if len(args) == 0 {
-		fmt.Fprint(a.stderr, mediaUsage)
+		fmt.Fprint(a.Stderr, mediaUsage)
 		return 2
 	}
 	sub, rest := args[0], args[1:]
@@ -235,31 +238,31 @@ func cmdMedia(a *app, args []string) int {
 	case "status":
 		fs.BoolVar(&o.watch, "watch", false, "")
 	case "help", "-h", "--help":
-		fmt.Fprint(a.stdout, mediaUsage)
+		fmt.Fprint(a.Stdout, mediaUsage)
 		return 0
 	default:
-		fmt.Fprintf(a.stderr, "anvil: media: unknown command %q\n%s", sub, mediaUsage)
+		fmt.Fprintf(a.Stderr, "anvil: media: unknown command %q\n%s", sub, mediaUsage)
 		return 2
 	}
-	pos, code, ok := a.flags(fs, mediaUsage, interleave(rest))
+	pos, code, ok := a.Flags(fs, mediaUsage, interleave(rest))
 	if !ok {
 		return code
 	}
 	term := strings.TrimSpace(strings.Join(pos, " "))
 	if sub != "status" && term == "" {
-		fmt.Fprintf(a.stderr, "anvil: media %s needs a title\n", sub)
+		fmt.Fprintf(a.Stderr, "anvil: media %s needs a title\n", sub)
 		return 2
 	}
 	if sub == "status" && term != "" {
-		fmt.Fprintln(a.stderr, "anvil: media status takes no title")
+		fmt.Fprintln(a.Stderr, "anvil: media status takes no title")
 		return 2
 	}
 
 	cfg, err := mediaEnv(a)
 	if err != nil {
-		fmt.Fprintf(a.stderr, "anvil: media: %v\n", err)
+		fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
 		if msg := err.Error(); strings.Contains(msg, "Vault") && strings.Contains(msg, "unreachable") {
-			fmt.Fprintln(a.stderr, "anvil media reads the API keys from Vault, so Vault must answer: be at home or on the VPN\n"+
+			fmt.Fprintln(a.Stderr, "anvil media reads the API keys from Vault, so Vault must answer: be at home or on the VPN\n"+
 				"(docs/cli.md, No route to host on macOS, also covers a lab alias left on the Wi-Fi).")
 		}
 		return 1
@@ -301,19 +304,19 @@ func interleave(args []string) []string {
 
 const mediaListMax = 10
 
-func mediaList(a *app, c arr, items []item) {
+func mediaList(a *app.App, c arr, items []item) {
 	for i, it := range items {
 		if i == mediaListMax {
-			fmt.Fprintf(a.stdout, "  ... %d more: make the title more precise\n", len(items)-mediaListMax)
+			fmt.Fprintf(a.Stdout, "  ... %d more: make the title more precise\n", len(items)-mediaListMax)
 			break
 		}
 		extra := c.state(it)
 		if extra != "" {
 			extra = "  [" + extra + "]"
 		}
-		fmt.Fprintf(a.stdout, "%3d. %s%s\n", i+1, it.label(), extra)
+		fmt.Fprintf(a.Stdout, "%3d. %s%s\n", i+1, it.label(), extra)
 		if ov := oneLine(it.Overview, 100); ov != "" {
-			fmt.Fprintf(a.stdout, "     %s\n", ov)
+			fmt.Fprintf(a.Stdout, "     %s\n", ov)
 		}
 	}
 }
@@ -326,28 +329,28 @@ func oneLine(s string, max int) string {
 	return s
 }
 
-func mediaSearch(a *app, c arr, term string) int {
+func mediaSearch(a *app.App, c arr, term string) int {
 	items, err := c.lookup(term)
 	if err != nil {
-		fmt.Fprintf(a.stderr, "anvil: media: %v\n", err)
+		fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
 		return 1
 	}
 	if len(items) == 0 {
-		fmt.Fprintf(a.stdout, "No %s matches %q.\n", c.kind(), term)
+		fmt.Fprintf(a.Stdout, "No %s matches %q.\n", c.kind(), term)
 		return 0
 	}
 	mediaList(a, c, items)
 	return 0
 }
 
-func mediaGet(a *app, c arr, term string, o mediaOpts) int {
+func mediaGet(a *app.App, c arr, term string, o mediaOpts) int {
 	items, err := c.lookup(term)
 	if err != nil {
-		fmt.Fprintf(a.stderr, "anvil: media: %v\n", err)
+		fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
 		return 1
 	}
 	if len(items) == 0 {
-		fmt.Fprintf(a.stdout, "No %s matches %q.\n", c.kind(), term)
+		fmt.Fprintf(a.Stdout, "No %s matches %q.\n", c.kind(), term)
 		return 1
 	}
 	if len(items) > mediaListMax {
@@ -357,18 +360,18 @@ func mediaGet(a *app, c arr, term string, o mediaOpts) int {
 	switch {
 	case choice > 0:
 		if choice > len(items) {
-			fmt.Fprintf(a.stderr, "anvil: media: --pick %d, but there are %d matches\n", choice, len(items))
+			fmt.Fprintf(a.Stderr, "anvil: media: --pick %d, but there are %d matches\n", choice, len(items))
 			return 2
 		}
 	case len(items) == 1:
 		choice = 1
 	default:
 		mediaList(a, c, items)
-		fmt.Fprintf(a.stdout, "Which one? [1-%d] ", len(items))
-		ans, ok := readLine(a.stdin)
+		fmt.Fprintf(a.Stdout, "Which one? [1-%d] ", len(items))
+		ans, ok := app.ReadLine(a.Stdin)
 		n, err := strconv.Atoi(ans)
 		if !ok || err != nil || n < 1 || n > len(items) {
-			fmt.Fprintln(a.stdout, "\nNothing added.")
+			fmt.Fprintln(a.Stdout, "\nNothing added.")
 			return 1
 		}
 		choice = n
@@ -378,7 +381,7 @@ func mediaGet(a *app, c arr, term string, o mediaOpts) int {
 	// Already in the library: search again instead of adding twice.
 	if it.ID > 0 {
 		if !c.tv && it.HasFile {
-			fmt.Fprintf(a.stdout, "%s is already in the library.\n", it.label())
+			fmt.Fprintf(a.Stdout, "%s is already in the library.\n", it.label())
 			return 0
 		}
 		cmd := map[string]any{"name": "MoviesSearch", "movieIds": []int{it.ID}}
@@ -386,27 +389,27 @@ func mediaGet(a *app, c arr, term string, o mediaOpts) int {
 			cmd = map[string]any{"name": "SeriesSearch", "seriesId": it.ID}
 		}
 		if err := c.do("POST", "command", cmd, nil); err != nil {
-			fmt.Fprintf(a.stderr, "anvil: media: %v\n", err)
+			fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
 			return 1
 		}
-		fmt.Fprintf(a.stdout, "%s is already added: %s searches for it again. Follow it with: anvil media status\n", it.label(), c.name())
+		fmt.Fprintf(a.Stdout, "%s is already added: %s searches for it again. Follow it with: anvil media status\n", it.label(), c.name())
 		return 0
 	}
 
 	profileID, profileName, err := c.profile(o.quality)
 	if err != nil {
-		fmt.Fprintf(a.stderr, "anvil: media: %v\n", err)
+		fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
 		return 1
 	}
 	root, free, err := c.rootFolder()
 	if err != nil {
-		fmt.Fprintf(a.stderr, "anvil: media: %v\n", err)
+		fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
 		return 1
 	}
 	if free < mediaLowSpace && !o.yes {
-		fmt.Fprintf(a.stdout, "Only %s free in %s.\n", human(free), root)
-		if !askYesNo(a.stdin, a.stdout, "Add it anyway?") {
-			fmt.Fprintln(a.stdout, "Nothing added.")
+		fmt.Fprintf(a.Stdout, "Only %s free in %s.\n", human(free), root)
+		if !app.AskYesNo(a.Stdin, a.Stdout, "Add it anyway?") {
+			fmt.Fprintln(a.Stdout, "Nothing added.")
 			return 1
 		}
 	}
@@ -423,10 +426,10 @@ func mediaGet(a *app, c arr, term string, o mediaOpts) int {
 		body["addOptions"] = map[string]any{"searchForMovie": true}
 	}
 	if err := c.do("POST", c.kind(), body, nil); err != nil {
-		fmt.Fprintf(a.stderr, "anvil: media: %v\n", err)
+		fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(a.stdout, "Added %s (%s, %s free). %s is searching for it now.\nFollow it with: anvil media status\n",
+	fmt.Fprintf(a.Stdout, "Added %s (%s, %s free). %s is searching for it now.\nFollow it with: anvil media status\n",
 		it.label(), profileName, human(free), c.name())
 	return 0
 }
@@ -604,36 +607,36 @@ func (c arr) wanted() ([]string, error) {
 	return out, nil
 }
 
-func mediaStatus(a *app, radarr, sonarr arr, watch bool) int {
+func mediaStatus(a *app.App, radarr, sonarr arr, watch bool) int {
 	for {
 		code := mediaStatusOnce(a, radarr, sonarr)
 		if !watch || code != 0 {
 			return code
 		}
 		time.Sleep(10 * time.Second)
-		if a.tty {
-			fmt.Fprint(a.stdout, "\033[H\033[2J")
+		if a.TTY {
+			fmt.Fprint(a.Stdout, "\033[H\033[2J")
 		} else {
-			fmt.Fprintln(a.stdout)
+			fmt.Fprintln(a.Stdout)
 		}
 	}
 }
 
-func mediaStatusOnce(a *app, radarr, sonarr arr) int {
+func mediaStatusOnce(a *app.App, radarr, sonarr arr) int {
 	failed := false
 	var downloads []queueRecord
 	var wanted []string
 	for _, c := range []arr{radarr, sonarr} {
 		q, err := c.queue()
 		if err != nil {
-			fmt.Fprintf(a.stderr, "anvil: media: %v\n", err)
+			fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
 			failed = true
 			continue
 		}
 		downloads = append(downloads, q...)
 		w, err := c.wanted()
 		if err != nil {
-			fmt.Fprintf(a.stderr, "anvil: media: %v\n", err)
+			fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
 			failed = true
 			continue
 		}
@@ -648,9 +651,9 @@ func mediaStatusOnce(a *app, radarr, sonarr arr) int {
 		}
 	}
 
-	fmt.Fprintln(a.stdout, "Downloading")
+	fmt.Fprintln(a.Stdout, "Downloading")
 	if len(downloads) == 0 {
-		fmt.Fprintln(a.stdout, "  nothing")
+		fmt.Fprintln(a.Stdout, "  nothing")
 	}
 	for _, d := range downloads {
 		eta := d.TimeLeft
@@ -661,21 +664,21 @@ func mediaStatusOnce(a *app, radarr, sonarr arr) int {
 		if state == "" {
 			state = d.Status
 		}
-		fmt.Fprintf(a.stdout, "  %s  %-45s %9s  eta %-9s %s\n", d.progress(), oneLine(d.label(), 45), human(int64(d.Size)), eta, state)
+		fmt.Fprintf(a.Stdout, "  %s  %-45s %9s  eta %-9s %s\n", d.progress(), oneLine(d.label(), 45), human(int64(d.Size)), eta, state)
 		if n := d.note(); n != "" && d.Health != "ok" {
-			fmt.Fprintf(a.stdout, "        %s\n", oneLine(n, 100))
+			fmt.Fprintf(a.Stdout, "        %s\n", oneLine(n, 100))
 		}
 	}
-	fmt.Fprintln(a.stdout, "Searching (added, nothing found or grabbed yet)")
+	fmt.Fprintln(a.Stdout, "Searching (added, nothing found or grabbed yet)")
 	if len(wanted) == 0 {
-		fmt.Fprintln(a.stdout, "  nothing")
+		fmt.Fprintln(a.Stdout, "  nothing")
 	}
 	for _, w := range wanted {
-		fmt.Fprintf(a.stdout, "  %s\n", w)
+		fmt.Fprintf(a.Stdout, "  %s\n", w)
 	}
 	for _, c := range []arr{radarr, sonarr} {
 		if root, free, err := c.rootFolder(); err == nil {
-			fmt.Fprintf(a.stdout, "Free space for %s: %s (%s)\n", map[bool]string{false: "movies", true: "series"}[c.tv], human(free), root)
+			fmt.Fprintf(a.Stdout, "Free space for %s: %s (%s)\n", map[bool]string{false: "movies", true: "series"}[c.tv], human(free), root)
 		}
 	}
 	if failed {

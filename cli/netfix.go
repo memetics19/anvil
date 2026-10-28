@@ -14,6 +14,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/memetics19/anvil/cli/internal/app"
 )
 
 // The parts that touch the system. Tests replace them.
@@ -233,21 +235,21 @@ func networkFinding() []finding {
 }
 
 // fixNetwork removes the entries after asking. It returns doctor's exit code.
-func fixNetwork(a *app) int {
+func fixNetwork(a *app.App) int {
 	if goos != "darwin" {
-		fmt.Fprintln(a.stdout, "doctor --fix: only the Mac's routing has a fix, and this is not macOS")
+		fmt.Fprintln(a.Stdout, "doctor --fix: only the Mac's routing has a fix, and this is not macOS")
 		return 0
 	}
 	s := findShadow()
 	if s == nil {
-		fmt.Fprintln(a.stdout, "doctor --fix: nothing to fix, no stale lab route hides the VPN")
+		fmt.Fprintln(a.Stdout, "doctor --fix: nothing to fix, no stale lab route hides the VPN")
 		return 0
 	}
-	fmt.Fprintln(a.stdout, s.describe()+".")
-	fmt.Fprintln(a.stdout, "They only make sense at home. Removing them sends lab traffic through the VPN.")
-	fmt.Fprintln(a.stdout, "Nothing in the lab changes. At home the VPN still reaches the lab.")
-	if !askYesNo(a.stdin, a.stdout, fmt.Sprintf("Remove them now (%d sudo commands)?", len(s.commands()))) {
-		fmt.Fprintln(a.stdout, "Nothing changed.")
+	fmt.Fprintln(a.Stdout, s.describe()+".")
+	fmt.Fprintln(a.Stdout, "They only make sense at home. Removing them sends lab traffic through the VPN.")
+	fmt.Fprintln(a.Stdout, "Nothing in the lab changes. At home the VPN still reaches the lab.")
+	if !app.AskYesNo(a.Stdin, a.Stdout, fmt.Sprintf("Remove them now (%d sudo commands)?", len(s.commands()))) {
+		fmt.Fprintln(a.Stdout, "Nothing changed.")
 		return 1
 	}
 	for _, c := range s.commands() {
@@ -255,9 +257,9 @@ func fixNetwork(a *app) int {
 		_ = runSudo(c...)
 	}
 	if left := findShadow(); left != nil {
-		fmt.Fprintln(a.stdout, "doctor --fix: still found: "+left.describe())
+		fmt.Fprintln(a.Stdout, "doctor --fix: still found: "+left.describe())
 		return 1
 	}
-	fmt.Fprintln(a.stdout, "doctor --fix: done, the lab is reached through the VPN")
+	fmt.Fprintln(a.Stdout, "doctor --fix: done, the lab is reached through the VPN")
 	return 0
 }

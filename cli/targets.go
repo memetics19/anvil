@@ -3,7 +3,10 @@ package main
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
+
+	"github.com/memetics19/anvil/cli/internal/run"
 )
 
 const checkDiff = "--check --diff"
@@ -79,12 +82,12 @@ func (t target) argsFor(check bool, tags, extra string) string {
 	return joinNonEmpty(" ", t.args, mode, tagArgs, userTags, extra)
 }
 
-func (t target) cmd(mk string, check bool, tags, extra string) makeCmd {
-	return newMake(mk, "HOST", t.host, "ARGS", t.argsFor(check, tags, extra))
+func (t target) cmd(mk string, check bool, tags, extra string) run.MakeCmd {
+	return run.NewMake(mk, "HOST", t.host, "ARGS", t.argsFor(check, tags, extra))
 }
 
 // checkCmd is the dry run.
-func (t target) checkCmd(tags, extra string) makeCmd {
+func (t target) checkCmd(tags, extra string) run.MakeCmd {
 	mk := t.make
 	if t.checkMake != "" {
 		mk = t.checkMake
@@ -93,9 +96,9 @@ func (t target) checkCmd(tags, extra string) makeCmd {
 }
 
 // applyCmd is the real run. For tf it takes no ARGS: tf-apply applies the saved plan.
-func (t target) applyCmd(tags, extra string) makeCmd {
+func (t target) applyCmd(tags, extra string) run.MakeCmd {
 	if t.applyMake != "" {
-		return newMake(t.applyMake)
+		return run.NewMake(t.applyMake)
 	}
 	return t.cmd(t.make, false, tags, extra)
 }
@@ -131,7 +134,7 @@ func (c *catalog) resolve(name, host string) (target, error) {
 		case t.needsHost && host == "":
 			return target{}, fmt.Errorf("%s needs --host <vm> (one of %s)", name, strings.Join(c.vms, ", "))
 		case t.needsHost || (t.name == "vms" && host != ""):
-			if !contains(c.vms, host) {
+			if !slices.Contains(c.vms, host) {
 				return target{}, fmt.Errorf("unknown VM %q (one of %s)", host, strings.Join(c.vms, ", "))
 			}
 			return c.vmTarget(host), nil
@@ -140,7 +143,7 @@ func (c *catalog) resolve(name, host string) (target, error) {
 		}
 		return t, nil
 	}
-	if contains(c.vms, name) {
+	if slices.Contains(c.vms, name) {
 		if host != "" && host != name {
 			return target{}, fmt.Errorf("--host %s does not match the VM %s", host, name)
 		}
@@ -155,13 +158,4 @@ func (c *catalog) resolve(name, host string) (target, error) {
 func (c *catalog) vmTarget(vm string) target {
 	return target{name: vm, help: "every guest play for the VM " + vm, make: "vm", host: vm,
 		checkArgs: checkDiff, summarize: ansibleSummary}
-}
-
-func contains(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }

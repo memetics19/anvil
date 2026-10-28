@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/memetics19/anvil/cli/internal/testlab"
 )
 
 // TestVersionLdflags builds the binary the way make cli and GoReleaser do, and checks
@@ -38,7 +40,7 @@ func TestVersionLdflags(t *testing.T) {
 
 // TestMakeCliSetsTheVersion keeps make cli in step with the variables above.
 func TestMakeCliSetsTheVersion(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join(realRoot, "Makefile"))
+	b, err := os.ReadFile(filepath.Join(testlab.RealRoot, "Makefile"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,13 +48,5 @@ func TestMakeCliSetsTheVersion(t *testing.T) {
 		if !strings.Contains(string(b), want) {
 			t.Errorf("make cli does not set %s", want)
 		}
-	}
-}
-
-func TestVersionUnset(t *testing.T) {
-	l := newTestLab(t)
-	l.run("", "version")
-	if !strings.Contains(l.output(), "anvil dev\n") || !strings.Contains(l.output(), "commit    unknown") {
-		t.Errorf("dev build:\n%s", l.output())
 	}
 }

@@ -5,6 +5,8 @@ import (
 	"io"
 	"strings"
 	"time"
+
+	"github.com/memetics19/anvil/cli/internal/app"
 )
 
 // outcome is what one stage of anvil up did.
@@ -28,18 +30,18 @@ func (o outcome) String() string {
 	return [...]string{"unchanged", "applied", "skipped", "failed", "stopped", "not run"}[o]
 }
 
-func (o outcome) paint(p palette, s string) string {
+func (o outcome) paint(p app.Palette, s string) string {
 	switch o {
 	case outUnchanged:
-		return p.ok(s)
+		return p.Ok(s)
 	case outApplied:
-		return p.paint("36", s)
+		return p.Paint("36", s)
 	case outFailed:
-		return p.fail(s)
+		return p.Fail(s)
 	case outStopped:
-		return p.warn(s)
+		return p.Warn(s)
 	}
-	return p.dim(s)
+	return p.Dim(s)
 }
 
 type stageResult struct {
@@ -63,22 +65,22 @@ func fmtDur(d time.Duration) string {
 }
 
 // stageHeader is the line before a stage: stage 3/24: host-network.
-func stageHeader(w io.Writer, p palette, i, n int, name string) {
-	fmt.Fprintf(w, "\n%s\n", p.bold(fmt.Sprintf("stage %d/%d: %s", i, n, name)))
+func stageHeader(w io.Writer, p app.Palette, i, n int, name string) {
+	fmt.Fprintf(w, "\n%s\n", p.Bold(fmt.Sprintf("stage %d/%d: %s", i, n, name)))
 }
 
 // stageFooter is the line after a stage: its outcome and time.
-func stageFooter(w io.Writer, p palette, i, n int, r stageResult) {
+func stageFooter(w io.Writer, p app.Palette, i, n int, r stageResult) {
 	fmt.Fprintf(w, "stage %d/%d: %s %s in %s\n", i, n, r.name, r.out.paint(p, r.out.String()), fmtDur(r.dur))
 }
 
 // printSummary is the table at the end of anvil up: every stage, its outcome and time.
-func printSummary(w io.Writer, p palette, rs []stageResult, total time.Duration) {
+func printSummary(w io.Writer, p app.Palette, rs []stageResult, total time.Duration) {
 	width := len("total")
 	for _, r := range rs {
 		width = max(width, len(r.name))
 	}
-	fmt.Fprintf(w, "\n%s\n", p.bold("anvil up: summary"))
+	fmt.Fprintf(w, "\n%s\n", p.Bold("anvil up: summary"))
 	counts := map[outcome]int{}
 	for _, r := range rs {
 		counts[r.out]++

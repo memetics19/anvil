@@ -1,10 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"strings"
+
+	"github.com/memetics19/anvil/cli/internal/app"
+	"github.com/memetics19/anvil/cli/internal/repo"
+	"github.com/memetics19/anvil/cli/internal/run"
 )
 
 const checkUsage = `usage: anvil check [target] [--host H] [--tags T] [--args A] [--dry-run]
@@ -91,13 +97,13 @@ because that step reboots the server.
 `
 
 func init() {
-	register(command{"check", "dry run a target (--check --diff, tf-plan, the switch plan)", checkUsage, cmdCheck, 20})
-	register(command{"apply", "check a target, then apply it after confirmation", applyUsage, cmdApply, 21})
-	register(command{"services", "list the deployable services, VMs and lab targets", servicesUsage, cmdServices, 22})
-	register(command{"backup", "make backup", backupUsage, cmdBackup, 30})
-	register(command{"restore", "the documented restore commands, with confirmation", restoreUsage, cmdRestore, 31})
-	register(command{"provision-iso", "make provision-iso NAME=<name>", provisionISOUsage, cmdProvisionISO, 40})
-	register(command{"provision", "make provision NAME=<name> (a dry run unless --install)", provisionUsage, cmdProvision, 41})
+	app.Register(app.Command{Name: "check", Summary: "dry run a target (--check --diff, tf-plan, the switch plan)", Usage: checkUsage, Run: cmdCheck, Order: 20})
+	app.Register(app.Command{Name: "apply", Summary: "check a target, then apply it after confirmation", Usage: applyUsage, Run: cmdApply, Order: 21})
+	app.Register(app.Command{Name: "services", Summary: "list the deployable services, VMs and lab targets", Usage: servicesUsage, Run: cmdServices, Order: 22})
+	app.Register(app.Command{Name: "backup", Summary: "make backup", Usage: backupUsage, Run: cmdBackup, Order: 30})
+	app.Register(app.Command{Name: "restore", Summary: "the documented restore commands, with confirmation", Usage: restoreUsage, Run: cmdRestore, Order: 31})
+	app.Register(app.Command{Name: "provision-iso", Summary: "make provision-iso NAME=<name>", Usage: provisionISOUsage, Run: cmdProvisionISO, Order: 40})
+	app.Register(app.Command{Name: "provision", Summary: "make provision NAME=<name> (a dry run unless --install)", Usage: provisionUsage, Run: cmdProvision, Order: 41})
 }
 
 type targetOpts struct {
@@ -116,31 +122,31 @@ func targetFlags(fs *flag.FlagSet, o *targetOpts, withYes bool) {
 }
 
 // setup parses nothing more: it finds the repo and loads the catalog.
-func (a *app) setup(dryRun bool) (*runner, *catalog, bool) {
-	r, ok := a.runner(dryRun)
+func setup(a *app.App, dryRun bool) (*run.Runner, *catalog, bool) {
+	r, ok := repo.Runner(a, dryRun)
 	if !ok {
 		return nil, nil, false
 	}
-	c, err := loadCatalog(r.root)
+	c, err := loadCatalog(r.Root)
 	if err != nil {
-		fmt.Fprintf(a.stderr, "anvil: %v\n", err)
+		fmt.Fprintf(a.Stderr, "anvil: %v\n", err)
 		return nil, nil, false
 	}
-	if !a.prepare(r) {
+	if !prepare(a, r) {
 		return nil, nil, false
 	}
 	return r, c, true
 }
 
 // runCheck runs one target's dry run and returns its exit code and summary.
-func (a *app) runCheck(r *runner, t target, o targetOpts) (int, summary) {
+func runCheck(a *app.App, r *run.Runner, t target, o targetOpts) (int, summary) {
 	m := t.checkCmd(o.tags, o.args)
-	if !a.canReach(r, m.target) {
+	if !canReach(a, r, m.Target) {
 		return 1, summary{}
 	}
 	var out bytes.Buffer
-	code := r.make(m, &out)
-	if code != 0 || r.dryRun {
+	code := r.Make(m, &out)
+	if code != 0 || r.DryRun {
 		return code, summary{}
 	}
 	return 0, t.summarize(out.String())
@@ -149,51 +155,51 @@ func (a *app) runCheck(r *runner, t target, o targetOpts) (int, summary) {
 // checkThenApply runs the check, prints its summary and, when it shows changes and
 // confirm agrees, the real run. A nil confirm applies without asking. It returns the exit
 // code and what happened.
-func (a *app) checkThenApply(r *runner, t target, o targetOpts, confirm func(target) bool) (int, outcome) {
-	if r.dryRun {
-		fmt.Fprintf(a.stdout, "# %s: check\n", t.name)
-		r.make(t.checkCmd(o.tags, o.args), nil)
-		fmt.Fprintf(a.stdout, "# %s: apply, only when the check shows changes\n", t.name)
-		r.make(t.applyCmd(o.tags, o.args), nil)
+func checkThenApply(a *app.App, r *run.Runner, t target, o targetOpts, confirm func(target) bool) (int, outcome) {
+	if r.DryRun {
+		fmt.Fprintf(a.Stdout, "# %s: check\n", t.name)
+		r.Make(t.checkCmd(o.tags, o.args), nil)
+		fmt.Fprintf(a.Stdout, "# %s: apply, only when the check shows changes\n", t.name)
+		r.Make(t.applyCmd(o.tags, o.args), nil)
 		return 0, outSkipped
 	}
-	code, s := a.runCheck(r, t, o)
+	code, s := runCheck(a, r, t, o)
 	if code != 0 {
-		fmt.Fprintf(a.stderr, "anvil: the check of %s failed (exit %d); nothing applied\n", t.name, code)
+		fmt.Fprintf(a.Stderr, "anvil: the check of %s failed (exit %d); nothing applied\n", t.name, code)
 		return code, outFailed
 	}
-	fmt.Fprintf(a.stdout, "anvil: %s check: %s\n", t.name, s)
+	fmt.Fprintf(a.Stdout, "anvil: %s check: %s\n", t.name, s)
 	if s.known && !s.changes {
-		fmt.Fprintf(a.stdout, "anvil: %s has nothing to apply\n", t.name)
+		fmt.Fprintf(a.Stdout, "anvil: %s has nothing to apply\n", t.name)
 		return 0, outUnchanged
 	}
 	if confirm != nil && !confirm(t) {
-		fmt.Fprintf(a.stdout, "anvil: %s not applied\n", t.name)
+		fmt.Fprintf(a.Stdout, "anvil: %s not applied\n", t.name)
 		return 1, outSkipped
 	}
-	if code := r.make(t.applyCmd(o.tags, o.args), nil); code != 0 {
+	if code := r.Make(t.applyCmd(o.tags, o.args), nil); code != 0 {
 		return code, outFailed
 	}
 	return 0, outApplied
 }
 
-func cmdCheck(a *app, args []string) int {
+func cmdCheck(a *app.App, args []string) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	var o targetOpts
 	targetFlags(fs, &o, false)
-	pos, code, ok := a.flags(fs, checkUsage, args)
+	pos, code, ok := a.Flags(fs, checkUsage, args)
 	if !ok {
 		return code
 	}
 	if len(pos) > 1 {
-		fmt.Fprintf(a.stderr, "anvil: check takes one target\n\n%s", checkUsage)
+		fmt.Fprintf(a.Stderr, "anvil: check takes one target\n\n%s", checkUsage)
 		return 2
 	}
 	if err := checkExtraArgs(o.args); err != nil {
-		fmt.Fprintf(a.stderr, "anvil: %v\n", err)
+		fmt.Fprintf(a.Stderr, "anvil: %v\n", err)
 		return 2
 	}
-	r, c, ok := a.setup(o.dryRun)
+	r, c, ok := setup(a, o.dryRun)
 	if !ok {
 		return 1
 	}
@@ -201,23 +207,23 @@ func cmdCheck(a *app, args []string) int {
 	if len(pos) == 1 {
 		names = pos
 	} else if o.host != "" || o.tags != "" || o.args != "" {
-		fmt.Fprintf(a.stderr, "anvil: --host, --tags and --args need a target\n")
+		fmt.Fprintf(a.Stderr, "anvil: --host, --tags and --args need a target\n")
 		return 2
 	}
 	first := 0
 	for _, n := range names {
 		t, err := c.resolve(n, o.host)
 		if err != nil {
-			fmt.Fprintf(a.stderr, "anvil: %v\n", err)
+			fmt.Fprintf(a.Stderr, "anvil: %v\n", err)
 			return 2
 		}
-		code, s := a.runCheck(r, t, o)
+		code, s := runCheck(a, r, t, o)
 		switch {
-		case r.dryRun:
+		case r.DryRun:
 		case code != 0:
-			fmt.Fprintf(a.stderr, "anvil: the check of %s failed (exit %d)\n", t.name, code)
+			fmt.Fprintf(a.Stderr, "anvil: the check of %s failed (exit %d)\n", t.name, code)
 		default:
-			fmt.Fprintf(a.stdout, "anvil: %s check: %s\n", t.name, s)
+			fmt.Fprintf(a.Stdout, "anvil: %s check: %s\n", t.name, s)
 		}
 		if code != 0 && first == 0 {
 			first = code
@@ -226,45 +232,45 @@ func cmdCheck(a *app, args []string) int {
 	return first
 }
 
-func cmdApply(a *app, args []string) int {
+func cmdApply(a *app.App, args []string) int {
 	fs := flag.NewFlagSet("apply", flag.ContinueOnError)
 	var o targetOpts
 	targetFlags(fs, &o, true)
-	pos, code, ok := a.flags(fs, applyUsage, args)
+	pos, code, ok := a.Flags(fs, applyUsage, args)
 	if !ok {
 		return code
 	}
 	if len(pos) != 1 {
-		fmt.Fprintf(a.stderr, "anvil: apply takes one target\n\n%s", applyUsage)
+		fmt.Fprintf(a.Stderr, "anvil: apply takes one target\n\n%s", applyUsage)
 		return 2
 	}
 	if err := checkExtraArgs(o.args); err != nil {
-		fmt.Fprintf(a.stderr, "anvil: %v\n", err)
+		fmt.Fprintf(a.Stderr, "anvil: %v\n", err)
 		return 2
 	}
-	r, c, ok := a.setup(o.dryRun)
+	r, c, ok := setup(a, o.dryRun)
 	if !ok {
 		return 1
 	}
 	t, err := c.resolve(pos[0], o.host)
 	if err != nil {
-		fmt.Fprintf(a.stderr, "anvil: %v\n", err)
+		fmt.Fprintf(a.Stderr, "anvil: %v\n", err)
 		return 2
 	}
-	code, _ = a.checkThenApply(r, t, o, func(t target) bool { return confirmApply(a.stdin, a.stdout, t, o.yes) })
+	code, _ = checkThenApply(a, r, t, o, func(t target) bool { return confirmApply(a.Stdin, a.Stdout, t, o.yes) })
 	return code
 }
 
-func cmdServices(a *app, args []string) int {
+func cmdServices(a *app.App, args []string) int {
 	fs := flag.NewFlagSet("services", flag.ContinueOnError)
-	if _, code, ok := a.flags(fs, servicesUsage, args); !ok {
+	if _, code, ok := a.Flags(fs, servicesUsage, args); !ok {
 		return code
 	}
-	_, c, ok := a.setup(false)
+	_, c, ok := setup(a, false)
 	if !ok {
 		return 1
 	}
-	w := a.stdout
+	w := a.Stdout
 	fmt.Fprintf(w, "Services (role tags in %s):\n", playbookPath)
 	for _, s := range c.services {
 		t, err := c.resolve(s.name, "")
@@ -303,133 +309,133 @@ func cmdServices(a *app, args []string) int {
 	return 0
 }
 
-func simpleFlags(a *app, name, usage string, args []string, withYes bool) (pos []string, yes, dryRun bool, code int, ok bool) {
+func simpleFlags(a *app.App, name, usage string, args []string, withYes bool) (pos []string, yes, dryRun bool, code int, ok bool) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.BoolVar(&dryRun, "dry-run", false, "")
 	if withYes {
 		fs.BoolVar(&yes, "yes", false, "")
 	}
-	pos, code, ok = a.flags(fs, usage, args)
+	pos, code, ok = a.Flags(fs, usage, args)
 	return
 }
 
-func cmdBackup(a *app, args []string) int {
+func cmdBackup(a *app.App, args []string) int {
 	pos, _, dry, code, ok := simpleFlags(a, "backup", backupUsage, args, false)
 	if !ok {
 		return code
 	}
 	if len(pos) > 0 {
-		fmt.Fprintf(a.stderr, "anvil: backup takes no arguments\n")
+		fmt.Fprintf(a.Stderr, "anvil: backup takes no arguments\n")
 		return 2
 	}
-	r, ok := a.runner(dry)
+	r, ok := repo.Runner(a, dry)
 	if !ok {
 		return 1
 	}
-	return r.make(newMake("backup"), nil)
+	return r.Make(run.NewMake("backup"), nil)
 }
 
-func cmdRestore(a *app, args []string) int {
+func cmdRestore(a *app.App, args []string) int {
 	pos, yes, dry, code, ok := simpleFlags(a, "restore", restoreUsage, args, true)
 	if !ok {
 		return code
 	}
 	if len(pos) == 0 {
-		fmt.Fprint(a.stderr, restoreUsage)
+		fmt.Fprint(a.Stderr, restoreUsage)
 		return 2
 	}
-	r, ok := a.runner(dry)
+	r, ok := repo.Runner(a, dry)
 	if !ok {
 		return 1
 	}
 	switch pos[0] {
 	case "tfstate":
 		if len(pos) > 2 {
-			fmt.Fprint(a.stderr, restoreUsage)
+			fmt.Fprint(a.Stderr, restoreUsage)
 			return 2
 		}
 		file := ""
 		if len(pos) == 2 {
-			file = " " + shellQuote(pos[1])
+			file = " " + run.ShellQuote(pos[1])
 		}
-		fmt.Fprintln(a.stdout, "anvil: the backup's serial:")
-		if code := r.shell("scripts/backup-restore-tfstate.sh"+file+" | jq .serial", nil); code != 0 {
+		fmt.Fprintln(a.Stdout, "anvil: the backup's serial:")
+		if code := r.Shell("scripts/backup-restore-tfstate.sh"+file+" | jq .serial", nil); code != 0 {
 			return code
 		}
-		if !dry && !askTyped(a.stdin, a.stdout, "This pushes the backup into the Terraform state bucket.", "tfstate") {
-			fmt.Fprintln(a.stdout, "anvil: not restored")
+		if !dry && !app.AskTyped(a.Stdin, a.Stdout, "This pushes the backup into the Terraform state bucket.", "tfstate") {
+			fmt.Fprintln(a.Stdout, "anvil: not restored")
 			return 1
 		}
-		return r.shell(envPrefix+"scripts/backup-restore-tfstate.sh"+file+" | terraform -chdir=terraform state push -", nil)
+		return r.Shell(run.EnvPrefix+"scripts/backup-restore-tfstate.sh"+file+" | terraform -chdir=terraform state push -", nil)
 	case "drill":
 		if len(pos) > 1 {
-			fmt.Fprint(a.stderr, restoreUsage)
+			fmt.Fprint(a.Stderr, restoreUsage)
 			return 2
 		}
-		if !dry && !yes && !askYesNo(a.stdin, a.stdout, "Run the Vaultwarden restore drill on the vaultwarden VM?") {
+		if !dry && !yes && !app.AskYesNo(a.Stdin, a.Stdout, "Run the Vaultwarden restore drill on the vaultwarden VM?") {
 			return 1
 		}
-		return r.make(newMake("vaultwarden-drill"), nil)
+		return r.Make(run.NewMake("vaultwarden-drill"), nil)
 	case "vault":
-		fmt.Fprintln(a.stderr, "anvil: restoring Vault is not scripted. Follow docs/setup.md, Rebuilding on a new box, step 5.")
+		fmt.Fprintln(a.Stderr, "anvil: restoring Vault is not scripted. Follow docs/setup.md, Rebuilding on a new box, step 5.")
 		return 2
 	case "vaultwarden":
-		fmt.Fprintln(a.stderr, "anvil: restoring Vaultwarden is not scripted. Follow docs/setup.md, Rebuilding on a new box, step 8. anvil restore drill tests a backup.")
+		fmt.Fprintln(a.Stderr, "anvil: restoring Vaultwarden is not scripted. Follow docs/setup.md, Rebuilding on a new box, step 8. anvil restore drill tests a backup.")
 		return 2
 	}
-	fmt.Fprintf(a.stderr, "anvil: unknown restore %q\n\n%s", pos[0], restoreUsage)
+	fmt.Fprintf(a.Stderr, "anvil: unknown restore %q\n\n%s", pos[0], restoreUsage)
 	return 2
 }
 
-func cmdProvisionISO(a *app, args []string) int {
+func cmdProvisionISO(a *app.App, args []string) int {
 	pos, _, dry, code, ok := simpleFlags(a, "provision-iso", provisionISOUsage, args, false)
 	if !ok {
 		return code
 	}
 	if len(pos) != 1 {
-		fmt.Fprint(a.stderr, provisionISOUsage)
+		fmt.Fprint(a.Stderr, provisionISOUsage)
 		return 2
 	}
-	r, ok := a.runner(dry)
+	r, ok := repo.Runner(a, dry)
 	if !ok {
 		return 1
 	}
-	return r.make(newMake("provision-iso", "NAME", pos[0]), nil)
+	return r.Make(run.NewMake("provision-iso", "NAME", pos[0]), nil)
 }
 
-func cmdProvision(a *app, args []string) int {
+func cmdProvision(a *app.App, args []string) int {
 	fs := flag.NewFlagSet("provision", flag.ContinueOnError)
 	var install, mediaReady, powerOff, dry bool
 	fs.BoolVar(&install, "install", false, "")
 	fs.BoolVar(&powerOff, "power-off", false, "")
 	fs.BoolVar(&mediaReady, "media-ready", false, "")
 	fs.BoolVar(&dry, "dry-run", false, "")
-	pos, code, ok := a.flags(fs, provisionUsage, args)
+	pos, code, ok := a.Flags(fs, provisionUsage, args)
 	if !ok {
 		return code
 	}
 	if len(pos) != 1 || (mediaReady && !install) {
-		fmt.Fprint(a.stderr, provisionUsage)
+		fmt.Fprint(a.Stderr, provisionUsage)
 		return 2
 	}
 	name := pos[0]
-	if !shellSafe.MatchString(name) || strings.ContainsAny(name, "=:,@%+") {
-		fmt.Fprintf(a.stderr, "anvil: %q is not a machine name\n", name)
+	if !run.ShellSafe(name) || strings.ContainsAny(name, "=:,@%+") {
+		fmt.Fprintf(a.Stderr, "anvil: %q is not a machine name\n", name)
 		return 2
 	}
-	r, ok := a.runner(dry)
+	r, ok := repo.Runner(a, dry)
 	if !ok {
 		return 1
 	}
-	check := newMake("provision", "NAME", name)
+	check := run.NewMake("provision", "NAME", name)
 	if powerOff {
-		check = newMake("provision", "NAME", name, "ARGS", "-e provision_power_off=true")
+		check = run.NewMake("provision", "NAME", name, "ARGS", "-e provision_power_off=true")
 	}
-	if code := r.make(check, nil); code != 0 || !install {
+	if code := r.Make(check, nil); code != 0 || !install {
 		return code
 	}
-	if !dry && !askTyped(a.stdin, a.stdout, "This installs Proxmox VE on "+name+" and wipes its disks.", name) {
-		fmt.Fprintln(a.stdout, "anvil: not installed")
+	if !dry && !app.AskTyped(a.Stdin, a.Stdout, "This installs Proxmox VE on "+name+" and wipes its disks.", name) {
+		fmt.Fprintln(a.Stdout, "anvil: not installed")
 		return 1
 	}
 	extra := "-e provision_confirm=" + name
@@ -439,5 +445,17 @@ func cmdProvision(a *app, args []string) int {
 	if powerOff {
 		extra += " -e provision_power_off=true"
 	}
-	return r.make(newMake("provision", "NAME", name, "ARGS", extra), nil)
+	return r.Make(run.NewMake("provision", "NAME", name, "ARGS", extra), nil)
+}
+
+// confirmApply is the confirmation before a real run. Every target needs a yes, which
+// --yes gives. A risky target also needs its name typed, which --yes does not skip.
+func confirmApply(in *bufio.Reader, out io.Writer, t target, yes bool) bool {
+	if t.risky {
+		return app.AskTyped(in, out, fmt.Sprintf("%s is a risky target (%s).", t.name, t.help), t.name)
+	}
+	if yes {
+		return true
+	}
+	return app.AskYesNo(in, out, fmt.Sprintf("Apply %s?", t.name))
 }

@@ -18,10 +18,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/memetics19/anvil/cli/internal/app"
+	"github.com/memetics19/anvil/cli/internal/repo"
 )
 
 func init() {
-	register(command{"drift", "the nightly check: anvil check, then a push to ntfy if anything drifted", driftUsage, cmdDrift, 23})
+	app.Register(app.Command{Name: "drift", Summary: "the nightly check: anvil check, then a push to ntfy if anything drifted", Usage: driftUsage, Run: cmdDrift, Order: 23})
 }
 
 const driftUsage = `usage: anvil drift [--always] [--log FILE]
@@ -55,7 +58,7 @@ const driftLabel = "com.github.memetics19.anvil.drift"
 
 var atRE = regexp.MustCompile(`^([01]?\d|2[0-3]):([0-5]\d)$`)
 
-func cmdDrift(a *app, args []string) int {
+func cmdDrift(a *app.App, args []string) int {
 	var always, install, uninstall bool
 	var logFile, at string
 	fs := flag.NewFlagSet("drift", flag.ContinueOnError)
@@ -64,42 +67,42 @@ func cmdDrift(a *app, args []string) int {
 	fs.BoolVar(&install, "install", false, "")
 	fs.StringVar(&at, "at", "03:30", "")
 	fs.BoolVar(&uninstall, "uninstall", false, "")
-	pos, code, ok := a.flags(fs, driftUsage, args)
+	pos, code, ok := a.Flags(fs, driftUsage, args)
 	if !ok {
 		return code
 	}
 	if len(pos) > 0 {
-		fmt.Fprint(a.stderr, driftUsage)
+		fmt.Fprint(a.Stderr, driftUsage)
 		return 2
 	}
 	switch {
 	case uninstall:
-		return a.driftUninstall()
+		return driftUninstall(a)
 	case install:
 		m := atRE.FindStringSubmatch(at)
 		if m == nil {
-			fmt.Fprintf(a.stderr, "anvil: drift: --at wants HH:MM, for example 03:30 (got %q)\n", at)
+			fmt.Fprintf(a.Stderr, "anvil: drift: --at wants HH:MM, for example 03:30 (got %q)\n", at)
 			return 2
 		}
 		h, _ := strconv.Atoi(m[1])
 		min, _ := strconv.Atoi(m[2])
-		return a.driftInstall(h, min)
+		return driftInstall(a, h, min)
 	}
 
 	if logFile != "" {
 		f, err := rotateLog(logFile, 7)
 		if err != nil {
-			fmt.Fprintf(a.stderr, "anvil: drift: %v\n", err)
+			fmt.Fprintf(a.Stderr, "anvil: drift: %v\n", err)
 			return 1
 		}
 		defer f.Close()
-		a.stdout, a.stderr = f, f
+		a.Stdout, a.Stderr = f, f
 		fmt.Fprintf(f, "anvil drift, %s\n", time.Now().Format(time.RFC1123))
 	}
 
-	r, c, ok := a.setup(false)
+	r, c, ok := setup(a, false)
 	if !ok {
-		a.notify("anvil: drift check failed", "it could not start: no repo or no site dict", "x", 4)
+		notify(a, "anvil: drift check failed", "it could not start: no repo or no site dict", "x", 4)
 		return 1
 	}
 	var lines []string
@@ -107,10 +110,10 @@ func cmdDrift(a *app, args []string) int {
 	for _, n := range []string{"host", "vms", "tf"} {
 		t, err := c.resolve(n, "")
 		if err != nil {
-			fmt.Fprintf(a.stderr, "anvil: %v\n", err)
+			fmt.Fprintf(a.Stderr, "anvil: %v\n", err)
 			return 2
 		}
-		code, s := a.runCheck(r, t, targetOpts{})
+		code, s := runCheck(a, r, t, targetOpts{})
 		switch {
 		case code != 0:
 			failed = true
@@ -121,14 +124,14 @@ func cmdDrift(a *app, args []string) int {
 		}
 	}
 	body := strings.Join(lines, "\n")
-	fmt.Fprintln(a.stdout, "anvil drift:\n"+body)
+	fmt.Fprintln(a.Stdout, "anvil drift:\n"+body)
 	switch {
 	case failed:
-		a.notify("anvil: drift check failed", body, "x", 4)
+		notify(a, "anvil: drift check failed", body, "x", 4)
 	case drift:
-		a.notify("anvil: the lab drifted", body+"\nanvil check <target> shows the diff.", "warning", 4)
+		notify(a, "anvil: the lab drifted", body+"\nanvil check <target> shows the diff.", "warning", 4)
 	case always:
-		a.notify("anvil: no drift", body, "white_check_mark", 2)
+		notify(a, "anvil: no drift", body, "white_check_mark", 2)
 	}
 	if failed || drift {
 		return 1
@@ -152,8 +155,8 @@ func driftLine(s summary) string {
 }
 
 // ntfyConfig is the topic URL and the token: the environment first, then the Keychain.
-func (a *app) ntfyConfig() (url, token string) {
-	url, token = a.getenv("ANVIL_NTFY_URL"), a.getenv("ANVIL_NTFY_TOKEN")
+func ntfyConfig(a *app.App) (url, token string) {
+	url, token = a.Getenv("ANVIL_NTFY_URL"), a.Getenv("ANVIL_NTFY_TOKEN")
 	if url == "" {
 		url = keychainValue(a, "ntfy-url")
 	}
@@ -164,11 +167,11 @@ func (a *app) ntfyConfig() (url, token string) {
 }
 
 // keychainValue reads one item of service homelab, or "". Tests replace it.
-var keychainValue = func(a *app, account string) string {
-	if !a.lookPath("security") {
+var keychainValue = func(a *app.App, account string) string {
+	if !a.LookPath("security") {
 		return ""
 	}
-	out, code := a.probe("security", "find-generic-password", "-s", "homelab", "-a", account, "-w")
+	out, code := a.Probe("security", "find-generic-password", "-s", "homelab", "-a", account, "-w")
 	if code != 0 {
 		return ""
 	}
@@ -177,15 +180,15 @@ var keychainValue = func(a *app, account string) string {
 
 // notify posts one message to ntfy. The token goes in a header. A failure is printed,
 // never fatal: the verdict is in the output and the exit code anyway.
-func (a *app) notify(title, body, tag string, priority int) {
-	url, token := a.ntfyConfig()
+func notify(a *app.App, title, body, tag string, priority int) {
+	url, token := ntfyConfig(a)
 	if url == "" {
-		fmt.Fprintln(a.stdout, "anvil drift: ntfy is not set up (anvil drift --help), no message sent")
+		fmt.Fprintln(a.Stdout, "anvil drift: ntfy is not set up (anvil drift --help), no message sent")
 		return
 	}
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBufferString(body))
 	if err != nil {
-		fmt.Fprintln(a.stderr, "anvil drift: the ntfy URL is not a URL")
+		fmt.Fprintln(a.Stderr, "anvil drift: the ntfy URL is not a URL")
 		return
 	}
 	req.Header.Set("Title", title)
@@ -196,15 +199,15 @@ func (a *app) notify(title, body, tag string, priority int) {
 	}
 	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
 	if err != nil {
-		fmt.Fprintln(a.stderr, "anvil drift: ntfy did not answer, no message sent")
+		fmt.Fprintln(a.Stderr, "anvil drift: ntfy did not answer, no message sent")
 		return
 	}
 	resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
-		fmt.Fprintf(a.stderr, "anvil drift: ntfy refused the message (HTTP %d)\n", resp.StatusCode)
+		fmt.Fprintf(a.Stderr, "anvil drift: ntfy refused the message (HTTP %d)\n", resp.StatusCode)
 		return
 	}
-	fmt.Fprintln(a.stdout, "anvil drift: sent to ntfy")
+	fmt.Fprintln(a.Stdout, "anvil drift: sent to ntfy")
 }
 
 // rotateLog moves FILE to FILE.1 (FILE.1 to FILE.2, and so on, keeping n) and opens a new
@@ -221,17 +224,17 @@ func rotateLog(path string, n int) (*os.File, error) {
 }
 
 // driftPaths: the schedule's files and the log, for this OS.
-func (a *app) driftPaths() (unit, timer, log string) {
-	home := a.getenv("HOME")
+func driftPaths(a *app.App) (unit, timer, log string) {
+	home := a.Getenv("HOME")
 	if goos == "darwin" {
 		return filepath.Join(home, "Library", "LaunchAgents", driftLabel+".plist"), "",
 			filepath.Join(home, "Library", "Logs", "anvil", "drift.log")
 	}
-	cfg := a.getenv("XDG_CONFIG_HOME")
+	cfg := a.Getenv("XDG_CONFIG_HOME")
 	if cfg == "" {
 		cfg = filepath.Join(home, ".config")
 	}
-	state := a.getenv("XDG_STATE_HOME")
+	state := a.Getenv("XDG_STATE_HOME")
 	if state == "" {
 		state = filepath.Join(home, ".local", "state")
 	}
@@ -245,66 +248,66 @@ var runSched = func(name string, args ...string) error {
 	return exec.Command(name, args...).Run()
 }
 
-func (a *app) driftInstall(hour, minute int) int {
-	root, err := a.repoRoot()
+func driftInstall(a *app.App, hour, minute int) int {
+	root, err := repo.Root(a)
 	if err != nil {
-		fmt.Fprintf(a.stderr, "anvil: drift: %v\n", err)
+		fmt.Fprintf(a.Stderr, "anvil: drift: %v\n", err)
 		return 1
 	}
 	self, err := os.Executable()
 	if err != nil {
-		fmt.Fprintf(a.stderr, "anvil: drift: cannot find this binary: %v\n", err)
+		fmt.Fprintf(a.Stderr, "anvil: drift: cannot find this binary: %v\n", err)
 		return 1
 	}
 	if p, err := filepath.EvalSymlinks(self); err == nil {
 		self = p
 	}
-	unit, timer, log := a.driftPaths()
+	unit, timer, log := driftPaths(a)
 	if err := os.MkdirAll(filepath.Dir(unit), 0o755); err != nil {
-		fmt.Fprintf(a.stderr, "anvil: drift: %v\n", err)
+		fmt.Fprintf(a.Stderr, "anvil: drift: %v\n", err)
 		return 1
 	}
 	// The schedule gets this shell's PATH: make, ansible, terraform and vault live there.
-	path := a.getenv("PATH")
+	path := a.Getenv("PATH")
 	if goos == "darwin" {
 		uid := strconv.Itoa(os.Getuid())
 		if err := os.WriteFile(unit, []byte(launchdPlist(self, root, path, log, hour, minute)), 0o644); err != nil {
-			fmt.Fprintf(a.stderr, "anvil: drift: %v\n", err)
+			fmt.Fprintf(a.Stderr, "anvil: drift: %v\n", err)
 			return 1
 		}
 		_ = runSched("launchctl", "bootout", "gui/"+uid+"/"+driftLabel)
 		if err := runSched("launchctl", "bootstrap", "gui/"+uid, unit); err != nil {
-			fmt.Fprintf(a.stderr, "anvil: drift: launchctl bootstrap failed: %v\n", err)
+			fmt.Fprintf(a.Stderr, "anvil: drift: launchctl bootstrap failed: %v\n", err)
 			return 1
 		}
 	} else {
 		svc, tmr := systemdUnits(self, root, path, log, hour, minute)
 		if err := os.WriteFile(unit, []byte(svc), 0o644); err != nil {
-			fmt.Fprintf(a.stderr, "anvil: drift: %v\n", err)
+			fmt.Fprintf(a.Stderr, "anvil: drift: %v\n", err)
 			return 1
 		}
 		if err := os.WriteFile(timer, []byte(tmr), 0o644); err != nil {
-			fmt.Fprintf(a.stderr, "anvil: drift: %v\n", err)
+			fmt.Fprintf(a.Stderr, "anvil: drift: %v\n", err)
 			return 1
 		}
 		if err := runSched("systemctl", "--user", "daemon-reload"); err == nil {
 			err = runSched("systemctl", "--user", "enable", "--now", "anvil-drift.timer")
 		}
 		if err != nil {
-			fmt.Fprintf(a.stderr, "anvil: drift: systemctl --user failed: %v\n", err)
+			fmt.Fprintf(a.Stderr, "anvil: drift: systemctl --user failed: %v\n", err)
 			return 1
 		}
 	}
-	fmt.Fprintf(a.stdout, "anvil drift: every night at %02d:%02d from %s. Log: %s\n",
-		hour, minute, tildePath(a.getenv, root), tildePath(a.getenv, log))
-	if url, _ := a.ntfyConfig(); url == "" {
-		fmt.Fprintln(a.stdout, "anvil drift: ntfy is not set up yet, see anvil drift --help")
+	fmt.Fprintf(a.Stdout, "anvil drift: every night at %02d:%02d from %s. Log: %s\n",
+		hour, minute, repo.TildePath(a.Getenv, root), repo.TildePath(a.Getenv, log))
+	if url, _ := ntfyConfig(a); url == "" {
+		fmt.Fprintln(a.Stdout, "anvil drift: ntfy is not set up yet, see anvil drift --help")
 	}
 	return 0
 }
 
-func (a *app) driftUninstall() int {
-	unit, timer, _ := a.driftPaths()
+func driftUninstall(a *app.App) int {
+	unit, timer, _ := driftPaths(a)
 	if goos == "darwin" {
 		_ = runSched("launchctl", "bootout", "gui/"+strconv.Itoa(os.Getuid())+"/"+driftLabel)
 	} else {
@@ -318,7 +321,7 @@ func (a *app) driftUninstall() int {
 	if goos != "darwin" {
 		_ = runSched("systemctl", "--user", "daemon-reload")
 	}
-	fmt.Fprintln(a.stdout, "anvil drift: the nightly check is removed")
+	fmt.Fprintln(a.Stdout, "anvil drift: the nightly check is removed")
 	return 0
 }
 
@@ -372,7 +375,7 @@ OnCalendar=*-*-* %02d:%02d:00
 Persistent=true
 
 [Install]
-WantedBy=timers.target
+WantedBy=timers.Target
 `, hour, minute)
 	return service, timer
 }

@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/memetics19/anvil/cli/internal/testlab"
 )
 
 func fixedClock(t *testing.T, d time.Duration) {
@@ -26,14 +28,14 @@ func wantAll(t *testing.T, out string, wants ...string) {
 
 func TestUpProgressAndSummary(t *testing.T) {
 	l := newTestLab(t)
-	fakeTools(l)
+	testlab.FakeTools(l)
 	fixedClock(t, 1500*time.Millisecond)
 
-	l.setCheckOutput(recapChanges)
-	if code := l.run("", "up", "--only", "host,vault-init,vms,status", "--yes"); code != 0 {
-		t.Fatalf("exit %d:\n%s", code, l.output())
+	l.SetCheckOutput(testlab.RecapChanges)
+	if code := l.Run("", "up", "--only", "host,vault-init,vms,status", "--yes"); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, l.Output())
 	}
-	wantAll(t, l.output(),
+	wantAll(t, l.Output(),
 		"stage 1/4: host\n", "stage 1/4: host applied in 1.5s",
 		"stage 2/4: vault-init\n", "stage 2/4: vault-init skipped in 1.5s",
 		"stage 3/4: vms\n", "stage 4/4: status\n", "STATUS-RAN", "stage 4/4: status unchanged in 1.5s",
@@ -43,31 +45,31 @@ func TestUpProgressAndSummary(t *testing.T) {
 		"anvil up: done, 4 stages")
 
 	// A failure: the summary still prints, the rest is not run, then the resume hint.
-	l.env["FAKE_RC"] = "5"
-	if code := l.run("", "up", "--only", "host,vms", "--yes"); code != 5 {
+	l.Env["FAKE_RC"] = "5"
+	if code := l.Run("", "up", "--only", "host,vms", "--yes"); code != 5 {
 		t.Fatalf("exit %d", code)
 	}
-	wantAll(t, l.output(), "stage 1/2: host failed in 1.5s", "  host   failed     1.5s", "  vms    not run\n", "(1 failed, 1 not run)")
-	if !strings.Contains(l.err.String(), "anvil up --from host") || strings.Contains(l.output(), "stage 2/2") {
-		t.Errorf("after a failure:\n%s", l.output())
+	wantAll(t, l.Output(), "stage 1/2: host failed in 1.5s", "  host   failed     1.5s", "  vms    not run\n", "(1 failed, 1 not run)")
+	if !strings.Contains(l.Err.String(), "anvil up --from host") || strings.Contains(l.Output(), "stage 2/2") {
+		t.Errorf("after a failure:\n%s", l.Output())
 	}
-	delete(l.env, "FAKE_RC")
+	delete(l.Env, "FAKE_RC")
 
 	// anvil up <service> has the same headers and table.
-	l.setCheckOutput(recapNoChanges)
-	if code := l.run("", "up", "pihole", "homepage", "--yes"); code != 0 {
-		t.Fatalf("services: exit %d:\n%s", code, l.output())
+	l.SetCheckOutput(testlab.RecapNoChanges)
+	if code := l.Run("", "up", "pihole", "homepage", "--yes"); code != 0 {
+		t.Fatalf("services: exit %d:\n%s", code, l.Output())
 	}
-	wantAll(t, l.output(), "stage 1/2: pihole\n", "stage 1/2: pihole unchanged in 1.5s", "stage 2/2: homepage\n",
+	wantAll(t, l.Output(), "stage 1/2: pihole\n", "stage 1/2: pihole unchanged in 1.5s", "stage 2/2: homepage\n",
 		"anvil up: summary", "  pihole    unchanged  1.5s", "  homepage  unchanged  1.5s", "(2 unchanged)")
-	if strings.Contains(l.output(), esc) {
+	if strings.Contains(l.Output(), esc) {
 		t.Errorf("colored without a terminal")
 	}
 
-	l.tty = true
-	l.run("", "up", "pihole", "--yes")
-	if !strings.Contains(l.output(), esc+"1mstage 1/1: pihole"+esc+"0m") || !strings.Contains(l.output(), esc+"32munchanged") {
-		t.Errorf("tty: no colors:\n%q", l.output())
+	l.TTY = true
+	l.Run("", "up", "pihole", "--yes")
+	if !strings.Contains(l.Output(), esc+"1mstage 1/1: pihole"+esc+"0m") || !strings.Contains(l.Output(), esc+"32munchanged") {
+		t.Errorf("tty: no colors:\n%q", l.Output())
 	}
 }
 

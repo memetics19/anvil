@@ -13,6 +13,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/memetics19/anvil/cli/internal/app"
+	"github.com/memetics19/anvil/cli/internal/repo"
+	"github.com/memetics19/anvil/cli/internal/run"
 )
 
 const statusUsage = `usage: anvil status
@@ -34,7 +38,7 @@ It prints names only: no secrets, no addresses, no domain.
 `
 
 func init() {
-	register(command{"status", "a read-only dashboard of the lab", statusUsage, cmdStatus, 11})
+	app.Register(app.Command{Name: "status", Summary: "a read-only dashboard of the lab", Usage: statusUsage, Run: cmdStatus, Order: 11})
 }
 
 // statusScript sources env.sh once and hands anvil what it needs as JSON on a pipe.
@@ -157,8 +161,8 @@ func ago(d time.Duration) string {
 	return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 }
 
-func gitState(r *runner) string {
-	branch, code := r.quiet("git rev-parse --abbrev-ref HEAD 2>/dev/null")
+func gitState(r *run.Runner) string {
+	branch, code := r.Quiet("git rev-parse --abbrev-ref HEAD 2>/dev/null")
 	if code != 0 {
 		return "not a git checkout"
 	}
@@ -166,7 +170,7 @@ func gitState(r *runner) string {
 	// Its upstream, else origin/<branch>, else origin's default branch.
 	up := ""
 	for _, ref := range []string{"@{upstream}", "origin/" + branch, "origin/HEAD"} {
-		if out, code := r.quiet("git rev-parse --abbrev-ref " + shellQuote(ref) + " 2>/dev/null"); code == 0 {
+		if out, code := r.Quiet("git rev-parse --abbrev-ref " + run.ShellQuote(ref) + " 2>/dev/null"); code == 0 {
 			up = strings.TrimSpace(out)
 			break
 		}
@@ -174,7 +178,7 @@ func gitState(r *runner) string {
 	if up == "" {
 		return branch + ", no upstream and no origin"
 	}
-	counts, _ := r.quiet("git rev-list --left-right --count " + shellQuote("HEAD..."+up) + " 2>/dev/null")
+	counts, _ := r.Quiet("git rev-list --left-right --count " + run.ShellQuote("HEAD..."+up) + " 2>/dev/null")
 	f := strings.Fields(counts)
 	if len(f) != 2 {
 		return branch
@@ -234,9 +238,9 @@ func gatewayNote(code int) string {
 // printStatus prints the dashboard and marks the problems: Vault not unsealed, a gateway
 // name with no connection or a 5xx, Pi-hole not answering, a backup over 36h old. It
 // never prints a value from the site dict other than the gateway names.
-func printStatus(a *app, r *runner) int {
-	w := a.stdout
-	p := a.pal()
+func printStatus(a *app.App, r *run.Runner) int {
+	w := a.Stdout
+	p := a.Pal()
 	var problems []string
 	row := func(indent bool, name, value string, problem bool) {
 		format := "%-13s %s\n"
@@ -244,14 +248,14 @@ func printStatus(a *app, r *runner) int {
 			format = "  %-11s %s\n"
 		}
 		if problem {
-			value = p.fail(value)
+			value = p.Fail(value)
 		}
 		fmt.Fprintf(w, format, name, value)
 	}
-	raw, code := r.quiet(statusScript)
+	raw, code := r.Quiet(statusScript)
 	var d statusData
 	if code != 0 || json.Unmarshal([]byte(raw), &d) != nil {
-		fmt.Fprintln(a.stderr, "anvil: status could not run scripts/env.sh and vault (is jq installed?)")
+		fmt.Fprintln(a.Stderr, "anvil: status could not run scripts/env.sh and vault (is jq installed?)")
 		return 1
 	}
 	v := parseVaultStatus(d.Vault, d.VRC)
@@ -263,7 +267,7 @@ func printStatus(a *app, r *runner) int {
 		problems = append(problems, "vault")
 		row(false, "vault", v.String()+". Fix: "+vf.fix, true)
 	} else {
-		row(false, "vault", p.ok(v.String()), false)
+		row(false, "vault", p.Ok(v.String()), false)
 	}
 
 	src := d.Used
@@ -325,7 +329,7 @@ func printStatus(a *app, r *runner) int {
 	}
 
 	row(false, "backups", "newest in ~/homelab-backups", false)
-	for _, b := range backupAges(a.getenv("HOME"), time.Now()) {
+	for _, b := range backupAges(a.Getenv("HOME"), time.Now()) {
 		if b.stale() {
 			problems = append(problems, "backup "+b.kind)
 			row(true, b.kind, b.String()+", stale (over 36h)", true)
@@ -334,19 +338,19 @@ func printStatus(a *app, r *runner) int {
 		row(true, b.kind, b.String(), false)
 	}
 	if len(problems) == 0 {
-		fmt.Fprintln(w, p.ok("status: no problems"))
+		fmt.Fprintln(w, p.Ok("status: no problems"))
 	} else {
-		fmt.Fprintln(w, p.fail(fmt.Sprintf("status: %d problem(s): %s", len(problems), strings.Join(problems, ", "))))
+		fmt.Fprintln(w, p.Fail(fmt.Sprintf("status: %d problem(s): %s", len(problems), strings.Join(problems, ", "))))
 	}
 	return 0
 }
 
-func cmdStatus(a *app, args []string) int {
+func cmdStatus(a *app.App, args []string) int {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
-	if _, code, ok := a.flags(fs, statusUsage, args); !ok {
+	if _, code, ok := a.Flags(fs, statusUsage, args); !ok {
 		return code
 	}
-	r, ok := a.runner(false)
+	r, ok := repo.Runner(a, false)
 	if !ok {
 		return 1
 	}

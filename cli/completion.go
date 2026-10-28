@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/memetics19/anvil/cli/internal/app"
+	"github.com/memetics19/anvil/cli/internal/repo"
 )
 
 const completionUsage = `usage: anvil completion bash|zsh|fish
@@ -23,7 +26,7 @@ The packages install the scripts for you.
 `
 
 func init() {
-	register(command{"completion", "print a bash, zsh or fish completion script", completionUsage, cmdCompletion, 92})
+	app.Register(app.Command{Name: "completion", Summary: "print a bash, zsh or fish completion script", Usage: completionUsage, Run: cmdCompletion, Order: 92})
 }
 
 // nameCommands take a target or service name.
@@ -32,8 +35,8 @@ var nameCommands = []string{"check", "apply", "up"}
 // subWords are the fixed first arguments of some commands.
 func subWords() map[string][]string {
 	var cmds []string
-	for _, c := range commands {
-		cmds = append(cmds, c.name)
+	for _, c := range app.Commands() {
+		cmds = append(cmds, c.Name)
 	}
 	return map[string][]string{
 		"help":       cmds,
@@ -46,11 +49,11 @@ func subWords() map[string][]string {
 var usageFlag = regexp.MustCompile(`--[a-z][a-z-]*`)
 
 // commandFlags are the options a command's usage lines name, so they cannot drift.
-func commandFlags(c command) []string {
+func commandFlags(c app.Command) []string {
 	set := map[string]bool{"--help": true, "--no-color": true}
-	for _, line := range strings.Split(c.usage, "\n") {
+	for _, line := range strings.Split(c.Usage, "\n") {
 		t := strings.TrimSpace(line)
-		if strings.HasPrefix(t, "usage: anvil ") || strings.HasPrefix(t, "anvil "+c.name) {
+		if strings.HasPrefix(t, "usage: anvil ") || strings.HasPrefix(t, "anvil "+c.Name) {
 			for _, f := range usageFlag.FindAllString(t, -1) {
 				set[f] = true
 			}
@@ -69,8 +72,8 @@ func stageNames() []string {
 
 // completionNames is every name check, apply and up accept: the catalog when a repo is
 // found, else the lab targets and their aliases.
-func (a *app) completionNames() []string {
-	if root, err := a.repoRoot(); err == nil {
+func completionNames(a *app.App) []string {
+	if root, err := repo.Root(a); err == nil {
 		if c, err := loadCatalog(root); err == nil {
 			return c.names()
 		}
@@ -85,29 +88,29 @@ func (a *app) completionNames() []string {
 	return sortedKeys(set)
 }
 
-func cmdCompletion(a *app, args []string) int {
+func cmdCompletion(a *app.App, args []string) int {
 	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
-		fmt.Fprint(a.stdout, completionUsage)
+		fmt.Fprint(a.Stdout, completionUsage)
 		return 0
 	}
 	if len(args) != 1 {
-		fmt.Fprint(a.stderr, completionUsage)
+		fmt.Fprint(a.Stderr, completionUsage)
 		return 2
 	}
-	names := a.completionNames()
+	names := completionNames(a)
 	switch args[0] {
 	case "names":
 		for _, n := range names {
-			fmt.Fprintln(a.stdout, n)
+			fmt.Fprintln(a.Stdout, n)
 		}
 	case "bash":
-		fmt.Fprint(a.stdout, bashCompletion(names))
+		fmt.Fprint(a.Stdout, bashCompletion(names))
 	case "zsh":
-		fmt.Fprint(a.stdout, zshCompletion(names))
+		fmt.Fprint(a.Stdout, zshCompletion(names))
 	case "fish":
-		fmt.Fprint(a.stdout, fishCompletion(names))
+		fmt.Fprint(a.Stdout, fishCompletion(names))
 	default:
-		fmt.Fprintf(a.stderr, "anvil: no completion for %q\n\n%s", args[0], completionUsage)
+		fmt.Fprintf(a.Stderr, "anvil: no completion for %q\n\n%s", args[0], completionUsage)
 		return 2
 	}
 	return 0
@@ -123,8 +126,8 @@ func fq(s string) string {
 
 func cmdNames() []string {
 	var out []string
-	for _, c := range commands {
-		out = append(out, c.name)
+	for _, c := range app.Commands() {
+		out = append(out, c.Name)
 	}
 	return out
 }
@@ -153,8 +156,8 @@ _anvil() {
   if [[ $cur == -* ]]; then
     case $cmd in
 `, sq(strings.Join(names, " ")), sq(strings.Join(append(cmdNames(), "--help", "--version", "--no-color"), " ")), sq(strings.Join(stageNames(), " ")))
-	for _, c := range commands {
-		fmt.Fprintf(&b, "      %s) words=%s ;;\n", c.name, sq(strings.Join(commandFlags(c), " ")))
+	for _, c := range app.Commands() {
+		fmt.Fprintf(&b, "      %s) words=%s ;;\n", c.Name, sq(strings.Join(commandFlags(c), " ")))
 	}
 	b.WriteString(`      *) words='--help --no-color' ;;
     esac
@@ -180,8 +183,8 @@ complete -F _anvil anvil
 func zshCompletion(names []string) string {
 	var b strings.Builder
 	b.WriteString("#compdef anvil\n# zsh completion for anvil. Made by: anvil completion zsh\n_anvil() {\n  local -a cmds names\n  cmds=(\n")
-	for _, c := range commands {
-		fmt.Fprintf(&b, "    %s\n", sq(c.name+":"+c.summary))
+	for _, c := range app.Commands() {
+		fmt.Fprintf(&b, "    %s\n", sq(c.Name+":"+c.Summary))
 	}
 	fmt.Fprintf(&b, `  )
   if (( CURRENT == 2 )); then
@@ -194,8 +197,8 @@ func zshCompletion(names []string) string {
   if [[ ${words[CURRENT]} == -* ]]; then
     case ${words[2]} in
 `, strings.Join(stageNames(), " "))
-	for _, c := range commands {
-		fmt.Fprintf(&b, "      %s) compadd -- %s ;;\n", c.name, strings.Join(commandFlags(c), " "))
+	for _, c := range app.Commands() {
+		fmt.Fprintf(&b, "      %s) compadd -- %s ;;\n", c.Name, strings.Join(commandFlags(c), " "))
 	}
 	b.WriteString("      *) compadd -- --help --no-color ;;\n    esac\n    return\n  fi\n  case ${words[2]} in\n")
 	fmt.Fprintf(&b, `    %s)
@@ -230,17 +233,17 @@ function __anvil_names
 end
 complete -c anvil -f
 `, strings.Join(names, " "))
-	for _, c := range commands {
-		fmt.Fprintf(&b, "complete -c anvil -n __fish_use_subcommand -a %s -d %s\n", c.name, fq(c.summary))
+	for _, c := range app.Commands() {
+		fmt.Fprintf(&b, "complete -c anvil -n __fish_use_subcommand -a %s -d %s\n", c.Name, fq(c.Summary))
 	}
 	fmt.Fprintf(&b, "complete -c anvil -n '__fish_seen_subcommand_from %s' -a '(__anvil_names)'\n", strings.Join(nameCommands, " "))
 	sub := subWords()
 	for _, k := range sortedKeys(sub) {
 		fmt.Fprintf(&b, "complete -c anvil -n '__fish_seen_subcommand_from %s' -a %s\n", k, fq(strings.Join(sub[k], " ")))
 	}
-	for _, c := range commands {
+	for _, c := range app.Commands() {
 		for _, f := range commandFlags(c) {
-			fmt.Fprintf(&b, "complete -c anvil -n '__fish_seen_subcommand_from %s' -l %s\n", c.name, strings.TrimPrefix(f, "--"))
+			fmt.Fprintf(&b, "complete -c anvil -n '__fish_seen_subcommand_from %s' -l %s\n", c.Name, strings.TrimPrefix(f, "--"))
 		}
 	}
 	fmt.Fprintf(&b, "complete -c anvil -n '__fish_seen_subcommand_from up; and __fish_prev_arg_in --from --only --skip' -a %s\n", fq(strings.Join(stageNames(), " ")))
