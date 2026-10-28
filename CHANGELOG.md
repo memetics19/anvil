@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/memetics19/anvil/compare/v0.10.2...v0.11.0) (2026-10-28)
+
+
+### Features
+
+* **frigate_stack:** build the camera stream URL from its address and login ([#105](https://github.com/memetics19/anvil/issues/105)) ([97e5c1f](https://github.com/memetics19/anvil/commit/97e5c1f83da8055e93da31b1019f76efbba7ec1b))
+
 ## [0.10.2](https://github.com/memetics19/anvil/compare/v0.10.1...v0.10.2) (2026-10-28)
 
 
