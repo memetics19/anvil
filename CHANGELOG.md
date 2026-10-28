@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.2](https://github.com/memetics19/anvil/compare/v0.13.1...v0.13.2) (2026-10-28)
+
+
+### Bug Fixes
+
+* VMs keep their SSH host keys after a host reboot ([#121](https://github.com/memetics19/anvil/issues/121)) ([01a5f2f](https://github.com/memetics19/anvil/commit/01a5f2f02539e61f245ff8c247255047c0e267d6))
+
 ## [0.13.1](https://github.com/memetics19/anvil/compare/v0.13.0...v0.13.1) (2026-10-28)
 
 
