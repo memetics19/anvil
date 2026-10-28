@@ -231,7 +231,7 @@ docs-publish:
 	SOURCE_DATE_EPOCH=$$(git log -1 --format=%ct) PATH="$$PWD/$(DOCS_VENV)/bin:$$PATH" scripts/docs-build.sh; \
 	$(MAKE) --no-print-directory vm HOST=apps ARGS="--tags docs $(ARGS)"
 
-# The anvil CLI (cli/, docs/cli.md) as one static binary, build/anvil. The same commit
+# The anvil CLI (cli/cmd/anvil, docs/cli.md) as one static binary, build/anvil. The same commit
 # builds the same bytes: no cgo, no paths, no build ID. The version, commit and date come
 # from git (the date is the commit's, not the clock's), as in .goreleaser.yaml.
 # Another platform: GOOS=linux GOARCH=amd64 make cli ANVIL_OUT=build/anvil-linux-amd64
@@ -242,7 +242,7 @@ ANVIL_DATE = $(shell TZ=UTC git log -1 --date=format-local:%Y-%m-%dT%H:%M:%SZ --
 cli:
 	@set -eu -o pipefail; mkdir -p "$(dir $(ANVIL_OUT))"; out="$$PWD/$(ANVIL_OUT)"; \
 	cd cli && CGO_ENABLED=0 go build -trimpath -buildvcs=false \
-	  -ldflags "-s -w -buildid= -X main.version=$(ANVIL_VERSION) -X main.commit=$(ANVIL_COMMIT) -X main.date=$(ANVIL_DATE)" -o "$$out" .; \
+	  -ldflags "-s -w -buildid= -X main.version=$(ANVIL_VERSION) -X main.commit=$(ANVIL_COMMIT) -X main.date=$(ANVIL_DATE)" -o "$$out" ./cmd/anvil; \
 	echo "built $(ANVIL_OUT) ($(ANVIL_VERSION))"
 
 # The release build without publishing (.goreleaser.yaml): archives, checksums, .deb and

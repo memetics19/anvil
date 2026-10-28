@@ -78,7 +78,7 @@ jobs:
           go-version-file: cli/go.mod
           cache-dependency-path: cli/go.sum
       - name: Build anvil as a release does
-        run: cd cli && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../build/anvil .
+        run: cd cli && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../build/anvil ./cmd/anvil
       - name: Report to the Security tab
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:

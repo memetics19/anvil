@@ -1,5 +1,5 @@
 // Command anvil is a thin wrapper over the repo's make targets (docs/cli.md). The command
-// line is in internal/app.
+// line is in internal/app, each command in its own internal package.
 package main
 
 import (

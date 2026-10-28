@@ -34,5 +34,5 @@ build/
 dist/
 completions/
 
-# the binary `go build` writes in cli/
-/cli/cli
+# the binary `go build` writes in cli/cmd/anvil/
+/cli/cmd/anvil/anvil

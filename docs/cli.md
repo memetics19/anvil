@@ -594,13 +594,41 @@ en0.
 | 2 | A usage error, or an unknown name. |
 | 3 | `anvil up` stopped at a step that needs you. |
 
+## Code layout
+
+The CLI is one Go module in `cli/`.
+
+```
+cli/
+  cmd/anvil/            main: the -ldflags -X variables, and an import of each command package
+  internal/app/         the command registry, options, help, version, colors, prompts
+  internal/run/         make and bash in the repo root, the dry run, exit codes
+  internal/repo/        finding the repo, anvil fetch and anvil update
+  internal/lab/         the catalog, check, apply, services, backup, restore, anvil up
+  internal/doctor/      anvil init, doctor and status
+  internal/completion/  the shell completion scripts
+  internal/provision/   provision and provision-iso
+  internal/disk/        increase-disk
+  internal/media/       media
+  internal/pools/       pools
+  internal/rotate/      rotate
+  internal/drift/       drift
+  internal/testlab/     the test harness the packages share
+```
+
+Each command package registers its commands with `app.Register` in its `init`. A new
+command package also needs an import in `cmd/anvil/main.go`. app, run and repo never
+import a command package.
+
 ## Tests
 
 ```sh
 cd cli && go vet ./... && go test ./...
 ```
 
-The tests put a fake `make` on `PATH`. They cover:
+Each package keeps its tests next to its code. `cmd/anvil` holds the tests of the whole
+CLI: the help of every command, the build variables and the repo lookup. The tests put a
+fake `make` on `PATH` (`internal/testlab`). They cover:
 
 - the mapping from names to make commands
 - the services read from the playbook

@@ -243,6 +243,8 @@ ansible/
   playbooks/
   roles/
 cli/              the anvil CLI (Go), make cli builds build/anvil
+  cmd/anvil/      main: the build variables and the command packages
+  internal/       app (commands, options, help), run, repo, one package per area
 docs/             the docs site pages, docs/assets/ holds the demo GIF and its VHS tape
 Formula/          the Homebrew formula, updated by each release
 iptv/             the IPTV channel list
