@@ -6,13 +6,14 @@ import (
 	"flag"
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 func init() {
 	register(command{"pools", "create the ZFS data pools of a new Proxmox host (make pools)", poolsUsage, cmdPools, 47})
 }
 
-const poolsUsage = `usage: anvil pools <machine> [--wipe POOL] [--yes] [--dry-run]
+const poolsUsage = `usage: anvil pools <machine> [--wipe POOL[,POOL...]] [--yes] [--dry-run]
 
 Creates the ZFS data pools declared in site.provision.machines.<machine>.pools on that
 host, after anvil provision installed it. The boot pool is the installer's.
@@ -21,10 +22,11 @@ host, after anvil provision installed it. The boot pool is the installer's.
   2. after you confirm: zpool create for each missing pool, and the Proxmox storage
 
 An existing pool is never changed. A disk in a pool or mounted is refused. A disk with old
-signatures (a filesystem, RAID or ZFS label) is refused too, unless --wipe names its pool.
+signatures (a filesystem, RAID or ZFS label, an empty partition table) is refused too,
+unless --wipe names its pool.
 
-  --wipe POOL  wipe old signatures on that pool's disks first. Only when nothing on them
-               is needed
+  --wipe POOLS wipe old signatures on those pools' disks first, comma separated
+               (--wipe vmdata,tank). Only when nothing on them is needed
   --yes        do not ask
   --dry-run    print the make commands and run nothing
 
@@ -48,9 +50,11 @@ func cmdPools(a *app, args []string) int {
 		fmt.Fprint(a.stderr, poolsUsage)
 		return 2
 	}
-	if wipe != "" && !poolNameRE.MatchString(wipe) {
-		fmt.Fprintf(a.stderr, "anvil: pools: --wipe wants a pool name, got %q\n", wipe)
-		return 2
+	for _, w := range strings.Split(wipe, ",") {
+		if wipe != "" && !poolNameRE.MatchString(w) {
+			fmt.Fprintf(a.stderr, "anvil: pools: --wipe wants pool names, comma separated, got %q\n", wipe)
+			return 2
+		}
 	}
 	r, ok := a.runner(dry)
 	if !ok {
@@ -65,7 +69,7 @@ func cmdPools(a *app, args []string) int {
 	}
 	q := fmt.Sprintf("Create the missing pools on %s now?", pos[0])
 	if wipe != "" {
-		q = fmt.Sprintf("Wipe the disks of %s and create the missing pools on %s now?", wipe, pos[0])
+		q = fmt.Sprintf("Wipe the disks of %s and create the missing pools on %s now?", strings.ReplaceAll(wipe, ",", ", "), pos[0])
 	}
 	if !dry && !yes && !askYesNo(a.stdin, a.stdout, q) {
 		fmt.Fprintln(a.stdout, "Nothing changed.")

@@ -29,9 +29,23 @@ func TestPoolsWipeNamesThePool(t *testing.T) {
 	}
 }
 
+func TestPoolsWipeSeveral(t *testing.T) {
+	l := newTestLab(t)
+	if code := l.run("y\n", "pools", "pve2", "--wipe", "vmdata,tank"); code != 0 {
+		t.Fatalf("exit %d: %s", code, l.err.String())
+	}
+	calls := l.makeCalls()
+	if len(calls) != 2 || calls[1] != "pools HOST=pve2 WIPE=vmdata,tank" {
+		t.Fatalf("make calls = %q", calls)
+	}
+	if !strings.Contains(l.out.String(), "Wipe the disks of vmdata, tank and create") {
+		t.Errorf("output: %s", l.out.String())
+	}
+}
+
 func TestPoolsRefusesBadNames(t *testing.T) {
 	l := newTestLab(t)
-	for _, args := range [][]string{{"pools"}, {"pools", "a", "b"}, {"pools", "../x"}, {"pools", "pve2", "--wipe", "rm -rf"}} {
+	for _, args := range [][]string{{"pools"}, {"pools", "a", "b"}, {"pools", "../x"}, {"pools", "pve2", "--wipe", "rm -rf"}, {"pools", "pve2", "--wipe", "tank,../x"}} {
 		if code := l.run("", args...); code != 2 {
 			t.Errorf("%v: exit %d, want 2", args, code)
 		}

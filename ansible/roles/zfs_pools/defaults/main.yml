@@ -1,6 +1,6 @@
 # The data pools of a provisioned Proxmox host: site.provision.machines.<host>.pools
 # (site/site.example.yml). The boot pool rpool is the installer's (provision disks).
 zfs_pools_list: "{{ site.provision.machines[inventory_hostname].pools | default([]) }}"
-# -e zfs_pools_wipe=<pool>: wipe old signatures on that pool's disks before creating it.
+# -e zfs_pools_wipe=<pool>[,<pool>...]: wipe old signatures on those pools' disks before creating them.
 zfs_pools_wipe: ""
 zfs_pools_byid_dir: /dev/disk/by-id
