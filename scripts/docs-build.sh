@@ -11,8 +11,9 @@ src="$root/build/docs-src"
 mkdir -p "$src"
 rm -f "$src"/*.md "$src/install.sh" "$src"/assets/* # only the copied files live here
 
-# README links: docs/x.md -> x.md, other repo files -> GitHub
-sed -E -e 's#\]\(docs/#](#g' \
+# README links: docs/x.md -> x.md, other repo files -> GitHub. HTML images too (the anvil
+# picture is a <picture> for light and dark): src="docs/..." and srcset="docs/..." -> "..."
+sed -E -e 's#\]\(docs/#](#g' -e 's#(src|srcset)="docs/#\1="#g' \
   -e "s#\\]\\((site/|LICENSE|\\.gitleaks|iptv/|ansible/|terraform/|scripts/)#](${blob}/\\1#g" \
   "$root/README.md" >"$src/index.md"
 # docs/*.md links: ../x -> GitHub
