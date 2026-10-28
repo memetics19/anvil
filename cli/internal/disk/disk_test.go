@@ -1,8 +1,10 @@
-package main
+package disk
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/memetics19/anvil/cli/internal/testlab"
 )
 
 func TestParseGB(t *testing.T) {
@@ -22,7 +24,7 @@ func TestParseGB(t *testing.T) {
 }
 
 func TestIncreaseDiskChecksAsksThenGrows(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	if code := l.Run("y\n", "increase-disk", "ragnarok", "600gb"); code != 0 {
 		t.Fatalf("exit %d: %s", code, l.Err.String())
 	}
@@ -36,7 +38,7 @@ func TestIncreaseDiskChecksAsksThenGrows(t *testing.T) {
 }
 
 func TestIncreaseDiskNoMeansNoChange(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	if code := l.Run("n\n", "increase-disk", "ragnarok", "1.5tb"); code != 1 {
 		t.Fatalf("exit %d", code)
 	}
@@ -49,7 +51,7 @@ func TestIncreaseDiskNoMeansNoChange(t *testing.T) {
 }
 
 func TestIncreaseDiskFailedCheckStops(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	l.Env["FAKE_RC"] = "1"
 	if code := l.Run("y\n", "increase-disk", "ragnarok", "600"); code != 1 {
 		t.Fatalf("exit %d, want the check's 1", code)
@@ -60,7 +62,7 @@ func TestIncreaseDiskFailedCheckStops(t *testing.T) {
 }
 
 func TestIncreaseDiskYesAndMountAfterTheWords(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	if code := l.Run("", "increase-disk", "frigate", "100", "--mount", "/home", "--yes"); code != 0 {
 		t.Fatalf("exit %d: %s", code, l.Err.String())
 	}
@@ -71,7 +73,7 @@ func TestIncreaseDiskYesAndMountAfterTheWords(t *testing.T) {
 }
 
 func TestIncreaseDiskUsage(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	for _, args := range [][]string{{"increase-disk"}, {"increase-disk", "ragnarok"}, {"increase-disk", "ragnarok", "lots"}} {
 		if code := l.Run("", args...); code != 2 {
 			t.Errorf("%v: exit %d, want 2", args, code)
@@ -83,7 +85,7 @@ func TestIncreaseDiskUsage(t *testing.T) {
 }
 
 func TestIncreaseDiskSizeWithoutVM(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	for _, size := range []string{"600gb", "600"} {
 		if code := l.Run("", "increase-disk", size, "--yes"); code != 2 ||
 			!strings.Contains(l.Err.String(), "which VM? Name it before the size: anvil increase-disk <vm> "+size) {

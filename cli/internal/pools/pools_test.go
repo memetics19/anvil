@@ -1,12 +1,14 @@
-package main
+package pools
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/memetics19/anvil/cli/internal/testlab"
 )
 
 func TestPoolsChecksAsksThenCreates(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	if code := l.Run("y\n", "pools", "pve2"); code != 0 {
 		t.Fatalf("exit %d: %s", code, l.Err.String())
 	}
@@ -17,7 +19,7 @@ func TestPoolsChecksAsksThenCreates(t *testing.T) {
 }
 
 func TestPoolsWipeNamesThePool(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	if code := l.Run("n\n", "pools", "pve2", "--wipe", "tank"); code != 1 {
 		t.Fatalf("exit %d", code)
 	}
@@ -30,7 +32,7 @@ func TestPoolsWipeNamesThePool(t *testing.T) {
 }
 
 func TestPoolsWipeSeveral(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	if code := l.Run("y\n", "pools", "pve2", "--wipe", "vmdata,tank"); code != 0 {
 		t.Fatalf("exit %d: %s", code, l.Err.String())
 	}
@@ -44,7 +46,7 @@ func TestPoolsWipeSeveral(t *testing.T) {
 }
 
 func TestPoolsRefusesBadNames(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	for _, args := range [][]string{{"pools"}, {"pools", "a", "b"}, {"pools", "../x"}, {"pools", "pve2", "--wipe", "rm -rf"}, {"pools", "pve2", "--wipe", "tank,../x"}} {
 		if code := l.Run("", args...); code != 2 {
 			t.Errorf("%v: exit %d, want 2", args, code)

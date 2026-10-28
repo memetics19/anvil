@@ -1,4 +1,4 @@
-package main
+package media
 
 import (
 	"encoding/json"
@@ -98,7 +98,7 @@ const twoMovies = `[
 // mediaLab is a test lab whose media endpoints are two fake servers.
 func mediaLab(t *testing.T, radarr, sonarr *fakeArr) *testlab.Lab {
 	t.Helper()
-	l := newTestLab(t)
+	l := testlab.New(t)
 	rs, ss := radarr.server(t), sonarr.server(t)
 	old := mediaEnv
 	mediaEnv = func(*app.App) (mediaConfig, error) {
@@ -316,7 +316,7 @@ func TestMediaUsageErrors(t *testing.T) {
 }
 
 func TestMediaEnvErrorIsShown(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	old := mediaEnv
 	mediaEnv = func(*app.App) (mediaConfig, error) { return mediaConfig{}, errors.New("no site dict") }
 	t.Cleanup(func() { mediaEnv = old })
@@ -326,7 +326,7 @@ func TestMediaEnvErrorIsShown(t *testing.T) {
 }
 
 func TestMediaVaultUnreachableHint(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	old := mediaEnv
 	mediaEnv = func(*app.App) (mediaConfig, error) {
 		return mediaConfig{}, errors.New("site-source: cannot read kv/homelab/site: Vault (Keychain vault-ip) is unreachable or returned an error.")

@@ -1,6 +1,5 @@
-package main
-
-// anvil increase-disk: make a VM's disk bigger while it runs (make grow-disk).
+// Package disk is anvil increase-disk: make a VM's disk bigger while it runs (make grow-disk).
+package disk
 
 import (
 	"flag"

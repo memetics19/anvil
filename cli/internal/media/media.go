@@ -1,8 +1,7 @@
-package main
-
-// anvil media: find a movie or a series, add it so Radarr or Sonarr downloads it, and
-// follow the downloads. The addresses and API keys come from scripts/media-env.sh (site
-// dict and Vault) through a pipe. They are never printed.
+// Package media is anvil media: find a movie or a series, add it so Radarr or Sonarr
+// downloads it, and follow the downloads. The addresses and API keys come from
+// scripts/media-env.sh (site dict and Vault) through a pipe. They are never printed.
+package media
 
 import (
 	"bytes"
