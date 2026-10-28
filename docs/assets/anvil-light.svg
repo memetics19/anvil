@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 150" width="240" height="150" role="img" aria-label="An anvil with sparks">
+  <title>anvil</title>
+  <g fill="#F59E0B">
+    <path d="M150 16 l3 9 l9 3 l-9 3 l-3 9 l-3 -9 l-9 -3 l9 -3 z"/>
+    <path d="M178 8 l2 6 l6 2 l-6 2 l-2 6 l-2 -6 l-6 -2 l6 -2 z"/>
+    <path d="M186 32 l1.5 4.5 l4.5 1.5 l-4.5 1.5 l-1.5 4.5 l-1.5 -4.5 l-4.5 -1.5 l4.5 -1.5 z"/>
+  </g>
+  <g stroke="#F97316" stroke-width="2.5" stroke-linecap="round">
+    <line x1="132" y1="38" x2="122" y2="22"/>
+    <line x1="140" y1="36" x2="140" y2="20"/>
+    <line x1="158" y1="40" x2="170" y2="30"/>
+  </g>
+  <path fill="#2B2F36" d="M74 44 H206 V66 H176 L168 74 L158 104 L184 114 V128 H58 V114 L84 104 L74 74 L70 66
+           C52 66 34 62 16 54 C34 48 52 44 74 44 Z"/>
+  <rect x="80" y="44" width="120" height="5" rx="2" fill="#4A515C"/>
+  <rect x="40" y="132" width="164" height="4" rx="2" fill="#9AA1AB"/>
+</svg>

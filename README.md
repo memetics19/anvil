@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/anvil-dark.svg">
+    <img src="docs/assets/anvil-light.svg" alt="An anvil with sparks flying off it" width="240">
+  </picture>
+</p>
+
 # anvil
 
 [![ci](https://img.shields.io/github/actions/workflow/status/memetics19/anvil/ci.yml?branch=main&event=push&label=ci)](https://github.com/memetics19/anvil/actions/workflows/ci.yml?query=branch%3Amain)
