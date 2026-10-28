@@ -53,7 +53,8 @@
       ansible.builtin.assert:
         that: >-
           (network_switch__outputs | switch_plan(network_switch_ports, network_switch_vlans,
-                                         network_switch_native_vlan, network_switch_keep_ports)) | length == 0
+                                         network_switch_native_vlan, network_switch_keep_ports,
+                                       network_switch_dhcp_snooping)) | length == 0
         fail_msg: The switch does not match the desired state after the apply
         quiet: true
 

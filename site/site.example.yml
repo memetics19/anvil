@@ -29,6 +29,10 @@ site:
         gi10: [trunk, protected]
         gi11: [protected]
       keep_ports: [gi1, gi2]
+      # DHCP snooping, optional: only these ports may send DHCP replies (the router uplink,
+      # and the Proxmox host for anvil provision's netboot). Another router or access point
+      # with its DHCP server left on then hands out nothing. vlans defaults to [1].
+      dhcp_snooping: {trusted: [gi1, gi10], vlans: [1]}
   hosts:
     frigate: {ip: 192.0.2.114, vmid: 9001, mac: "02:00:00:00:00:01"}
     netbird: {ip: 192.0.2.115, vmid: 9002, mac: "02:00:00:00:00:02"}
