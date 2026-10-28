@@ -575,6 +575,7 @@ the real client address before anything else:
 
 These stay open on the gateway:
 
+- Authentik (`auth`, its own login, the page everyone signs in on)
 - the ARR apps (API key and login)
 - Filestash (`files`, a generated 32-character password)
 - Gotify (its token)
@@ -824,8 +825,58 @@ created only when `site.hosts.identity` exists:
 | `datastore` | Its disk. Default `vmdata` |
 | `cores`, `memory_mb`, `disk_gb` | Defaults 2, 3072 and 32 |
 
-It gets the base guest roles (guest base, Docker, Pulse agent). Authentik and the LDAP
-directory come next (planned in the README roadmap).
+It gets the base guest roles (guest base, Docker, Pulse agent). The LDAP directory comes
+next (planned in the README roadmap).
+
+### Authentik (single sign-on)
+
+`make vm HOST=identity ARGS="--tags authentik"` runs the `authentik` role. It manages the
+compose project `/opt/authentik`. Each container is pinned by tag and digest and has a
+memory cap. Together they use 2 GB of the VM's 3 GB:
+
+| Container | Memory cap |
+|---|---|
+| Authentik server | 1024 MB |
+| Authentik worker | 768 MB |
+| Postgres | 256 MB |
+
+Authentik needs no Redis since version 2025.10. Its cache, tasks and websockets use
+Postgres.
+
+The server publishes port 9000 on the VM's lab address only. People reach it through the
+gateway at `auth.<gateway-domain>`, on the LAN and the VPN. Nothing about it is public. The
+site entry in `site.services` is
+`{name: auth, host: hosts.identity.ip, port: 9000, scheme: http, websocket: true}`.
+It is not an infrastructure route: everyone who signs in with single sign-on needs it.
+Port 9443 and the LDAP ports are not published. The LDAP outpost comes later.
+
+- Secrets: `secret_key`, `postgres_password`, `bootstrap_password` and `bootstrap_token` in
+  `kv/homelab/identity/authentik`. The role generates each one that is missing and never
+  replaces one. Authentik gets them from `authentik.env` and Postgres gets its password
+  from `db.env`. Both are mode 600. A changed value recreates that container.
+- `bootstrap_password` is the first password of `akadmin`. `bootstrap_token` is an API
+  token for `akadmin`, for configuring Authentik from code. Authentik reads both only on
+  its first start. The account's email is `site.email`.
+- Authentik trusts `X-Forwarded-For` and `X-Forwarded-Proto` only from the gateway VM's lab
+  address (`authentik_gateway_host`).
+- The worker gets no Docker socket and does not run as root. Authentik cannot start
+  outposts by itself.
+- Update checks, startup analytics and error reporting are off.
+- Authentik migrates its database itself when a new version starts. To upgrade, change
+  `authentik_image` and run the role. Read the release notes first. Postgres stays on the
+  major version the release documents.
+- The run ends when `/-/health/ready/` answers 200. The first start takes a few minutes.
+- No email is set up yet.
+
+First login, right after the first run:
+
+1. Read the password: `vault kv get -mount=kv -field=bootstrap_password homelab/identity/authentik`.
+2. Open `https://auth.<gateway-domain>` and sign in as `akadmin` with it.
+3. Turn on a second factor for `akadmin`. If you change its password, the value in Vault
+   stays the first one and no longer works.
+
+Add a Pulse monitor for Authentik's health endpoint, `/-/health/ready/`, by hand. The role
+does not create one.
 
 ## Secrets enclave
 
