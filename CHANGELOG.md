@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.0](https://github.com/memetics19/anvil/compare/v0.11.0...v0.12.0) (2026-10-28)
+
+
+### Features
+
+* **authentik:** single sign-on on the identity VM ([#111](https://github.com/memetics19/anvil/issues/111)) ([77a18c3](https://github.com/memetics19/anvil/commit/77a18c3195e1e323aae0d0e84eb64b6641ad64d7))
+* **terraform:** an identity VM on the second Proxmox node ([#108](https://github.com/memetics19/anvil/issues/108)) ([c8beabe](https://github.com/memetics19/anvil/commit/c8beabeef1ef6d523b348ffa7ca752f3a7b87ecd))
+
 ## [0.11.0](https://github.com/memetics19/anvil/compare/v0.10.2...v0.11.0) (2026-10-28)
 
 
