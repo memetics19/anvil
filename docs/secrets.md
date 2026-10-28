@@ -22,9 +22,9 @@ page lists names, never values.
 | `kv/homelab/frigate/cloudflared` | `token` | `/etc/cloudflared/token` (0600 root), read with `--token-file` | Cloudflare tunnel connector |
 | `kv/homelab/netbird/cloudflared` | `token` | `/etc/cloudflared/token` (0600 root), read with `--token-file` | Cloudflare tunnel connector |
 | `kv/homelab/ragnarok/cloudflared` | `token` | `/etc/cloudflared/token` (0600 root), read with `--token-file` | Cloudflare tunnel connector |
-| `kv/homelab/frigate/frigate` | `front_door_rtsp_url` | `/home/config/config.yml`: `cameras.front_door.ffmpeg.inputs[0].path`, same as `go2rtc.streams.front_door` | Camera stream URL, with credentials |
-| `kv/homelab/frigate/frigate` | `rtsp_user` | user part of that URL | Camera RTSP login |
+| `kv/homelab/frigate/frigate` | `rtsp_user` | user part of the stream URL the role builds | Camera RTSP login (for Tapo: the Camera Account from the app) |
 | `kv/homelab/frigate/frigate` | `rtsp_password` | password part of that URL | Camera RTSP login |
+| `kv/homelab/frigate/frigate` | `front_door_rtsp_url` | used only while `site.frigate_stack.camera` is unset: the whole stream URL | The older single-key form |
 | `kv/homelab/frigate/frigate` | `jwt_secret` | `/home/config/.jwt_secret` (whole file) | Frigate session signing key |
 | `kv/homelab/frigate/frigate` | `admin_password` | generated once by Frigate (`auth.reset_admin_password`, 2026-10-21) and piped from its log into Vault | Frigate login for `admin`, which guards the public hostname |
 | `kv/homelab/frigate/frigate` | `compose_rtsp_password` | `/home/docker-compose.yml`: `services.frigate.environment.FRIGATE_RTSP_PASSWORD` | Stale, kept for reference. Not the camera login. |
