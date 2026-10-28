@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.2](https://github.com/memetics19/anvil/compare/v0.10.1...v0.10.2) (2026-10-28)
+
+
+### Bug Fixes
+
+* **security:** bump Filestash to the 2026-10-28 build (1 fixable CVE) ([#101](https://github.com/memetics19/anvil/issues/101)) ([8c2eb8a](https://github.com/memetics19/anvil/commit/8c2eb8ad7f73d8f1e109193f1f899e704e205713))
+* **security:** one code scanning category per image, fixable CVEs only ([#102](https://github.com/memetics19/anvil/issues/102)) ([0ae1048](https://github.com/memetics19/anvil/commit/0ae104886695ad0ab543184c18641e64ef982915))
+
 ## [0.10.1](https://github.com/memetics19/anvil/compare/v0.10.0...v0.10.1) (2026-10-28)
 
 
