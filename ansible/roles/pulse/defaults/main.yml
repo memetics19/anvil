@@ -29,7 +29,7 @@ pulse_backups_keep: 5
 pulse_memory_limit: 256m
 # Role caddy's patched build, loaded by this role's tasks (caddy_image_resolved).
 pulse_caddy_image: "{{ caddy_image_resolved }}"
-pulse_mkdocs_image: squidfunk/mkdocs-material:9.7.7@sha256:51b87149d227691486b5f08993d28c65ca7e4990010664b697265b8e6fcd5287
+pulse_mkdocs_image: squidfunk/mkdocs-material:9.8.0@sha256:dc3b5de76c6e30d18dc0922d4c4a7bed817e5e155f9ff0e594a53eb56e537e64
 # For the data copies (cp in a throwaway container with the volume mounted).
 pulse_base_image: alpine:3.24@sha256:71e9b7bae160ba167fa17414401b94cbcdaf3c32feeab9298bd794a2a0614c35
 # Settings in .env, passed to the container. RESEND_API_KEY and SLACK_WEBHOOK_URL are unset
