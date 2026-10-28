@@ -203,12 +203,21 @@ of each kind:
 | `tfstate-YYYYMMDD-HHMM.json.age` | Terraform state, encrypted to Keychain `backup-age-recipient` |
 | `vault-YYYYMMDD-HHMM.snap` | A Vault Raft snapshot, encrypted by Vault's barrier. Restoring it needs the unseal keys. |
 | `vaultwarden-YYYYMMDD-HHMMSS.tar.age` | The newest nightly Vaultwarden backup, copied from the Ceph bucket `vaultwarden-backups` |
+| `authentik-YYYYMMDD-HHMMSS.dump.age` | The newest nightly Authentik database dump, copied from the Ceph bucket `authentik-backups` |
 
 The Vaultwarden job runs on the `vaultwarden` VM every night at about 03:30
 ([details](services.md#backups)). To run it by hand and fetch the result:
 
 ```sh
 ssh -J root@<proxmox-address> ubuntu@<vaultwarden-address> 'sudo systemctl start vaultwarden-backup && journalctl -u vaultwarden-backup -n 20'
+make backup
+```
+
+The Authentik job runs on the `identity` VM every night at about 03:45
+([details](services.md#authentik-backups)). By hand:
+
+```sh
+ssh ubuntu@<identity-address> 'sudo systemctl start authentik-backup && journalctl -u authentik-backup -n 20'
 make backup
 ```
 

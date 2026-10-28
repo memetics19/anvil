@@ -46,6 +46,11 @@ ceph_single_filestash_vault_path: homelab/ragnarok/filestash
 ceph_single_vaultwarden_user: vaultwarden-backup
 ceph_single_vaultwarden_bucket: vaultwarden-backups
 ceph_single_vaultwarden_vault_path: homelab/apps/vaultwarden-backup
+# The same for the Authentik database backups on the identity VM (tasks/authentik.yml, read
+# by the authentik role).
+ceph_single_authentik_user: authentik-backup
+ceph_single_authentik_bucket: authentik-backups
+ceph_single_authentik_vault_path: homelab/identity/authentik-backup
 # Repo scripts run on the controller (vault-kv-digests.sh).
 ceph_single_repo_scripts: "{{ playbook_dir }}/../../scripts"
 

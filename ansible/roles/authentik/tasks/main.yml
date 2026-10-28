@@ -122,3 +122,7 @@
   delay: 5
   until: authentik_health.status == 200
   when: not ansible_check_mode
+
+# --- backups ---------------------------------------------------------------------------------
+- name: Nightly backups
+  ansible.builtin.include_tasks: backup.yml

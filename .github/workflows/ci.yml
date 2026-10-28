@@ -91,7 +91,9 @@ jobs:
       - name: Docmost role
         run: tests/test_docmost.sh
       - name: Authentik role
-        run: tests/test_authentik.sh
+        run: |
+          sudo apt-get install -y -qq age
+          tests/test_authentik.sh
       - name: Pulse agent role
         run: tests/test_pulse_agent.sh
       - name: NFS media role
