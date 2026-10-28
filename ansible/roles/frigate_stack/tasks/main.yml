@@ -19,9 +19,23 @@
                 ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
   no_log: true
 
+- name: The camera's login, URL-encoded so any password makes a valid URL
+  ansible.builtin.set_fact:
+    frigate_stack_camera_user: "{{ frigate_stack_secrets.rtsp_user | default('') | urlencode | replace('/', '%2F') }}"
+    frigate_stack_camera_password: "{{ frigate_stack_secrets.rtsp_password | default('') | urlencode | replace('/', '%2F') }}"
+  no_log: true
+
+# The stream URL from the camera's address (site) and its login (Vault). Without an address
+# in the site dict, the older single key front_door_rtsp_url.
 - name: Pick the values the templates use
   ansible.builtin.set_fact:
-    frigate_stack_rtsp_url: "{{ frigate_stack_secrets.front_door_rtsp_url | default('') }}"
+    frigate_stack_rtsp_url: >-
+      {{ ('rtsp://' ~ frigate_stack_camera_user ~ ':' ~ frigate_stack_camera_password ~ '@'
+          ~ frigate_stack_camera.host ~ ':' ~ (frigate_stack_camera.port | default(554))
+          ~ (frigate_stack_camera.path | default('/stream1')))
+         if (frigate_stack_camera.host | default('') | length > 0
+             and frigate_stack_camera_user | length > 0 and frigate_stack_camera_password | length > 0)
+         else (frigate_stack_secrets.front_door_rtsp_url | default('')) }}
     frigate_stack_compose_rtsp_password: "{{ frigate_stack_secrets.compose_rtsp_password | default('') }}"
     frigate_stack_gotify_token: "{{ frigate_stack_notify_secrets.gotify_token | default('') }}"
   no_log: true
@@ -35,7 +49,8 @@
       - site.domain | default('') | length > 0
       - site.frigate_stack.genai_ollama_ip | default('') | length > 0
     fail_msg: >-
-      Missing a value: {{ frigate_stack_vault_frigate_path }} (front_door_rtsp_url, compose_rtsp_password),
+      Missing a value: {{ frigate_stack_vault_frigate_path }} (rtsp_user and rtsp_password with
+      site.frigate_stack.camera, or front_door_rtsp_url, and compose_rtsp_password),
       {{ frigate_stack_vault_notify_path }} (gotify_token), or site domain / frigate_stack.*
     quiet: true
 

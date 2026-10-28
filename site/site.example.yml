@@ -138,6 +138,8 @@ site:
   # Addresses the frigate stack's config refers to (frigate_stack role).
   frigate_stack:
     genai_ollama_ip: 192.0.2.127
+    # The camera's stream. Its login is in Vault (rtsp_user, rtsp_password).
+    camera: {host: 192.0.2.107, port: 554, path: /stream1}
   # Pi-hole's local DNS records (pihole role), each <name>.lan.<domain>. `ref` is a dotted
   # path into this dict, so an address is written once; `ip` gives one directly.
   dns:

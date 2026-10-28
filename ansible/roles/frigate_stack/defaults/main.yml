@@ -13,6 +13,13 @@ frigate_stack_vault_frigate_path: "homelab/{{ inventory_hostname }}/frigate"
 frigate_stack_vault_notify_path: "homelab/{{ inventory_hostname }}/frigate-notify"
 # Timezone of the frigate-notify container (site.timezone when set).
 frigate_stack_timezone: "{{ site.timezone | default('Asia/Kolkata') }}"
+# The camera's stream (site.frigate_stack.camera): {host, port, path}. Its login is in Vault,
+# kv/<frigate_stack_vault_frigate_path>, keys rtsp_user and rtsp_password: the role
+# builds rtsp://<user>:<password>@<host>:<port><path> from them. Without those keys it uses
+# the older single key front_door_rtsp_url. For a Tapo camera: port 554, path /stream1 (the
+# main stream), and the login is the "Camera Account" set in the Tapo app, not the TP-Link
+# cloud login.
+frigate_stack_camera: "{{ site.frigate_stack.camera | default({}) }}"
 # Name of Frigate's camera group (site.frigate_stack.camera_group when set).
 frigate_stack_camera_group: "{{ site.frigate_stack.camera_group | default('Home') }}"
 # Frigate's config.yml comes from the template. Set false while editing it in the Frigate UI,
