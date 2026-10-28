@@ -1,9 +1,13 @@
-package main
+package provision
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/memetics19/anvil/cli/internal/testlab"
+)
 
 func TestProvisionPowerOff(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	if code := l.Run("pve2\n", "provision", "pve2", "--install", "--power-off"); code != 0 {
 		t.Fatalf("exit %d: %s", code, l.Output())
 	}

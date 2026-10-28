@@ -1,18 +1,17 @@
-package main
+package lab
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net"
 	"net/url"
-	"os/exec"
 	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/memetics19/anvil/cli/internal/app"
+	"github.com/memetics19/anvil/cli/internal/doctor"
 	"github.com/memetics19/anvil/cli/internal/run"
 )
 
@@ -98,12 +97,8 @@ var (
 		return err
 	}
 	// pingOK asks /sbin/ping, which macOS lets through, whether host answers.
-	pingOK = func(host string) bool {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		return exec.CommandContext(ctx, "/sbin/ping", "-c", "1", "-t", "2", host).Run() == nil
-	}
-	goos = runtime.GOOS
+	pingOK = doctor.Ping
+	goos   = runtime.GOOS
 )
 
 // unreachable is the message for an endpoint that did not answer. On macOS, "no route to
@@ -167,7 +162,7 @@ func reachable(a *app.App, r *run.Runner, n needs) bool {
 	}
 	if n.vault && !a.Reached["vault"] && vaultInUse {
 		// The vault binary, as the stages use it.
-		if !retry(func() bool { return parseVaultStatus(r.Quiet(vaultStatusScript)).reachable }) {
+		if !retry(func() bool { return doctor.VaultReachable(r) }) {
 			msg := msgVault
 			if addr := hostPort(vaultAddr); addr != "" {
 				msg = unreachable(msgVault, addr, dialTCP(addr))

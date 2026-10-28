@@ -1,4 +1,4 @@
-package main
+package lab
 
 import (
 	"strings"
@@ -27,7 +27,7 @@ func wantAll(t *testing.T, out string, wants ...string) {
 }
 
 func TestUpProgressAndSummary(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	testlab.FakeTools(l)
 	fixedClock(t, 1500*time.Millisecond)
 

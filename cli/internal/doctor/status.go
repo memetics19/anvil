@@ -1,4 +1,4 @@
-package main
+package doctor
 
 import (
 	"context"
@@ -235,10 +235,10 @@ func gatewayNote(code int) string {
 	return ""
 }
 
-// printStatus prints the dashboard and marks the problems: Vault not unsealed, a gateway
+// Status prints the dashboard and marks the problems: Vault not unsealed, a gateway
 // name with no connection or a 5xx, Pi-hole not answering, a backup over 36h old. It
 // never prints a value from the site dict other than the gateway names.
-func printStatus(a *app.App, r *run.Runner) int {
+func Status(a *app.App, r *run.Runner) int {
 	w := a.Stdout
 	p := a.Pal()
 	var problems []string
@@ -354,5 +354,5 @@ func cmdStatus(a *app.App, args []string) int {
 	if !ok {
 		return 1
 	}
-	return printStatus(a, r)
+	return Status(a, r)
 }

@@ -6,6 +6,12 @@ import (
 	"os"
 
 	"github.com/memetics19/anvil/cli/internal/app"
+
+	// The commands, each registered in its package's init.
+	_ "github.com/memetics19/anvil/cli/internal/completion"
+	_ "github.com/memetics19/anvil/cli/internal/doctor"
+	_ "github.com/memetics19/anvil/cli/internal/lab"
+	_ "github.com/memetics19/anvil/cli/internal/provision"
 )
 
 // version, commit and date are set at build time with -ldflags -X (make cli, GoReleaser).

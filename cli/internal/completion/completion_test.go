@@ -1,4 +1,4 @@
-package main
+package completion
 
 import (
 	"os"
@@ -10,10 +10,11 @@ import (
 	"testing"
 
 	"github.com/memetics19/anvil/cli/internal/app"
+	"github.com/memetics19/anvil/cli/internal/testlab"
 )
 
 func TestCompletionScriptsHoldTheNames(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	for _, sh := range []string{"bash", "zsh", "fish"} {
 		if code := l.Run("", "completion", sh); code != 0 {
 			t.Fatalf("%s: exit %d:\n%s", sh, code, l.Output())
@@ -58,7 +59,7 @@ func TestCompletionFlagsComeFromUsage(t *testing.T) {
 
 // completionScript writes anvil completion <sh> to a file.
 func completionScript(t *testing.T, sh string) string {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	if code := l.Run("", "completion", sh); code != 0 {
 		t.Fatalf("exit %d", code)
 	}

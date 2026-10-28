@@ -1,4 +1,4 @@
-package main
+package lab
 
 import (
 	"bufio"
@@ -15,7 +15,7 @@ import (
 
 // TestMapping pins the command each name maps to, against the real playbooks.
 func TestMapping(t *testing.T) {
-	c, err := loadCatalog(testlab.RealRoot)
+	c, err := LoadCatalog(testlab.RealRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestMapping(t *testing.T) {
 		{"vaultwarden", "", "make vm HOST=vaultwarden ARGS='--check --diff'", "make vm HOST=vaultwarden", false},
 	}
 	for _, tc := range cases {
-		tg, err := c.resolve(tc.name, tc.host)
+		tg, err := c.Resolve(tc.name, tc.host)
 		if err != nil {
 			t.Errorf("%s --host %q: %v", tc.name, tc.host, err)
 			continue
@@ -61,19 +61,19 @@ func TestMapping(t *testing.T) {
 			t.Errorf("%s risky = %v, want %v", tc.name, tg.risky, tc.risky)
 		}
 	}
-	tg, _ := c.resolve("apps", "")
+	tg, _ := c.Resolve("apps", "")
 	if got := tg.checkCmd("pihole,caddy", "-v").String(); got != "make vm HOST=apps ARGS='--check --diff --tags pihole,caddy -v'" {
 		t.Errorf("tags and args: got %s", got)
 	}
 	for _, bad := range [][2]string{{"vm", ""}, {"vm", "nope"}, {"host", "apps"}, {"apps", "frigate"}, {"pihole", "frigate"}} {
-		if _, err := c.resolve(bad[0], bad[1]); err == nil {
+		if _, err := c.Resolve(bad[0], bad[1]); err == nil {
 			t.Errorf("%s --host %q was accepted", bad[0], bad[1])
 		}
 	}
 }
 
 func TestServicesComeFromThePlaybook(t *testing.T) {
-	c, err := loadCatalog(testlab.RealRoot)
+	c, err := LoadCatalog(testlab.RealRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestServicesComeFromThePlaybook(t *testing.T) {
 		}
 	}
 	for alias, name := range targetAliases {
-		if _, err := c.resolve(alias, ""); err != nil {
+		if _, err := c.Resolve(alias, ""); err != nil {
 			t.Errorf("target alias %s -> %s: %v", alias, name, err)
 		}
 	}
@@ -103,49 +103,49 @@ func TestServicesComeFromThePlaybook(t *testing.T) {
 }
 
 func TestUnknownNamesGetSuggestions(t *testing.T) {
-	c, err := loadCatalog(testlab.RealRoot)
+	c, err := LoadCatalog(testlab.RealRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for name, hint := range map[string]string{"pihol": "pihole", "vaultwardn": "vaultwarden", "homepge": "homepage", "netbird_srv": "netbird_server"} {
-		_, err := c.resolve(name, "")
+		_, err := c.Resolve(name, "")
 		if err == nil || !strings.Contains(err.Error(), hint) {
 			t.Errorf("%s: got %v, want a suggestion of %s", name, err, hint)
 		}
 	}
-	if _, err := c.resolve("zzzz", ""); err == nil || strings.Contains(err.Error(), "Did you mean") {
+	if _, err := c.Resolve("zzzz", ""); err == nil || strings.Contains(err.Error(), "Did you mean") {
 		t.Errorf("zzzz: got %v", err)
 	}
 }
 
 func TestSummaries(t *testing.T) {
 	s := ansibleSummary(testlab.RecapNoChanges + "\x1b[0;32mfrigate\x1b[0m : ok=3 changed=0 unreachable=0 failed=0\n")
-	if !s.known || s.changes || len(s.lines) != 2 {
+	if !s.Known || s.Changes || len(s.Lines) != 2 {
 		t.Errorf("no changes: %+v", s)
 	}
-	if s := ansibleSummary(testlab.RecapChanges); !s.known || !s.changes {
+	if s := ansibleSummary(testlab.RecapChanges); !s.Known || !s.Changes {
 		t.Errorf("changes: %+v", s)
 	}
-	if s := ansibleSummary("pve : ok=1 changed=0 unreachable=1 failed=0\n"); !s.changes {
+	if s := ansibleSummary("pve : ok=1 changed=0 unreachable=1 failed=0\n"); !s.Changes {
 		t.Errorf("unreachable must count as changes: %+v", s)
 	}
 	// make vlans runs two playbooks: the counts add up.
-	if s := ansibleSummary(testlab.RecapNoChanges + testlab.RecapChanges); !s.changes || s.lines[0] != "apps changed=2" {
+	if s := ansibleSummary(testlab.RecapNoChanges + testlab.RecapChanges); !s.Changes || s.Lines[0] != "apps changed=2" {
 		t.Errorf("two recaps: %+v", s)
 	}
-	if s := ansibleSummary("no recap here"); s.known {
+	if s := ansibleSummary("no recap here"); s.Known {
 		t.Errorf("no recap: %+v", s)
 	}
-	if s := tfSummary("No changes. Your infrastructure matches the configuration."); !s.known || s.changes {
+	if s := tfSummary("No changes. Your infrastructure matches the configuration."); !s.Known || s.Changes {
 		t.Errorf("tf no changes: %+v", s)
 	}
-	if s := tfSummary("Plan: 1 to add, 2 to change, 0 to destroy."); !s.changes || s.lines[0] != "1 to add, 2 to change, 0 to destroy" {
+	if s := tfSummary("Plan: 1 to add, 2 to change, 0 to destroy."); !s.Changes || s.Lines[0] != "1 to add, 2 to change, 0 to destroy" {
 		t.Errorf("tf plan: %+v", s)
 	}
-	if s := switchSummary(`"msg": "nothing to change"` + "\nDry run, nothing sent."); !s.known || s.changes {
+	if s := switchSummary(`"msg": "nothing to change"` + "\nDry run, nothing sent."); !s.Known || s.Changes {
 		t.Errorf("switch no changes: %+v", s)
 	}
-	if s := switchSummary("interface gi10\nDry run, nothing sent."); !s.changes {
+	if s := switchSummary("interface gi10\nDry run, nothing sent."); !s.Changes {
 		t.Errorf("switch plan: %+v", s)
 	}
 }
@@ -167,10 +167,10 @@ func TestConfirmation(t *testing.T) {
 			t.Errorf("app.AskTyped(%q) = %v", in, got)
 		}
 	}
-	plain := target{name: "host"}
-	risky := target{name: "vlans", risky: true}
+	plain := Target{Name: "host"}
+	risky := Target{Name: "vlans", risky: true}
 	cases := []struct {
-		t    target
+		t    Target
 		yes  bool
 		in   string
 		want bool
@@ -186,13 +186,13 @@ func TestConfirmation(t *testing.T) {
 	for _, tc := range cases {
 		var out bytes.Buffer
 		if got := confirmApply(bufio.NewReader(strings.NewReader(tc.in)), &out, tc.t, tc.yes); got != tc.want {
-			t.Errorf("confirmApply(%s, yes=%v, %q) = %v", tc.t.name, tc.yes, tc.in, got)
+			t.Errorf("confirmApply(%s, yes=%v, %q) = %v", tc.t.Name, tc.yes, tc.in, got)
 		}
 	}
 }
 
 func TestApplySkipsWhenTheCheckShowsNoChanges(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	l.SetCheckOutput(testlab.RecapNoChanges)
 	if code := l.Run("", "apply", "pihole"); code != 0 {
 		t.Fatalf("exit %d: %s", code, l.Output())
@@ -207,7 +207,7 @@ func TestApplySkipsWhenTheCheckShowsNoChanges(t *testing.T) {
 }
 
 func TestApplyAsksThenApplies(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	l.SetCheckOutput(testlab.RecapChanges)
 
 	if code := l.Run("n\n", "apply", "pihole"); code != 1 || len(l.MakeCalls()) != 1 {
@@ -237,7 +237,7 @@ func TestApplyAsksThenApplies(t *testing.T) {
 }
 
 func TestExitCodesComeFromMake(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	l.Env["FAKE_RC"] = "3"
 	if code := l.Run("", "check", "apps"); code != 3 {
 		t.Errorf("check: exit %d, want 3", code)
@@ -254,7 +254,7 @@ func TestExitCodesComeFromMake(t *testing.T) {
 }
 
 func TestCheckWithoutTargetRunsTheSafeSet(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	l.SetCheckOutput(testlab.RecapNoChanges)
 	if code := l.Run("", "check"); code != 0 {
 		t.Fatalf("exit %d: %s", code, l.Output())
@@ -266,7 +266,7 @@ func TestCheckWithoutTargetRunsTheSafeSet(t *testing.T) {
 }
 
 func TestDryRunPrintsCommandsAndNoValues(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	runs := [][]string{
 		{"check", "apps", "--dry-run"},
 		{"check", "--dry-run"},
@@ -301,7 +301,7 @@ func TestDryRunPrintsCommandsAndNoValues(t *testing.T) {
 }
 
 func TestRealRunsPrintNoValues(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	l.SetCheckOutput(testlab.RecapChanges)
 	l.Run("y\n", "apply", "apps")
 	if out := l.Output(); strings.Contains(out, testlab.SentinelEnv) || strings.Contains(out, testlab.SentinelSource) {
@@ -310,7 +310,7 @@ func TestRealRunsPrintNoValues(t *testing.T) {
 }
 
 func TestForbiddenArgs(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	for _, a := range []string{"--force", "-target=x", "-v --force"} {
 		if code := l.Run("", "check", "apps", "--args", a); code != 2 {
 			t.Errorf("--args %q: exit %d", a, code)
@@ -321,21 +321,9 @@ func TestForbiddenArgs(t *testing.T) {
 	}
 }
 
-func TestHelp(t *testing.T) {
-	l := newTestLab(t)
-	for _, c := range app.Commands() {
-		if code := l.Run("", c.Name, "--help"); code != 0 || !strings.Contains(l.Out.String(), "usage: anvil "+c.Name) {
-			t.Errorf("%s --help: exit %d, %q", c.Name, code, l.Out.String())
-		}
-	}
-	if code := l.Run("", "nope"); code != 2 {
-		t.Errorf("unknown command: exit %d", code)
-	}
-}
-
 // A checkout without Terraform setup gets tf-init before the first check, once.
 func TestPrepareTerraform(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	testlab.FakeTools(l)
 	l.SetCheckOutput(testlab.RecapNoChanges)
 	if err := os.Remove(filepath.Join(l.Root, testlab.TFState)); err != nil {
@@ -362,7 +350,7 @@ func TestPrepareTerraform(t *testing.T) {
 
 // Missing collections are installed once before the first check.
 func TestPrepareCollections(t *testing.T) {
-	l := newTestLab(t)
+	l := testlab.New(t)
 	testlab.FakeTools(l)
 	l.Write("ansible/requirements.yml", "collections:\n  - name: community.general\n  - name: ansible.posix\n")
 	l.SetCheckOutput(testlab.RecapNoChanges)
