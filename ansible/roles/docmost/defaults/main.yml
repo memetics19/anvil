@@ -2,7 +2,7 @@
 # Postgres and Redis. Reached only through the gateway, at wiki.<gateway domain> on the LAN
 # and the VPN. Nothing public. Uploads use the local storage driver (the "storage" volume).
 docmost_dir: /opt/docmost
-docmost_image: docmost/docmost:0.96.0@sha256:b56947fcfd08aab8fae12a377e1792784786adbf8b96e4281f14ef4fc072685a
+docmost_image: docmost/docmost:0.97.0@sha256:40c454d74ffdd9ecb15833e4d96f3a630d59aad862a1869381ae6ee086454419
 docmost_postgres_image: postgres:18.6-alpine@sha256:898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5
 docmost_redis_image: redis:8.10.2-alpine@sha256:0bf6577d7774e592b29d093e3ac9390eb91e13d72c21e506afce736de5e0eeb0
 docmost_port: 3000
