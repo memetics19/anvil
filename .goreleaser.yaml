@@ -14,7 +14,7 @@ before:
 builds:
   - id: anvil
     dir: cli
-    main: .
+    main: ./cmd/anvil
     binary: anvil
     env:
       - CGO_ENABLED=0
