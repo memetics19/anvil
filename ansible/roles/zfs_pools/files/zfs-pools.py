@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """zfs-pools.py: the data pools of a Proxmox host, as declared (role zfs_pools).
 
-Usage: zfs-pools.py [--check] [--wipe POOL] [--byid-dir DIR] <pools as JSON>
+Usage: zfs-pools.py [--check] [--wipe POOL[,POOL...]] [--byid-dir DIR] <pools as JSON>
 
 Each pool is {"name", "layout": mirror|raidz1|raidz2|raidz3, "disks": [<by-id names>],
 "proxmox_storage": bool}. For each pool:
   - it exists with exactly these disks: nothing to do
   - it exists with other disks: an error. An existing pool is never changed
   - it does not exist: every disk must be a whole disk, in no pool and not mounted. A disk
-    with partitions or signatures (an old filesystem, RAID or ZFS label) is refused, unless
-    --wipe names this pool. Then its signatures are wiped first. Then zpool create.
+    with partitions or signatures (an old filesystem, RAID or ZFS label, an empty partition
+    table) is refused, unless --wipe names this pool (several: comma separated). Then its signatures are wiped first. Then zpool create.
   - proxmox_storage: the pool is added as Proxmox storage (zfspool, VM disks and containers),
     for this node only: in a cluster the storage list is shared, and the pool is only here
 It always prints the disks it sees first, so the by-id names to declare are on screen.
@@ -101,13 +101,13 @@ def gb(n):
 
 
 def main(args):
-    check, wipe, byid_dir = False, "", "/dev/disk/by-id"
+    check, wipe, byid_dir = False, set(), "/dev/disk/by-id"
     while args and args[0].startswith("--"):
         a = args.pop(0)
         if a == "--check":
             check = True
         elif a == "--wipe":
-            wipe = args.pop(0)
+            wipe = {w.strip() for w in args.pop(0).split(",") if w.strip()}
         elif a == "--byid-dir":
             byid_dir = args.pop(0)
         else:
@@ -133,8 +133,8 @@ def main(args):
             if d in seen:
                 errors.append(f"{d} is in both {seen[d]} and {n}")
             seen[d] = n
-    if wipe and wipe not in [p.get("name") for p in pools]:
-        errors.append(f"--wipe {wipe}: no such pool declared")
+    for w in sorted(wipe - {p.get("name") for p in pools}):
+        errors.append(f"--wipe {w}: no such pool declared")
     if errors:
         print("\n".join("error: " + e for e in errors))
         return 1
@@ -175,7 +175,7 @@ def main(args):
                 elif dev in busy:
                     bad.append(f"{d} is mounted")
                 elif all_disks[dev]["signatures"] or all_disks[dev]["parts"]:
-                    if wipe == n:
+                    if n in wipe:
                         to_wipe.append((d, dev))
                     else:
                         what = ",".join(all_disks[dev]["signatures"]) or "partitions"

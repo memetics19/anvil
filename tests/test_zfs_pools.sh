@@ -9,7 +9,7 @@
 #    changes nothing;
 #  - an existing pool declared with other disks is an error, and nothing changes;
 #  - a disk in a pool is refused; a disk with an old filesystem is refused, and wiped
-#    only with --wipe naming its pool;
+#    only with --wipe naming its pool, several pools in one run too;
 #  - bad declarations (rpool, too few disks, a partition) stop before anything is read.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
@@ -25,9 +25,9 @@ tmp=$(mktemp -d)
 ids=$tmp/by-id
 mkdir -p "$ids"
 loops=()
-p1=anviltest$$a p2=anviltest$$b
+p1=anviltest$$a p2=anviltest$$b p4=anviltest$$d p5=anviltest$$e
 cleanup() {
-  for p in "$p1" "$p2"; do sudo zpool destroy -f "$p" 2>/dev/null; done
+  for p in "$p1" "$p2" "$p4" "$p5"; do sudo zpool destroy -f "$p" 2>/dev/null; done
   for l in "${loops[@]}"; do sudo losetup -d "$l" 2>/dev/null; done
   rm -rf "$tmp"
 }
@@ -36,13 +36,15 @@ fail=0
 ok() { echo "ok   $1"; }
 bad_() { echo "FAIL $1"; fail=1; }
 
-for i in 0 1 2 3 4 5; do
+for i in 0 1 2 3 4 5 6 7 8 9; do
   truncate -s 256M "$tmp/d$i.img"
   l=$(sudo losetup -f --show "$tmp/d$i.img")
   loops+=("$l")
   ln -s "$l" "$ids/test-disk-$i"
 done
 sudo mkfs.ext4 -q "${loops[4]}"
+sudo mkfs.ext4 -q "${loops[6]}"
+sudo mkfs.ext4 -q "${loops[8]}"
 
 # run <pools json> [options]: the script as root, output in $tmp/out
 run() {
@@ -84,6 +86,12 @@ want3="[$(pool "$p3" mirror "$(d 4 5)")]"
 p2=$p3
 run "$want3" --wipe "$p3" && exists "$p3" && grep -q "^do: wipe the signatures on test-disk-4" "$tmp/out" &&
   ok "--wipe wipes that pool's disks, then creates it" || bad_ "wipe: $(cat "$tmp/out")"
+
+want45="[$(pool "$p4" mirror "$(d 6 7)"),$(pool "$p5" mirror "$(d 8 9)")]"
+! run "$want45" --wipe "$p4" && ! exists "$p4" && ! exists "$p5" && grep -q "test-disk-8 holds ext4" "$tmp/out" &&
+  ok "one pool's --wipe does not cover another pool's disk, and nothing is created" || bad_ "partial wipe: $(cat "$tmp/out")"
+run "$want45" --wipe "$p4,$p5" && exists "$p4" && exists "$p5" &&
+  ok "--wipe takes several pools, comma separated" || bad_ "wipe several: $(cat "$tmp/out")"
 
 for bad in "[$(pool rpool mirror "$(d 0 1)")]" "[$(pool x raidz1 "$(d 0 1)")]" '[{"name":"x","layout":"mirror","disks":["a-part1","b"]}]' \
   "[$(pool x mirror "$(d 0 1)"),$(pool y mirror "$(d 1 2)")]"; do

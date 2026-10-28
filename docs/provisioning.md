@@ -455,6 +455,7 @@ pools:
 ```sh
 anvil pools <box>               # lists the disks and what it would do, asks, then creates
 anvil pools <box> --wipe tank   # a disk of tank has old signatures and nothing on it is needed
+anvil pools <box> --wipe vmdata,tank   # several pools at once
 ```
 
 The first run lists every disk with its by-id name, size, model and use, so you can copy
@@ -466,9 +467,11 @@ Rules:
 - An existing pool with the declared disks is left as it is. One with other disks is an
   error. anvil never changes, grows or destroys a pool.
 - A disk in any pool, mounted or used as swap is refused.
-- A disk with partitions or signatures (an old filesystem, RAID or ZFS label) is refused.
-  `--wipe <pool>` wipes the signatures on that pool's disks first. Use it only when nothing
-  on them is needed.
+- A disk with partitions or signatures (an old filesystem, RAID or ZFS label, or an empty
+  partition table left by a previous owner, shown as `PMBR`) is refused. `--wipe <pool>`
+  wipes the signatures on that pool's disks first, `--wipe vmdata,tank` on several pools'
+  disks. Use it only when nothing on them is needed. Any refusal stops the whole run before
+  anything changes.
 
 ZFS wants each disk on its own. A RAID controller must pass the disks through, see
 [The RAID controller](#the-raid-controller).

@@ -458,7 +458,8 @@ online.
 
 ```sh
 anvil pools pve2               # check, ask, then create the missing pools
-anvil pools pve2 --wipe tank   # wipe old signatures on tank's disks first
+anvil pools pve2 --wipe tank          # wipe old signatures on tank's disks first
+anvil pools pve2 --wipe vmdata,tank   # on several pools' disks
 ```
 
 Creates the ZFS data pools of a host that `anvil provision` installed. The pools are
