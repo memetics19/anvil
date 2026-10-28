@@ -1,0 +1,17 @@
+# The Proxmox cluster (make cluster, playbooks/cluster.yml): the main host creates it, the
+# machines in site.cluster.members join it. Desired state from the site dict:
+#   cluster: {name: <name>, votes: {<node>: <n>}, members: [<machine>, ...]}
+# Each member is an entry of site.provision.machines, reached at its static address.
+# The cluster link (corosync link0) is the home network: the main host's uplink address
+# and each member's address. votes: give the main host 2 so it keeps quorum alone when a
+# member is down (a member alone then has no quorum: its guests keep running, but nothing
+# can be started, stopped or changed until the main host is back).
+pve_cluster_name: "{{ site.cluster.name }}"
+pve_cluster_votes: "{{ site.cluster.votes | default({}) }}"
+pve_cluster_main_address: "{{ site.pve.uplink_ip }}"
+# Storage on the main host only: the installer's LVM thin pool does not exist on a member.
+pve_cluster_main_only_storage: [local-lvm]
+# A member's own ZFS storage from the installer, which joining removes from its storage list
+# (the cluster's list replaces it). Added back for that node only.
+pve_cluster_member_zfs_storage: local-zfs
+pve_cluster_member_zfs_dataset: rpool/data

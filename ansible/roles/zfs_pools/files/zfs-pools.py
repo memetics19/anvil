@@ -10,13 +10,15 @@ Each pool is {"name", "layout": mirror|raidz1|raidz2|raidz3, "disks": [<by-id na
   - it does not exist: every disk must be a whole disk, in no pool and not mounted. A disk
     with partitions or signatures (an old filesystem, RAID or ZFS label) is refused, unless
     --wipe names this pool. Then its signatures are wiped first. Then zpool create.
-  - proxmox_storage: the pool is added as Proxmox storage (zfspool, VM disks and containers)
+  - proxmox_storage: the pool is added as Proxmox storage (zfspool, VM disks and containers),
+    for this node only: in a cluster the storage list is shared, and the pool is only here
 It always prints the disks it sees first, so the by-id names to declare are on screen.
 --check prints what it would do and changes nothing.
 """
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 
@@ -196,7 +198,8 @@ def main(args):
                 print(f"ok: {n} is Proxmox storage")
             else:
                 plan.append((f"{do} add {n} as Proxmox storage (VM disks and containers)",
-                             [["pvesm", "add", "zfspool", n, "--pool", n, "--content", "images,rootdir", "--sparse", "1"]]))
+                             [["pvesm", "add", "zfspool", n, "--pool", n, "--content", "images,rootdir", "--sparse", "1",
+                               "--nodes", socket.gethostname().split(".")[0]]]))
     if rc:
         print("nothing changed")
         return rc

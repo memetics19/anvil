@@ -17,6 +17,7 @@ Placeholders: `<apps-address>` is the `apps` VM's lab address. The others are
 | `make grow-disk HOST=<vm> ADD=<GB>` | Grows a VM's disk by ADD GB while it runs: Terraform (only that disk may change, and only grow), the site dict, then the partition and filesystem inside the VM. `CHECK=1` plans only, `MOUNT=` names the LVM volume. `anvil increase-disk` wraps it. |
 | `make rotate SECRET=<names>` | New API keys for radarr, sonarr, prowlarr (or `arr`): each app makes its own, Prowlarr's links follow, then Vault and the dashboard. `CHECK=1` is check mode. `anvil rotate` wraps it. |
 | `make pools HOST=<machine>` | Creates the ZFS data pools declared in `site.provision.machines.<machine>.pools` on a provisioned host. Never changes an existing pool. `WIPE=<pool>` wipes old signatures on that pool's disks first. `anvil pools` wraps it. |
+| `make cluster` | The Proxmox cluster: the main host creates it, `site.cluster.members` join, the main host's `votes` decide quorum. Never removes a node. `anvil apply cluster` wraps it. |
 | `make forget-host HOST=<name>` | Drops one host's stored SSH host key after you rebuilt it on purpose, so the next run records the new key. Prints what it removed. `HOST=switch` drops the key in `build/switch/known_hosts`. |
 | `make host` | Proxmox host base: repositories, packages, time, `/etc/hosts`, the Terraform API token, storage content types, and the Homepage token (`--tags homepage`). |
 | `make host-network` | Proxmox `/etc/network/interfaces`, with a timed rollback. |

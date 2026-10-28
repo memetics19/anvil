@@ -1,8 +1,14 @@
 # ZFS data pools on a provisioned Proxmox host (role zfs_pools): make pools HOST=<machine>.
 # The host is an entry of site.provision.machines, reached at its static address as root.
+# On the main host's inventory entry (implicit localhost has no inventory_dir, which the
+# site dict lookup needs). These tasks do not connect to it.
 - name: The machine
-  hosts: localhost
+  hosts: proxmox
   gather_facts: false
+  pre_tasks:
+    - name: Resolve the site dict once for this run
+      ansible.builtin.import_tasks: tasks/site.yml
+      tags: [always]
   tasks:
     - name: A machine of site.provision.machines with a static address
       ansible.builtin.assert:
@@ -16,6 +22,7 @@
         quiet: true
 
     - name: Add it
+      run_once: true
       ansible.builtin.add_host:
         name: "{{ pools_host }}"
         groups: provisioned
@@ -25,5 +32,13 @@
 - name: ZFS data pools
   hosts: provisioned
   gather_facts: false
+  pre_tasks:
+    # Hosts added at run time have no inventory_dir for the site lookup: they take the dict
+    # the first play resolved on the main host.
+    - name: The site dict from the first play
+      ansible.builtin.set_fact:
+        site: "{{ hostvars[groups['proxmox'] | first].site }}"
+      no_log: true
+      tags: [always]
   roles:
     - role: zfs_pools

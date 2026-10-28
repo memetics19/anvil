@@ -398,6 +398,42 @@ root. Hand it to the repo, as in [First build](setup.md#first-build):
 
 Delete the ISO and the netboot payload if the run did not: `make provision-clean NAME=<box>`.
 
+## The cluster
+
+A provisioned server joins the main host's Proxmox cluster:
+
+```yaml
+cluster: {name: lab, votes: {pve: 2}, members: [pve2]}
+```
+
+```sh
+anvil check cluster     # what it would run
+anvil apply cluster     # the name is typed to confirm
+```
+
+1. On the main host, once: `pvecm create <name> --link0 <uplink address> --votes <n>`.
+   Guests keep running. `local-lvm` is limited to the main host, because a member has no
+   LVM thin pool.
+2. On each member, once: its root key is allowed on the main host, and the main host's SSH
+   host key is pinned on it from the main host's own file. Then `pvecm add --use_ssh`.
+   A member with guests is refused.
+3. The member's `local-zfs` storage, which joining drops, is added back for that node only.
+4. It checks the cluster is quorate.
+
+The cluster link (corosync) is the home network: the main host's uplink address and each
+member's address.
+
+Votes decide what happens when a server is down. A cluster needs more than half of all
+votes. With `votes: {pve: 2}` and one member, the main host holds 2 of 3 and keeps working
+alone. A member alone has 1 of 3: its guests keep running, but nothing can be started,
+stopped or changed until the main host is back. With equal votes, either server being down
+freezes the other. A QDevice on a third machine avoids that, and anvil does not set one up.
+
+Join first, then create the data pools: joining replaces the member's storage list with the
+cluster's. `anvil pools` registers each pool for its own node only.
+
+anvil never removes a node from a cluster or deletes one. That is manual (`pvecm delnode`).
+
 ## Data pools
 
 The installer only builds the boot pool `rpool`, on the disks in `disks`. The other disks
@@ -414,7 +450,7 @@ pools:
 | `name` | The pool name. Not `rpool` or `bpool`. |
 | `layout` | `mirror` (2 disks or more), `raidz1` (3), `raidz2` (4) or `raidz3` (5). |
 | `disks` | Whole disks by their names under `/dev/disk/by-id`. Never `sdX`, which can change at boot. |
-| `proxmox_storage` | `true` adds the pool as Proxmox storage for VM disks and containers. |
+| `proxmox_storage` | `true` adds the pool as Proxmox storage for VM disks and containers, on that node only. |
 
 ```sh
 anvil pools <box>               # lists the disks and what it would do, asks, then creates

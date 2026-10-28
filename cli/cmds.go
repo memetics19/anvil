@@ -15,7 +15,7 @@ Dry runs a target and prints what the real run would change. It changes nothing.
   tf                make tf-plan (saves the plan for tf-apply, runs the plan guard)
   switch            make switch (prints the planned switch commands)
 
-The target is a lab target (host, host-network, ceph, tf, vault, enclave, vlans, switch,
+The target is a lab target (host, host-network, ceph, tf, vault, enclave, vlans, cluster, switch,
 vms, vm, bootstrap-ssh), a VM (apps, frigate, ...) or a service (pihole, caddy, ...).
 anvil services lists them all. With no target it checks host, vms and tf.
 
@@ -32,7 +32,7 @@ Runs the check first (see anvil check) and prints its summary. When the check sh
 changes, it stops there. Otherwise it asks y/N, then runs the real target.
 
 Risky targets need their name typed, and --yes does not skip that: host-network,
-enclave, vlans, switch and tf (make tf-apply applies the plan tf-plan saved). The
+enclave, vlans, cluster, switch and tf (make tf-apply applies the plan tf-plan saved). The
 guards inside the scripts still apply (plan guard, timed rollbacks). anvil never adds
 a force flag.
 

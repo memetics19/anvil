@@ -52,6 +52,7 @@ func labTargets() []target {
 		ans("vault", "the Vault server. A restart seals it, and the role refuses one unless allowed", false),
 		ans("enclave", "the secrets enclave: its firewall and SDN apply (timed rollbacks), apt cache, NTP", true),
 		ans("vlans", "VLANs 10, 20 and 30: the segments firewall, gateway addresses (timed rollback), DHCP, NTP", true),
+		ans("cluster", "the Proxmox cluster: the main host creates it, site.cluster.members join", true),
 		{name: "switch", help: "the Cisco switch's ports and VLANs (the check prints the planned commands)",
 			make: "switch", applyArgs: "-e network_switch_apply=true", risky: true, summarize: switchSummary},
 		ans("vms", "every guest play in ansible/playbooks/vms.yml", false),

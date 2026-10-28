@@ -1,0 +1,65 @@
+# The Proxmox cluster (role pve_cluster): make cluster, or anvil check|apply cluster.
+# The main host creates it, then each machine in site.cluster.members joins. A member is an
+# entry of site.provision.machines, reached at its static address as root.
+# The first play runs on the main host's inventory entry (implicit localhost has no
+# inventory_dir, which the site dict lookup needs). Its tasks do not connect.
+- name: The cluster members
+  hosts: proxmox
+  gather_facts: false
+  pre_tasks:
+    - name: Resolve the site dict once for this run
+      ansible.builtin.import_tasks: tasks/site.yml
+      tags: [always]
+  tasks:
+    - name: The cluster is declared, and its members are provisioned machines
+      ansible.builtin.assert:
+        that:
+          - site.cluster is defined
+          - site.cluster.name | default('') is match('^[A-Za-z0-9-]{1,15}$')
+          - (site.cluster.members | default([])) | difference((site.provision.machines | default({})).keys() | list) | length == 0
+        fail_msg: >-
+          site.cluster needs a name (letters, digits, -, at most 15) and members that are
+          entries of site.provision.machines with network.cidr
+        quiet: true
+
+    - name: Add them
+      run_once: true
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: cluster_members
+        ansible_host: "{{ site.provision.machines[item].network.cidr | split('/') | first }}"
+        ansible_user: root
+        pve_cluster_member_address: "{{ site.provision.machines[item].network.cidr | split('/') | first }}"
+      loop: "{{ site.cluster.members | default([]) }}"
+
+- name: Create the cluster on the main host
+  hosts: proxmox
+  gather_facts: false
+  pre_tasks:
+    - name: Resolve the site dict once for this run
+      ansible.builtin.import_tasks: tasks/site.yml
+      tags: [always]
+  tasks:
+    - name: Create
+      ansible.builtin.include_role:
+        name: pve_cluster
+        tasks_from: create.yml
+
+# One member at a time: each join changes the membership the next one sees.
+- name: Join the members
+  hosts: cluster_members
+  gather_facts: false
+  serial: 1
+  pre_tasks:
+    # Hosts added at run time have no inventory_dir for the site lookup: they take the dict
+    # the first play resolved on the main host.
+    - name: The site dict from the first play
+      ansible.builtin.set_fact:
+        site: "{{ hostvars[groups['proxmox'] | first].site }}"
+      no_log: true
+      tags: [always]
+  tasks:
+    - name: Join
+      ansible.builtin.include_role:
+        name: pve_cluster
+        tasks_from: join.yml

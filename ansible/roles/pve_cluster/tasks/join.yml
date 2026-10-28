@@ -1,0 +1,144 @@
+# On a member: join the cluster over SSH (pvecm add --use_ssh), once. The member must be
+# empty: joining replaces its /etc/pve, and pvecm refuses a node with guests. Its root key is
+# allowed on the main host, and the main host's key is pinned on the member from the main
+# host's own file, read over anvil's SSH session (no blind first-contact trust).
+- name: Join | the node name is the inventory name
+  ansible.builtin.command:
+    argv: [hostname, -s]
+  register: pve_cluster__hostname
+  changed_when: false
+  check_mode: false
+  failed_when: pve_cluster__hostname.stdout != inventory_hostname
+
+- name: Join | is it in a cluster
+  ansible.builtin.stat:
+    path: /etc/pve/corosync.conf
+  register: pve_cluster__conf
+
+- name: Join | its guests
+  ansible.builtin.shell:
+    cmd: set -o pipefail; { qm list; pct list; } 2>/dev/null | awk 'NR > 0 && $1 ~ /^[0-9]+$/' | wc -l
+    executable: /bin/bash
+  register: pve_cluster__guests
+  changed_when: false
+  check_mode: false
+  when: not pve_cluster__conf.stat.exists
+
+- name: Join | it has none
+  ansible.builtin.assert:
+    that: pve_cluster__guests.stdout | int == 0
+    fail_msg: "{{ inventory_hostname }} has {{ pve_cluster__guests.stdout }} guests. Only an empty node can join."
+    quiet: true
+  when: not pve_cluster__conf.stat.exists
+
+- name: Join | its root SSH key
+  ansible.builtin.command:
+    argv: [ssh-keygen, -q, -t, ed25519, -N, "", -f, /root/.ssh/id_ed25519]
+    creates: /root/.ssh/id_ed25519.pub
+  when: not pve_cluster__conf.stat.exists
+
+- name: Join | read it
+  ansible.builtin.slurp:
+    src: /root/.ssh/id_ed25519.pub
+  register: pve_cluster__member_key
+  when: not pve_cluster__conf.stat.exists and not ansible_check_mode
+
+- name: Join | allow it on the main host
+  ansible.builtin.lineinfile:
+    path: /etc/pve/priv/authorized_keys
+    line: "{{ pve_cluster__member_key.content | b64decode | trim }}"
+    create: false
+  delegate_to: "{{ groups['proxmox'] | first }}"
+  when: not pve_cluster__conf.stat.exists and not ansible_check_mode
+
+- name: Join | the main host's SSH host key
+  ansible.builtin.slurp:
+    src: /etc/ssh/ssh_host_ed25519_key.pub
+  delegate_to: "{{ groups['proxmox'] | first }}"
+  register: pve_cluster__main_hostkey
+  check_mode: false
+  when: not pve_cluster__conf.stat.exists
+
+- name: Join | pin it on this member
+  ansible.builtin.lineinfile:
+    path: /root/.ssh/known_hosts
+    line: "{{ pve_cluster_main_address }} {{ (pve_cluster__main_hostkey.content | b64decode).split()[:2] | join(' ') }}"
+    create: true
+    mode: "0600"
+  when: not pve_cluster__conf.stat.exists
+
+- name: Join | would join
+  ansible.builtin.debug:
+    msg: >-
+      would run: pvecm add {{ pve_cluster_main_address }} --link0 {{ pve_cluster_member_address }}
+      --use_ssh 1 --votes {{ pve_cluster_votes[inventory_hostname] | default(1) }}
+  changed_when: true
+  when: ansible_check_mode and not pve_cluster__conf.stat.exists
+
+- name: Join | the cluster
+  ansible.builtin.command:
+    argv:
+      - pvecm
+      - add
+      - "{{ pve_cluster_main_address }}"
+      - --link0
+      - "{{ pve_cluster_member_address }}"
+      - --use_ssh
+      - "1"
+      - --votes
+      - "{{ pve_cluster_votes[inventory_hostname] | default(1) | string }}"
+  changed_when: true
+  when: not ansible_check_mode and not pve_cluster__conf.stat.exists
+
+- name: Join | its own ZFS storage
+  ansible.builtin.command:
+    argv: [pvesh, get, "/storage/{{ pve_cluster_member_zfs_storage }}", --output-format, json]
+  register: pve_cluster__zfs
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Join | the dataset is there
+  ansible.builtin.command:
+    argv: [zfs, list, -H, -o, name, "{{ pve_cluster_member_zfs_dataset }}"]
+  register: pve_cluster__dataset
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Join | add it back, for this node only
+  ansible.builtin.command:
+    argv:
+      - pvesm
+      - add
+      - zfspool
+      - "{{ pve_cluster_member_zfs_storage }}"
+      - --pool
+      - "{{ pve_cluster_member_zfs_dataset }}"
+      - --content
+      - images,rootdir
+      - --sparse
+      - "1"
+      - --nodes
+      - "{{ inventory_hostname }}"
+  changed_when: true
+  when:
+    - pve_cluster__zfs.rc != 0
+    - pve_cluster__dataset.rc == 0
+    - not ansible_check_mode
+
+- name: Join | quorum
+  ansible.builtin.command:
+    argv: [pvecm, status]
+  register: pve_cluster__status
+  changed_when: false
+  check_mode: false
+  failed_when: >-
+    not ansible_check_mode and (pve_cluster__status.rc != 0
+    or 'Quorate:          Yes' not in pve_cluster__status.stdout)
+  when: pve_cluster__conf.stat.exists or not ansible_check_mode
+
+- name: Join | report
+  ansible.builtin.debug:
+    msg: "{{ pve_cluster__status.stdout_lines | select('search', 'Nodes:|Expected votes:|Total votes:|Quorum:|Quorate:') | list }}"
+  when: pve_cluster__status.stdout_lines is defined
