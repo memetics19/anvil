@@ -39,4 +39,4 @@ frigate_stack_repo_scripts: "{{ playbook_dir }}/../../scripts"
 frigate_stack_frigate_image: ghcr.io/blakeblackshear/frigate:0.17.2@sha256:d4351369984d4a9e2a49ac59736f6490856a7ea11f7790040746d21496967010
 frigate_stack_notify_image: ghcr.io/0x2142/frigate-notify:v0.5.4@sha256:0cdf7e051c7223c62d389ab4c42dd334d3034f22671e2e51261445515605cabd
 frigate_stack_mosquitto_image: eclipse-mosquitto:2.0.22@sha256:09b62ff32c2e7b64d4b431b9a89236073289b68db273de2b089edeb9b0d92b5c
-frigate_stack_gotify_image: gotify/server:latest@sha256:2ae0e4e689f183137c8247884382fcb174d5a72253ce1897e7e5267090093fc8
+frigate_stack_gotify_image: gotify/server:3.1.1@sha256:44fc5bbd1c0618878e33073d38c2c13126b48f245c3fe12236b1da48eb203b86
