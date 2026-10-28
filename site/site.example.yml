@@ -28,6 +28,8 @@ site:
   cluster: {name: lab, votes: {pve: 2}, members: [pve2]}
   network:
     switch_ip: 198.51.100.24
+    # A second Proxmox server, for its gateway name (services: pve2).
+    pve2_ip: 192.0.2.12
     switch:
       ports:
         gi10: [trunk, protected]
@@ -162,6 +164,7 @@ site:
     clients: [100.64.0.7]
   services:
     - {name: pve, host: pve.ip, port: 8006, scheme: https, insecure_upstream: true, websocket: true}
+    - {name: pve2, host: network.pve2_ip, port: 8006, scheme: https, insecure_upstream: true, websocket: true}
     - {name: vault, host: hosts.vault.ip, port: 8200, scheme: https, upstream_ca: vault}
     - {name: tv, host: hosts.ragnarok.ip, port: 34401, scheme: http, stream: true, description: Live TV}
     - {name: qbit, host: hosts.ragnarok.ip, port: 8080, scheme: http, host_header: upstream}
