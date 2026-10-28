@@ -101,6 +101,35 @@ rejects("native VLAN 1 tagged", lambda: ns.switch_plan(
     state(VLAN1, [(1, "Tagged")], []), ports, vlans, 1, keep))
 rejects("output it cannot read", lambda: ns.switch_plan(dict(today, **{"show interfaces protected-ports": "?"}), ports, vlans, 1, keep))
 
+# DHCP snooping: the output of show ip dhcp snooping, off and on.
+def snooping(enabled, vlans, trusted):
+    return ("DHCP snooping is %s\nDHCP snooping is configured on following VLANs: %s\n"
+            "DHCP snooping database is Disabled\nRelay agent Information option 82 is Disabled\n"
+            "Option 82 on untrusted port is forbidden\nVerification of hwaddr field is Enabled\n"
+            "DHCP snooping file update frequency is configured to: 1200 seconds\n Interface    Trusted    \n"
+            "----------- ------------ \n%s" % ("Enabled" if enabled else "Disabled", vlans,
+                                               "".join("  %s         Yes     \n" % p for p in trusted)))
+
+snoop = {"trusted": ["gi2", "gi10"]}
+ok("read commands with snooping", ns.switch_read_commands(ports, snoop)[-1] == "show ip dhcp snooping")
+off = dict(done, **{"show ip dhcp snooping": snooping(False, "", [])})
+plan = ns.switch_plan(off, ports, vlans, 1, keep, snoop)
+ok("snooping: trust first, then the VLAN, then switch it on", plan == [
+    "configure terminal",
+    "interface gi2", "ip dhcp snooping trust", "exit",
+    "interface gi10", "ip dhcp snooping trust", "exit",
+    "ip dhcp snooping vlan 1", "ip dhcp snooping", "end"])
+ok("snooping may trust a keep port (the router uplink)", "interface gi2" in plan)
+on = dict(done, **{"show ip dhcp snooping": snooping(True, "1", ["gi2", "gi10"])})
+ok("snooping: empty plan once it matches", ns.switch_plan(on, ports, vlans, 1, keep, snoop) == [])
+half_on = dict(done, **{"show ip dhcp snooping": snooping(True, "1, 5-6", ["gi10"])})
+ok("snooping: only the missing trust", ns.switch_plan(half_on, ports, vlans, 1, keep, snoop) == [
+    "configure terminal", "interface gi2", "ip dhcp snooping trust", "exit", "end"])
+ok("snooping absent: nothing planned for it", ns.switch_plan(done, ports, vlans, 1, keep, None) == [])
+rejects("snooping with no trusted port", lambda: ns.switch_plan(off, ports, vlans, 1, keep, {"trusted": []}))
+rejects("snooping with a bad port name", lambda: ns.switch_plan(off, ports, vlans, 1, keep, {"trusted": ["Gi1/0/2"]}))
+rejects("snooping output it cannot read", lambda: ns.switch_plan(dict(done, **{"show ip dhcp snooping": "?"}), ports, vlans, 1, keep, snoop))
+
 out = "@@@ show vlan\n" + VLAN1 + "@@@ show interfaces protected-ports\n" + protected([])
 ok("switch_state splits by command", sorted(ns.switch_state(out)) == ["show interfaces protected-ports", "show vlan"])
 sys.exit(1 if fails else 0)

@@ -3,9 +3,12 @@
 #
 # switch_state(text) splits the output of scripts/switch-cli.sh ("@@@ <command>" before
 # each command's output) into {command: output}.
-# switch_plan(outputs, ports, vlans, native_vlan, keep_ports) returns the lines to send.
-# Only the ports named in `ports` appear in the plan. A port in `keep_ports` (the router
-# uplink, the access point) may not be in `ports` and must not be protected today.
+# switch_plan(outputs, ports, vlans, native_vlan, keep_ports, dhcp_snooping) returns the
+# lines to send. Only the ports named in `ports` appear in the plan. A port in `keep_ports`
+# (the router uplink, the access point) may not be in `ports` and must not be protected
+# today. The one exception is DHCP snooping: its trusted ports (where a real DHCP server
+# is, such as the router uplink) are trusted even when they are keep_ports, because trust
+# only lets DHCP replies through.
 import re
 
 try:
@@ -71,6 +74,39 @@ def parse_protected(text):
     return out
 
 
+def parse_snooping(text):
+    """show ip dhcp snooping -> enabled, the VLANs it covers, the trusted ports."""
+    if "DHCP snooping is" not in text:
+        raise AnsibleFilterError("switch: could not read show ip dhcp snooping output")
+    enabled = re.search(r"DHCP snooping is Enabled", text) is not None
+    vlans = set()
+    m = re.search(r"configured on following VLANs:\s*([0-9,\- ]*)", text)
+    for part in (m.group(1) if m else "").replace(" ", "").split(","):
+        if re.fullmatch(r"\d+-\d+", part):
+            a, b = part.split("-")
+            vlans.update(range(int(a), int(b) + 1))
+        elif part.isdigit():
+            vlans.add(int(part))
+    trusted = {m.group(1) for m in re.finditer(r"^\s*(gi\d+|Po\d+)\s+Yes\s*$", text, re.M)}
+    return {"enabled": enabled, "vlans": vlans, "trusted": trusted}
+
+
+def _snooping(conf, native_vlan):
+    """site.network.switch.dhcp_snooping -> (trusted ports, VLANs), or None when absent."""
+    if not conf:
+        return None
+    trusted = [str(p) for p in conf.get("trusted") or []]
+    if not trusted:
+        raise AnsibleFilterError(
+            "site.network.switch.dhcp_snooping.trusted must name the ports of the real DHCP "
+            "servers (the router uplink at least): with none, every DHCP reply is dropped")
+    for p in trusted:
+        if not PORT_RE.match(p):
+            raise AnsibleFilterError("site.network.switch.dhcp_snooping: bad port name %s" % p)
+    vlans = sorted(int(v) for v in (conf.get("vlans") or [native_vlan]))
+    return trusted, vlans
+
+
 def _roles(ports):
     if not isinstance(ports, dict) or not ports:
         raise AnsibleFilterError("site.network.switch.ports must map ports to roles")
@@ -91,15 +127,18 @@ def _vlan_ids(ids):
     return ",".join(str(i) for i in sorted(ids))
 
 
-def switch_read_commands(ports):
+def switch_read_commands(ports, dhcp_snooping=None):
     """The show commands whose output switch_plan needs."""
     cmds = ["show vlan", "show interfaces protected-ports"]
     cmds += ["show interfaces switchport %s" % p for p in sorted(_roles(ports), key=lambda p: int(p[2:]))]
+    if dhcp_snooping:
+        cmds.append("show ip dhcp snooping")
     return cmds
 
 
-def switch_plan(outputs, ports, vlans, native_vlan=1, keep_ports=None):
+def switch_plan(outputs, ports, vlans, native_vlan=1, keep_ports=None, dhcp_snooping=None):
     roles = _roles(ports)
+    snoop = _snooping(dhcp_snooping, int(native_vlan))
     keep = [str(p) for p in (keep_ports or [])]
     for p in keep:
         if not PORT_RE.match(p):
@@ -154,7 +193,24 @@ def switch_plan(outputs, ports, vlans, native_vlan=1, keep_ports=None):
         if body:
             lines += ["interface %s" % port] + body + ["exit"]
 
-    touched = set(re.findall(r"\bgi\d+\b", "\n".join(lines)))
+    # DHCP snooping: the trusted ports first, then the VLANs, then the switch-wide switch, so
+    # the router uplink is never untrusted while snooping is on.
+    snoop_lines = []
+    if snoop:
+        trusted, svlans = snoop
+        have = parse_snooping(outputs["show ip dhcp snooping"])
+        for port in sorted(trusted, key=lambda p: int(p[2:])):
+            if port not in have["trusted"]:
+                snoop_lines += ["interface %s" % port, "ip dhcp snooping trust", "exit"]
+        for v in svlans:
+            if v not in have["vlans"]:
+                snoop_lines.append("ip dhcp snooping vlan %d" % v)
+        if not have["enabled"]:
+            snoop_lines.append("ip dhcp snooping")
+    lines += snoop_lines
+
+    named = set(re.findall(r"\bgi\d+\b", "\n".join(lines)))
+    touched = named - (set(snoop[0]) if snoop else set())
     if not touched <= set(roles):
         raise AnsibleFilterError("switch: the plan names ports outside site.network.switch.ports")
     return ["configure terminal"] + lines + ["end"] if lines else []

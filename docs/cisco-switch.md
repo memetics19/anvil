@@ -19,6 +19,7 @@ network:
       <proxmox-port>: [trunk, protected]
       <office-port>: [protected]
     keep_ports: [<router-port>, <ap-port>]
+    dhcp_snooping: {trusted: [<router-port>, <proxmox-port>], vlans: [1]}
 ```
 
 A port has one or both roles:
@@ -33,6 +34,31 @@ Rules:
 - Ports that are not listed are never touched.
 - The plan may not name a port in `keep_ports`. The run stops if one of them is protected.
 - The VLANs are created only when some port is a trunk.
+- `dhcp_snooping` is the one exception to `keep_ports`: its trusted ports are trusted even
+  when they are keep ports, because trust only lets DHCP replies through.
+
+### DHCP snooping
+
+With `dhcp_snooping`, only the trusted ports may send DHCP replies on the listed VLANs
+(default VLAN 1). The switch drops a DHCP offer from any other port. A second router or an
+access point with its own DHCP server left on can then no longer hand out addresses. Its
+Wi-Fi keeps working, and its clients get their address from the router.
+
+Trust exactly these ports:
+
+| Port | Why |
+|---|---|
+| The router uplink | The home's DHCP server. Untrusted, no device on the switch gets an address |
+| The Proxmox port | `anvil provision`'s netboot answers PXE requests from there (proxy DHCP) |
+
+The plan trusts the ports first, then enables snooping on the VLANs, then switches it on,
+so the router uplink is never untrusted while snooping is on. It refuses an empty trusted
+list. It never removes a trust or turns snooping off: do that by hand
+(`no ip dhcp snooping`) when you need to.
+
+Two DHCP servers on one network break a network boot: the target gets two offers from
+different servers and accepts neither. `anvil provision` then times out waiting for the
+installer to be served. Snooping is the fix when the other server cannot be switched off.
 
 Current state:
 

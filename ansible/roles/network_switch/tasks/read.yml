@@ -2,7 +2,7 @@
 - name: Show commands on the switch
   ansible.builtin.command:
     argv: ["{{ network_switch_cli }}", --show-only, "{{ network_switch__login.username }}", "{{ network_switch_host }}"]
-    stdin: "{{ network_switch_ports | switch_read_commands | join('\n') }}"
+    stdin: "{{ network_switch_ports | switch_read_commands(network_switch_dhcp_snooping) | join('\n') }}"
   environment:
     SSHPASS: "{{ network_switch__login.password }}"
     SWITCH_KNOWN_HOSTS: "{{ network_switch_known_hosts }}"

@@ -13,6 +13,12 @@ network_switch_apply: false
 # (the router uplink, the access point).
 network_switch_ports: "{{ site.network.switch.ports }}"
 network_switch_keep_ports: "{{ site.network.switch.keep_ports | default([]) }}"
+# DHCP snooping, optional: {trusted: [ports], vlans: [ids]}. Only the trusted ports (where a
+# real DHCP server is: the router uplink, the Proxmox host for anvil provision's netboot)
+# may send DHCP replies. Another router or access point with its DHCP server left on can
+# then no longer hand out addresses. vlans defaults to the native VLAN. Absent: snooping
+# is not touched.
+network_switch_dhcp_snooping: "{{ site.network.switch.dhcp_snooping | default(none) }}"
 
 # The VLANs a trunk port carries tagged: the `vlans` list of group_vars/proxmox.yml (name
 # and tag), the same list the Proxmox host routes.
