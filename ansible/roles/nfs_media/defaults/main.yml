@@ -1,15 +1,26 @@
-# The media library over NFS, read-only, to machines in another home over NetBird (their
-# Jellyfin reads it). Only NFSv4 (one TCP port, 2049). Only the NetBird interface, and only
-# the client addresses in site.nfs.clients (their NetBird IPs, Vault) may reach it. The
-# NetBird policy that lets those peers reach this one is set in the NetBird dashboard.
+# The media library over NFS, read-only, NFSv4 only (one TCP port, 2049). Two kinds of
+# reader, either or both:
+#   - the operator's own devices on the lab network (nfs_media_lan_clients): for a player
+#     like VLC at home. Exported "insecure" so a player's high source port is allowed.
+#   - machines in another home over NetBird (nfs_media_netbird_clients): their Jellyfin
+#     reads it. Only when NetBird is enrolled here (the wt0 interface) and the clients are set.
+# An nftables guard admits NFS only from those addresses and drops it from everyone else; the
+# library itself is only ever read (the role checks the folders are there, never changes them).
 nfs_media_exports:
   - /home/ubuntu/media/movies
   - /home/ubuntu/media/tv
-nfs_media_clients: "{{ site.nfs.clients | default([]) }}"
-# The NetBird cloud client's interface on this VM (role netbird_peer).
+# The operator's devices (site.admin_sources: single /32s). Empty turns LAN access off.
+nfs_media_lan_clients: "{{ site.admin_sources | default([]) }}"
+# The NetBird clients (site.nfs.clients: their NetBird IPs). Empty turns NetBird access off.
+nfs_media_netbird_clients: "{{ site.nfs.clients | default([]) }}"
 nfs_media_interface: wt0
-# Every client reads as the library's owner (the VM's first user): read-only, so it can
-# read every file whatever its mode, and change nothing.
+# Every client reads as the library's owner (the VM's first user): read-only, so it can read
+# every file whatever its mode, and change nothing.
 nfs_media_anon_uid: 1000
 nfs_media_anon_gid: 1000
+# Serve NFSv3 as well as NFSv4: macOS Finder and VLC's built-in NFS (libnfs) use v3. v3
+# needs rpcbind (111) and mountd/statd; their ports are fixed so the guard can admit them.
+nfs_media_v3: true
+nfs_media_mountd_port: 20048
+nfs_media_statd_port: 32765
 nfs_media_guard_file: /etc/anvil/nfs-guard.nft

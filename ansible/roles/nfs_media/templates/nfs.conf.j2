@@ -1,10 +1,16 @@
-# Managed by anvil (ansible/roles/nfs_media): NFSv4 only, so one TCP port (2049) and no
-# rpcbind or mountd ports for clients.
+# Managed by anvil (ansible/roles/nfs_media): NFSv4 always, NFSv3 too when nfs_media_v3 (for
+# macOS Finder and VLC's libnfs). mountd and statd on fixed ports so the guard can admit them.
 [nfsd]
-vers3=n
+vers3={{ 'y' if nfs_media_v3 | bool else 'n' }}
 vers4=y
-vers4.0=n
+vers4.0=y
 vers4.1=y
 vers4.2=y
 udp=n
 tcp=y
+{% if nfs_media_v3 | bool %}
+[mountd]
+port={{ nfs_media_mountd_port }}
+[statd]
+port={{ nfs_media_statd_port }}
+{% endif %}
