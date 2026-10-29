@@ -64,6 +64,7 @@ homepage_catalog:
   pass: {title: Vaultwarden, group: Security, icon: vaultwarden.png, description: Passwords}
   # Homepage's Authentik widget needs an API token: none, rather than handing it one.
   auth: {title: Authentik, group: Security, icon: authentik.png, description: Single sign-on, widget: none}
+  llm: {title: LLM, group: Home, icon: ollama.png, description: Local language model, widget: none}
 
 # Read-only Proxmox API token (role pve_host, tag homepage: user with PVEAuditor, privilege-
 # separated token with PVEAuditor). Not secret; the token's secret is HOMEPAGE_VAR_PVE_TOKEN.

@@ -855,6 +855,31 @@ created only when `site.hosts.identity` exists:
 It gets the base guest roles (guest base, Docker, Pulse agent). The LDAP directory comes
 next (planned in the README roadmap).
 
+### Local language model
+
+`https://llm.<gateway-domain>` is a local language model: [Ollama](https://ollama.com) (the
+runtime) and [Open WebUI](https://openwebui.com) (the chat interface), compose project
+`/opt/llm` on the `llm` VM (`terraform/vm_llm.tf`, role `llm`). It runs on **CPU only** —
+these hosts have no GPU — so answers come at a few tokens a second. It is on the second
+node, behind the gateway and single sign-on like the other apps.
+
+- The VM is created only when `site.services` (and `site.hosts.llm`) name it. Defaults: 4
+  cores, 16 GB, a 40 GB disk on `vmdata`.
+- The models in `llm_models` are pulled on the first run (`hermes3:8b` by default, about
+  5 GB). Add to the list and re-run to pull more; nothing is removed.
+- Ollama publishes no port. Only Open WebUI reaches it, and only Open WebUI's port 8080 is
+  published, on the VM's lab address.
+- Open WebUI keeps its own accounts (the first user becomes the admin), behind the
+  gateway's single sign-on as a second layer. Trusted-header SSO (one login, no second
+  account) is a later improvement.
+- The model cache and chat history live on the VM. Both are replaceable, so the VM is not
+  backed up and Terraform may destroy it.
+
+Honest limits: an 8B model on these CPUs is slow and far less capable than a hosted model.
+It suits a scripted assistant, not heavy work. Fine-tuning needs a GPU: train a LoRA on a
+rented GPU and copy the adapter here; a system prompt plus Open WebUI's document knowledge
+(RAG) is the cheaper first step.
+
 ### Authentik (single sign-on)
 
 `make vm HOST=identity ARGS="--tags authentik"` runs the `authentik` role. It manages the
