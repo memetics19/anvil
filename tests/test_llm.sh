@@ -40,7 +40,7 @@ check "Ollama publishes no port (only the UI reaches it)" "py 'assert \"ports\" 
 check "the chat UI is published on the lab address only, port 8080" \
   "py 'assert s[\"webui\"][\"ports\"]==[\"192.0.2.126:8080:8080\"]'"
 check "the UI talks to Ollama inside the network" "py 'assert s[\"webui\"][\"environment\"][\"OLLAMA_BASE_URL\"]==\"http://ollama:11434\"'"
-check "no sign-ups from outside the gateway" "py 'assert s[\"webui\"][\"environment\"][\"ENABLE_SIGNUP\"]==\"false\"'"
+check "sign-up on (the gateway SSO is the gate)" "py 'assert s[\"webui\"][\"environment\"][\"ENABLE_SIGNUP\"]==\"true\"'"
 check "both images pinned by digest" "[ \$(grep -cE 'image: .*@sha256:[a-f0-9]{64}' '$c') = 2 ]"
 check "memory capped with no swap on both" "py 'assert all(s[n][\"mem_limit\"]==s[n][\"memswap_limit\"] for n in s)'"
 check "no telemetry" "py 'assert s[\"webui\"][\"environment\"][\"ANONYMIZED_TELEMETRY\"]==\"false\"'"
