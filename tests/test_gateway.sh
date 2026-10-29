@@ -39,6 +39,7 @@ run() {
       hosts:
         ragnarok: {ip: 192.0.2.119}
         vault: {ip: 192.0.2.120}
+        identity: {ip: 192.0.2.125}
         apps: {ip: 192.0.2.121, home_ip: 198.51.100.249, gateway_subnet: 198.51.100.192/28}
       dns:
         local_records: [{name: vault, ref: hosts.vault.ip}]
@@ -269,6 +270,41 @@ GW_ADMIN='[198.51.100.0/24]' reject "a range for the infra pages" "$infra"
 # The Proxmox host's own addresses are never operators (VLAN clients arrive as them).
 GW_ADMIN='[192.0.2.10/32]' reject "the host's lab address as an operator" "$infra"
 GW_ADMIN='[198.51.100.250/32]' reject "the host's home address as an operator" "$good"
+
+# Single sign-on: with an auth route, every route except the exempt ones asks Authentik first,
+# inside a route block, after the 403 of an infra page and before the app. Without one, none.
+sso='[
+  {name: auth, host: hosts.identity.ip, port: 9000, scheme: http, websocket: true},
+  {name: pve, host: pve.ip, port: 8006, scheme: https, insecure_upstream: true},
+  {name: sonarr, host: hosts.ragnarok.ip, port: 8989, scheme: http},
+  {name: dns, container: pihole, port: 80, scheme: http, home: /admin/},
+  {name: docs, static: docs},
+  {name: vault, host: hosts.vault.ip, port: 8200, scheme: https, upstream_ca: vault},
+  {name: tv, host: hosts.ragnarok.ip, port: 34401, scheme: http, stream: true},
+  {name: ntfy, host: hosts.ragnarok.ip, port: 8081, scheme: http, sso: true},
+  {name: files, host: hosts.ragnarok.ip, port: 8334, scheme: http, sso: false}]'
+run "$sso"
+for n in pve sonarr dns docs ntfy; do
+  if block "$n" | grep -q 'forward_auth http://192.0.2.125:9000 {' && block "$n" | grep -q 'uri /outpost.goauthentik.io/auth/caddy' \
+     && block "$n" | grep -q 'reverse_proxy /outpost.goauthentik.io/\* http://192.0.2.125:9000$'
+  then ok "sso: $n asks Authentik"; else bad_ "sso: $n asks Authentik"; fi
+done
+for n in auth vault tv files; do
+  if block "$n" | grep -q 'forward_auth\|goauthentik'; then bad_ "sso: $n is left out"; else ok "sso: $n is left out"; fi
+done
+# pve: 403 for other clients, then the login check, then redirects and the app.
+first() { block pve | grep -n -m1 -- "$1" | cut -d: -f1; }
+if [ "$(first 'route {')" -lt "$(first 'respond @pve_denied 403')" ] && [ "$(first 'respond @pve_denied 403')" -lt "$(first 'forward_auth')" ] \
+   && [ "$(first 'forward_auth')" -lt "$(first 'reverse_proxy https://192.0.2.10:8006')" ]
+then ok "sso: pve order is 403, login check, app"; else bad_ "sso: pve order"; fi
+if block dns | grep -q 'route {' && [ "$(block dns | grep -n -m1 forward_auth | cut -d: -f1)" -lt "$(block dns | grep -n -m1 'redir / /admin/' | cut -d: -f1)" ]
+then ok "sso: dns checks the login before its redirect"; else bad_ "sso: dns order"; fi
+if block docs | grep -q 'route {' && [ "$(block docs | grep -n -m1 forward_auth | cut -d: -f1)" -lt "$(block docs | grep -n -m1 file_server | cut -d: -f1)" ]
+then ok "sso: docs checks the login before its files"; else bad_ "sso: docs order"; fi
+run "$(printf '%s' "$sso" | sed '/name: auth,/d')"
+if grep -q 'forward_auth\|goauthentik' "$tmp/Caddyfile"; then bad_ "sso: no auth route, no login check"; else ok "sso: no auth route, no login check"; fi
+reject "sso not a boolean" '[{name: a, host: pve.ip, port: 1, scheme: http, sso: "yes"}]'
+reject "auth behind itself" '[{name: auth, host: hosts.identity.ip, port: 9000, scheme: http, sso: true}]'
 
 [ "$fail" -eq 0 ] && echo "PASS: gateway routes and records"
 exit "$fail"

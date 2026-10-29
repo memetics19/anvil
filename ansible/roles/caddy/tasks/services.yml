@@ -22,6 +22,22 @@
       {{ out }}
   no_log: true
 
+# Single sign-on: Authentik's upstream (its own route) and, on each route, whether Caddy asks
+# it first. Never on Authentik's own route.
+- name: Single sign-on on the routes
+  ansible.builtin.set_fact:
+    caddy_sso_upstream: "{{ caddy_sso_auth.url | default('') }}"
+    caddy_routes: >-
+      {%- set out = [] -%}
+      {%- for r in caddy_routes -%}
+      {%- set _ = out.append(r | combine({'sso': caddy_sso_auth is defined and r.name != caddy_sso_route
+            and (r.sso | default(r.name not in caddy_sso_exempt)) is sameas true})) -%}
+      {%- endfor -%}
+      {{ out }}
+  vars:
+    caddy_sso_auth: "{{ caddy_routes | selectattr('name', 'equalto', caddy_sso_route) | rejectattr('static', 'defined') | first }}"
+  no_log: true
+
 - name: Proxied and static routes
   ansible.builtin.set_fact:
     caddy_proxied: "{{ caddy_routes | rejectattr('static', 'defined') | list }}"
@@ -58,6 +74,9 @@
       - caddy_routes | map(attribute='home', default='/') | reject('match', '^/[A-Za-z0-9/_.-]*$') | list | length == 0
       - caddy_routes | selectattr('rewrite_location', 'defined') | map(attribute='rewrite_location') | reject('boolean') | list | length == 0
       - caddy_routes | selectattr('strip_cookies', 'defined') | map(attribute='strip_cookies') | reject('boolean') | list | length == 0
+      - caddy_services | selectattr('sso', 'defined') | map(attribute='sso') | reject('boolean') | list | length == 0
+      # Authentik cannot sit behind itself.
+      - caddy_services | selectattr('name', 'equalto', caddy_sso_route) | selectattr('sso', 'defined') | selectattr('sso') | list | length == 0
       # A static site is a known key of caddy_static_sites and has no upstream fields.
       - caddy_static | map(attribute='static') | map('string') | reject('in', caddy_static_sites) | list | length == 0
       - >-
@@ -93,7 +112,7 @@
       dotted path to an IPv4 address in the site dict), `container` or `static` (one of
       {{ caddy_static_sites | list }}, with no port, scheme or other upstream field). host and
       container entries need a `port` and a `scheme` (http|https); insecure_upstream / upstream_ca (one of {{ caddy_upstream_cas | list }})
-      only with https and not both; host_header original|upstream; home a path; rewrite_location and strip_cookies true|false;
+      only with https and not both; host_header original|upstream; home a path; rewrite_location, strip_cookies and sso true|false ({{ caddy_sso_route }} never sso: true);
       site.gateway.subdomain a lower-case label; admin-only routes ({{ caddy_admin_only_routes }})
       and infra routes ({{ caddy_infra_routes }}) need operator addresses, each a single
       a.b.c.d/32 (site.admin_sources / admin_vpn_sources), never one of the Proxmox host's

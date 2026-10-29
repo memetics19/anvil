@@ -66,6 +66,8 @@ caddy_listen_ips:
 #                      back to https://<name>.<gateway domain> with the same path. For old
 #                      firmware that redirects to absolute URLs (the switch)
 #   enabled            false: keep the slot, but no route and no DNS record
+#   sso                true|false: put the route behind single sign-on, or leave it out
+#                      (default: in, unless its name is in caddy_sso_exempt)
 caddy_services: "{{ site.services | default([]) }}"
 caddy_domain: "{{ gateway_domain }}"
 caddy_email: "{{ site.email }}"
@@ -77,6 +79,20 @@ caddy_email: "{{ site.email }}"
 # a warning, and its route is not checked. docs: this repo's MkDocs site (make docs-publish).
 caddy_static_sites:
   docs: "{{ playbook_dir }}/../../build/site"
+
+# Single sign-on (role authentik, blueprint anvil-sso.yaml): before each request Caddy asks
+# Authentik's embedded outpost, and only a signed-in member of the SSO group gets through.
+# Authentik is reached at the upstream of its own route (caddy_sso_route). Without that
+# route, there is no single sign-on and every route is as before.
+caddy_sso_route: auth
+# Left out of single sign-on (an entry's own `sso` wins):
+#   auth          Authentik itself
+#   pass, vault   the secrets enclave: logins of their own, and they work when Authentik
+#                 is down
+#   pulse         its API is called with a key (role pulse_agent registers VMs through it)
+#   ntfy, gotify  phone apps use tokens, not a browser login
+#   tv            the TV app on the Fire TV has no browser login
+caddy_sso_exempt: [auth, pass, vault, pulse, ntfy, gotify, tv]
 
 # CA certificates (public) for upstreams with `upstream_ca`, copied from the controller.
 # Vault's own CA (fetched by the vault_server role), not $VAULT_CACERT: that one may point
