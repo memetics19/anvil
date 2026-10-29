@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.15.0](https://github.com/memetics19/anvil/compare/v0.14.0...v0.15.0) (2026-10-29)
+
+
+### Features
+
+* ARR app logins off behind single sign-on, with a port guard ([#128](https://github.com/memetics19/anvil/issues/128)) ([3922f4d](https://github.com/memetics19/anvil/commit/3922f4dc7a1b82afab67cba5cb01f51e58877035))
+* **authentik:** require a second factor on every login ([#129](https://github.com/memetics19/anvil/issues/129)) ([f8b397d](https://github.com/memetics19/anvil/commit/f8b397df7f6699c0d1535f35b16d1fc3404100fc))
+
+
+### Bug Fixes
+
+* **authentik:** let the Proxmox client use the login code flow ([#127](https://github.com/memetics19/anvil/issues/127)) ([5dc9b0f](https://github.com/memetics19/anvil/commit/5dc9b0f68a2dc8592777b2f8eaebeab21ae9072d))
+
 ## [0.14.0](https://github.com/memetics19/anvil/compare/v0.13.2...v0.14.0) (2026-10-29)
 
 
