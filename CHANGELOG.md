@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/memetics19/anvil/compare/v0.15.0...v0.16.0) (2026-10-29)
+
+
+### Features
+
+* **llm:** a local language model VM (Ollama + Open WebUI) ([#133](https://github.com/memetics19/anvil/issues/133)) ([5976293](https://github.com/memetics19/anvil/commit/59762933a4ca861f9fb3190c3e49349d46b20e9b))
+
 ## [0.15.0](https://github.com/memetics19/anvil/compare/v0.14.0...v0.15.0) (2026-10-29)
 
 
