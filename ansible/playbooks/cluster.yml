@@ -1,4 +1,5 @@
-# The Proxmox cluster (role pve_cluster): make cluster, or anvil check|apply cluster.
+# The Proxmox cluster (role pve_cluster) and its single sign-on realm (role pve_sso): make
+# cluster, or anvil check|apply cluster.
 # The main host creates it, then each machine in site.cluster.members joins. A member is an
 # entry of site.provision.machines, reached at its static address as root.
 # The first play runs on the main host's inventory entry (implicit localhost has no
@@ -21,8 +22,10 @@
           site.cluster needs a name (letters, digits, -, at most 15) and members that are
           entries of site.provision.machines with network.cidr
         quiet: true
+      tags: [always]
 
     - name: Add them
+      tags: [always]
       run_once: true
       ansible.builtin.add_host:
         name: "{{ item }}"
@@ -63,3 +66,35 @@
       ansible.builtin.include_role:
         name: pve_cluster
         tasks_from: join.yml
+
+# Single sign-on (role pve_sso): the realm, its group and the group's permission are
+# cluster-wide, so they are set once, from the main host. Every member also gets Authentik's
+# gateway name. Skipped when site.services has no Authentik entry.
+- name: Single sign-on realm
+  hosts: proxmox
+  gather_facts: false
+  pre_tasks:
+    - name: Resolve the site dict once for this run
+      ansible.builtin.import_tasks: tasks/site.yml
+      tags: [always]
+  roles:
+    - role: pve_sso
+      tags: [sso]
+
+- name: Single sign-on on the members
+  hosts: cluster_members
+  gather_facts: false
+  pre_tasks:
+    - name: The site dict from the first play
+      ansible.builtin.set_fact:
+        site: "{{ hostvars[groups['proxmox'] | first].site }}"
+      no_log: true
+      tags: [always]
+  tasks:
+    - name: Authentik's gateway name
+      ansible.builtin.include_role:
+        name: pve_sso
+        tasks_from: hosts.yml
+        apply:
+          tags: [sso]
+      tags: [sso]
