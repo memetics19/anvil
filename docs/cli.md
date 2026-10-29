@@ -500,7 +500,8 @@ search the indexers through Prowlarr and hand each download to qBittorrent.
 ```sh
 anvil media search interstellar          # what matches, and what is already in the library
 anvil media get interstellar             # asks which match, adds it, starts the download
-anvil media get "the expanse" --tv       # a series: every season, missing episodes searched
+anvil media get "the expanse" --tv       # a series: asks which season, then gets it
+anvil media get "the expanse" --tv --season 1   # just season 1, no prompt
 anvil media get dune --pick 1 --quality Ultra-HD
 anvil media status                       # downloads in progress, what is still searched for,
 anvil media status --watch               # the free space, refreshed every 10 seconds
@@ -512,6 +513,9 @@ anvil media status --watch               # the free space, refreshed every 10 se
   1080p and 4K, never 720p or SD, and no remuxes or disc images. A 1080p release is final
   and is not replaced by a 4K one. The `arr_stack` role keeps it (tag `arr_quality`, see
   [services.md](services.md)). Without it, `HD-1080p`.
+- A series is added one season at a time, so a run does not pull every season at once. It
+  asks which season (a number, or `all`); `--season N` skips the question, `--yes` means
+  all. Only that season is monitored and searched.
 - It uses the first root folder.
 - A movie or series that is already added but has no file gets a new search, not a second
   add.
