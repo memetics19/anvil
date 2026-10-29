@@ -1,0 +1,20 @@
+# Port guard: only some sources may open connections to ports Docker publishes on this VM.
+# For apps whose own login is off because the gateway's single sign-on stands in front of
+# them: without it, anyone on the LAN could open the app at <VM address>:<port>.
+# An nftables table (templates/port-guard.nft.j2), loaded at boot before Docker starts.
+# ufw cannot do this: Docker's published ports never pass ufw's rules.
+#
+# Host ports (TCP) on this VM's lab address. Empty: no guard, and an existing one is removed.
+port_guard_ports: []
+# Who may connect: the containers on this VM (any Docker bridge), the gateway VM (Caddy and
+# the Homepage widgets) and the VM that runs Pulse (its monitors), by their lab addresses,
+# and port_guard_extra_sources (a.b.c.d or a.b.c.d/n).
+port_guard_gateway_host: apps
+port_guard_monitor_host: netbird
+port_guard_extra_sources: []
+port_guard_sources: >-
+  {{ [site.hosts[port_guard_gateway_host].ip, site.hosts[port_guard_monitor_host].ip]
+     + port_guard_extra_sources }}
+port_guard_address: "{{ site.hosts[inventory_hostname].ip }}"
+port_guard_file: /etc/anvil/port-guard.nft
+port_guard_table: anvil_port_guard

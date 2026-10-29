@@ -92,7 +92,7 @@
     - role: docmost
       tags: [docmost]
 
-# Workloads on ragnarok, one compose project each: the ARR stack, the IPTV EPG web,
+# Workloads on ragnarok, one compose project each, behind the port guard: the ARR stack, the IPTV EPG web,
 # Filestash and IPTV (Threadfin and the stream helper; after iptv_epg, whose directory
 # its guide grabber fills). Only services whose container differs from the file are brought up. Nothing
 # touches the media library (tests/test_media_untouched.sh).
@@ -100,6 +100,9 @@
   hosts: ragnarok
   force_handlers: true
   roles:
+    # Before the apps: a port whose app login is off is closed to the LAN first.
+    - role: port_guard
+      tags: [port_guard, arr]
     - role: arr_stack
       tags: [arr]
     - role: iptv_epg
