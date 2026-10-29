@@ -130,6 +130,8 @@ check "blueprint: the embedded outpost serves the gateway provider at the browse
 assert o[\"attrs\"][\"providers\"]==[[\"!KeyOf\",\"gateway-provider\"]] and o[\"attrs\"][\"config\"][\"authentik_host\"]==\"https://auth.lab.example.com\"'"
 check "blueprint: both apps are bound to the group only" \
   "bpy 'b=by(\"authentik_policies.policybinding\"); assert len(b)==2 and all(x[\"identifiers\"][\"group\"]==[\"!KeyOf\",\"sso-group\"] for x in b)'"
+check "blueprint: Proxmox may use the login code flow and refresh tokens, nothing else" \
+  "bpy 'p=by(\"authentik_providers_oauth2.oauth2provider\")[0][\"attrs\"]; assert p[\"grant_types\"]==[\"authorization_code\",\"refresh_token\"]'"
 check "blueprint: Proxmox redirects only to the enabled port 8006 names" \
   "bpy 'u=by(\"authentik_providers_oauth2.oauth2provider\")[0][\"attrs\"][\"redirect_uris\"]; assert len(u)==1 and u[0][\"matching_mode\"]==\"regex\"
 r=re.compile(u[0][\"url\"])
