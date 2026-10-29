@@ -16,6 +16,21 @@ entries:
     identifiers:
       name: {{ authentik_sso_group | to_json }}
 
+  # --- a second factor for everyone ---------------------------------------------------------
+  # The default login flow's MFA step (made by Authentik's own blueprint, which sets none of
+  # these fields, so they stay as written here). A user without a second factor must set one
+  # up at the next login: an authenticator app (TOTP) or a passkey or security key (WebAuthn).
+  # Recovery codes count as a second factor once made.
+  - model: authentik_stages_authenticator_validate.authenticatorvalidatestage
+    identifiers:
+      name: default-authentication-mfa-validation
+    attrs:
+      not_configured_action: {{ authentik_mfa_not_configured_action | to_json }}
+      device_classes: [totp, webauthn, static]
+      configuration_stages:
+        - !Find [authentik_stages_authenticator_totp.authenticatortotpstage, [name, default-authenticator-totp-setup]]
+        - !Find [authentik_stages_authenticator_webauthn.authenticatorwebauthnstage, [name, default-authenticator-webauthn-setup]]
+
   # --- the gateway ------------------------------------------------------------------------
   # One proxy provider in domain mode covers every name under the gateway domain: Caddy asks
   # the embedded outpost before each request, and one login sets a cookie for the domain.
