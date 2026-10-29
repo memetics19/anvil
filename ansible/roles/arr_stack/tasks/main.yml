@@ -23,3 +23,8 @@
 - name: Quality policy of Sonarr and Radarr
   ansible.builtin.import_tasks: quality.yml
   tags: [arr, arr_quality]
+
+# The apps' own logins: off behind the gateway's single sign-on (arr_stack_app_logins).
+- name: App logins
+  ansible.builtin.import_tasks: logins.yml
+  tags: [arr, arr_logins]

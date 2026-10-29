@@ -599,8 +599,14 @@ Only members of the Authentik group `lab-admins` get through (see
   a sign-in page would break them.
 - `sso: true` or `sso: false` on an entry of `site.services` overrides the list.
 - On an operator-only page, the 403 for other clients comes first, then the login check.
-- The apps keep their own logins for now. Their ports are still open on the LAN, so
-  turning a login off would leave the app open there.
+- Sonarr, Radarr, Prowlarr and Jackett have their own logins off (`arr_stack_app_logins:
+  false` in `host_vars/ragnarok.yml`): single sign-on is their login. Their APIs still need
+  the API key. qBittorrent skips its login too. The role refuses this unless the port guard
+  (role `port_guard`) closes their web ports on ragnarok to everyone but the VM's own
+  containers, the gateway VM and the Pulse VM. The torrent port stays open.
+- The other apps keep their own logins. Frigate is also public through the tunnel. Ceph,
+  iDRAC, the switch, Filestash, Docmost and Threadfin cannot trust a login made in front
+  of them. Threadfin's port also serves the TV playlist, so it is not guarded.
 - Homepage widgets, Pulse monitors and the apps talking to each other use the upstream
   addresses, not the gateway names, so the login check does not touch them.
 - If Authentik is down, the names behind it answer with an error. Proxmox stays reachable

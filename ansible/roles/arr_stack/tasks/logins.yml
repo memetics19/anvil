@@ -1,0 +1,53 @@
+# The apps' own logins, when the gateway's single sign-on stands in front of them
+# (arr_stack_app_logins: false). Sonarr, Radarr and Prowlarr switch to External
+# authentication (the proxy in front decides), and Jackett's admin password goes. Their APIs
+# still need the API key. qBittorrent already skips its login (its whitelist) and is only
+# behind the port guard. A changed app is restarted to read its config; nothing else is.
+- name: Logins | the port guard closes every app port first
+  ansible.builtin.assert:
+    that: >-
+      arr_stack_login_ports | difference(port_guard_ports | default([]) | map('int') | list) | length == 0
+    fail_msg: >-
+      arr_stack_app_logins is false, but port_guard_ports does not close {{ arr_stack_login_ports }}:
+      the apps would be open to the LAN without a login
+    quiet: true
+  when: not arr_stack_app_logins | bool
+
+- name: Logins | Sonarr, Radarr and Prowlarr authentication
+  ansible.builtin.replace:
+    path: "{{ arr_stack_config_xml_files[item] }}"
+    regexp: '<AuthenticationMethod>[^<]*</AuthenticationMethod>'
+    replace: "<AuthenticationMethod>{{ 'Forms' if arr_stack_app_logins | bool else 'External' }}</AuthenticationMethod>"
+  loop: "{{ arr_stack_api_key_apps }}"
+  register: arr_stack_auth_xml
+  no_log: true
+
+- name: Logins | Jackett's settings
+  ansible.builtin.slurp:
+    src: "{{ arr_stack_jackett_config }}"
+  register: arr_stack_jackett_raw
+  no_log: true
+
+# Jackett keeps only a hash of the admin password. With logins on it is left as it is: set
+# a password in Jackett's UI.
+- name: Logins | Jackett without its admin password
+  ansible.builtin.copy:
+    content: "{{ arr_stack_jackett_raw.content | b64decode | from_json | combine({'AdminPassword': none}) | to_nice_json(indent=2) }}\n"
+    dest: "{{ arr_stack_jackett_config }}"
+    owner: "{{ arr_stack_uid }}"
+    group: "{{ arr_stack_gid }}"
+    mode: "0644"
+  register: arr_stack_jackett_auth
+  no_log: true
+  when:
+    - not arr_stack_app_logins | bool
+    - (arr_stack_jackett_raw.content | b64decode | from_json).AdminPassword | default('', true) | length > 0
+
+- name: Logins | restart the apps whose authentication changed
+  ansible.builtin.command:
+    argv: [docker, restart, "{{ item }}"]
+  loop: >-
+    {{ (arr_stack_auth_xml.results | default([]) | selectattr('changed') | map(attribute='item') | list)
+       + (['jackett'] if arr_stack_jackett_auth is changed else []) }}
+  changed_when: true
+  when: not ansible_check_mode

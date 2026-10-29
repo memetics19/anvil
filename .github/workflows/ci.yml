@@ -59,6 +59,8 @@ jobs:
         run: tests/test_pihole_records.sh
       - name: Service gateway test
         run: tests/test_gateway.sh
+      - name: Port guard test
+        run: tests/test_port_guard.sh
       - name: Proxmox single sign-on test
         run: tests/test_pve_sso.sh
       - name: Homepage dashboard test
