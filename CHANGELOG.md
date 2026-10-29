@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.18.0](https://github.com/memetics19/anvil/compare/v0.17.0...v0.18.0) (2026-10-29)
+
+
+### Features
+
+* **authentik:** app tiles for every gateway service, and the Ceph SAML app ([#131](https://github.com/memetics19/anvil/issues/131)) ([8d81873](https://github.com/memetics19/anvil/commit/8d81873c6ea289592d7b5190d5f6a9db37e73298))
+* **proxmox:** Ceph dashboard login through Authentik ([#132](https://github.com/memetics19/anvil/issues/132)) ([7cd070c](https://github.com/memetics19/anvil/commit/7cd070ce9765535bc56e7fac34139f87897fbcf1))
+
 ## [0.17.0](https://github.com/memetics19/anvil/compare/v0.16.0...v0.17.0) (2026-10-29)
 
 
