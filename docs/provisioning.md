@@ -452,6 +452,16 @@ makes the client secret and the `Proxmox` app in Authentik.
 - The redirect goes to the gateway name you opened, for example `https://pve.<gateway-domain>`.
   Opening a node by its address and port 8006 still works with `root@pam`.
 
+The Ceph dashboard logs in through Authentik too (SAML 2.0, Authentik's app `ceph`), when
+`site.services` has a `ceph` entry:
+
+- The role installs `python3-onelogin-saml2`, hands over to a fresh Ceph manager once so
+  the dashboard loads it, and points the dashboard at Authentik's metadata.
+- Ceph accepts a SAML login only for an existing dashboard user of the same name. Every
+  member of `lab-admins`, read from Authentik, gets one with the `administrator` role and
+  a random password that is never shown or kept.
+- Break glass: `ceph dashboard sso disable` on the host brings back the local login.
+
 To apply only this part: `make cluster ARGS="--tags sso"`.
 
 ## Data pools
