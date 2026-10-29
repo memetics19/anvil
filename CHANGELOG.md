@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.0](https://github.com/memetics19/anvil/compare/v0.16.0...v0.17.0) (2026-10-29)
+
+
+### Features
+
+* **nfs_media:** stream the library on the LAN for VLC, no NetBird needed ([#136](https://github.com/memetics19/anvil/issues/136)) ([f5f54ad](https://github.com/memetics19/anvil/commit/f5f54ad0bc827fcd832a0e16f62219868b4d56f2))
+
+
+### Bug Fixes
+
+* **media:** anvil media reaches the arr API directly, not through the SSO gateway ([#135](https://github.com/memetics19/anvil/issues/135)) ([82bcbe6](https://github.com/memetics19/anvil/commit/82bcbe66c46715ccf41af76419ee62de5fcf0855))
+
 ## [0.16.0](https://github.com/memetics19/anvil/compare/v0.15.0...v0.16.0) (2026-10-29)
 
 
