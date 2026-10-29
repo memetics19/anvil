@@ -56,11 +56,22 @@ authentik_proxmox_names: >-
   {%- endfor -%}
   {{ out }}
 
+# The Ceph dashboard (SAML 2.0, app slug ceph): its gateway name in site.services. The
+# dashboard side is role pve_sso. Not in site.services: no Ceph app.
+authentik_ceph_name: ceph
+authentik_ceph_enabled: >-
+  {%- set ns = namespace(on=false) -%}
+  {%- for e in site.services | default([]) if e.name | default('') == authentik_ceph_name -%}
+  {%- set ns.on = e.enabled | default(true) | bool -%}
+  {%- endfor -%}
+  {{ ns.on }}
+authentik_ceph_url: "https://{{ authentik_ceph_name }}.{{ gateway_domain }}"
+
 # App tiles in Authentik's library (My applications): one link per site.services entry,
 # for members of the SSO group, with the title, group, icon and description of Homepage's
 # catalog (role homepage, homepage_catalog). Not Authentik itself, and not the Proxmox name
 # the Proxmox app already opens. A disabled entry's tile is removed.
-authentik_tiles_skip: ["{{ authentik_auth_name }}"]
+authentik_tiles_skip: ["{{ authentik_auth_name }}", "{{ authentik_ceph_name }}"]
 authentik_tiles_catalog: >-
   {{ (lookup('ansible.builtin.file', playbook_dir ~ '/../roles/homepage/defaults/main.yml')
       | from_yaml).homepage_catalog | combine(authentik_tiles_extra) }}

@@ -140,6 +140,57 @@ entries:
       order: 0
 {% endif %}
 
+{% if authentik_ceph_enabled | bool %}
+  # --- the Ceph dashboard (SAML 2.0) --------------------------------------------------------
+  # The dashboard (role pve_sso) reads this app's metadata and logs users in by their
+  # Authentik user name. It needs a dashboard user of that name, which pve_sso makes for
+  # every member of the group.
+  - model: authentik_providers_saml.samlprovider
+    id: ceph-provider
+    identifiers:
+      name: anvil-ceph
+    attrs:
+      acs_url: {{ (authentik_ceph_url ~ '/auth/saml2') | to_json }}
+      audience: {{ (authentik_ceph_url ~ '/auth/saml2/metadata') | to_json }}
+      sp_binding: post
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      signing_kp: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+      sign_assertion: true
+      sign_response: true
+      name_id_mapping: !Find [authentik_providers_saml.samlpropertymapping, [managed, goauthentik.io/providers/saml/username]]
+      property_mappings:
+        - !Find [authentik_providers_saml.samlpropertymapping, [managed, goauthentik.io/providers/saml/username]]
+        - !Find [authentik_providers_saml.samlpropertymapping, [managed, goauthentik.io/providers/saml/name]]
+        - !Find [authentik_providers_saml.samlpropertymapping, [managed, goauthentik.io/providers/saml/email]]
+        - !Find [authentik_providers_saml.samlpropertymapping, [managed, goauthentik.io/providers/saml/groups]]
+
+  - model: authentik_core.application
+    id: ceph-app
+    identifiers:
+      slug: ceph
+    attrs:
+      name: Ceph
+      provider: !KeyOf ceph-provider
+      group: Infrastructure
+      meta_description: Storage cluster
+      meta_launch_url: {{ authentik_ceph_url | to_json }}
+      meta_icon: {{ (authentik_tiles_icon_base ~ 'ceph.png') | to_json }}
+
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf ceph-app
+      group: !KeyOf sso-group
+    attrs:
+      order: 0
+
+  # The link tile from before the Ceph app existed.
+  - model: authentik_core.application
+    state: absent
+    identifiers:
+      slug: {{ ('lab-' ~ authentik_ceph_name) | to_json }}
+{% endif %}
+
   # --- app tiles ------------------------------------------------------------------------------
   # Links in the user library to every gateway name, for members of the group. The gateway
   # provider above protects them all: a tile is only a link.

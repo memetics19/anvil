@@ -43,6 +43,7 @@ cat >"$tmp/play.yml" <<PLAY
         - {name: old, host: pve.ip, port: 8006, scheme: https, enabled: false}
         - {name: auth, host: hosts.identity.ip, port: 9000, scheme: http}
         - {name: sonarr, host: hosts.ragnarok.ip, port: 8989, scheme: http}
+        - {name: ceph, host: pve.ip, port: 8443, scheme: https}
         - {name: tv, host: hosts.ragnarok.ip, port: 34401, scheme: http, title: Live TV}
         - {name: mystery, host: hosts.ragnarok.ip, port: 1234, scheme: http}
       pve: {ip: 192.0.2.10}
@@ -144,22 +145,28 @@ check "blueprint: the embedded outpost serves the gateway provider at the browse
   "bpy 'o=by(\"authentik_outposts.outpost\")[0]; assert o[\"identifiers\"]==dict(managed=\"goauthentik.io/outposts/embedded\")
 assert o[\"attrs\"][\"providers\"]==[[\"!KeyOf\",\"gateway-provider\"]] and o[\"attrs\"][\"config\"][\"authentik_host\"]==\"https://auth.lab.example.com\"'"
 check "blueprint: every app is bound to the group only" \
-  "bpy 'b=by(\"authentik_policies.policybinding\"); assert len(b)==6 and all(x[\"identifiers\"][\"group\"]==[\"!KeyOf\",\"sso-group\"] for x in b)'"
+  "bpy 'b=by(\"authentik_policies.policybinding\"); assert len(b)==7 and all(x[\"identifiers\"][\"group\"]==[\"!KeyOf\",\"sso-group\"] for x in b)'"
 check "blueprint: Proxmox may use the login code flow and refresh tokens, nothing else" \
   "bpy 'p=by(\"authentik_providers_oauth2.oauth2provider\")[0][\"attrs\"]; assert p[\"grant_types\"]==[\"authorization_code\",\"refresh_token\"]'"
 check "blueprint: a tile per service except auth and the Proxmox app's name, a disabled one removed" \
   "bpy 't={x[\"identifiers\"][\"slug\"]: x for x in by(\"authentik_core.application\") if x[\"identifiers\"][\"slug\"].startswith(\"lab-\") and x[\"identifiers\"][\"slug\"]!=\"lab-gateway\"}
-assert sorted(t)==[\"lab-mystery\",\"lab-old\",\"lab-pve2\",\"lab-sonarr\",\"lab-tv\"], sorted(t)
-assert t[\"lab-old\"][\"state\"]==\"absent\" and all(t[k][\"state\"]==\"present\" for k in t if k!=\"lab-old\")'"
+assert sorted(t)==[\"lab-ceph\",\"lab-mystery\",\"lab-old\",\"lab-pve2\",\"lab-sonarr\",\"lab-tv\"], sorted(t)
+assert t[\"lab-old\"][\"state\"]==\"absent\" and t[\"lab-ceph\"][\"state\"]==\"absent\"
+assert all(t[k][\"state\"]==\"present\" for k in t if k not in (\"lab-old\",\"lab-ceph\"))'"
 check "blueprint: tiles take Homepage's catalog, an entry's own fields win, unknown names get defaults" \
-  "bpy 't={x[\"identifiers\"][\"slug\"]: x[\"attrs\"] for x in by(\"authentik_core.application\")}
+  "bpy 't={x[\"identifiers\"][\"slug\"]: x.get(\"attrs\", {}) for x in by(\"authentik_core.application\")}
 s=t[\"lab-sonarr\"]; assert (s[\"name\"], s[\"group\"], s[\"meta_launch_url\"])==(\"Sonarr\",\"Media\",\"https://sonarr.lab.example.com\")
 assert s[\"meta_icon\"]==\"https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/sonarr.png\"
 assert t[\"lab-tv\"][\"name\"]==\"Live TV\" and t[\"lab-tv\"][\"meta_icon\"]==\"\"
 assert (t[\"lab-mystery\"][\"name\"], t[\"lab-mystery\"][\"group\"])==(\"mystery\",\"Other\")'"
 check "blueprint: every present tile is bound to the group only" \
   "bpy 'b=[x[\"identifiers\"][\"target\"][1] for x in by(\"authentik_policies.policybinding\")]
-assert sorted(b)==[\"gateway-app\",\"proxmox-app\",\"tile-mystery\",\"tile-pve2\",\"tile-sonarr\",\"tile-tv\"], b'"
+assert sorted(b)==[\"ceph-app\",\"gateway-app\",\"proxmox-app\",\"tile-mystery\",\"tile-pve2\",\"tile-sonarr\",\"tile-tv\"], b'"
+check "blueprint: Ceph logs in by SAML at its gateway name, by Authentik user name" \
+  "bpy 'p=by(\"authentik_providers_saml.samlprovider\")[0][\"attrs\"]
+assert p[\"acs_url\"]==\"https://ceph.lab.example.com/auth/saml2\" and p[\"audience\"]==\"https://ceph.lab.example.com/auth/saml2/metadata\"
+assert p[\"sp_binding\"]==\"post\" and p[\"sign_assertion\"] is True and p[\"name_id_mapping\"][2][1]==\"goauthentik.io/providers/saml/username\"
+a=[x for x in by(\"authentik_core.application\") if x[\"identifiers\"][\"slug\"]==\"ceph\"][0]; assert a[\"attrs\"][\"provider\"]==[\"!KeyOf\",\"ceph-provider\"]'"
 check "blueprint: Proxmox redirects only to the enabled port 8006 names" \
   "bpy 'u=by(\"authentik_providers_oauth2.oauth2provider\")[0][\"attrs\"][\"redirect_uris\"]; assert len(u)==1 and u[0][\"matching_mode\"]==\"regex\"
 r=re.compile(u[0][\"url\"])
