@@ -434,6 +434,26 @@ cluster's. `anvil pools` registers each pool for its own node only.
 
 anvil never removes a node from a cluster or deletes one. That is manual (`pvecm delnode`).
 
+### Single sign-on
+
+`anvil apply cluster` also sets up login through Authentik, when `site.services` has an
+`auth` entry (role `pve_sso`, tag `sso`). `anvil apply identity` must have run first: it
+makes the client secret and the `Proxmox` app in Authentik.
+
+- The realm `authentik` (OpenID Connect) is created once for the whole cluster. Its
+  settings go to Proxmox's own API code on stdin, so the client secret is never on a
+  command line. The login page offers this realm first. `root@pam` keeps working.
+- Users are created at their first login. Their groups follow Authentik on every login.
+- Only members of Authentik's `lab-admins` group may use the `Proxmox` app. In Proxmox
+  they land in the group `lab-admins-authentik`, which has `Administrator` on the whole
+  cluster.
+- Every node gets Authentik's gateway name in `/etc/hosts`, pointed at the gateway's home
+  address. The name exists only in Pi-hole, and the hosts do not ask Pi-hole.
+- The redirect goes to the gateway name you opened, for example `https://pve.<gateway-domain>`.
+  Opening a node by its address and port 8006 still works with `root@pam`.
+
+To apply only this part: `make cluster ARGS="--tags sso"`.
+
 ## Data pools
 
 The installer only builds the boot pool `rpool`, on the disks in `disks`. The other disks
