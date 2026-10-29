@@ -919,6 +919,13 @@ goes back to what the blueprint says.
 | Embedded outpost | Serves `anvil-gateway`. Its `authentik_host` is `https://auth.<gateway-domain>` |
 | OAuth2 provider `anvil-proxmox`, app `Proxmox` | OpenID Connect for the Proxmox realm. Client id `proxmox`. It accepts redirects only to the gateway names on port 8006 |
 
+The blueprint also makes an app tile for every entry of `site.services` (slug `lab-<name>`)
+except `auth` and the Proxmox name the `Proxmox` app opens. A tile is only a link to
+`https://<name>.<gateway-domain>`, with the title, group, icon and description of
+Homepage's catalog (`homepage_catalog`), so the user library at
+`https://auth.<gateway-domain>` lists every app. Only `lab-admins` see them. A disabled
+entry's tile is removed.
+
 The Proxmox client secret is `proxmox_client_secret` in `kv/homelab/identity/authentik`.
 The role generates it like the other keys. It reaches Authentik as an environment variable
 in `authentik.env` and is never written into the blueprint.

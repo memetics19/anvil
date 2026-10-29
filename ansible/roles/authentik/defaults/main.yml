@@ -56,6 +56,20 @@ authentik_proxmox_names: >-
   {%- endfor -%}
   {{ out }}
 
+# App tiles in Authentik's library (My applications): one link per site.services entry,
+# for members of the SSO group, with the title, group, icon and description of Homepage's
+# catalog (role homepage, homepage_catalog). Not Authentik itself, and not the Proxmox name
+# the Proxmox app already opens. A disabled entry's tile is removed.
+authentik_tiles_skip: ["{{ authentik_auth_name }}"]
+authentik_tiles_catalog: >-
+  {{ (lookup('ansible.builtin.file', playbook_dir ~ '/../roles/homepage/defaults/main.yml')
+      | from_yaml).homepage_catalog | combine(authentik_tiles_extra) }}
+# Names Homepage's catalog leaves out (the dashboard itself).
+authentik_tiles_extra:
+  home: {title: Homepage, group: Home, icon: homepage.png, description: Dashboard}
+# Icons named <name>.png in the catalog come from the dashboard-icons set, as on Homepage.
+authentik_tiles_icon_base: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/
+
 # --- backups ---------------------------------------------------------------------------------
 # A systemd timer runs authentik-backup nightly: pg_dump of Authentik's database (users,
 # groups, applications, tokens, the whole configuration) streamed into age, encrypted to the

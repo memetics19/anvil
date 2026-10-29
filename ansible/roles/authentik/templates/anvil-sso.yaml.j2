@@ -139,3 +139,31 @@ entries:
     attrs:
       order: 0
 {% endif %}
+
+  # --- app tiles ------------------------------------------------------------------------------
+  # Links in the user library to every gateway name, for members of the group. The gateway
+  # provider above protects them all: a tile is only a link.
+{% for e in site.services | default([]) if e.name | default('') not in authentik_tiles_skip
+     and e.name | default('') != (authentik_proxmox_names | first | default('')) %}
+{%   set c = authentik_tiles_catalog[e.name] | default({}) %}
+{%   set icon = e.icon | default(c.icon | default('')) | string %}
+  - model: authentik_core.application
+    id: tile-{{ e.name }}
+    state: {{ 'present' if e.enabled | default(true) | bool else 'absent' }}
+    identifiers:
+      slug: {{ ('lab-' ~ e.name) | to_json }}
+    attrs:
+      name: {{ (e.title | default(c.title | default(e.name))) | string | to_json }}
+      group: {{ (e.group | default(c.group | default('Other'))) | string | to_json }}
+      meta_description: {{ (e.description | default(c.description | default(''))) | string | to_json }}
+      meta_launch_url: {{ ('https://' ~ e.name ~ '.' ~ gateway_domain) | to_json }}
+      meta_icon: {{ (authentik_tiles_icon_base ~ icon if icon is match('^[a-z0-9][a-z0-9-]*[.]png$') else '') | to_json }}
+{%   if e.enabled | default(true) | bool %}
+  - model: authentik_policies.policybinding
+    identifiers:
+      target: !KeyOf tile-{{ e.name }}
+      group: !KeyOf sso-group
+    attrs:
+      order: 0
+{%   endif %}
+{% endfor %}
