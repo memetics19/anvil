@@ -76,7 +76,9 @@
       - caddy_routes | selectattr('strip_cookies', 'defined') | map(attribute='strip_cookies') | reject('boolean') | list | length == 0
       - caddy_services | selectattr('sso', 'defined') | map(attribute='sso') | reject('boolean') | list | length == 0
       # Authentik cannot sit behind itself.
-      - caddy_services | selectattr('name', 'equalto', caddy_sso_route) | selectattr('sso', 'defined') | selectattr('sso') | list | length == 0
+      - >-
+        caddy_services | selectattr('name', 'equalto', caddy_sso_route) | selectattr('sso', 'defined')
+        | selectattr('sso') | list | length == 0
       # A static site is a known key of caddy_static_sites and has no upstream fields.
       - caddy_static | map(attribute='static') | map('string') | reject('in', caddy_static_sites) | list | length == 0
       - >-
