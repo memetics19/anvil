@@ -114,7 +114,8 @@
       dotted path to an IPv4 address in the site dict), `container` or `static` (one of
       {{ caddy_static_sites | list }}, with no port, scheme or other upstream field). host and
       container entries need a `port` and a `scheme` (http|https); insecure_upstream / upstream_ca (one of {{ caddy_upstream_cas | list }})
-      only with https and not both; host_header original|upstream; home a path; rewrite_location, strip_cookies and sso true|false ({{ caddy_sso_route }} never sso: true);
+      only with https and not both; host_header original|upstream; home a path;
+      rewrite_location, strip_cookies and sso true|false ({{ caddy_sso_route }} never sso: true);
       site.gateway.subdomain a lower-case label; admin-only routes ({{ caddy_admin_only_routes }})
       and infra routes ({{ caddy_infra_routes }}) need operator addresses, each a single
       a.b.c.d/32 (site.admin_sources / admin_vpn_sources), never one of the Proxmox host's
