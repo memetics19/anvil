@@ -44,6 +44,8 @@ services:
     environment: *authentik-environment
     volumes:
       - data:/data
+      # anvil's blueprints (templates/anvil-sso.yaml.j2): no secrets in them.
+      - ./blueprints:/blueprints/anvil:ro
     shm_size: 512mb
     security_opt:
       - no-new-privileges:true
