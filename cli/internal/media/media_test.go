@@ -41,25 +41,37 @@ func (f *fakeArr) server(t *testing.T) *httptest.Server {
 			return
 		}
 		p := strings.TrimPrefix(r.URL.Path, "/api/v3/")
-		if r.Method == http.MethodPost {
+		if r.Method == http.MethodPost || r.Method == http.MethodPut {
 			var body map[string]any
 			b, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(b, &body)
 			f.mu.Lock()
 			f.posts[p] = append(f.posts[p], body)
 			f.mu.Unlock()
+		}
+		if r.Method == http.MethodPost {
 			if f.addError != 0 && (p == "movie" || p == "series") {
 				w.WriteHeader(f.addError)
 				_, _ = io.WriteString(w, `[{"errorMessage":"This movie has already been added"}]`)
 				return
 			}
 			w.WriteHeader(http.StatusCreated)
+			if p == "series" || p == "movie" {
+				_, _ = io.WriteString(w, `{"id":42}`)
+			} else {
+				_, _ = io.WriteString(w, `{}`)
+			}
+			return
+		}
+		if r.Method == http.MethodPut {
 			_, _ = io.WriteString(w, `{}`)
 			return
 		}
 		switch {
 		case strings.HasSuffix(p, "/lookup"):
 			_, _ = io.WriteString(w, f.lookup)
+		case p == "episode":
+			_, _ = io.WriteString(w, `[{"id":101,"seasonNumber":1},{"id":102,"seasonNumber":1},{"id":201,"seasonNumber":2}]`)
 		case p == "qualityprofile":
 			if f.profiles != "" {
 				_, _ = io.WriteString(w, f.profiles)
@@ -252,6 +264,73 @@ func TestMediaGetSeries(t *testing.T) {
 	if got["tvdbId"] != float64(280619) || got["rootFolderPath"] != "/tv" || got["seasonFolder"] != true ||
 		opts["searchForMissingEpisodes"] != true || opts["monitor"] != "all" {
 		t.Errorf("add body = %v", got)
+	}
+}
+
+func TestMediaGetSeriesSeason(t *testing.T) {
+	seasons := `"seasons":[{"seasonNumber":0},{"seasonNumber":1},{"seasonNumber":2}]`
+	lookup := `[{"title":"The Expanse","year":2015,"tvdbId":280619,` + seasons + `}]`
+
+	// --season 1: add monitoring only season 1, then monitor and search its episodes.
+	sonarr := &fakeArr{tv: true, lookup: lookup, free: 200 << 30}
+	l := mediaLab(t, &fakeArr{}, sonarr)
+	if code := l.Run("", "media", "get", "the", "expanse", "--tv", "--season", "1"); code != 0 {
+		t.Fatalf("exit %d: %s", code, l.Err.String())
+	}
+	got := sonarr.posts["series"][0]
+	opts, _ := got["addOptions"].(map[string]any)
+	if opts["monitor"] != "none" || opts["searchForMissingEpisodes"] != false {
+		t.Errorf("addOptions = %v", opts)
+	}
+	mon := map[int]bool{}
+	for _, s := range got["seasons"].([]any) {
+		m := s.(map[string]any)
+		mon[int(m["seasonNumber"].(float64))] = m["monitored"].(bool)
+	}
+	if mon[1] != true || mon[2] != false || mon[0] != false {
+		t.Errorf("season monitoring = %v", mon)
+	}
+	put := sonarr.posts["episode/monitor"][0]
+	ids, _ := put["episodeIds"].([]any)
+	if len(ids) != 2 || ids[0] != float64(101) || put["monitored"] != true {
+		t.Errorf("episode/monitor = %v", put)
+	}
+	cmd := sonarr.posts["command"][0]
+	if cmd["name"] != "SeasonSearch" || cmd["seasonNumber"] != float64(1) || cmd["seriesId"] != float64(42) {
+		t.Errorf("command = %v", cmd)
+	}
+
+	// A season the series does not have is refused, and nothing is added.
+	sonarr2 := &fakeArr{tv: true, lookup: lookup, free: 200 << 30}
+	l2 := mediaLab(t, &fakeArr{}, sonarr2)
+	if code := l2.Run("", "media", "get", "the", "expanse", "--tv", "--season", "9"); code != 1 {
+		t.Fatalf("season 9: exit %d, want 1", code)
+	}
+	if len(sonarr2.posts["series"]) != 0 {
+		t.Errorf("added despite a bad season: %v", sonarr2.posts["series"])
+	}
+
+	// At the prompt, "all" gets every season (monitor all, no per-season search).
+	sonarr3 := &fakeArr{tv: true, lookup: lookup, free: 200 << 30}
+	l3 := mediaLab(t, &fakeArr{}, sonarr3)
+	if code := l3.Run("all\n", "media", "get", "the", "expanse", "--tv"); code != 0 {
+		t.Fatalf("all: exit %d: %s", code, l3.Err.String())
+	}
+	if o, _ := sonarr3.posts["series"][0]["addOptions"].(map[string]any); o["monitor"] != "all" {
+		t.Errorf("all: addOptions = %v", o)
+	}
+	if len(sonarr3.posts["command"]) != 0 {
+		t.Errorf("all should not season-search: %v", sonarr3.posts["command"])
+	}
+
+	// At the prompt, a season number gets that season.
+	sonarr4 := &fakeArr{tv: true, lookup: lookup, free: 200 << 30}
+	l4 := mediaLab(t, &fakeArr{}, sonarr4)
+	if code := l4.Run("2\n", "media", "get", "the", "expanse", "--tv"); code != 0 {
+		t.Fatalf("season 2: exit %d: %s", code, l4.Err.String())
+	}
+	if sonarr4.posts["command"][0]["seasonNumber"] != float64(2) {
+		t.Errorf("prompt season = %v", sonarr4.posts["command"][0])
 	}
 }
 

@@ -36,6 +36,8 @@ the download to qBittorrent. The addresses and API keys come from Vault
   get <title> [--tv]          add it and start the download. Asks which one when several
                               match.
       --pick N                take match N of the list without asking
+      --season N              for a series, get only season N (asks when not given; "all"
+                              at the prompt gets every season)
       --quality NAME          quality profile (default 1080p+, the one role arr_stack keeps:
                               1080p and 4K, never 720p. Else HD-1080p, else the first)
       --yes                   do not ask before adding when the disk is nearly full
@@ -215,6 +217,7 @@ func (c arr) state(it item) string {
 type mediaOpts struct {
 	tv, yes, watch bool
 	pick           int
+	season         int
 	quality        string
 }
 
@@ -233,6 +236,7 @@ func cmdMedia(a *app.App, args []string) int {
 		fs.BoolVar(&o.tv, "tv", false, "")
 		fs.BoolVar(&o.yes, "yes", false, "")
 		fs.IntVar(&o.pick, "pick", 0, "")
+		fs.IntVar(&o.season, "season", 0, "")
 		fs.StringVar(&o.quality, "quality", "", "")
 	case "status":
 		fs.BoolVar(&o.watch, "watch", false, "")
@@ -290,7 +294,7 @@ func interleave(args []string) []string {
 		s := args[i]
 		if strings.HasPrefix(s, "-") {
 			flags = append(flags, s)
-			if (s == "--pick" || s == "-pick" || s == "--quality" || s == "-quality") && i+1 < len(args) {
+			if (s == "--pick" || s == "-pick" || s == "--season" || s == "-season" || s == "--quality" || s == "-quality") && i+1 < len(args) {
 				flags = append(flags, args[i+1])
 				i++
 			}
@@ -377,10 +381,29 @@ func mediaGet(a *app.App, c arr, term string, o mediaOpts) int {
 	}
 	it := items[choice-1]
 
+	// A series is added one season at a time, so a whole run does not pull every season at
+	// once. season < 0 means all. Movies have no season.
+	season := -1
+	if c.tv {
+		var ok bool
+		if season, ok = c.chooseSeason(a, it, o); !ok {
+			fmt.Fprintln(a.Stdout, "Nothing added.")
+			return 1
+		}
+	}
+
 	// Already in the library: search again instead of adding twice.
 	if it.ID > 0 {
 		if !c.tv && it.HasFile {
 			fmt.Fprintf(a.Stdout, "%s is already in the library.\n", it.label())
+			return 0
+		}
+		if c.tv && season > 0 {
+			if err := c.searchSeason(it.ID, season); err != nil {
+				fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
+				return 1
+			}
+			fmt.Fprintf(a.Stdout, "%s is already added: %s searches season %d again. Follow it with: anvil media status\n", it.label(), c.name(), season)
 			return 0
 		}
 		cmd := map[string]any{"name": "MoviesSearch", "movieIds": []int{it.ID}}
@@ -419,18 +442,127 @@ func mediaGet(a *app.App, c arr, term string, o mediaOpts) int {
 	body["monitored"] = true
 	if c.tv {
 		body["seasonFolder"] = true
-		body["addOptions"] = map[string]any{"monitor": "all", "searchForMissingEpisodes": true}
+		if season > 0 {
+			// Monitor only the chosen season; its episodes are searched after the add.
+			body["seasons"] = seasonsMonitoring(it, season)
+			body["addOptions"] = map[string]any{"monitor": "none", "searchForMissingEpisodes": false}
+		} else {
+			body["addOptions"] = map[string]any{"monitor": "all", "searchForMissingEpisodes": true}
+		}
 	} else {
 		body["minimumAvailability"] = "released"
 		body["addOptions"] = map[string]any{"searchForMovie": true}
 	}
-	if err := c.do("POST", c.kind(), body, nil); err != nil {
+	var created struct {
+		ID int `json:"id"`
+	}
+	if err := c.do("POST", c.kind(), body, &created); err != nil {
 		fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
 		return 1
 	}
+	what := it.label()
+	if c.tv && season > 0 {
+		what = fmt.Sprintf("%s season %d", it.label(), season)
+		if err := c.searchSeason(created.ID, season); err != nil {
+			fmt.Fprintf(a.Stderr, "anvil: media: added, but the season search failed: %v\n", err)
+			return 1
+		}
+	}
 	fmt.Fprintf(a.Stdout, "Added %s (%s, %s free). %s is searching for it now.\nFollow it with: anvil media status\n",
-		it.label(), profileName, human(free), c.name())
+		what, profileName, human(free), c.name())
 	return 0
+}
+
+// seasonNumbers lists the real seasons (not specials, season 0) a lookup result has, sorted.
+func seasonNumbers(it item) []int {
+	var ns []int
+	for _, s := range it.Seasons {
+		if m, ok := s.(map[string]any); ok {
+			if n, ok := m["seasonNumber"].(float64); ok && int(n) > 0 {
+				ns = append(ns, int(n))
+			}
+		}
+	}
+	sort.Ints(ns)
+	return ns
+}
+
+// seasonsMonitoring returns the lookup's seasons with only the chosen one monitored.
+func seasonsMonitoring(it item, season int) []map[string]any {
+	out := []map[string]any{}
+	for _, s := range it.Seasons {
+		if m, ok := s.(map[string]any); ok {
+			n, _ := m["seasonNumber"].(float64)
+			out = append(out, map[string]any{"seasonNumber": int(n), "monitored": int(n) == season})
+		}
+	}
+	return out
+}
+
+// chooseSeason asks which season of a series to get. It returns -1 for all seasons, or the
+// chosen season number; ok is false when the answer is not a listed season (the caller then
+// adds nothing). --season N skips the question; --yes with no season means all.
+func (c arr) chooseSeason(a *app.App, it item, o mediaOpts) (int, bool) {
+	ns := seasonNumbers(it)
+	if len(ns) == 0 {
+		return -1, true // nothing listed (a brand-new series): fall back to all
+	}
+	if o.season != 0 {
+		for _, n := range ns {
+			if n == o.season {
+				return o.season, true
+			}
+		}
+		fmt.Fprintf(a.Stderr, "anvil: media: %s has no season %d (it has %v)\n", it.label(), o.season, ns)
+		return 0, false
+	}
+	if o.yes {
+		return -1, true // non-interactive: every season
+	}
+	fmt.Fprintf(a.Stdout, "Which season of %s? [%d-%d, or 'all'] ", it.label(), ns[0], ns[len(ns)-1])
+	ans, ok := app.ReadLine(a.Stdin)
+	ans = strings.TrimSpace(strings.ToLower(ans))
+	switch {
+	case !ok:
+		return 0, false
+	case ans == "all" || ans == "a":
+		return -1, true
+	}
+	n, err := strconv.Atoi(ans)
+	if err != nil {
+		return 0, false
+	}
+	for _, s := range ns {
+		if s == n {
+			return n, true
+		}
+	}
+	fmt.Fprintf(a.Stderr, "anvil: media: no season %d (it has %v)\n", n, ns)
+	return 0, false
+}
+
+// searchSeason monitors a season's episodes and searches the indexers for them.
+func (c arr) searchSeason(seriesID, season int) error {
+	var eps []struct {
+		ID     int `json:"id"`
+		Season int `json:"seasonNumber"`
+	}
+	if err := c.do("GET", fmt.Sprintf("episode?seriesId=%d", seriesID), nil, &eps); err != nil {
+		return err
+	}
+	var ids []int
+	for _, e := range eps {
+		if e.Season == season {
+			ids = append(ids, e.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return fmt.Errorf("season %d has no episodes", season)
+	}
+	if err := c.do("PUT", "episode/monitor", map[string]any{"episodeIds": ids, "monitored": true}, nil); err != nil {
+		return err
+	}
+	return c.do("POST", "command", map[string]any{"name": "SeasonSearch", "seriesId": seriesID, "seasonNumber": season}, nil)
 }
 
 func (c arr) profile(want string) (int, string, error) {
