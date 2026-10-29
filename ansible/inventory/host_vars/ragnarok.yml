@@ -5,3 +5,7 @@
 port_guard_ports: [8989, 7878, 9696, 9117, 8080]
 # Their own logins are off: single sign-on on the gateway is the login (role arr_stack).
 arr_stack_app_logins: false
+# The operator's own devices reach the arr apps' API directly (anvil media, which an API key
+# authenticates): the gateway's single sign-on only guards the web UI, which an API client
+# cannot pass. Everyone else is still blocked by the port guard.
+port_guard_extra_sources: "{{ (site.admin_sources | default([])) + (site.admin_vpn_sources | default([])) }}"
