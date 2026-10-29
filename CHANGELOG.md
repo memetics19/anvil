@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/memetics19/anvil/compare/v0.18.0...v0.19.0) (2026-10-29)
+
+
+### Features
+
+* **media:** anvil media get asks which season of a series ([#139](https://github.com/memetics19/anvil/issues/139)) ([5566499](https://github.com/memetics19/anvil/commit/5566499022db891e1addfbe07fe8651cb896de73))
+
 ## [0.18.0](https://github.com/memetics19/anvil/compare/v0.17.0...v0.18.0) (2026-10-29)
 
 
