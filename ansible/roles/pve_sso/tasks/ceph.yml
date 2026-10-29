@@ -1,0 +1,136 @@
+# The Ceph dashboard logs in through Authentik (SAML 2.0, Authentik's app "ceph", made by the
+# authentik role). Ceph only accepts a SAML login for an existing dashboard user of the same
+# name, so every member of the SSO group gets one, with pve_sso_ceph_role and a random
+# password nobody keeps: they log in only through Authentik.
+# Break glass: `ceph dashboard sso disable` on the host brings the local login back.
+- name: Ceph | is Ceph installed
+  ansible.builtin.stat:
+    path: /usr/bin/ceph
+  register: pve_sso_ceph_bin
+
+- name: Ceph | the SAML library for the dashboard
+  ansible.builtin.apt:
+    name: "{{ pve_sso_ceph_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  register: pve_sso_ceph_pkg
+  when: pve_sso_ceph_bin.stat.exists
+
+# The manager loads the library when it starts: hand over to a fresh manager. Ceph keeps
+# serving data; only the dashboard and metrics pause for a few seconds.
+- name: Ceph | restart the manager so the dashboard sees the library
+  ansible.builtin.command:
+    argv: [ceph, mgr, fail]
+  changed_when: true
+  when: pve_sso_ceph_pkg is changed and not ansible_check_mode
+
+- name: Ceph | the dashboard's SSO commands answer
+  ansible.builtin.command:
+    argv: [ceph, dashboard, sso, status]
+  register: pve_sso_ceph_status
+  changed_when: false
+  check_mode: false
+  retries: 30
+  delay: 5
+  until: pve_sso_ceph_status.rc == 0
+  when: pve_sso_ceph_bin.stat.exists and not (ansible_check_mode and pve_sso_ceph_pkg is changed)
+
+- name: Ceph | go on only where the dashboard can do SSO
+  ansible.builtin.set_fact:
+    pve_sso_ceph_ready: "{{ (pve_sso_ceph_status.rc | default(1)) == 0 }}"
+
+- name: Ceph | the SAML settings now
+  ansible.builtin.command:
+    argv: [ceph, dashboard, sso, show, saml2]
+  register: pve_sso_ceph_show
+  changed_when: false
+  check_mode: false
+  when: pve_sso_ceph_ready | bool
+
+- name: Ceph | are they Authentik's
+  ansible.builtin.set_fact:
+    pve_sso_ceph_configured: >-
+      {%- set s = (pve_sso_ceph_show.stdout | from_json).onelogin_settings | default({}, true) -%}
+      {%- set sp = s.sp | default({}, true) -%}
+      {%- set idp = s.idp | default({}, true) -%}
+      {%- set attrs = (sp.attributeConsumingService | default({}, true)).requestedAttributes | default([{}], true) -%}
+      {{ sp.entityId | default('') == pve_sso_ceph_url ~ '/auth/saml2/metadata'
+         and (attrs | first).name | default('') == pve_sso_ceph_username_attribute
+         and ((idp.singleSignOnService | default({}, true)).url | default('')).startswith('https://' ~ pve_sso_auth_name ~ '/') }}
+  when: pve_sso_ceph_ready | bool
+
+# The manager fetches Authentik's metadata itself (Authentik's name is pinned in /etc/hosts).
+- name: Ceph | point the dashboard at Authentik
+  ansible.builtin.command:
+    argv: [ceph, dashboard, sso, setup, saml2, "{{ pve_sso_ceph_url }}", "{{ pve_sso_ceph_metadata }}", "{{ pve_sso_ceph_username_attribute }}"]
+  changed_when: true
+  when: pve_sso_ceph_ready | bool and not pve_sso_ceph_configured | bool and not ansible_check_mode
+
+- name: Ceph | the group's members, from Authentik
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - authentik-worker
+      - ak
+      - shell
+      - -c
+      - >-
+        import json; from authentik.core.models import Group;
+        g = Group.objects.filter(name={{ pve_sso_group | to_json }}).first();
+        print('ANVIL-MEMBERS ' + json.dumps(sorted(u.username for u in g.users.filter(is_active=True)) if g else []))
+  delegate_to: "{{ pve_sso_identity_host }}"
+  register: pve_sso_ceph_members_raw
+  changed_when: false
+  check_mode: false
+  when: pve_sso_ceph_ready | bool
+
+- name: Ceph | the dashboard's users
+  ansible.builtin.command:
+    argv: [ceph, dashboard, ac-user-show]
+  register: pve_sso_ceph_users
+  changed_when: false
+  check_mode: false
+  when: pve_sso_ceph_ready | bool
+
+- name: Ceph | members without a dashboard user
+  ansible.builtin.set_fact:
+    pve_sso_ceph_missing: >-
+      {{ ((pve_sso_ceph_members_raw.stdout_lines | select('match', '^ANVIL-MEMBERS ') | first)[14:] | from_json)
+         | difference(pve_sso_ceph_users.stdout | from_json) }}
+  when: pve_sso_ceph_ready | bool
+
+- name: Ceph | names a dashboard user can have
+  ansible.builtin.assert:
+    that: pve_sso_ceph_missing | reject('match', '^[A-Za-z0-9._@-]{1,64}$') | list | length == 0
+    fail_msg: "Ceph dashboard user names: letters, digits and . _ @ - only"
+    quiet: true
+  when: pve_sso_ceph_ready | bool
+
+- name: Ceph | would add dashboard users
+  ansible.builtin.debug:
+    msg: "would add: {{ pve_sso_ceph_missing | join(', ') }}"
+  changed_when: true
+  when: pve_sso_ceph_ready | bool and ansible_check_mode and pve_sso_ceph_missing | length > 0
+
+# The password goes from openssl into a file only root reads, for Ceph, and the file is
+# removed: it is never shown, logged or kept.
+- name: Ceph | a dashboard user for each member
+  ansible.builtin.shell:
+    cmd: >-
+      set -eu; f=$(mktemp); trap 'rm -f "$f"' EXIT; openssl rand -hex 32 > "$f";
+      ceph dashboard ac-user-create --force-password {{ item | quote }} -i "$f" {{ pve_sso_ceph_role | quote }} >/dev/null
+    executable: /bin/bash
+  loop: "{{ pve_sso_ceph_missing | default([]) }}"
+  changed_when: true
+  when: pve_sso_ceph_ready | bool and not ansible_check_mode
+
+- name: Ceph | SSO on
+  ansible.builtin.command:
+    argv: [ceph, dashboard, sso, enable, saml2]
+  changed_when: true
+  when:
+    - pve_sso_ceph_ready | bool
+    - pve_sso_ceph_status.stdout is not search('enabled')
+    - not ansible_check_mode

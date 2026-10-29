@@ -31,7 +31,8 @@ render() {
     - ansible.builtin.copy:
         content: >-
           {{ {'enabled': pve_sso_enabled | bool, 'name': pve_sso_auth_name, 'ip': pve_sso_gateway_ip,
-              'group': pve_sso_pve_group,
+              'group': pve_sso_pve_group, 'ceph': pve_sso_ceph_enabled | bool,
+              'ceph_url': pve_sso_ceph_url, 'ceph_metadata': pve_sso_ceph_metadata,
               'realm': pve_sso_realm_options | combine({'realm': pve_sso_realm, 'client-key': 'test-client-key'})} | to_json }}
         dest: $tmp/out.json
         mode: "0600"
@@ -41,7 +42,7 @@ PLAY
 }
 j() { python3 -c "import json; d=json.load(open('$tmp/out.json')); $1"; }
 
-render '[{name: auth, host: hosts.identity.ip, port: 9000, scheme: http}, {name: pve, host: pve.ip, port: 8006, scheme: https}]'
+render '[{name: auth, host: hosts.identity.ip, port: 9000, scheme: http}, {name: pve, host: pve.ip, port: 8006, scheme: https}, {name: ceph, host: pve.ip, port: 8443, scheme: https}]'
 if [ -s "$tmp/out.json" ]; then ok "values render"; else bad_ "values render"; cat "$tmp/log"; exit 1; fi
 check "on when site.services has an auth entry" "j 'assert d[\"enabled\"] is True'"
 check "Authentik's name under the gateway domain, at the gateway's home address" \
@@ -59,8 +60,13 @@ check "the client id, group and auth name match the authentik role's" \
 for ak, pk in [(\"authentik_proxmox_client_id\", \"pve_sso_client_id\"), (\"authentik_sso_group\", \"pve_sso_group\"), (\"authentik_auth_name\", \"pve_sso_auth_route\")]:
     assert a.get(ak, p[pk])==p[pk], ak'"
 
+check "Ceph: on with a ceph entry, SAML at its gateway name, metadata from Authentik's ceph app" \
+  "j 'assert d[\"ceph\"] is True and d[\"ceph_url\"]==\"https://ceph.internal.example.com\"
+assert d[\"ceph_metadata\"]==\"https://auth.internal.example.com/application/saml/ceph/metadata/\"'"
 render '[{name: pve, host: pve.ip, port: 8006, scheme: https}]'
 check "off without an auth entry" "j 'assert d[\"enabled\"] is False'"
+check "Ceph: off without a ceph entry" "j 'assert d[\"ceph\"] is False'"
+
 render '[{name: auth, host: hosts.identity.ip, port: 9000, scheme: http, enabled: false}]'
 check "off when the auth entry is disabled" "j 'assert d[\"enabled\"] is False'"
 
@@ -73,6 +79,17 @@ check "realm task: settings on stdin, no_log, no argument expansion" \
 assert \"client\" not in c[\"argv\"] and \"pve_sso_client_key\" in c[\"stdin\"]'"
 check "realm task: check mode runs the script with --check" "tpy 'assert \"--check\" in t[\"The realm\"][\"ansible.builtin.command\"][\"argv\"]'"
 check "the client key is read with no_log" "tpy 'assert t[\"Read the client secret from Vault\"][\"no_log\"] is True'"
+c=ansible/roles/pve_sso/tasks/ceph.yml
+# shellcheck disable=SC2329  # called through check's eval
+cpy() { python3 -c "import yaml; t={x['name']: x for x in yaml.safe_load(open('$c'))}; $1"; }
+check "Ceph: a member's password goes from openssl to a temp file only, never a command line or the log" \
+  "cpy 'x=t[\"Ceph | a dashboard user for each member\"][\"ansible.builtin.shell\"][\"cmd\"]
+assert \"mktemp\" in x and \"trap\" in x and \"openssl rand\" in x and \"-i \\\"\$f\\\"\" in x and \">/dev/null\" in x'"
+check "Ceph: members are read from Authentik on the identity VM" \
+  "cpy 'assert t[\"Ceph | the group\x27s members, from Authentik\"][\"delegate_to\"]==\"{{ pve_sso_identity_host }}\"'"
+check "Ceph: nothing changes in check mode" \
+  "cpy 'n=[\"Ceph | restart the manager so the dashboard sees the library\",\"Ceph | point the dashboard at Authentik\",\"Ceph | a dashboard user for each member\",\"Ceph | SSO on\"]
+assert all(\"not ansible_check_mode\" in str(t[k][\"when\"]) for k in n)'"
 check "pve-realm.pl has nothing Jinja would read as a template" \
   "! grep -qE '\{%|\{#|\{\{|%\}|#\}|\}\}' ansible/roles/pve_sso/files/pve-realm.pl"
 check "pve-realm.pl never prints the client key" \

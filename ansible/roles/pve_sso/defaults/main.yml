@@ -43,3 +43,20 @@ pve_sso_realm_options:
 # only in Pi-hole, and the hosts do not ask Pi-hole.
 pve_sso_gateway_host: apps
 pve_sso_gateway_ip: "{{ site.hosts[pve_sso_gateway_host].home_ip }}"
+
+# The Ceph dashboard (tasks/ceph.yml): SAML 2.0 through Authentik's app "ceph", when
+# site.services has the dashboard's name and the host runs Ceph. Members of pve_sso_group
+# (read from Authentik on the identity VM) get dashboard users with pve_sso_ceph_role.
+pve_sso_ceph_name: ceph
+pve_sso_ceph_enabled: >-
+  {%- set ns = namespace(on=false) -%}
+  {%- for s in site.services | default([]) if s.name | default('') == pve_sso_ceph_name -%}
+  {%- set ns.on = s.enabled | default(true) | bool -%}
+  {%- endfor -%}
+  {{ ns.on }}
+pve_sso_ceph_url: "https://{{ pve_sso_ceph_name }}.{{ gateway_domain }}"
+pve_sso_ceph_metadata: "https://{{ pve_sso_auth_name }}/application/saml/ceph/metadata/"
+pve_sso_ceph_username_attribute: http://schemas.goauthentik.io/2021/02/saml/username
+pve_sso_ceph_role: administrator
+pve_sso_ceph_packages: [python3-onelogin-saml2]
+pve_sso_identity_host: identity

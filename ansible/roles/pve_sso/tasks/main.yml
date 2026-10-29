@@ -84,3 +84,7 @@
       | selectattr('ugid', 'equalto', pve_sso_pve_group) | selectattr('path', 'equalto', '/')
       | selectattr('roleid', 'equalto', pve_sso_pve_role) | selectattr('propagate', 'in', [1, '1', true])
       | list | length == 0
+
+- name: The Ceph dashboard
+  ansible.builtin.include_tasks: ceph.yml
+  when: pve_sso_enabled | bool and pve_sso_ceph_enabled | bool
