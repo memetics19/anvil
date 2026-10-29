@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.14.0](https://github.com/memetics19/anvil/compare/v0.13.2...v0.14.0) (2026-10-29)
+
+
+### Features
+
+* **authentik:** single sign-on as code with a blueprint ([#123](https://github.com/memetics19/anvil/issues/123)) ([82d92ab](https://github.com/memetics19/anvil/commit/82d92abbcc5736ad0e38789ba78326cf26148a12))
+* **caddy:** single sign-on in front of the gateway's apps ([#124](https://github.com/memetics19/anvil/issues/124)) ([2ab848a](https://github.com/memetics19/anvil/commit/2ab848a5e367efe73f40ffeadfca87a231adfd37))
+* **proxmox:** single sign-on realm through Authentik ([#125](https://github.com/memetics19/anvil/issues/125)) ([cadc6e6](https://github.com/memetics19/anvil/commit/cadc6e6a1c73d098caa89ecbeeca461e23f0c2bd))
+
 ## [0.13.2](https://github.com/memetics19/anvil/compare/v0.13.1...v0.13.2) (2026-10-28)
 
 
