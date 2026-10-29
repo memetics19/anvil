@@ -28,8 +28,14 @@ cat >"$tmp/play.yml" <<PLAY
   gather_facts: false
   vars:
     inventory_hostname: identity
+    gateway_domain: lab.example.com
     site:
       email: admin@example.com
+      services:
+        - {name: pve, host: pve.ip, port: 8006, scheme: https}
+        - {name: pve2, host: network.pve2_ip, port: "8006", scheme: https}
+        - {name: old, host: pve.ip, port: 8006, scheme: https, enabled: false}
+        - {name: auth, host: hosts.identity.ip, port: 9000, scheme: http}
       pve: {ip: 192.0.2.10}
       hosts: {identity: {ip: 192.0.2.125, home_ip: 198.51.100.48}, apps: {ip: 192.0.2.121}}
     authentik_secrets:
@@ -37,6 +43,7 @@ cat >"$tmp/play.yml" <<PLAY
       postgres_password: test-postgres-password
       bootstrap_password: test-bootstrap-password
       bootstrap_token: test-bootstrap-token
+      proxmox_client_secret: test-proxmox-client-secret
     authentik_backup_keys: {s3_access_key: FAKEACCESSKEY0000000, s3_secret_key: fakesecretkey0000000000000000000000000000}
   vars_files:
     - $PWD/ansible/roles/authentik/defaults/main.yml
@@ -46,7 +53,7 @@ cat >"$tmp/play.yml" <<PLAY
         dest: $tmp/{{ item }}
         mode: "0600"
       loop: [docker-compose.yaml, authentik.env, db.env, rclone.env, authentik-backup.sh,
-             authentik-backup.service, authentik-backup.timer]
+             authentik-backup.service, authentik-backup.timer, anvil-sso.yaml]
     - ansible.builtin.copy:
         content: "{{ authentik_vault_path }} {{ authentik_secret_keys | join(',') }}"
         dest: $tmp/vault
@@ -56,7 +63,7 @@ if ansible-playbook -i localhost, -c local "$tmp/play.yml" >"$tmp/render.log" 2>
   bad_ "templates render"; cat "$tmp/render.log"; exit 1; fi
 
 c=$tmp/docker-compose.yaml
-secrets='test-secret-key|test-postgres-password|test-bootstrap-password|test-bootstrap-token'
+secrets='test-secret-key|test-postgres-password|test-bootstrap-password|test-bootstrap-token|test-proxmox-client-secret'
 # shellcheck disable=SC2329  # called through check's eval
 py() { python3 -c "import yaml; s=yaml.safe_load(open('$c'))['services']; $1"; }
 
@@ -91,8 +98,43 @@ check "authentik.env: the four secrets and the bootstrap email, no Postgres pass
    ! grep -q POSTGRES_PASSWORD '$tmp/authentik.env'"
 check "db.env: only the Postgres password" \
   "[ \"\$(grep -v '^#' '$tmp/db.env')\" = 'POSTGRES_PASSWORD=test-postgres-password' ]"
-check "vault: kv/homelab/identity/authentik with the four keys" \
-  "[ \"\$(cat '$tmp/vault')\" = 'homelab/identity/authentik secret_key,postgres_password,bootstrap_password,bootstrap_token' ]"
+check "vault: kv/homelab/identity/authentik with the five keys" \
+  "[ \"\$(cat '$tmp/vault')\" = 'homelab/identity/authentik secret_key,postgres_password,bootstrap_password,bootstrap_token,proxmox_client_secret' ]"
+
+check "authentik.env: the Proxmox client secret for the blueprint" \
+  "grep -qx 'ANVIL_PROXMOX_CLIENT_SECRET=test-proxmox-client-secret' '$tmp/authentik.env'"
+check "compose: the worker reads anvil's blueprints read-only, the server does not" \
+  "py 'assert \"./blueprints:/blueprints/anvil:ro\" in s[\"worker\"][\"volumes\"] and not any(\"blueprints\" in v for v in s[\"server\"][\"volumes\"])'"
+
+# The single sign-on blueprint. Authentik's tags (!Find, !KeyOf, !Env) load as [tag, args...].
+sso=$tmp/anvil-sso.yaml
+# shellcheck disable=SC2329  # called through check's eval
+bpy() { python3 -c "
+import yaml, re
+class L(yaml.SafeLoader): pass
+def tag(l, t, n):
+    return ['!' + t] + (l.construct_sequence(n) if isinstance(n, yaml.SequenceNode) else [l.construct_scalar(n)])
+L.add_multi_constructor('!', tag)
+e=yaml.load(open('$sso'), Loader=L)['entries']
+by=lambda m: [x for x in e if x['model']==m]
+$1"; }
+check "blueprint: no secret value in it, the client secret from the environment" \
+  "! grep -q -E '$secrets' '$sso' && grep -q 'client_secret: !Env \[ANVIL_PROXMOX_CLIENT_SECRET, \"\"\]' '$sso'"
+check "blueprint: one group, the default lab-admins" \
+  "bpy 'assert [x[\"identifiers\"] for x in by(\"authentik_core.group\")]==[dict(name=\"lab-admins\")]'"
+check "blueprint: the gateway provider is domain mode for the gateway domain, at auth" \
+  "bpy 'p=by(\"authentik_providers_proxy.proxyprovider\")[0][\"attrs\"]
+assert p[\"mode\"]==\"forward_domain\" and p[\"cookie_domain\"]==\"lab.example.com\" and p[\"external_host\"]==\"https://auth.lab.example.com\"'"
+check "blueprint: the embedded outpost serves the gateway provider at the browser's address" \
+  "bpy 'o=by(\"authentik_outposts.outpost\")[0]; assert o[\"identifiers\"]==dict(managed=\"goauthentik.io/outposts/embedded\")
+assert o[\"attrs\"][\"providers\"]==[[\"!KeyOf\",\"gateway-provider\"]] and o[\"attrs\"][\"config\"][\"authentik_host\"]==\"https://auth.lab.example.com\"'"
+check "blueprint: both apps are bound to the group only" \
+  "bpy 'b=by(\"authentik_policies.policybinding\"); assert len(b)==2 and all(x[\"identifiers\"][\"group\"]==[\"!KeyOf\",\"sso-group\"] for x in b)'"
+check "blueprint: Proxmox redirects only to the enabled port 8006 names" \
+  "bpy 'u=by(\"authentik_providers_oauth2.oauth2provider\")[0][\"attrs\"][\"redirect_uris\"]; assert len(u)==1 and u[0][\"matching_mode\"]==\"regex\"
+r=re.compile(u[0][\"url\"])
+assert r.match(\"https://pve.lab.example.com\") and r.match(\"https://pve2.lab.example.com/\")
+assert not any(r.match(x) for x in [\"https://old.lab.example.com\",\"https://pveXlab.example.com\",\"https://pve.lab.example.com.evil.test\",\"http://pve.lab.example.com\",\"https://auth.lab.example.com\"])'"
 
 # The role's tasks: env files mode 600 and never logged, secrets only added, the health check.
 t=ansible/roles/authentik/tasks/main.yml

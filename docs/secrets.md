@@ -69,6 +69,7 @@ writes them to a file.
 | `kv/homelab/pve/apt-cacher-ng` | `admin_password` | `make enclave` (pve_enclave role, `openssl rand`) | Login `admin` for the apt cache's report page and maintenance jobs (AdminAuth) |
 | `kv/homelab/identity/authentik` | `secret_key`, `postgres_password` | `make vm HOST=identity` (authentik role, `openssl rand`) | Authentik's signing key and its Postgres password, in `/opt/authentik/authentik.env` and `db.env` (mode 600) |
 | `kv/homelab/identity/authentik` | `bootstrap_password`, `bootstrap_token` | `make vm HOST=identity` (authentik role, `openssl rand`) | The first password of `akadmin` and an API token for it, read by Authentik on its first start only |
+| `kv/homelab/identity/authentik` | `proxmox_client_secret` | `make vm HOST=identity` (authentik role, `openssl rand`) | The Proxmox realm's OpenID Connect client secret. Authentik reads it from `authentik.env`. The realm on the Proxmox hosts holds the same value |
 
 ## Added by you
 

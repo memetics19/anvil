@@ -99,6 +99,25 @@
     path: "{{ authentik_dir }}/authentik.env"
   register: authentik_env_stat
 
+# --- single sign-on blueprint --------------------------------------------------------------
+- name: Blueprints directory
+  ansible.builtin.file:
+    path: "{{ authentik_dir }}/blueprints"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Readable by the worker (not root): it holds no secret.
+- name: Single sign-on blueprint
+  ansible.builtin.template:
+    src: anvil-sso.yaml.j2
+    dest: "{{ authentik_dir }}/blueprints/anvil-sso.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+  register: authentik_sso_blueprint
+
 # --- compose -------------------------------------------------------------------------------
 - name: Authentik compose project
   ansible.builtin.include_role:
@@ -121,6 +140,16 @@
   retries: 60
   delay: 5
   until: authentik_health.status == 200
+  when: not ansible_check_mode
+
+# The worker would pick the file up by itself within a few minutes. Applying it here makes
+# the change take effect now, and a blueprint error fails the run instead of a log line.
+# Every run, not only on a change: a failed apply is retried by the next run.
+- name: Apply the single sign-on blueprint
+  ansible.builtin.command:
+    argv: [docker, exec, authentik-worker, ak, apply_blueprint, anvil/anvil-sso.yaml]
+  register: authentik_sso_apply
+  changed_when: authentik_sso_blueprint is changed
   when: not ansible_check_mode
 
 # --- backups ---------------------------------------------------------------------------------

@@ -878,6 +878,28 @@ First login, right after the first run:
 Add a Pulse monitor for Authentik's health endpoint, `/-/health/ready/`, by hand. The role
 does not create one.
 
+#### Single sign-on as code
+
+The role writes the blueprint `/opt/authentik/blueprints/anvil-sso.yaml`
+(`templates/anvil-sso.yaml.j2`) and applies it with `ak apply_blueprint` on every run. The
+worker also applies it every hour. A change made in the admin interface to these objects
+goes back to what the blueprint says.
+
+| Object | What it does |
+|---|---|
+| Group `lab-admins` | Its members may open every app below. Code adds nobody to it |
+| Proxy provider `anvil-gateway`, app `Lab gateway` | Forward auth for every name under the gateway domain (domain mode). One login sets a cookie for the whole domain |
+| Embedded outpost | Serves `anvil-gateway`. Its `authentik_host` is `https://auth.<gateway-domain>` |
+| OAuth2 provider `anvil-proxmox`, app `Proxmox` | OpenID Connect for the Proxmox realm. Client id `proxmox`. It accepts redirects only to the gateway names on port 8006 |
+
+The Proxmox client secret is `proxmox_client_secret` in `kv/homelab/identity/authentik`.
+The role generates it like the other keys. It reaches Authentik as an environment variable
+in `authentik.env` and is never written into the blueprint.
+
+After the first run, make your own user, put a second factor on it and add it to
+`lab-admins`. Only members of that group get past the gateway's forward auth and into
+Proxmox.
+
 #### Authentik backups
 
 Authentik's Postgres holds the user directory and the whole configuration.
