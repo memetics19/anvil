@@ -52,9 +52,10 @@
       tags: [node_exporter]
 
 # The media library for a Jellyfin in another home: ragnarok joins NetBird cloud as a plain
-# peer (no routes), then serves movies and tv read-only over NFSv4 to the NetBird IPs in
-# site.nfs.clients. The NetBird policy for it is set in the NetBird dashboard. Nothing runs
-# until site.nfs.clients lists a client, so a full run is not stopped before the setup.
+# peer (no routes) when site.nfs.clients is set, then serves movies and tv read-only over
+# NFSv4: to the operator's own devices on the lab network (site.admin_sources, for a player
+# like VLC) and, when set, to the NetBird IPs in site.nfs.clients. NetBird is enrolled only
+# for the remote-home case. Nothing runs until there is at least one reader.
 - name: Media over NFS
   hosts: ragnarok
   roles:
@@ -63,7 +64,7 @@
       when: site.nfs.clients | default([]) | length > 0
     - role: nfs_media
       tags: [nfs_media]
-      when: site.nfs.clients | default([]) | length > 0
+      when: (site.nfs.clients | default([]) | length > 0) or (site.admin_sources | default([]) | length > 0)
 
 # After Proxmox made a VM's disk bigger (make grow-disk): grow the partition and filesystem
 # at its end, online. Only with --tags grow_disk.

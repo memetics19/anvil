@@ -1,5 +1,8 @@
-# Managed by anvil (ansible/roles/nfs_media): read-only, NetBird clients only.
+# Managed by anvil (ansible/roles/nfs_media): read-only, the allowed readers only. Lab
+# devices are "insecure" (a player's source port may be above 1024); NetBird clients keep
+# "secure".
+{% macro opts(secure) %}ro,all_squash,anonuid={{ nfs_media_anon_uid }},anongid={{ nfs_media_anon_gid }},no_subtree_check,sec=sys,{{ 'secure' if secure else 'insecure' }}{% endmacro %}
 {% for path in nfs_media_exports %}
-{{ path }} {% for c in nfs_media_clients %}{{ c }}(ro,all_squash,anonuid={{ nfs_media_anon_uid }},anongid={{ nfs_media_anon_gid }},no_subtree_check,sec=sys,secure){{ ' ' if not loop.last else '' }}{% endfor %}
+{{ path }}{% for c in nfs_media_lan_clients %} {{ c }}({{ opts(false) }}){% endfor %}{% if nfs_media_netbird_active | bool %}{% for c in nfs_media_netbird_clients %} {{ c }}({{ opts(true) }}){% endfor %}{% endif %}
 
 {% endfor %}

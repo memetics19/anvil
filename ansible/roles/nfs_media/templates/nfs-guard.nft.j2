@@ -1,13 +1,19 @@
 #!/usr/sbin/nft -f
-# Managed by anvil (ansible/roles/nfs_media). NFS (and rpcbind) only from the allowed
-# NetBird clients, on the NetBird interface. One table, replaced in one transaction.
+# Managed by anvil (ansible/roles/nfs_media). NFS only from the allowed readers, by source
+# address; everything else to NFS or rpcbind is dropped. One table, replaced in one
+# transaction. With NFSv3 on, rpcbind (111), mountd and statd are admitted from the readers
+# too (fixed ports); with v4 only, just 2049.
+{% set nfs_ports = [2049] %}
+{% if nfs_media_v3 | bool %}{% set nfs_ports = [111, 2049, nfs_media_mountd_port, nfs_media_statd_port] %}{% endif %}
 table inet anvil_nfs_guard
 delete table inet anvil_nfs_guard
 table inet anvil_nfs_guard {
 	chain input {
 		type filter hook input priority filter; policy accept;
-		meta l4proto { tcp, udp } th dport { 111, 2049 } iifname != "{{ nfs_media_interface }}" iifname != "lo" counter drop
-		meta l4proto { tcp, udp } th dport { 111, 2049 } iifname "{{ nfs_media_interface }}" ip saddr != { {{ nfs_media_clients | join(', ') }} } counter drop
-		meta l4proto { tcp, udp } th dport 111 iifname "{{ nfs_media_interface }}" counter drop
+{% if nfs_media_readers | length > 0 %}
+		meta l4proto { tcp, udp } th dport { {{ nfs_ports | join(', ') }} } ip saddr { {{ nfs_media_readers | join(', ') }} } accept
+{% endif %}
+		# drop every other NFS, rpcbind, mountd and statd packet (not loopback).
+		meta l4proto { tcp, udp } th dport { {{ ([111, 2049, nfs_media_mountd_port, nfs_media_statd_port] | join(', ')) }} } iifname != "lo" counter drop
 	}
 }
