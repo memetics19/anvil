@@ -585,12 +585,33 @@ These stay open on the gateway:
 ntfy has no web login (its topic access rules decide). Pulse's login was not checked. Add
 either to `caddy_infra_routes` to close it to everyone but the operator.
 
+#### Single sign-on on the gateway
+
+When `site.services` has an `auth` entry (Authentik), Caddy asks Authentik's embedded
+outpost before it passes a request on. A browser without a valid login goes to
+`https://auth.<gateway-domain>`. One login there sets a cookie for every gateway name.
+Only members of the Authentik group `lab-admins` get through (see
+[Single sign-on as code](#single-sign-on-as-code)).
+
+- Every route is behind it except `caddy_sso_exempt`: `auth`, `pass`, `vault`, `pulse`,
+  `ntfy`, `gotify` and `tv`. Vault and Vaultwarden keep their own logins and work when
+  Authentik is down. Pulse's API, the push apps and the Fire TV use tokens or no login, so
+  a sign-in page would break them.
+- `sso: true` or `sso: false` on an entry of `site.services` overrides the list.
+- On an operator-only page, the 403 for other clients comes first, then the login check.
+- The apps keep their own logins for now. Their ports are still open on the LAN, so
+  turning a login off would leave the app open there.
+- Homepage widgets, Pulse monitors and the apps talking to each other use the upstream
+  addresses, not the gateway names, so the login check does not touch them.
+- If Authentik is down, the names behind it answer with an error. Proxmox stays reachable
+  on its own address, port 8006.
+
 ### Homepage
 
 `https://home.<gateway-domain>` is a [Homepage](https://gethomepage.dev) dashboard (the
 `home` entry of `site.services`, `homepage` role, compose project `/opt/homepage`). It has
-a link for every enabled gateway service, and a live widget where one exists. Like the
-other gateway names, it has no login.
+a link for every enabled gateway service, and a live widget where one exists. It has no
+login of its own: single sign-on on the gateway covers it.
 
 The config is generated from `site.services`. `tests/test_homepage.sh` covers the rules.
 
