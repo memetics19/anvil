@@ -90,6 +90,8 @@ entries:
       name: anvil-proxmox
     attrs:
       client_type: confidential
+      # Authentik 2026 allows no grant type unless listed: the login (code) and its renewal.
+      grant_types: [authorization_code, refresh_token]
       client_id: {{ authentik_proxmox_client_id | to_json }}
       client_secret: !Env [ANVIL_PROXMOX_CLIENT_SECRET, ""]
       authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
