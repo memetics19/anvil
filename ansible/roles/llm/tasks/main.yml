@@ -1,0 +1,56 @@
+# Only a service whose container differs from the file is brought up (role compose_project).
+- name: Project directory
+  ansible.builtin.file:
+    path: "{{ llm_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: LLM compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ llm_dir }}"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yml.j2') }}"
+    # Holds the VM's address: keep it out of --diff output.
+    compose_project_diff: false
+
+- name: Ollama answers
+  ansible.builtin.command:
+    argv: [docker, exec, llm-ollama, ollama, --version]
+  register: llm_ollama_up
+  changed_when: false
+  retries: 30
+  delay: 5
+  until: llm_ollama_up.rc == 0
+  when: not ansible_check_mode
+
+# The models Ollama already has, so a pull runs only for a missing one (a pull of a present
+# model is a no-op, but this keeps the run idempotent and quiet).
+- name: The models already pulled
+  ansible.builtin.command:
+    argv: [docker, exec, llm-ollama, ollama, list]
+  register: llm_have_models
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Pull the models (first run downloads a few GB each)
+  ansible.builtin.command:
+    argv: [docker, exec, llm-ollama, ollama, pull, "{{ item }}"]
+  loop: "{{ llm_models }}"
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - item.split(':')[0] not in (llm_have_models.stdout_lines[1:] | default([]) | map('split') | map('first') | map('split', ':') | map('first') | list)
+
+- name: The chat UI answers
+  ansible.builtin.uri:
+    url: "http://{{ llm_bind_ip }}:{{ llm_webui_port }}/health"
+    status_code: 200
+  register: llm_webui_health
+  retries: 30
+  delay: 4
+  until: llm_webui_health.status == 200
+  when: not ansible_check_mode

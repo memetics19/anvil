@@ -1,0 +1,24 @@
+# A local language model on the llm VM (terraform/vm_llm.tf): compose project "llm" in
+# /opt/llm with Ollama (the model runtime) and Open WebUI (the chat interface). CPU only;
+# these hosts have no GPU, so answers are a few tokens a second. Reached through the gateway
+# at llm.<gateway domain>, behind single sign-on like the other apps.
+llm_dir: /opt/llm
+# Pinned by tag and digest (2026-10-29).
+llm_ollama_image: ollama/ollama:0.40.13@sha256:b2f0122c476bc9fe7ce679d8bb4bd555351e25e2554eefb156f61cb0a89cf429
+llm_webui_image: ghcr.io/open-webui/open-webui:v0.6.40@sha256:c13ea534284fa52b282fb2780ffc34a42cc66495234789be8327a9f3d35b53dd
+# The chat UI's port, published on the VM's lab address only (the gateway reaches it there).
+llm_webui_port: 8080
+llm_bind_ip: "{{ site.hosts[inventory_hostname].ip }}"
+# Ollama's API stays inside the compose network: only Open WebUI talks to it.
+# The models pulled on the first run (Ollama library names). hermes3:8b is Nous Research's
+# Hermes 3, tuned to follow instructions and not just agree. Change the list and re-run to
+# add or swap models; nothing is ever removed here.
+llm_models:
+  - hermes3:8b
+# Hard caps, swap included. Ollama holds the model in RAM while it answers; Open WebUI is
+# light. Together under the VM's memory, which leaves room for the OS and the Pulse agent.
+llm_ollama_mem_limit: 12g
+llm_webui_mem_limit: 2g
+# How long Ollama keeps a model in memory after the last request. Keeping it loaded makes
+# the next answer start at once, at the cost of the RAM.
+llm_keep_alive: 30m

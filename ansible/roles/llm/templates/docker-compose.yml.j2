@@ -1,0 +1,43 @@
+# Managed by Ansible (role llm); changes here are overwritten on the next run.
+services:
+  ollama:
+    image: {{ llm_ollama_image }}
+    container_name: llm-ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: {{ llm_keep_alive | to_json }}
+    volumes:
+      - ollama:/root/.ollama
+    # No published port: only Open WebUI, on the same network, reaches it.
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: {{ llm_ollama_mem_limit }}
+    memswap_limit: {{ llm_ollama_mem_limit }}
+    restart: unless-stopped
+
+  webui:
+    image: {{ llm_webui_image }}
+    container_name: llm-webui
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      # Open WebUI keeps its own accounts (the first user becomes the admin). The gateway's
+      # single sign-on stands in front of it as well. No sign-ups from outside.
+      ENABLE_SIGNUP: "false"
+      WEBUI_URL: "https://llm.{{ gateway_domain }}"
+      # No telemetry, no model list fetched from the internet.
+      ANONYMIZED_TELEMETRY: "false"
+      ENABLE_OLLAMA_API: "true"
+    ports:
+      - "{{ llm_bind_ip }}:{{ llm_webui_port }}:8080"
+    volumes:
+      - webui:/app/backend/data
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: {{ llm_webui_mem_limit }}
+    memswap_limit: {{ llm_webui_mem_limit }}
+    restart: unless-stopped
+
+volumes:
+  ollama:
+  webui:
