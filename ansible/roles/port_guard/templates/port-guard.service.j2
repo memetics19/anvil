@@ -1,0 +1,17 @@
+# Managed by Ansible (role port_guard). Loads the port guard before Docker publishes any
+# port, so an app with its login off is never open at boot.
+[Unit]
+Description=Port guard (nftables table inet {{ port_guard_table }})
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target docker.service shutdown.target
+Wants=network-pre.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f {{ port_guard_file }}
+
+[Install]
+WantedBy=multi-user.target

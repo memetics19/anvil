@@ -1,0 +1,19 @@
+#!/usr/sbin/nft -f
+# Managed by Ansible (role port_guard). New connections to these published ports on
+# {{ port_guard_address }} come only from this VM's containers and from the sources below.
+# Replies, and every other port, are not touched.
+table inet {{ port_guard_table }}
+delete table inet {{ port_guard_table }}
+table inet {{ port_guard_table }} {
+	chain forward {
+		# Before Docker's own chains. This chain only drops: an accept here still goes
+		# through Docker's rules.
+		type filter hook forward priority filter - 1; policy accept;
+		ct state established,related accept
+		# This VM's containers (one container calling another's published port)
+		iifname "docker0" accept
+		iifname "br-*" accept
+		ip saddr { {{ port_guard_sources | join(', ') }} } accept
+		meta l4proto tcp ct original ip daddr {{ port_guard_address }} ct original proto-dst { {{ port_guard_ports | join(', ') }} } counter drop
+	}
+}

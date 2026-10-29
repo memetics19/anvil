@@ -49,3 +49,11 @@ arr_stack_quality_min_sizes:
   WEBDL-2160p: 10
   WEBRip-2160p: 10
 arr_stack_quality_apps: [sonarr, radarr]
+
+# The apps' own logins (tag arr_logins, tasks/logins.yml). false: the gateway's single
+# sign-on stands in front of them, so Sonarr, Radarr and Prowlarr use External
+# authentication and Jackett has no admin password. Only with every port in
+# arr_stack_login_ports closed by the port guard (role port_guard). true: Forms logins.
+arr_stack_app_logins: true
+arr_stack_login_ports: [8989, 7878, 9696, 9117]
+arr_stack_jackett_config: "{{ arr_stack_dir }}/jackett/config/Jackett/ServerConfig.json"
