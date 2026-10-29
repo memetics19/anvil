@@ -38,6 +38,10 @@ authentik_repo_scripts: "{{ playbook_dir }}/../../scripts"
 # (one proxy provider in domain mode, served by the embedded outpost) and the Proxmox client.
 # Nobody is put in the group by code: add your own user to it.
 authentik_sso_group: lab-admins
+# Every login needs a second factor (TOTP, WebAuthn or a recovery code). configure: a user
+# without one sets it up at the next login. skip: Authentik's default, no second factor
+# needed. deny: a user without one cannot log in.
+authentik_mfa_not_configured_action: configure
 # Authentik's own gateway name (site.services) and the address browsers use.
 authentik_auth_name: auth
 authentik_external_url: "https://{{ authentik_auth_name }}.{{ gateway_domain }}"

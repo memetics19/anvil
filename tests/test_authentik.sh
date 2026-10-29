@@ -122,6 +122,11 @@ check "blueprint: no secret value in it, the client secret from the environment"
   "! grep -q -E '$secrets' '$sso' && grep -q 'client_secret: !Env \[ANVIL_PROXMOX_CLIENT_SECRET, \"\"\]' '$sso'"
 check "blueprint: one group, the default lab-admins" \
   "bpy 'assert [x[\"identifiers\"] for x in by(\"authentik_core.group\")]==[dict(name=\"lab-admins\")]'"
+check "blueprint: every login needs a second factor, set up at the next login when missing" \
+  "bpy 'm=by(\"authentik_stages_authenticator_validate.authenticatorvalidatestage\"); assert len(m)==1
+a=m[0][\"attrs\"]; assert m[0][\"identifiers\"]==dict(name=\"default-authentication-mfa-validation\")
+assert a[\"not_configured_action\"]==\"configure\" and sorted(a[\"device_classes\"])==[\"static\",\"totp\",\"webauthn\"]
+assert [c[2][1] for c in a[\"configuration_stages\"]]==[\"default-authenticator-totp-setup\",\"default-authenticator-webauthn-setup\"]'"
 check "blueprint: the gateway provider is domain mode for the gateway domain, at auth" \
   "bpy 'p=by(\"authentik_providers_proxy.proxyprovider\")[0][\"attrs\"]
 assert p[\"mode\"]==\"forward_domain\" and p[\"cookie_domain\"]==\"lab.example.com\" and p[\"external_host\"]==\"https://auth.lab.example.com\"'"
