@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.0](https://github.com/memetics19/anvil/compare/v0.20.0...v0.21.0) (2026-10-30)
+
+
+### Features
+
+* **arr_stack:** prefer 1080p, take 4K only when no 1080p exists ([#147](https://github.com/memetics19/anvil/issues/147)) ([f77c9ac](https://github.com/memetics19/anvil/commit/f77c9ac3ee227d4b1b534b87aba2fa38d928f5a1))
+
 ## [0.20.0](https://github.com/memetics19/anvil/compare/v0.19.0...v0.20.0) (2026-10-30)
 
 
