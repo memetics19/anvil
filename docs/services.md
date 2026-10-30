@@ -61,7 +61,7 @@ Collaborative editing uses a WebSocket.
 ## ragnarok
 
 `make vm HOST=ragnarok` runs four compose projects. None of them may live inside the media
-library. `tests/test_media_untouched.sh` checks that nothing in `ansible/` or `scripts/`
+library. `tests/unit/test_media_untouched.sh` checks that nothing in `ansible/` or `scripts/`
 can reach it.
 
 ### ARR stack
@@ -119,7 +119,7 @@ overwritten.
 
 `make vm HOST=ragnarok ARGS="--tags iptv"` runs the `iptv` role in `/opt/iptv`. The
 lineup is [`iptv/channels.yml`](../iptv/channels.yml), checked by
-`tests/test_iptv_lineup.sh`.
+`tests/unit/test_iptv_lineup.sh`.
 
 | Part | Port | What it does | Memory cap |
 |---|---|---|---|
@@ -439,7 +439,7 @@ through its own chains, so they never reach ufw's input rules. For those ports, 
 - Do not publish a port that only other containers use. They reach it by service name on
   the compose network.
 
-`tests/test_published_ports.sh` fails on any published port in a compose template that
+`tests/unit/test_published_ports.sh` fails on any published port in a compose template that
 names no address.
 
 ### Pi-hole
@@ -487,7 +487,7 @@ Local records come from `site.dns.local_records` in Vault.
 The address is `ref`, a path into the site dict, or `ip`. The role applies these records,
 and the gateway's names, to the running Pi-hole with `pihole-FTL --config dns.hosts`. It
 does so only when they differ, so DNS is never interrupted. A record added in the UI is
-removed on the next run. `tests/test_pihole_records.sh` covers the rules.
+removed on the next run. `tests/unit/test_pihole_records.sh` covers the rules.
 
 #### Block lists and deny rules
 
@@ -538,7 +538,7 @@ One list drives Caddy, Pi-hole and Homepage: `site.services` in Vault.
 - Optional fields cover self-signed upstreams, Vault's CA, websockets, long streams, the
   upstream Host header and absolute redirects to the upstream's own address
   (`rewrite_location`, used by the [switch](cisco-switch.md#web-ui-through-the-gateway)).
-  They are documented in `ansible/roles/caddy/defaults/main.yml`. `tests/test_gateway.sh`
+  They are documented in `ansible/roles/caddy/defaults/main.yml`. `tests/unit/test_gateway.sh`
   covers the rules. See [Adding a service](usage.md#adding-a-service-behind-the-gateway).
 - A `static` entry has no upstream. Caddy serves files from `/opt/caddy/sites/<static>`, a
   read-only mount. This documentation is one, at `docs.<gateway-domain>`
@@ -619,7 +619,7 @@ Only members of the Authentik group `lab-admins` get through (see
 a link for every enabled gateway service, and a live widget where one exists. It has no
 login of its own: single sign-on on the gateway covers it.
 
-The config is generated from `site.services`. `tests/test_homepage.sh` covers the rules.
+The config is generated from `site.services`. `tests/unit/test_homepage.sh` covers the rules.
 
 - Title, group, icon, description and widget for each name come from `homepage_catalog`
   in the role defaults.

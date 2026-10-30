@@ -1,6 +1,6 @@
 # site.services -> caddy_routes: the enabled entries with their upstream URL resolved
 # (`host` is a dotted path into the site dict). Values are not logged. Tested by
-# tests/test_gateway.sh.
+# tests/unit/test_gateway.sh.
 - name: Resolve the gateway's upstreams
   ansible.builtin.set_fact:
     caddy_routes: >-

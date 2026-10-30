@@ -101,7 +101,7 @@
 # Workloads on ragnarok, one compose project each, behind the port guard: the ARR stack, the IPTV EPG web,
 # Filestash and IPTV (Threadfin and the stream helper; after iptv_epg, whose directory
 # its guide grabber fills). Only services whose container differs from the file are brought up. Nothing
-# touches the media library (tests/test_media_untouched.sh).
+# touches the media library (tests/unit/test_media_untouched.sh).
 - name: Ragnarok workloads
   hosts: ragnarok
   force_handlers: true

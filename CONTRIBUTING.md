@@ -6,15 +6,12 @@ and how pull requests are merged and stacked.
 ## Before you open a pull request
 
 ```sh
-make lint            # terraform fmt, tflint, yamllint, ansible-lint
-make secrets-scan    # gitleaks over the history and the working tree, with .gitleaks.toml
-for t in tests/test_*.sh; do bash "$t" || echo "FAILED $t"; done
-cd cli && go vet ./... && go test ./...
+make test            # lint, secrets scan, Go tests, unit and integration tests
 ```
 
-CI runs the same, plus Trivy (`.github/workflows/security.yml`). Some tests need Linux
-tools (`tests/test_apt_repo.sh` needs `dpkg-deb` and `apt-ftparchive`): CI runs them on
-Ubuntu.
+CI runs the same, plus Trivy (`.github/workflows/security.yml`). The integration tests need
+Linux with passwordless sudo. On macOS they print `SKIP`, and CI runs them on Ubuntu. The
+layers and how to write a test are in [tests/README.md](tests/README.md).
 
 The CLI's layout is in [docs/cli.md](docs/cli.md#code-layout). A new command goes in its
 own package under `cli/internal/` and is imported in `cli/cmd/anvil/main.go`.

@@ -15,14 +15,23 @@ env:
   ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/.collections
 
 jobs:
-  checks:
+  # The shell tests by layer (tests/README.md). Each layer finds its tests by folder, so a new
+  # test runs without a line here. Unit also runs the linters and the secrets scan.
+  tests:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        layer: [unit, integration]
+    name: tests (${{ matrix.layer }})
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: hashicorp/setup-terraform@v3
+        if: matrix.layer == 'unit'
       - uses: terraform-linters/setup-tflint@v4
+        if: matrix.layer == 'unit'
       - name: Install linters
         run: |
           pipx install yamllint
@@ -40,91 +49,18 @@ jobs:
         if: steps.collections.outputs.cache-hit != 'true'
         run: scripts/install-collections.sh "$ANSIBLE_COLLECTIONS_PATH"
       - name: Lint and secret scan
+        if: matrix.layer == 'unit'
         run: make lint secrets-scan
-      - name: Guardrail test
-        run: tests/test_secrets_scan.sh
-      - name: Media library test
-        run: tests/test_media_untouched.sh
-      - name: IPTV lineup test
-        run: tests/test_iptv_lineup.sh
-      - name: IPTV web page test
-        run: tests/test_iptv_web.sh
-      - name: Plan guard test
-        run: tests/test_plan_guard.sh
-      - name: Rotate test
-        run: tests/test_rotate.sh
-      - name: Sonarr and Radarr quality policy
-        run: tests/test_arr_quality.sh
-      - name: Pi-hole local records test
-        run: tests/test_pihole_records.sh
-      - name: Service gateway test
-        run: tests/test_gateway.sh
-      - name: LLM test
-        run: tests/test_llm.sh
-      - name: SMB media test
-        run: tests/test_smb_media.sh
-      - name: Port guard test
-        run: tests/test_port_guard.sh
-      - name: Proxmox single sign-on test
-        run: tests/test_pve_sso.sh
-      - name: Homepage dashboard test
-        run: tests/test_homepage.sh
-      - name: Self-hosted NetBird test
-        run: tests/test_netbird_server.sh
-      - name: Vaultwarden test
+      # Real tools for the integration layer: loop devices, ZFS, LVM, nftables, apt, age.
+      - name: Install integration tools
+        if: matrix.layer == 'integration'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq age sqlite3
-          tests/test_vaultwarden.sh
-      - name: Network rollback test
-        run: tests/test_net_rollback.sh
-      - name: Netplan rollback test
-        run: tests/test_netplan_rollback.sh
-      - name: Routed segments firewall test
-        run: tests/test_segments.sh
-      - name: Vault in the secrets enclave test
-        run: tests/test_enclave_vault.sh
-      - name: Switch plan and SSH helper test
-        run: |
-          sudo apt-get install -y -qq expect sshpass
-          tests/test_switch.sh
-      - name: Provisioning answer file and guard test
-        run: tests/test_provision.sh
-      - name: One-line installer test
-        run: tests/test_install.sh
-      - name: Pulse deploy test
-        run: tests/test_pulse.sh
-      - name: Every published port names its address
-        run: tests/test_published_ports.sh
-      - name: Docmost role
-        run: tests/test_docmost.sh
-      - name: Authentik role
-        run: |
-          sudo apt-get install -y -qq age
-          tests/test_authentik.sh
-      - name: Pulse agent role
-        run: tests/test_pulse_agent.sh
-      - name: NFS media role
-        run: |
-          sudo apt-get install -y -qq nftables
-          tests/test_nfs_media.sh
-      - name: Grow a disk online (loop devices, ext4 and LVM)
-        run: |
-          sudo apt-get install -y -qq gdisk cloud-guest-utils lvm2 parted
-          tests/test_grow_disk.sh
-      - name: ZFS data pools (loop devices, real ZFS)
-        run: |
-          sudo apt-get install -y -qq zfsutils-linux
+          sudo apt-get install -y -qq age sqlite3 expect sshpass nftables apt-utils \
+            gdisk cloud-guest-utils lvm2 parted zfsutils-linux
           sudo modprobe zfs
-          tests/test_zfs_pools.sh
-      - name: SSH host keys are checked
-        run: tests/test_host_keys.sh
-      - name: forget-host removes one host's key
-        run: tests/test_forget_host.sh
-      - name: apt repository test
-        run: |
-          sudo apt-get install -y -qq apt-utils
-          tests/test_apt_repo.sh
+      - name: Run the ${{ matrix.layer }} tests
+        run: tests/run.sh ${{ matrix.layer }}
 
   cli:
     runs-on: ubuntu-latest

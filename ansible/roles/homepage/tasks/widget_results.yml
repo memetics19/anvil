@@ -2,7 +2,7 @@
 # ("<name>=<code> ok|error"). A widget with an error is a warning: its app lives on another
 # VM (or behind its own login) and must not stop the rest of the apps play (the gateway and
 # the firewall run after this role, and this VM is the home's DNS). homepage_strict_widgets
-# makes it fail (verification runs). Tested by tests/test_homepage.sh.
+# makes it fail (verification runs). Tested by tests/unit/test_homepage.sh.
 - name: Widget results
   ansible.builtin.set_fact:
     homepage_widget_results: >-

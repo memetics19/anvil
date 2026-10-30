@@ -1,5 +1,5 @@
 # The gateway entry Vaultwarden is served as (site.services) and its public URL, which
-# Vaultwarden needs as DOMAIN. Tested by tests/test_vaultwarden.sh.
+# Vaultwarden needs as DOMAIN. Tested by tests/integration/test_vaultwarden.sh.
 
 - name: Gateway routes
   ansible.builtin.include_role:

@@ -2,7 +2,7 @@
 # -> homepage_entries: one dashboard entry per route except the dashboard itself, with the
 # catalog's title/group/icon/description/widget overridden by the entry's own optional
 # fields. Links are the gateway names (route fqdn, built from caddy_domain). Values are not
-# logged. Tested by tests/test_homepage.sh.
+# logged. Tested by tests/unit/test_homepage.sh.
 - name: Dashboard entries from the gateway's services
   ansible.builtin.set_fact:
     homepage_entries: >-

@@ -1,7 +1,7 @@
 # The project network Unbound sits on (pihole_dns_subnet, pihole_unbound_ip): a private
 # (RFC 1918) range that overlaps none of the lab network, the home network, NetBird's
 # 100.64.0.0/10 and Docker's default bridge, with Unbound's address inside it.
-# Tested by tests/test_pihole_records.sh.
+# Tested by tests/unit/test_pihole_records.sh.
 - name: Check the DNS network against the others
   ansible.builtin.set_fact:
     pihole_dns_net_problems: >-

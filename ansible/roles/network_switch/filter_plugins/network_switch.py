@@ -1,5 +1,5 @@
 # The Cisco SG300 switch's command plan (role network_switch). Pure Python, no Ansible
-# imports beyond the error type, so tests/test_switch.sh runs it directly.
+# imports beyond the error type, so tests/integration/test_switch.sh runs it directly.
 #
 # switch_state(text) splits the output of scripts/switch-cli.sh ("@@@ <command>" before
 # each command's output) into {command: output}.
