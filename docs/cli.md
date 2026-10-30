@@ -328,17 +328,20 @@ later.
 ## anvil drift
 
 ```sh
-anvil drift                    # check host, vms and tf, push to ntfy if anything drifted
+anvil drift                    # check host, vms and tf, run the smoke tests, push to ntfy on a problem
 anvil drift --always           # push "no drift" too
 anvil drift --install          # every night at 03:30 on this machine
 anvil drift --install --at 02:15
 anvil drift --uninstall
+anvil drift --no-smoke         # the checks only
 ```
 
-It runs what `anvil check` runs with no target. All of it is read-only. When a VM or
-Terraform would change, or a check fails, it sends one ntfy message and exits 1. The
-message names the targets, the VMs with changes and Terraform's counts. It never holds an
-address or a diff. `anvil check <target>` shows the diff.
+It runs what `anvil check` runs with no target, then the smoke tests (`anvil test smoke`).
+All of it is read-only. When a VM or Terraform would change, a check fails or a smoke test
+fails, it sends one ntfy message and exits 1. The message names the targets, the VMs with
+changes, Terraform's counts and the smoke tests that failed. It never holds an address, a
+diff or a test's output. `anvil check <target>` shows the diff, `anvil test smoke` the
+details.
 
 `--install` schedules it from this checkout with this shell's `PATH`: a launchd agent on
 macOS, a systemd user timer on Linux. A run missed while the machine slept runs when it
@@ -384,6 +387,11 @@ anvil apply vlans
 with `--yes`. `tf` applies the plan its check saved, after the plan guard runs again. The
 guards in the scripts still apply, and anvil adds no force flag.
 
+After an apply that changed something, the smoke tests run (`anvil test smoke`). A failed
+one makes the exit code 1: the change went in, but the lab is not healthy. `anvil up`
+does the same at its end when a stage or a service was applied. `--no-smoke` leaves them
+out.
+
 | Target | Check | Apply |
 |---|---|---|
 | `bootstrap-ssh`, `host`, `ceph`, `vault`, `vms` | `make <target> ARGS="--check --diff"` | `make <target>` |
@@ -392,6 +400,20 @@ guards in the scripts still apply, and anvil adds no force flag.
 | `tf` (`tf-plan`, `tf-apply`) | `make tf-plan` | `make tf-apply`, name typed |
 | a VM, or `vm --host <vm>` | `make vm HOST=<vm> ARGS="--check --diff"` | `make vm HOST=<vm>` |
 | a service | `make vm HOST=<vm> ARGS="--check --diff --tags <tag>"` | `make vm HOST=<vm> ARGS="--tags <tag>"` |
+
+## anvil test
+
+```sh
+anvil test smoke               # read-only checks of the live lab
+anvil test smoke gateway       # only the tests whose name has "gateway"
+anvil test unit                # fast checks with no lab, and the Go tests
+anvil test integration         # real tools (Linux with sudo, Docker)
+anvil test all                 # unit, integration and smoke
+```
+
+It runs `make test-<layer>`. The layers and what each smoke test checks are in
+[tests/README.md](../tests/README.md). Smoke
+reads the site from Vault and only reads from the lab.
 
 ## anvil backup and anvil restore
 
@@ -594,7 +616,7 @@ en0.
 | Code | Meaning |
 |---|---|
 | make's code | The make target failed. anvil passes its code on. |
-| 1 | You declined, `anvil init` found a problem, or `anvil drift` found drift. |
+| 1 | You declined, `anvil init` found a problem, `anvil drift` found drift, or a test failed. |
 | 2 | A usage error, or an unknown name. |
 | 3 | `anvil up` stopped at a step that needs you. |
 
@@ -617,6 +639,7 @@ cli/
   internal/pools/       pools
   internal/rotate/      rotate
   internal/drift/       drift
+  internal/suite/       test
   internal/testlab/     the test harness the packages share
 ```
 

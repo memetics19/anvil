@@ -56,10 +56,14 @@ const (
 )
 
 // FakeMake is make for the tests. It logs its arguments, prints $FAKE_CHECK_OUT for a
-// check run and exits with $FAKE_RC (or $FAKE_APPLY_RC for a real run).
+// check run and exits with $FAKE_RC (or $FAKE_APPLY_RC for a real run). The smoke tests
+// print $FAKE_SMOKE_OUT and exit with $FAKE_SMOKE_RC.
 const FakeMake = `#!/bin/sh
 printf '%s\n' "$*" >> "$FAKE_LOG"
 case "$*" in
+  test-smoke*)
+    [ -n "${FAKE_SMOKE_OUT:-}" ] && printf '%s\n' "$FAKE_SMOKE_OUT"
+    exit "${FAKE_SMOKE_RC:-0}" ;;
   *--check*|tf-plan*|switch)
     [ -n "${FAKE_CHECK_OUT:-}" ] && cat "$FAKE_CHECK_OUT"
     exit "${FAKE_RC:-0}" ;;

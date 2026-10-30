@@ -41,7 +41,7 @@ func TestDriftQuietWhenNothingChanged(t *testing.T) {
 	if code := l.Run("", "drift"); code != 0 {
 		t.Fatalf("exit %d:\n%s", code, l.Output())
 	}
-	if want := []string{"host ARGS=--check --diff", "vms ARGS=--check --diff", "tf-plan"}; strings.Join(l.MakeCalls(), "|") != strings.Join(want, "|") {
+	if want := []string{"host ARGS=--check --diff", "vms ARGS=--check --diff", "tf-plan", "test-smoke"}; strings.Join(l.MakeCalls(), "|") != strings.Join(want, "|") {
 		t.Errorf("make calls %q", l.MakeCalls())
 	}
 	if len(*got) != 0 {
@@ -88,6 +88,26 @@ func TestDriftSendsFailures(t *testing.T) {
 	}
 	if len(*got) != 1 || (*got)[0].title != "anvil: drift check failed" || !strings.Contains((*got)[0].body, "tf: the check failed (exit 2)") {
 		t.Errorf("sent %v", *got)
+	}
+}
+
+// A failed smoke test is a problem on its own: one message naming the tests, no output.
+func TestDriftSendsSmokeFailures(t *testing.T) {
+	l := newTestLab(t)
+	got := fakeNtfy(t, l)
+	l.SetCheckOutput(testlab.RecapNoChanges + tfNoChanges)
+	l.Env["FAKE_SMOKE_OUT"] = "  FAIL  hosts 3s\n        vaultwarden: failed units: x.service\n== 3 passed, 0 skipped, 2 failed\n   failed: smoke/hosts\n   failed: smoke/enclave"
+	l.Env["FAKE_SMOKE_RC"] = "1"
+	if code := l.Run("", "drift"); code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", code, l.Output())
+	}
+	if len(*got) != 1 || (*got)[0].title != "anvil: a smoke test failed" ||
+		!strings.Contains((*got)[0].body, "smoke: failed: hosts, enclave") || strings.Contains((*got)[0].body, "vaultwarden") {
+		t.Fatalf("sent %v", *got)
+	}
+	l.ResetCalls()
+	if code := l.Run("", "drift", "--no-smoke"); code != 0 || strings.Contains(strings.Join(l.MakeCalls(), "|"), "test-smoke") {
+		t.Fatalf("--no-smoke: exit %d, calls %q", code, l.MakeCalls())
 	}
 }
 

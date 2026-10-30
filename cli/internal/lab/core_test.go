@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -217,12 +218,12 @@ func TestApplyAsksThenApplies(t *testing.T) {
 	if code := l.Run("y\n", "apply", "pihole"); code != 0 {
 		t.Fatalf("exit %d: %s", code, l.Output())
 	}
-	want := []string{"vm HOST=apps ARGS=--check --diff --tags pihole", "vm HOST=apps ARGS=--tags pihole"}
+	want := []string{"vm HOST=apps ARGS=--check --diff --tags pihole", "vm HOST=apps ARGS=--tags pihole", "test-smoke"}
 	if got := l.MakeCalls(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("calls %q, want %q", got, want)
 	}
 	l.ResetCalls()
-	if code := l.Run("", "apply", "pihole", "--yes"); code != 0 || len(l.MakeCalls()) != 2 {
+	if code := l.Run("", "apply", "pihole", "--yes"); code != 0 || len(l.MakeCalls()) != 3 {
 		t.Fatalf("--yes: exit %d, calls %q", code, l.MakeCalls())
 	}
 	// A risky target needs its name, --yes or not.
@@ -231,8 +232,28 @@ func TestApplyAsksThenApplies(t *testing.T) {
 		t.Fatalf("risky with y: exit %d, calls %q", code, l.MakeCalls())
 	}
 	l.ResetCalls()
-	if code := l.Run("vlans\n", "apply", "vlans"); code != 0 || len(l.MakeCalls()) != 2 {
+	if code := l.Run("vlans\n", "apply", "vlans"); code != 0 || len(l.MakeCalls()) != 3 {
 		t.Fatalf("risky typed: exit %d, calls %q", code, l.MakeCalls())
+	}
+}
+
+// After an apply that changed the lab, the smoke tests run. A failed one is exit 1.
+// Nothing applied, or --no-smoke: no smoke tests.
+func TestApplyRunsTheSmokeTests(t *testing.T) {
+	l := testlab.New(t)
+	l.SetCheckOutput(testlab.RecapChanges)
+	l.Env["FAKE_SMOKE_RC"] = "1"
+	if code := l.Run("", "apply", "pihole", "--yes"); code != 1 || !strings.Contains(l.Output(), "a smoke test failed") {
+		t.Fatalf("smoke failed: exit %d:\n%s", code, l.Output())
+	}
+	l.ResetCalls()
+	if code := l.Run("", "apply", "pihole", "--yes", "--no-smoke"); code != 0 || slices.Contains(l.MakeCalls(), "test-smoke") {
+		t.Fatalf("--no-smoke: exit %d, calls %q", code, l.MakeCalls())
+	}
+	l.ResetCalls()
+	l.SetCheckOutput(testlab.RecapNoChanges)
+	if code := l.Run("", "apply", "pihole", "--yes"); code != 0 || slices.Contains(l.MakeCalls(), "test-smoke") {
+		t.Fatalf("nothing applied: exit %d, calls %q", code, l.MakeCalls())
 	}
 }
 
@@ -294,7 +315,8 @@ func TestDryRunPrintsCommandsAndNoValues(t *testing.T) {
 	}
 	l.Run("", "apply", "host-network", "--dry-run")
 	want := "# host-network: check\nsource scripts/env.sh && make host-network ARGS='--check --diff'\n" +
-		"# host-network: apply, only when the check shows changes\nsource scripts/env.sh && make host-network\n"
+		"# host-network: apply, only when the check shows changes\nsource scripts/env.sh && make host-network\n" +
+		"# after a run that changed the lab: the smoke tests\nsource scripts/env.sh && make test-smoke\n"
 	if l.Out.String() != want {
 		t.Errorf("dry run output:\n%s\nwant:\n%s", l.Out.String(), want)
 	}

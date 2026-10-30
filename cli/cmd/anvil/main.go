@@ -17,6 +17,7 @@ import (
 	_ "github.com/memetics19/anvil/cli/internal/pools"
 	_ "github.com/memetics19/anvil/cli/internal/provision"
 	_ "github.com/memetics19/anvil/cli/internal/rotate"
+	_ "github.com/memetics19/anvil/cli/internal/suite"
 )
 
 // version, commit and date are set at build time with -ldflags -X (make cli, GoReleaser).
