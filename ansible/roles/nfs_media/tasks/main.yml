@@ -57,6 +57,25 @@
     daemon_reload: "{{ nfs_media_home_addr_unit_file is changed }}"
   when: nfs_media_home_ip | length > 0 and not ansible_check_mode
 
+# The unit runs once per boot. If the NIC is reconfigured later (netplan apply, for one), the
+# extra address can go, so every run checks it and puts it back.
+- name: Is the home-network address on the NIC
+  ansible.builtin.command:
+    argv: [ip, -o, -4, addr, show, dev, "{{ nfs_media_home_iface }}"]
+  register: nfs_media_home_addr_now
+  changed_when: false
+  check_mode: false
+  when: nfs_media_home_ip | length > 0
+
+- name: Put the home-network address back
+  ansible.builtin.command:
+    argv: [ip, addr, replace, "{{ nfs_media_home_ip }}/{{ nfs_media_home_prefix }}", dev, "{{ nfs_media_home_iface }}"]
+  changed_when: true
+  when:
+    - nfs_media_home_ip | length > 0
+    - not ansible_check_mode
+    - (' ' ~ nfs_media_home_ip ~ '/') not in nfs_media_home_addr_now.stdout
+
 - name: The library folders exist (read only, never created here)
   ansible.builtin.stat:
     path: "{{ item }}"
