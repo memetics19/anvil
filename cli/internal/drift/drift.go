@@ -28,17 +28,19 @@ func init() {
 	app.Register(app.Command{Name: "drift", Summary: "the nightly check: anvil check, then a push to ntfy if anything drifted", Usage: driftUsage, Run: cmdDrift, Order: 23})
 }
 
-const driftUsage = `usage: anvil drift [--always] [--log FILE]
+const driftUsage = `usage: anvil drift [--always] [--no-smoke] [--log FILE]
        anvil drift --install [--at HH:MM]
        anvil drift --uninstall
 
-Runs what anvil check runs with no target (host, vms and tf, all read-only) and sends the
-verdict to ntfy when something drifted or a check failed. Exit 1 then.
+Runs what anvil check runs with no target (host, vms and tf, all read-only), then the
+smoke tests (anvil test smoke, read-only checks of the live lab). It sends the verdict to
+ntfy when something drifted, a check failed or a smoke test failed. Exit 1 then.
 
-The message has the targets, the VMs with changes and Terraform's counts. No addresses,
-no diffs. The full output stays in the log.
+The message has the targets, the VMs with changes, Terraform's counts and the names of
+the smoke tests that failed. No addresses, no diffs. The full output stays in the log.
 
   --always       send a message when nothing drifted too
+  --no-smoke     only the checks, no smoke tests
   --log FILE     write the output to FILE, keeping the last 7 runs as FILE.1 to FILE.7
   --install      run it every night on this machine, from this checkout: launchd on
                  macOS, a systemd user timer on Linux. A run missed while the machine
@@ -63,10 +65,11 @@ var goos = runtime.GOOS
 var atRE = regexp.MustCompile(`^([01]?\d|2[0-3]):([0-5]\d)$`)
 
 func cmdDrift(a *app.App, args []string) int {
-	var always, install, uninstall bool
+	var always, install, uninstall, noSmoke bool
 	var logFile, at string
 	fs := flag.NewFlagSet("drift", flag.ContinueOnError)
 	fs.BoolVar(&always, "always", false, "")
+	fs.BoolVar(&noSmoke, "no-smoke", false, "")
 	fs.StringVar(&logFile, "log", "", "")
 	fs.BoolVar(&install, "install", false, "")
 	fs.StringVar(&at, "at", "03:30", "")
@@ -127,17 +130,33 @@ func cmdDrift(a *app.App, args []string) int {
 			lines = append(lines, t.Name+": "+driftLine(s))
 		}
 	}
+	smokeFailed := false
+	if !noSmoke {
+		names, code := lab.SmokeFailures(r)
+		switch {
+		case len(names) > 0:
+			smokeFailed = true
+			lines = append(lines, "smoke: failed: "+strings.Join(names, ", "))
+		case code != 0:
+			smokeFailed = true
+			lines = append(lines, fmt.Sprintf("smoke: the tests did not run (exit %d)", code))
+		default:
+			lines = append(lines, "smoke: passed")
+		}
+	}
 	body := strings.Join(lines, "\n")
 	fmt.Fprintln(a.Stdout, "anvil drift:\n"+body)
 	switch {
 	case failed:
 		notify(a, "anvil: drift check failed", body, "x", 4)
+	case smokeFailed:
+		notify(a, "anvil: a smoke test failed", body+"\nanvil test smoke shows the details.", "x", 4)
 	case drift:
 		notify(a, "anvil: the lab drifted", body+"\nanvil check <target> shows the diff.", "warning", 4)
 	case always:
 		notify(a, "anvil: no drift", body, "white_check_mark", 2)
 	}
-	if failed || drift {
+	if failed || drift || smokeFailed {
 		return 1
 	}
 	return 0

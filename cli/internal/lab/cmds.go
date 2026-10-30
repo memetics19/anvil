@@ -32,7 +32,7 @@ options:
   --dry-run   print the make commands, run nothing
 `
 
-const applyUsage = `usage: anvil apply <target> [--host H] [--tags T] [--args A] [--yes] [--dry-run]
+const applyUsage = `usage: anvil apply <target> [--host H] [--tags T] [--args A] [--yes] [--no-smoke] [--dry-run]
 
 Runs the check first (see anvil check) and prints its summary. When the check shows no
 changes, it stops there. Otherwise it asks y/N, then runs the real target.
@@ -42,11 +42,15 @@ enclave, vlans, cluster, switch and tf (make tf-apply applies the plan tf-plan s
 guards inside the scripts still apply (plan guard, timed rollbacks). anvil never adds
 a force flag.
 
+After an apply that changed something, the smoke tests run (anvil test smoke): read-only
+checks of the live lab. A failed one makes the exit code 1.
+
 options:
   --host H    one VM, for vm, vms or a service on several VMs
   --tags T    add --tags T to ARGS
   --args A    more ARGS (never --force or -target)
   --yes       skip the y/N question (not the typed name of a risky target)
+  --no-smoke  no smoke tests after the apply
   --dry-run   print the check and apply commands, run nothing
 `
 
@@ -84,8 +88,8 @@ func init() {
 
 // TargetOpts are the options of check and apply.
 type TargetOpts struct {
-	host, tags, args string
-	yes, dryRun      bool
+	host, tags, args     string
+	yes, dryRun, noSmoke bool
 }
 
 func targetFlags(fs *flag.FlagSet, o *TargetOpts, withYes bool) {
@@ -95,6 +99,7 @@ func targetFlags(fs *flag.FlagSet, o *TargetOpts, withYes bool) {
 	fs.BoolVar(&o.dryRun, "dry-run", false, "")
 	if withYes {
 		fs.BoolVar(&o.yes, "yes", false, "")
+		fs.BoolVar(&o.noSmoke, "no-smoke", false, "")
 	}
 }
 
@@ -234,7 +239,10 @@ func cmdApply(a *app.App, args []string) int {
 		fmt.Fprintf(a.Stderr, "anvil: %v\n", err)
 		return 2
 	}
-	code, _ = checkThenApply(a, r, t, o, func(t Target) bool { return confirmApply(a.Stdin, a.Stdout, t, o.yes) })
+	code, out := checkThenApply(a, r, t, o, func(t Target) bool { return confirmApply(a.Stdin, a.Stdout, t, o.yes) })
+	if code == 0 && (out == outApplied || r.DryRun) && !o.noSmoke {
+		code = smokeAfter(a, r)
+	}
 	return code
 }
 

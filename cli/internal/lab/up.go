@@ -17,8 +17,8 @@ import (
 	"github.com/memetics19/anvil/cli/internal/run"
 )
 
-const upUsage = `usage: anvil up [--yes] [--dry-run] [--from S] [--only S,...] [--skip S,...]
-       anvil up <service>... [--yes] [--dry-run]
+const upUsage = `usage: anvil up [--yes] [--no-smoke] [--dry-run] [--from S] [--only S,...] [--skip S,...]
+       anvil up <service>... [--yes] [--no-smoke] [--dry-run]
 
 With no service, anvil up builds the whole lab, or converges a running one, in the
 order of docs/setup.md (First build). The same command works on a fresh box and on the
@@ -43,8 +43,12 @@ With services (anvil services lists them), anvil up deploys just those: pihole, 
 iptv, a VM such as apps, or a lab target such as vlans. Each runs check then apply.
 It asks y/N (--yes skips it), and a risky target needs its name typed.
 
+When a run changed the lab, the smoke tests run at the end (anvil test smoke): read-only
+checks of the live lab. A failed one makes the exit code 1.
+
 options:
   --yes          no confirmation (a risky service still needs its name typed)
+  --no-smoke     no smoke tests at the end
   --dry-run      print the stage plan and the make commands, run nothing
   --from S       resume at stage S
   --only S,...   only these stages
@@ -379,9 +383,10 @@ func runAll(a *app.App, names []string, step func(i int) (int, outcome)) (int, i
 
 func cmdUp(a *app.App, args []string) int {
 	fs := flag.NewFlagSet("up", flag.ContinueOnError)
-	var yes, dry bool
+	var yes, dry, noSmoke bool
 	var from, only, skip string
 	fs.BoolVar(&yes, "yes", false, "")
+	fs.BoolVar(&noSmoke, "no-smoke", false, "")
 	fs.BoolVar(&dry, "dry-run", false, "")
 	fs.StringVar(&from, "from", "", "")
 	fs.StringVar(&only, "only", "", "")
@@ -401,7 +406,7 @@ func cmdUp(a *app.App, args []string) int {
 			fmt.Fprintf(a.Stderr, "anvil: --from, --only and --skip are for the whole lab, not services\n")
 			return 2
 		}
-		return upServices(a, pos, yes, dry)
+		return upServices(a, pos, yes, dry, noSmoke)
 	}
 	all := upStages()
 	stages, err := selectStages(all, from, only, skip)
@@ -434,9 +439,12 @@ func cmdUp(a *app.App, args []string) int {
 	for i, s := range stages {
 		names[i] = s.name
 	}
+	applied := false
 	stop, code := runAll(a, names, func(i int) (int, outcome) {
 		s := stages[i]
 		code, out := runStage(a, r, s, &st, yes)
+		// Only a stage that applied code changes the lab: not a hand step or a backup.
+		applied = applied || (s.kind == skCheckApply && out == outApplied)
 		if code == 0 && !slices.Contains(st.Completed, s.name) {
 			st.Completed = append(st.Completed, s.name)
 		}
@@ -454,11 +462,14 @@ func cmdUp(a *app.App, args []string) int {
 		return code
 	}
 	fmt.Fprintf(a.Stdout, "\nanvil up: done, %d stages\n", len(stages))
+	if applied && !noSmoke {
+		return smokeAfter(a, r)
+	}
 	return 0
 }
 
 // upServices deploys named services: check, then apply where the check shows changes.
-func upServices(a *app.App, names []string, yes, dry bool) int {
+func upServices(a *app.App, names []string, yes, dry, noSmoke bool) int {
 	r, c, ok := Setup(a, dry)
 	if !ok {
 		return 1
@@ -475,6 +486,9 @@ func upServices(a *app.App, names []string, yes, dry bool) int {
 	if dry {
 		for _, t := range ts {
 			_, _ = checkThenApply(a, r, t, TargetOpts{}, nil)
+		}
+		if !noSmoke {
+			smokeAfter(a, r)
 		}
 		return 0
 	}
@@ -499,9 +513,18 @@ func upServices(a *app.App, names []string, yes, dry bool) int {
 	for i, t := range ts {
 		tnames[i] = t.Name
 	}
-	stop, code := runAll(a, tnames, func(i int) (int, outcome) { return checkThenApply(a, r, ts[i], TargetOpts{}, confirm) })
+	applied := false
+	stop, code := runAll(a, tnames, func(i int) (int, outcome) {
+		code, out := checkThenApply(a, r, ts[i], TargetOpts{}, confirm)
+		applied = applied || out == outApplied
+		return code, out
+	})
 	if code != 0 {
 		fmt.Fprintf(a.Stderr, "anvil up: %s stopped (exit %d). Resume: anvil up %s\n", ts[stop].Name, code, strings.Join(names[stop:], " "))
+		return code
 	}
-	return code
+	if applied && !noSmoke {
+		return smokeAfter(a, r)
+	}
+	return 0
 }

@@ -97,7 +97,7 @@ func TestUpSkipsApplyWhenChecksShowNoChanges(t *testing.T) {
 	if code := l.Run("", "up", "--only", "host,vms", "--yes"); code != 0 {
 		t.Fatalf("exit %d: %s", code, l.Output())
 	}
-	want = []string{"host ARGS=--skip-tags homepage --check --diff", "host ARGS=--skip-tags homepage", "vms ARGS=--check --diff", "vms"}
+	want = []string{"host ARGS=--skip-tags homepage --check --diff", "host ARGS=--skip-tags homepage", "vms ARGS=--check --diff", "vms", "test-smoke"}
 	if got := l.MakeCalls(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("calls %q, want %q", got, want)
 	}
@@ -111,7 +111,7 @@ func TestUpAsksOnce(t *testing.T) {
 		t.Fatalf("y is not up: exit %d, calls %q", code, l.MakeCalls())
 	}
 	// One "up" covers every stage, risky ones included.
-	if code := l.Run("up\n", "up", "--only", "vlans,vms"); code != 0 || len(l.MakeCalls()) != 4 {
+	if code := l.Run("up\n", "up", "--only", "vlans,vms"); code != 0 || len(l.MakeCalls()) != 5 {
 		t.Fatalf("exit %d, calls %q: %s", code, l.MakeCalls(), l.Output())
 	}
 }
@@ -263,7 +263,7 @@ func TestUpServices(t *testing.T) {
 		t.Fatalf("exit %d: %s", code, l.Output())
 	}
 	want = []string{"vm HOST=apps ARGS=--check --diff --tags caddy", "vm HOST=apps ARGS=--tags caddy",
-		"vm HOST=ragnarok ARGS=--check --diff --tags iptv", "vm HOST=ragnarok ARGS=--tags iptv"}
+		"vm HOST=ragnarok ARGS=--check --diff --tags iptv", "vm HOST=ragnarok ARGS=--tags iptv", "test-smoke"}
 	if got := l.MakeCalls(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("calls %q, want %q", got, want)
 	}
@@ -274,7 +274,7 @@ func TestUpServices(t *testing.T) {
 		t.Fatalf("risky: exit %d, calls %q", code, l.MakeCalls())
 	}
 	l.ResetCalls()
-	if code := l.Run("vlans\n", "up", "vlans", "--yes"); code != 0 || len(l.MakeCalls()) != 2 {
+	if code := l.Run("vlans\n", "up", "vlans", "--yes"); code != 0 || len(l.MakeCalls()) != 3 {
 		t.Fatalf("risky typed: exit %d, calls %q", code, l.MakeCalls())
 	}
 
