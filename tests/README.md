@@ -6,7 +6,7 @@ The tests are split into four layers. Each layer is a folder, and `tests/run.sh`
 | Layer | What it checks | Needs | Runs |
 |---|---|---|---|
 | `unit/` | Templates and roles rendered with a fixture site, scripts against local stubs, guard rules. A few seconds each. | Python, Ansible. macOS or Linux. | Every pull request |
-| `integration/` | The same code against real tools: loop devices, ZFS, LVM, nftables, apt, age and SQLite. | Linux with passwordless sudo. | Every pull request |
+| `integration/` | The same code against real tools: loop devices, ZFS, LVM, nftables, apt, age and SQLite. Real roles run twice on a stand-in VM (a systemd container), and the second run must change nothing. | Linux with passwordless sudo, Docker. | Every pull request |
 | `smoke/` | Read-only checks against the live lab after a change. | The lab and Vault. | After an apply, and nightly |
 | `e2e/` | A throwaway VM goes from blank to running, gets the smoke checks, and is deleted. | The lab and Vault. | Before a release |
 
