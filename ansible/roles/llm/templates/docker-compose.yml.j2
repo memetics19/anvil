@@ -21,9 +21,10 @@ services:
       - ollama
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
-      # Open WebUI keeps its own accounts (the first user becomes the admin). The gateway's
-      # single sign-on stands in front of it as well. No sign-ups from outside.
-      ENABLE_SIGNUP: "false"
+      # The gateway's single sign-on is the real gate: only a signed-in member of the lab
+      # group reaches this page. Open WebUI's own sign-up is left on so the first admin
+      # account (and any later one) can be made; nobody reaches it without passing Authentik.
+      ENABLE_SIGNUP: "true"
       WEBUI_URL: "https://llm.{{ gateway_domain }}"
       # No telemetry, no model list fetched from the internet.
       ANONYMIZED_TELEMETRY: "false"
