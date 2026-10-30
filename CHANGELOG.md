@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.23.0](https://github.com/memetics19/anvil/compare/v0.22.0...v0.23.0) (2026-10-30)
+
+
+### Features
+
+* **cli:** anvil test, and smoke tests after an apply and every night ([#159](https://github.com/memetics19/anvil/issues/159)) ([780eebe](https://github.com/memetics19/anvil/commit/780eebe4af978c295d349803e8004aed7c744af0))
+
+
+### Bug Fixes
+
+* **enclave:** stop fwupd's metadata refresh, it needs the internet ([#157](https://github.com/memetics19/anvil/issues/157)) ([b841864](https://github.com/memetics19/anvil/commit/b841864c82852c29ca0c914e2ddcee4ecbcb55e8))
+
 ## [0.22.0](https://github.com/memetics19/anvil/compare/v0.21.0...v0.22.0) (2026-10-30)
 
 
