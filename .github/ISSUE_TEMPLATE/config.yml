@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://memetics19.github.io/anvil/
+    about: Setup, every command and every service are described here.
+  - name: Report a security problem
+    url: https://github.com/memetics19/anvil/security/advisories/new
+    about: Report it privately, not in a public issue.

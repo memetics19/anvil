@@ -1,0 +1,36 @@
+name: Feature request
+description: Something anvil could do, or do better.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are welcome. Describe the problem first and the solution second: a clear problem
+        often has a simpler answer than the first one that comes to mind.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: What you would like
+      description: How you would like anvil to handle it. A command, an option, a role, a doc.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: Workarounds you use now, or other tools that do this.
+  - type: dropdown
+    id: help
+    attributes:
+      label: Would you open a pull request for it?
+      options:
+        - "Yes"
+        - "Maybe, with some pointers"
+        - "No"
