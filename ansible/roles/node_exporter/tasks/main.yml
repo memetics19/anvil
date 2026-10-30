@@ -33,11 +33,19 @@
         checksum: "sha256:{{ node_exporter_tarball_sha256 }}"
         mode: "0644"
 
+    # A check run downloads nothing, so there is nothing to unpack or install yet.
+    - name: Would install node_exporter
+      ansible.builtin.debug:
+        msg: "would install node_exporter {{ node_exporter_version }}"
+      changed_when: true
+      when: ansible_check_mode
+
     - name: Unpack the tarball
       ansible.builtin.unarchive:
         src: "/tmp/{{ node_exporter_dist }}.tar.gz"
         dest: /tmp
         remote_src: true
+      when: not ansible_check_mode
 
     - name: Install the binary
       ansible.builtin.copy:
@@ -48,6 +56,7 @@
         group: node_exporter
         mode: "0755"
       notify: Restart node_exporter
+      when: not ansible_check_mode
 
 - name: Ownership of the node_exporter binary
   ansible.builtin.file:
@@ -76,3 +85,15 @@
     name: node_exporter
     enabled: true
     state: started
+  # In check mode on a new host the binary and the unit are not there yet.
+  when: not (ansible_check_mode and node_exporter_installed.rc != 0)
+
+- name: Node_exporter answers on the lab address
+  ansible.builtin.uri:
+    url: "http://{{ node_exporter_listen_ip }}:{{ node_exporter_port }}/metrics"
+    return_content: false
+  register: node_exporter_up
+  retries: 10
+  delay: 2
+  until: node_exporter_up.status == 200
+  when: not ansible_check_mode

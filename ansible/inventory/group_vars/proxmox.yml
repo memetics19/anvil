@@ -1,4 +1,6 @@
 ansible_user: root
+# node_exporter on the host listens on its lab address.
+node_exporter_listen_ip: "{{ site.pve.ip }}"
 # Routed segments behind the host (role pve_segments): one firewall table for all of them,
 # applied by make enclave (tag firewall) and make vlans. The secrets enclave is the first
 # segment (role pve_enclave), then the VLANs below.
