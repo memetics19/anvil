@@ -47,11 +47,6 @@
 
 - name: Node exporter
   hosts: node_exporter
-  # The Proxmox host is in no earlier play of this playbook, so it needs the site dict here.
-  pre_tasks:
-    - name: Resolve the site dict once for this run
-      ansible.builtin.import_tasks: tasks/site.yml
-      tags: [always]
   roles:
     - role: node_exporter
       tags: [node_exporter]

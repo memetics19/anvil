@@ -35,7 +35,7 @@ check "runs as its own user, sandboxed" "grep -qx 'User=node_exporter' '$u' && g
 check "pinned by version and checksum" \
   "python3 -c 'import yaml; d=yaml.safe_load(open(\"ansible/roles/node_exporter/defaults/main.yml\"))
 assert d[\"node_exporter_version\"]!=\"1.0.1\" and len(d[\"node_exporter_tarball_sha256\"])==64'"
-check "every reachable host is in the group, the secrets enclave is not" \
+check "every reachable VM is in the group, the Proxmox host and the secrets enclave are not" \
   "python3 -c 'import yaml; g=yaml.safe_load(open(\"ansible/inventory/hosts.yml\"))
 def find(d):
     if isinstance(d,dict):
@@ -44,8 +44,12 @@ def find(d):
             r=find(v)
             if r is not None: return r
     return None
-h=set(find(g)); assert {\"frigate\",\"ragnarok\",\"netbird\",\"apps\",\"identity\",\"llm\",\"pve\"} <= h, h
-assert not ({\"vault\",\"vaultwarden\"} & h)'"
+h=set(find(g)); assert {\"frigate\",\"ragnarok\",\"netbird\",\"apps\",\"identity\",\"llm\"} <= h, h
+assert not ({\"vault\",\"vaultwarden\",\"pve\"} & h)'"
+check "the Proxmox host gets it from host.yml, tag node_exporter" \
+  "python3 -c 'import yaml; p=yaml.safe_load(open(\"ansible/playbooks/host.yml\"))[0]
+assert p[\"hosts\"]==\"proxmox\"; r=[x for x in p[\"roles\"] if isinstance(x,dict) and x.get(\"role\")==\"node_exporter\"]
+assert r and r[0][\"tags\"]==[\"node_exporter\"]'"
 
 [ "$fail" -eq 0 ] && echo "PASS: node_exporter"
 exit "$fail"
