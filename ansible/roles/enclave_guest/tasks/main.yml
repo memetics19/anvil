@@ -58,17 +58,32 @@
   loop: [fwupd-refresh.timer, fwupd-refresh.service]
   when: enclave_guest_fwupd.stat.exists
 
-- name: Did its last refresh fail
+# Masking a running timer leaves it failed (result "resources"), so each unit is checked
+# and cleared on its own: reset-failed refuses a unit that is not loaded.
+- name: Which fwupd units have failed
   ansible.builtin.command:
-    argv: [systemctl, is-failed, --quiet, fwupd-refresh.service]
+    argv: [systemctl, is-failed, --quiet, "{{ item }}"]
+  loop: [fwupd-refresh.timer, fwupd-refresh.service]
   register: enclave_guest_fwupd_failed
   changed_when: false
   failed_when: false
   check_mode: false
   when: enclave_guest_fwupd.stat.exists
 
-- name: Clear that failure
+- name: Clear those failures
   ansible.builtin.command:
-    argv: [systemctl, reset-failed, fwupd-refresh.service]
+    argv: [systemctl, reset-failed, "{{ item.item }}"]
+  loop: "{{ enclave_guest_fwupd_failed.results | default([]) | selectattr('rc', 'defined') | selectattr('rc', 'equalto', 0) | list }}"
+  loop_control:
+    label: "{{ item.item }}"
   changed_when: true
-  when: enclave_guest_fwupd.stat.exists and enclave_guest_fwupd_failed.rc == 0
+
+# Check mode skips the command above, so it reports the change here instead.
+- name: Would clear a failed fwupd unit
+  ansible.builtin.debug:
+    msg: "{{ item.item }} would be cleared"
+  loop: "{{ enclave_guest_fwupd_failed.results | default([]) | selectattr('rc', 'defined') | selectattr('rc', 'equalto', 0) | list }}"
+  loop_control:
+    label: "{{ item.item }}"
+  changed_when: true
+  when: ansible_check_mode
