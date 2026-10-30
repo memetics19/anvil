@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.20.0](https://github.com/memetics19/anvil/compare/v0.19.0...v0.20.0) (2026-10-30)
+
+
+### Features
+
+* stream media to home devices (home address + SMB share) ([#144](https://github.com/memetics19/anvil/issues/144)) ([df5f4db](https://github.com/memetics19/anvil/commit/df5f4db005b74e1b716b67040c4cdab1255184da))
+
+
+### Bug Fixes
+
+* **llm:** let the first admin account be created behind the gateway SSO ([#143](https://github.com/memetics19/anvil/issues/143)) ([506f10b](https://github.com/memetics19/anvil/commit/506f10bbc8fae8e893b4f2add1b9c867923574ad))
+* **media:** wait for Sonarr to load episodes before searching a season ([#142](https://github.com/memetics19/anvil/issues/142)) ([b143779](https://github.com/memetics19/anvil/commit/b143779ab97b5c930ca1dca6a9facd197a4c57f5))
+
 ## [0.19.0](https://github.com/memetics19/anvil/compare/v0.18.0...v0.19.0) (2026-10-29)
 
 
