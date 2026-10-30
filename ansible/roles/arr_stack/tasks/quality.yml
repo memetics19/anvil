@@ -6,6 +6,7 @@
     arr_stack_quality_policy:
       profile: "{{ arr_stack_quality_profile }}"
       min_resolution: "{{ arr_stack_quality_min_resolution }}"
+      prefer_resolution: "{{ arr_stack_quality_prefer_resolution | default('', true) }}"
       exclude: "{{ arr_stack_quality_exclude }}"
       min_sizes: "{{ arr_stack_quality_min_sizes }}"
       apps: >-
