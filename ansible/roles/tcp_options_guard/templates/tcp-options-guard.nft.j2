@@ -1,0 +1,12 @@
+#!/usr/sbin/nft -f
+# Managed by anvil (ansible/roles/tcp_options_guard). IPv4 TCP with IP options (a header
+# longer than 5 words) is dropped before TCP sees it (CVE-2026-98432). One table, replaced
+# in one transaction.
+table inet {{ tcp_options_guard_table }}
+delete table inet {{ tcp_options_guard_table }}
+table inet {{ tcp_options_guard_table }} {
+	chain prerouting {
+		type filter hook prerouting priority raw; policy accept;
+		ip protocol tcp ip hdrlength != 5 counter drop
+	}
+}

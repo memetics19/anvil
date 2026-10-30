@@ -6,6 +6,35 @@
       tags: [always]
   roles:
     - pve_host
+    # Drop IPv4 TCP with IP options (CVE-2026-98432).
+    - role: tcp_options_guard
+      tags: [tcp_options_guard]
     # Host metrics for the monitoring stack (docs/monitoring.md), on the host's lab address.
     - role: node_exporter
       tags: [node_exporter]
+
+# The other cluster members (site.cluster.members, provisioned machines reached at their
+# static address as root, as in cluster.yml) get the TCP options guard too. Not pve_host:
+# that one is the main host's configuration.
+- name: The cluster members
+  hosts: proxmox
+  gather_facts: false
+  tasks:
+    - name: Add them
+      tags: [always]
+      run_once: true
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: cluster_members
+        ansible_host: "{{ site.provision.machines[item].network.cidr | split('/') | first }}"
+        ansible_user: root
+      loop: "{{ site.cluster.members | default([]) }}"
+      # Only the inventory of this run: nothing on a host changes.
+      changed_when: false
+
+- name: Cluster members' TCP options guard
+  hosts: cluster_members
+  roles:
+    # Drop IPv4 TCP with IP options (CVE-2026-98432).
+    - role: tcp_options_guard
+      tags: [tcp_options_guard]

@@ -39,7 +39,7 @@ They only read. Ansible playbooks run with `--check`, and each command in them o
 |---|---|
 | `gateway` | Every service name answers over HTTPS. A name behind single sign-on sends a visitor who is not logged in to the login page. |
 | `dns` | Pi-hole points every gateway name at the gateway, resolves a public name and blocks an ad domain. |
-| `hosts` | On every host: no failed systemd unit, no filesystem 95% full, no container restarting or unhealthy. |
+| `hosts` | On every host: no failed systemd unit, no filesystem 95% full, no container restarting or unhealthy, and the TCP options guard loaded. |
 | `enclave` | Vault is unsealed. No other VM can open a connection to Vault or Vaultwarden, while each of them reaches the gateway. |
 | `media` | NFS exports exactly the movies and TV folders, and SMB offers exactly the Movies and TV shares. |
 

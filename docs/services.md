@@ -996,6 +996,33 @@ age -d -i <(security find-generic-password -s homelab -a backup-age-identity -w)
 make vm HOST=identity ARGS="--tags authentik"   # checks /-/health/ready/
 ```
 
+## TCP options guard
+
+Every VM, the Proxmox host and the other cluster members drop incoming IPv4 TCP packets
+that carry IP options (role `tcp_options_guard`). It is a mitigation for CVE-2026-98432, a
+use-after-free in the kernel's TCP handshake that any peer can reach.
+
+The kernel keeps a SYN's IP options to build its reply. It can free them while another CPU
+still reads them. It only keeps options when the SYN has some, so with the guard there is
+nothing to free. Normal traffic never sends TCP with IP options.
+
+The rule sits in an nftables table, `anvil_tcp_options_guard`, on the prerouting hook at raw
+priority. That is before conntrack and Docker, so it covers the containers too. A boot unit
+loads it before the network comes up.
+
+It does not replace a patched kernel. The bug is still in the kernel until the hosts run
+a fixed one. The guard costs nothing, so it stays after that.
+
+Checks:
+
+- `tests/unit/test_tcp_options_guard.sh`: the rule, and that every host gets it
+- `tests/integration/test_role_converge.sh`: a plain connection works and a SYN with IP
+  options is dropped
+- `anvil test smoke hosts`: the guard is loaded on every host
+
+By hand, from a lab VM: `python3 tests/fixtures/tcp_opts_probe.py <address> 22` prints
+`plain: connected` and `with IP options: timed out`.
+
 ## Secrets enclave
 
 Vault and Vaultwarden live on their own network: the SDN vnet `secrets`, in the simple
