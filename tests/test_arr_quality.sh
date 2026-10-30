@@ -4,8 +4,9 @@
 # The quality policy (role arr_stack, files/arr-quality.py) against a fake Sonarr and Radarr
 # on localhost (tests/fixtures/fake_arr_quality.py):
 #  - check mode changes nothing;
-#  - the profile 1080p+ takes 1080p and 2160p, never 720p, SD, remuxes or disc images, and
-#    its cutoff is the first 1080p quality (a Sonarr group, a Radarr quality);
+#  - the profile 1080p+ takes 1080p and 2160p, never 720p, SD, remuxes or disc images;
+#  - 1080p is preferred: 2160p ranks below every 1080p quality, and the cutoff is the
+#    lowest allowed quality, so whatever is taken is final;
 #  - the 2160p minimum sizes are set, other definitions and profiles are left alone;
 #  - a second run changes nothing, a profile edited by hand is put back;
 #  - the role's tasks run through Ansible, and no key shows up in the output.
@@ -44,7 +45,8 @@ done
 policy=$(python3 -c '
 import json, sys
 d, ps, pr = sys.argv[1], sys.argv[2], sys.argv[3]
-print(json.dumps({"profile": "1080p+", "min_resolution": 1080, "exclude": ["remux", "br-disk", "raw-hd"],
+print(json.dumps({"profile": "1080p+", "min_resolution": 1080, "prefer_resolution": 1080,
+                  "exclude": ["remux", "br-disk", "raw-hd"],
                   "min_sizes": {"WEBDL-2160p": 10, "WEBRip-2160p": 10},
                   "apps": {"sonarr": {"url": f"http://127.0.0.1:{ps}", "config_xml": f"{d}/sonarr/config.xml"},
                            "radarr": {"url": f"http://127.0.0.1:{pr}", "config_xml": f"{d}/radarr/config.xml"}}}))
@@ -63,8 +65,14 @@ out=$(python3 "$script" "$policy")
   ok "Sonarr 1080p+: 1080p and 2160p, no 720p, SD or remux" || bad_ "Sonarr allowed: $(allowed sonarr)"
 [ "$(allowed radarr)" = "['Bluray-1080p', 'WEBDL-1080p', 'WEBDL-2160p']" ] &&
   ok "Radarr 1080p+: no remux, no BR-DISK" || bad_ "Radarr allowed: $(allowed radarr)"
-[ "$(st sonarr "${prof}[\"cutoff\"]")" = 9 ] && [ "$(st radarr "${prof}[\"cutoff\"]")" = 3 ] && [ "$(st sonarr "${prof}[\"upgradeAllowed\"]")" = True ] &&
-  ok "cutoff is the first 1080p quality, upgrades on" || bad_ "cutoff: $(st sonarr "${prof}[\"cutoff\"]") $(st radarr "${prof}[\"cutoff\"]")"
+[ "$(st sonarr "${prof}[\"cutoff\"]")" = 1003 ] && [ "$(st radarr "${prof}[\"cutoff\"]")" = 18 ] && [ "$(st sonarr "${prof}[\"upgradeAllowed\"]")" = True ] &&
+  ok "cutoff is the lowest allowed quality (2160p now), so any grab is final" || bad_ "cutoff: $(st sonarr "${prof}[\"cutoff\"]") $(st radarr "${prof}[\"cutoff\"]")"
+# ranked: the names of the allowed items, lowest first
+ranked() { st "$1" "[(i.get(\"name\") or i[\"quality\"][\"name\"]) for i in ${prof}[\"items\"] if i[\"allowed\"]]"; }
+[ "$(ranked sonarr)" = "['WEB 2160p', 'HDTV-1080p', 'WEB 1080p', 'Bluray-1080p']" ] &&
+  [ "$(ranked radarr)" = "['WEBDL-2160p', 'WEBDL-1080p', 'Bluray-1080p']" ] &&
+  ok "1080p preferred: 2160p ranks below every 1080p quality" || bad_ "ranking: $(ranked sonarr) $(ranked radarr)"
+[ "$(st sonarr "len(${prof}[\"items\"])")" = 9 ] && ok "every quality is still in the profile" || bad_ "items lost"
 [ "$(st sonarr '[d["minSize"] for d in s["defs"]]')" = "[4, 10, 10]" ] &&
   ok "2160p minimum 10 MB/min, 1080p untouched" || bad_ "sizes: $(st sonarr '[d["minSize"] for d in s["defs"]]')"
 [ "$(st sonarr '[p["upgradeAllowed"] for p in s["profiles"] if p["name"]=="HD-1080p"]')" = "[False]" ] &&

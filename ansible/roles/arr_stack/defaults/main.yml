@@ -43,6 +43,10 @@ arr_stack_api:
 arr_stack_quality_profile: "1080p+"
 arr_stack_quality_min_resolution: 1080
 arr_stack_quality_exclude: [remux, br-disk, raw-hd]
+# Prefer this resolution over the higher allowed ones: a 4K release is taken only when no
+# 1080p one exists. A 4K season can be ten times the size and take a day on a slow line.
+# Empty: the highest quality wins.
+arr_stack_quality_prefer_resolution: 1080
 # Minimum sizes in MB per minute. 4K web releases in x265 run about 10 to 20 MB/min,
 # under the apps' default minimum of 35, which would reject them as fakes.
 arr_stack_quality_min_sizes:

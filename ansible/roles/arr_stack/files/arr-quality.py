@@ -6,7 +6,7 @@ Usage: arr-quality.py [--check] <policy as JSON>
 
 The policy: {"apps": {"<app>": {"url": "http://...", "config_xml": "<path>"}},
              "profile": "<name>", "min_resolution": 1080, "exclude": ["remux", ...],
-             "min_sizes": {"WEBDL-2160p": 10, ...}}
+             "prefer_resolution": 1080, "min_sizes": {"WEBDL-2160p": 10, ...}}
 
 For each app:
   - the quality profile <profile> allows every quality of at least min_resolution whose
@@ -14,6 +14,10 @@ For each app:
     allowed quality of exactly min_resolution, so a release at that resolution is final.
     It is created when missing and corrected when it differs. Other profiles and the
     series or movies are never touched.
+  - with prefer_resolution, the allowed qualities above it rank below it: the app takes
+    a release at that resolution when one exists, and a higher one only when none does
+    (on a slow line a 4K release can be ten times the size). The cutoff is then the
+    lowest allowed quality, so whatever is taken is final and is not replaced.
   - the quality definitions in min_sizes get that minimum size (MB per minute).
 Each app's API key is read from its config.xml on this host, sent only as a header, and
 never printed. --check prints what would change and changes nothing.
@@ -69,7 +73,7 @@ def item_id(item):
     return item["quality"]["id"] if item.get("quality") else item["id"]
 
 
-def desired_profile(schema, name, min_res, exclude):
+def desired_profile(schema, name, min_res, exclude, prefer=None):
     p = json.loads(json.dumps(schema))
     cutoff = None
     # The schema lists items from the lowest quality to the highest.
@@ -81,8 +85,20 @@ def desired_profile(schema, name, min_res, exclude):
             cutoff = item_id(it)
     if cutoff is None:
         raise SystemExit(f"arr-quality: no quality of exactly {min_res}p is allowed, so there is no cutoff")
+    if prefer:
+        # Allowed qualities above the preferred resolution move just below the lowest allowed
+        # one, so every preferred quality outranks them. The cutoff is the new lowest allowed.
+        high = [it for it in p["items"] if it["allowed"] and max((q.get("resolution") or 0) for q in qualities(it)) > prefer]
+        rest = [it for it in p["items"] if not any(it is h for h in high)]
+        at = next(i for i, it in enumerate(rest) if it["allowed"])
+        p["items"] = rest[:at] + high + rest[at:]
+        cutoff = item_id(next(it for it in p["items"] if it["allowed"]))
     p.update(name=name, upgradeAllowed=True, cutoff=cutoff)
     return p
+
+
+def order(p):
+    return [item_name(i) for i in p["items"]]
 
 
 def allowed_names(p):
@@ -97,12 +113,13 @@ def main(args):
         raise SystemExit(__doc__)
     pol = json.loads(args[0])
     name, min_res = pol["profile"], int(pol["min_resolution"])
+    prefer = int(pol["prefer_resolution"]) if pol.get("prefer_resolution") else None
     exclude = [w.lower() for w in pol.get("exclude", [])]
     word = "would" if check else "do:"
     changes = 0
     for app_name, a in sorted(pol["apps"].items()):
         app = App(app_name, a["url"], api_key(a["config_xml"]))
-        want = desired_profile(app.call("GET", "/qualityprofile/schema"), name, min_res, exclude)
+        want = desired_profile(app.call("GET", "/qualityprofile/schema"), name, min_res, exclude, prefer)
         have = next((p for p in app.call("GET", "/qualityprofile") if p["name"] == name), None)
         if have is None:
             print(f"{app_name}: {word} create profile {name}: {', '.join(allowed_names(want))}")
@@ -110,7 +127,7 @@ def main(args):
             if not check:
                 app.call("POST", "/qualityprofile", want)
         elif (allowed_names(have) != allowed_names(want) or have.get("cutoff") != want["cutoff"]
-              or not have.get("upgradeAllowed")):
+              or not have.get("upgradeAllowed") or order(have) != order(want)):
             print(f"{app_name}: {word} correct profile {name}: {', '.join(allowed_names(want))}")
             changes += 1
             if not check:
