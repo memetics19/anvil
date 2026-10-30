@@ -1,0 +1,77 @@
+name: Bug report
+description: Something in anvil does not work as the docs say.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Before you paste anything, take out what belongs to your lab:
+        IP and MAC addresses, domain names, host names, API keys, tokens and passwords.
+        Replace them with placeholders such as `192.0.2.10` or `example.com`.
+  - type: input
+    id: version
+    attributes:
+      label: anvil version
+      description: The output of `anvil --version`.
+      placeholder: anvil 0.19.0
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI (anvil)
+        - Provisioning (bare metal, netboot)
+        - Proxmox host or cluster
+        - Terraform (VMs)
+        - Ansible role or service
+        - Gateway, DNS or single sign-on
+        - Secrets (Vault, Vaultwarden)
+        - Docs
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran and what you saw. Paste the command and its output.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce
+      description: The smallest set of steps that shows the problem.
+      placeholder: |
+        1. anvil check apps
+        2. ...
+  - type: textarea
+    id: doctor
+    attributes:
+      label: anvil doctor
+      description: The output of `anvil doctor`, with your lab's values taken out.
+      render: shell
+  - type: input
+    id: env
+    attributes:
+      label: Where you run anvil
+      description: The operating system of the machine you run anvil on, and the Proxmox VE version.
+      placeholder: macOS 15 (arm64), Proxmox VE 8.4
+  - type: checkboxes
+    id: clean
+    attributes:
+      label: Before you submit
+      options:
+        - label: I took out every address, name, key and password from my lab.
+          required: true
+        - label: I searched the open issues for the same problem.
+          required: true
