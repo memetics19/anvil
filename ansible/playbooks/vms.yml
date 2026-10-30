@@ -4,7 +4,7 @@
 # Run: make vms ARGS="--check --diff"   or one VM: make vm HOST=frigate
 # Tags: base, docker, cloudflared, node_exporter, frigate, docmost, arr, iptv_epg, filestash, iptv,
 # netbird_peer, netbird_home, redis, ntfy, pulse, pulse_agent, grow_disk and rotate (only when named), nfs_media, apt_repo, netbird_server, pihole, homepage,
-# vaultwarden, authentik, caddy, docs, firewall. The tag docs alone copies only the static sites Caddy
+# vaultwarden, authentik, caddy, docs, firewall, tcp_options_guard. The tag docs alone copies only the static sites Caddy
 # serves (make docs-publish). The tag homepage alone also runs the pieces other roles keep
 # for the dashboard (ARR API keys into Vault on ragnarok, the Frigate viewer login, Pi-hole's
 # app password).
@@ -28,6 +28,13 @@
   roles:
     - role: guest_base
       tags: [base]
+
+# Every VM, the enclave's too: drop IPv4 TCP with IP options (CVE-2026-98432).
+- name: TCP options guard
+  hosts: guests:vault_servers:apps_servers:vaultwarden_servers:identity_servers:llm_servers
+  roles:
+    - role: tcp_options_guard
+      tags: [tcp_options_guard]
 
 - name: Docker
   hosts: guests:identity_servers:llm_servers

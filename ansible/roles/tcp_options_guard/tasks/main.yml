@@ -1,0 +1,70 @@
+# The guard is checked with nft -c before it is installed, and it can only drop TCP that
+# carries IP options, so it cannot cut SSH or a service off.
+- name: Nftables
+  ansible.builtin.apt:
+    name: nftables
+    state: present
+
+- name: Config directory
+  ansible.builtin.file:
+    path: "{{ tcp_options_guard_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: TCP options guard (checked with nft -c before it is installed)
+  ansible.builtin.template:
+    src: tcp-options-guard.nft.j2
+    dest: "{{ tcp_options_guard_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: nft -c -f %s
+  register: tcp_options_guard_rules
+
+- name: Boot unit for the guard
+  ansible.builtin.template:
+    src: tcp-options-guard.service.j2
+    dest: "/etc/systemd/system/{{ tcp_options_guard_unit }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  register: tcp_options_guard_service
+
+- name: The guard is loaded at boot
+  ansible.builtin.systemd_service:
+    name: "{{ tcp_options_guard_unit }}"
+    enabled: true
+    daemon_reload: "{{ tcp_options_guard_service is changed }}"
+  when: not (ansible_check_mode and tcp_options_guard_service is changed)
+
+- name: Is the guard loaded
+  ansible.builtin.command:
+    argv: [nft, list, table, inet, "{{ tcp_options_guard_table }}"]
+  register: tcp_options_guard_live
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Load the guard (one transaction)
+  ansible.builtin.command:
+    argv: [nft, -f, "{{ tcp_options_guard_file }}"]
+  changed_when: true
+  when: not ansible_check_mode and (tcp_options_guard_rules is changed or tcp_options_guard_live.rc != 0)
+
+# Check mode skips the load above, so it reports it here instead.
+- name: Would load the guard
+  ansible.builtin.debug:
+    msg: the guard would be loaded
+  changed_when: true
+  when: ansible_check_mode and tcp_options_guard_live.rc != 0
+
+- name: The guard drops TCP with IP options
+  ansible.builtin.command:
+    argv: [nft, list, chain, inet, "{{ tcp_options_guard_table }}", prerouting]
+  register: tcp_options_guard_chain
+  changed_when: false
+  check_mode: false
+  failed_when: "'ip hdrlength != 5' not in tcp_options_guard_chain.stdout or 'drop' not in tcp_options_guard_chain.stdout"
+  when: not ansible_check_mode

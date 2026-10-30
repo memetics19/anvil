@@ -1,0 +1,13 @@
+# Drops incoming IPv4 TCP packets that carry IP options, before TCP sees them. Against
+# CVE-2026-98432: the kernel keeps a SYN's IP options to build its reply, and can free them
+# while another CPU still reads them, a use-after-free any peer can reach during the
+# handshake. The kernel only keeps options when the SYN has some (tcp_v4_save_options), so
+# with this guard there is nothing to free. Normal traffic never sends TCP with IP options.
+# It costs nothing, so it stays after the kernels are fixed.
+#
+# An nftables table on the prerouting hook at raw priority: before conntrack, routing and
+# Docker, so it also covers the containers, which share the host's kernel. Loaded at boot
+# before the network comes up.
+tcp_options_guard_file: /etc/anvil/tcp-options-guard.nft
+tcp_options_guard_table: anvil_tcp_options_guard
+tcp_options_guard_unit: tcp-options-guard

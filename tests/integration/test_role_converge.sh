@@ -111,6 +111,17 @@ if converge smb_media smb_media; then
     "[ \"\$(in_vm ls /home/ubuntu/media/movies)\" = film.txt ]"
 fi
 
+# --- tcp_options_guard: TCP with IP options is dropped, plain TCP is not (CVE-2026-98432) ---
+# Loopback traffic passes prerouting too, so the probe runs inside the stand-in VM.
+if converge tcp_options_guard tcp_options_guard; then
+  docker cp tests/fixtures/tcp_opts_probe.py "$name:/tmp/probe.py"
+  in_vm python3 /tmp/probe.py 127.0.0.1 22 >"$tmp/probe" 2>&1
+  check "tcp_options_guard: a plain connection works" "grep -qx 'plain: connected' '$tmp/probe'"
+  check "tcp_options_guard: a SYN with IP options is dropped" "grep -qx 'with IP options: timed out' '$tmp/probe'"
+  check "tcp_options_guard: its counter saw it" \
+    "in_vm nft list chain inet anvil_tcp_options_guard prerouting | grep -qE 'counter packets [1-9]'"
+fi
+
 # --- port_guard: on, then off -------------------------------------------------------------------
 in_vm systemd-run --unit guarded-app python3 -m http.server 18080 --bind 0.0.0.0 >/dev/null
 if converge port_guard "port_guard on" '{"port_guard_ports": [18080]}'; then
