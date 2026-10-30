@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/memetics19/anvil/cli/internal/app"
 	"github.com/memetics19/anvil/cli/internal/testlab"
@@ -29,6 +30,8 @@ type fakeArr struct {
 	badKey   bool
 	addError int
 	profiles string // JSON array for qualityprofile; empty: Any, HD-1080p, Ultra-HD
+	epCalls  int    // how many times the episode list was asked for
+	epDelay  int    // return no episodes for the first epDelay calls (Sonarr still loading)
 }
 
 func (f *fakeArr) server(t *testing.T) *httptest.Server {
@@ -71,6 +74,14 @@ func (f *fakeArr) server(t *testing.T) *httptest.Server {
 		case strings.HasSuffix(p, "/lookup"):
 			_, _ = io.WriteString(w, f.lookup)
 		case p == "episode":
+			f.mu.Lock()
+			f.epCalls++
+			loaded := f.epCalls > f.epDelay
+			f.mu.Unlock()
+			if !loaded {
+				_, _ = io.WriteString(w, `[]`)
+				break
+			}
 			_, _ = io.WriteString(w, `[{"id":101,"seasonNumber":1},{"id":102,"seasonNumber":1},{"id":201,"seasonNumber":2}]`)
 		case p == "qualityprofile":
 			if f.profiles != "" {
@@ -268,6 +279,10 @@ func TestMediaGetSeries(t *testing.T) {
 }
 
 func TestMediaGetSeriesSeason(t *testing.T) {
+	// Do not really wait for Sonarr to load episodes.
+	defer func(w, p time.Duration) { episodeWait, episodePoll = w, p }(episodeWait, episodePoll)
+	episodeWait, episodePoll = 2*time.Second, time.Millisecond
+
 	seasons := `"seasons":[{"seasonNumber":0},{"seasonNumber":1},{"seasonNumber":2}]`
 	lookup := `[{"title":"The Expanse","year":2015,"tvdbId":280619,` + seasons + `}]`
 
@@ -331,6 +346,20 @@ func TestMediaGetSeriesSeason(t *testing.T) {
 	}
 	if sonarr4.posts["command"][0]["seasonNumber"] != float64(2) {
 		t.Errorf("prompt season = %v", sonarr4.posts["command"][0])
+	}
+
+	// Sonarr loads the episodes a moment after the add: the first look sees none, so it
+	// waits and looks again, then searches the season (no "has no episodes" error).
+	sonarr5 := &fakeArr{tv: true, lookup: lookup, free: 200 << 30, epDelay: 1}
+	l5 := mediaLab(t, &fakeArr{}, sonarr5)
+	if code := l5.Run("", "media", "get", "the", "expanse", "--tv", "--season", "1"); code != 0 {
+		t.Fatalf("delayed episodes: exit %d: %s", code, l5.Err.String())
+	}
+	if len(sonarr5.posts["command"]) != 1 || sonarr5.posts["command"][0]["name"] != "SeasonSearch" {
+		t.Errorf("delayed episodes: command = %v", sonarr5.posts["command"])
+	}
+	if sonarr5.epCalls < 2 {
+		t.Errorf("did not wait and retry: epCalls = %d", sonarr5.epCalls)
 	}
 }
 

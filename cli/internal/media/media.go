@@ -541,23 +541,43 @@ func (c arr) chooseSeason(a *app.App, it item, o mediaOpts) (int, bool) {
 	return 0, false
 }
 
-// searchSeason monitors a season's episodes and searches the indexers for them.
+// How long searchSeason waits for Sonarr to load a new series' episodes, and how often it
+// checks. Tests set these to near zero.
+var (
+	episodeWait = 90 * time.Second
+	episodePoll = 3 * time.Second
+)
+
+// searchSeason monitors a season's episodes and searches the indexers for them. Sonarr loads
+// a new series' episodes from its metadata source a few seconds after the add, so this waits
+// for the season's episodes to appear before monitoring and searching them.
 func (c arr) searchSeason(seriesID, season int) error {
-	var eps []struct {
-		ID     int `json:"id"`
-		Season int `json:"seasonNumber"`
-	}
-	if err := c.do("GET", fmt.Sprintf("episode?seriesId=%d", seriesID), nil, &eps); err != nil {
-		return err
-	}
 	var ids []int
-	for _, e := range eps {
-		if e.Season == season {
-			ids = append(ids, e.ID)
+	deadline := time.Now().Add(episodeWait)
+	for {
+		var eps []struct {
+			ID     int `json:"id"`
+			Season int `json:"seasonNumber"`
 		}
-	}
-	if len(ids) == 0 {
-		return fmt.Errorf("season %d has no episodes", season)
+		if err := c.do("GET", fmt.Sprintf("episode?seriesId=%d", seriesID), nil, &eps); err != nil {
+			return err
+		}
+		ids = ids[:0]
+		for _, e := range eps {
+			if e.Season == season {
+				ids = append(ids, e.ID)
+			}
+		}
+		if len(ids) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			if len(eps) > 0 {
+				return fmt.Errorf("season %d has no episodes (does the series have it?)", season)
+			}
+			return fmt.Errorf("Sonarr has not loaded the episodes yet; run the same command again in a minute")
+		}
+		time.Sleep(episodePoll)
 	}
 	if err := c.do("PUT", "episode/monitor", map[string]any{"episodeIds": ids, "monitored": true}, nil); err != nil {
 		return err
