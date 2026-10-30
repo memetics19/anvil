@@ -41,3 +41,34 @@
     enabled: true
     state: "{{ 'restarted' if enclave_guest_timesyncd is changed else 'started' }}"
   changed_when: enclave_guest_timesyncd is changed
+
+# fwupd's metadata refresh downloads from the internet, which the enclave has none of. It
+# retries, fails and shows as a failed unit (tests/smoke/test_hosts.sh). The timer and the
+# service are stopped and masked, and a last failure is cleared.
+- name: Is fwupd's refresh timer installed
+  ansible.builtin.stat:
+    path: /usr/lib/systemd/system/fwupd-refresh.timer
+  register: enclave_guest_fwupd
+
+- name: No fwupd metadata refresh (it needs the internet)
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    masked: true
+  loop: [fwupd-refresh.timer, fwupd-refresh.service]
+  when: enclave_guest_fwupd.stat.exists
+
+- name: Did its last refresh fail
+  ansible.builtin.command:
+    argv: [systemctl, is-failed, --quiet, fwupd-refresh.service]
+  register: enclave_guest_fwupd_failed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: enclave_guest_fwupd.stat.exists
+
+- name: Clear that failure
+  ansible.builtin.command:
+    argv: [systemctl, reset-failed, fwupd-refresh.service]
+  changed_when: true
+  when: enclave_guest_fwupd.stat.exists and enclave_guest_fwupd_failed.rc == 0
