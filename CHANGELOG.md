@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.23.1](https://github.com/memetics19/anvil/compare/v0.23.0...v0.23.1) (2026-10-30)
+
+
+### Bug Fixes
+
+* **enclave:** clear a failed fwupd timer after masking it ([#160](https://github.com/memetics19/anvil/issues/160)) ([be580d7](https://github.com/memetics19/anvil/commit/be580d789c4dac14401602a04d9648998aacf287))
+* **security:** drop IPv4 TCP with IP options on every host (CVE-2026-98432) ([#161](https://github.com/memetics19/anvil/issues/161)) ([f38ab66](https://github.com/memetics19/anvil/commit/f38ab6627f1aa1671305c9207e4d81462c94fd7d))
+
 ## [0.23.0](https://github.com/memetics19/anvil/compare/v0.22.0...v0.23.0) (2026-10-30)
 
 
