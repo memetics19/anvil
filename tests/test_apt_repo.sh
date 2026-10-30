@@ -101,7 +101,7 @@ site() { echo "$dir/site/current"; }
 if pub && grep -q "published 10 packages" "$tmp/out"; then ok "the first run publishes anvil v0.1.0 and v0.2.0 and pulse v2.1.0, three packages, amd64 and arm64"; else bad_ "first run"; cat "$tmp/out"; fi
 check "a release without .deb files is skipped from then on" "[ -e '$dir/state/no-deb/memetics19_anvil_v0.3.0_anvil' ] && [ -e '$dir/state/no-deb/memetics19_pulse_v1.0.0_pulse-agent' ]"
 check "each package has its own pool directory" "[ -f '$dir/pool/main/p/pulse-agent/pulse-agent_2.1.0_arm64.deb' ] && [ -f '$dir/pool/main/a/anvil/anvil_0.2.0_amd64.deb' ]"
-check "an rc tag is ignored" "! ls '$dir/pool/main/a/anvil' | grep -q rc"
+check "an rc tag is ignored" "! grep -q rc <<<\"\$(ls '$dir/pool/main/a/anvil')\""
 check "InRelease verifies with the published key" "gpgv --keyring '$(site)/key.gpg' '$(site)/dists/stable/InRelease'"
 check "Release.gpg verifies with the published key" "gpgv --keyring '$(site)/key.gpg' '$(site)/dists/stable/Release.gpg' '$(site)/dists/stable/Release'"
 check "the key is also published under the first name, anvil.gpg" "cmp -s '$(site)/key.gpg' '$(site)/anvil.gpg' && cmp -s '$(site)/key.asc' '$(site)/anvil.asc'"
@@ -114,11 +114,16 @@ mkdir -p "$a/lists/partial" "$a/cache/archives/partial" "$a/etc/sources.list.d" 
 echo "deb [signed-by=$(site)/key.gpg arch=amd64] file://$(site) stable main" >"$a/etc/sources.list"
 aptx() { apt-get -o Dir::Etc="$a/etc" -o Dir::State::Lists="$a/lists" -o Dir::Cache="$a/cache" \
   -o Dir::State::status=/dev/null -o Debug::NoLocking=1 -o APT::Architecture=amd64 "$@"; }
+# apt_sim <line start> <packages...>: a simulated install, captured whole and then searched.
+# Piped straight into grep -q, grep stopped at the first match while apt-get was still
+# writing, apt-get died of SIGPIPE, and pipefail turned that into a random failure.
+# shellcheck disable=SC2329  # called through check's eval
+apt_sim() { local want=$1 out; shift; out=$(aptx -s install "$@" 2>/dev/null) && grep -qF -- "$want" <<<"$out"; }
 if aptx update >"$tmp/apt.log" 2>&1 && ! grep -qiE 'NO_PUBKEY|not signed|BADSIG|W: |E: ' "$tmp/apt.log"; then
   ok "apt-get update accepts the signed repository"
 else bad_ "apt-get update"; cat "$tmp/apt.log"; fi
-check "apt offers the newest anvil, 0.2.0" "aptx -s install anvil 2>/dev/null | grep -q 'Inst anvil (0.2.0'"
-check "apt offers pulse and pulse-agent, 2.1.0" "aptx -s install pulse pulse-agent 2>/dev/null | grep -q 'Inst pulse (2.1.0' && aptx -s install pulse-agent 2>/dev/null | grep -q 'Inst pulse-agent (2.1.0'"
+check "apt offers the newest anvil, 0.2.0" "apt_sim 'Inst anvil (0.2.0' anvil"
+check "apt offers pulse and pulse-agent, 2.1.0" "apt_sim 'Inst pulse (2.1.0' pulse pulse-agent && apt_sim 'Inst pulse-agent (2.1.0' pulse-agent"
 
 # 2. nothing new, and --check
 first=$(cur)
@@ -140,7 +145,7 @@ cp "$tmp/good.deb" "$rel/v0.4.0/anvil_0.4.0_amd64.deb"
 if pub && grep -q "published 12 packages" "$tmp/out" && [ "$(cur)" != "$first" ]; then ok "a new release is added and published"; else bad_ "new release"; cat "$tmp/out"; fi
 check "the previous tree is kept for clients mid-update" "[ -d '$dir/site/$first' ]"
 # sources.list points at site/current, which now names the new tree.
-check "apt now offers 0.4.0" "aptx update && aptx -s install anvil 2>/dev/null | grep -q 'Inst anvil (0.4.0'"
+check "apt now offers 0.4.0" "aptx update && apt_sim 'Inst anvil (0.4.0' anvil"
 
 [ "$fail" = 0 ] && echo "PASS: apt repository" || echo "FAIL: apt repository"
 exit "$fail"
