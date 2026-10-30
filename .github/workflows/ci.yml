@@ -61,6 +61,8 @@ jobs:
         run: tests/test_gateway.sh
       - name: LLM test
         run: tests/test_llm.sh
+      - name: SMB media test
+        run: tests/test_smb_media.sh
       - name: Port guard test
         run: tests/test_port_guard.sh
       - name: Proxmox single sign-on test
