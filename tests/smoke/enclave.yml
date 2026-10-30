@@ -1,0 +1,57 @@
+# The secrets enclave is closed to the other VMs, for tests/smoke/test_enclave.sh. Each VM
+# outside it tries Vault's and Vaultwarden's ports, and every try must fail. Read-only: a
+# try only opens a TCP connection. Labels name the service and port, never the address.
+- name: The enclave is closed to the other VMs
+  hosts: guests:apps_servers:identity_servers:llm_servers
+  gather_facts: false
+  pre_tasks:
+    - name: Resolve the site dict once for this run
+      ansible.builtin.import_tasks: ../../ansible/playbooks/tasks/site.yml
+  tasks:
+    # The control: this VM reaches the gateway. Without it, a VM with a broken network would
+    # pass, since every try below would fail for the wrong reason.
+    - name: This VM reaches the gateway
+      ansible.builtin.wait_for:
+        host: "{{ site.hosts.apps.ip }}"
+        port: 443
+        timeout: 5
+      check_mode: false
+
+    - name: Try each enclave port (every try must fail)
+      vars:
+        smoke_vault_ips: >-
+          {{ [site.hosts.vault.ip]
+             + ([site.hosts.vault.lab_ip] if site.hosts.vault.lab_ip is defined
+                and not (site.hosts.vault.lab_nic_retired | default(false) | bool) else []) }}
+        smoke_targets: >-
+          {%- set out = [] -%}
+          {%- for ip in smoke_vault_ips -%}
+          {%- for p in [22, 8200] -%}
+          {%- set _ = out.append({'name': 'vault', 'host': ip, 'port': p}) -%}
+          {%- endfor -%}
+          {%- endfor -%}
+          {%- for p in [22, 443, 8080] -%}
+          {%- set _ = out.append({'name': 'vaultwarden', 'host': site.hosts.vaultwarden.ip, 'port': p}) -%}
+          {%- endfor -%}
+          {{ out }}
+      ansible.builtin.wait_for:
+        host: "{{ item.host }}"
+        port: "{{ item.port }}"
+        timeout: 3
+      loop: "{{ smoke_targets }}"
+      loop_control:
+        label: "{{ item.name }} port {{ item.port }}"
+      register: smoke_reach
+      ignore_errors: true
+      check_mode: false
+
+    - name: Nothing in the enclave answered
+      vars:
+        smoke_open: >-
+          {{ smoke_reach.results | rejectattr('failed') | map(attribute='item')
+             | map(attribute='name') | zip(smoke_reach.results | rejectattr('failed')
+             | map(attribute='item') | map(attribute='port')) | map('join', ' port ') | list }}
+      ansible.builtin.assert:
+        that: smoke_open | length == 0
+        fail_msg: "reachable from this VM: {{ smoke_open | join(', ') }}"
+        quiet: true

@@ -6,7 +6,7 @@ HVAC_CHECK := py=$$(ansible-playbook --version | sed -n 's/^  python version = .
 	"$${py:-python3}" -c 'import hvac' 2>/dev/null || { \
 	  echo "hvac is missing in the Python that runs Ansible; fix: \"$$py\" -m pip install hvac" >&2; exit 1; }
 
-.PHONY: lint secrets-scan test test-unit test-integration bootstrap-ssh forget-host grow-disk rotate pools cluster host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply provision-iso provision provision-clean docs docs-publish cli release-snapshot
+.PHONY: lint secrets-scan test test-unit test-integration test-smoke bootstrap-ssh forget-host grow-disk rotate pools cluster host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply provision-iso provision provision-clean docs docs-publish cli release-snapshot
 
 lint:
 	@set -eu -o pipefail; \
@@ -35,6 +35,10 @@ test-unit:
 
 test-integration:
 	@tests/run.sh integration $(T)
+
+# Read-only checks against the live lab, from this machine (tests/smoke). Needs Vault.
+test-smoke:
+	@set -eu -o pipefail; $(ENV); $(HVAC_CHECK); tests/run.sh smoke $(T)
 
 # One-time: install the operator SSH key on the Proxmox host and guests (Keychain passwords).
 bootstrap-ssh:
