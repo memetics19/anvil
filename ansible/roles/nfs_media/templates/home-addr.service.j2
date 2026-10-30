@@ -1,0 +1,15 @@
+# Managed by anvil (ansible/roles/nfs_media): a second address on the lab NIC so home-network
+# devices reach the media library. No gateway, so the default route is untouched. Idempotent.
+[Unit]
+Description=anvil: home-network address for the media library ({{ nfs_media_home_ip }})
+After=network-online.target
+Wants=network-online.target
+Before=nfs-server.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/sbin/ip addr replace {{ nfs_media_home_ip }}/{{ nfs_media_home_prefix }} dev {{ nfs_media_home_iface }}
+
+[Install]
+WantedBy=multi-user.target

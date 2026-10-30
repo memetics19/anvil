@@ -23,4 +23,16 @@ nfs_media_anon_gid: 1000
 nfs_media_v3: true
 nfs_media_mountd_port: 20048
 nfs_media_statd_port: 32765
+# A home-network address on this VM (site.hosts.<vm>.home_ip), so devices on the home Wi-Fi
+# (a phone, a Fire TV) can reach the library at all: the VM is otherwise on the lab network
+# only. Added as a second address on the lab NIC by a boot unit (ip addr replace, idempotent,
+# no gateway, so the default route is untouched). Empty: no home address, no home export.
+nfs_media_home_ip: "{{ site.hosts[inventory_hostname].home_ip | default('') }}"
+nfs_media_home_iface: "{{ ansible_default_ipv4.interface | default('ens18') }}"
+nfs_media_home_prefix: "{{ site.pve.uplink_prefix | default('24') }}"
+# The home subnet, a reader when home_ip is set: any device on the home Wi-Fi may mount
+# read-only (derived from the home network, e.g. 192.0.2.0/24).
+nfs_media_home_subnet: >-
+  {{ (site.pve.uplink_ip | default('')).split('.')[:3] | join('.') }}.0/{{ site.pve.uplink_prefix | default('24') }}
+nfs_media_home_addr_unit: anvil-nfs-home-addr
 nfs_media_guard_file: /etc/anvil/nfs-guard.nft

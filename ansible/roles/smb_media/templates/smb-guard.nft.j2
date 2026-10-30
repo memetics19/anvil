@@ -1,0 +1,15 @@
+#!/usr/sbin/nft -f
+# Managed by anvil (ansible/roles/smb_media). SMB (445, and 137-139 for discovery) only from
+# the allowed readers, by source address; everything else to those ports is dropped. One
+# table, replaced in one transaction.
+table inet anvil_smb_guard
+delete table inet anvil_smb_guard
+table inet anvil_smb_guard {
+	chain input {
+		type filter hook input priority filter; policy accept;
+{% if smb_media_readers | length > 0 %}
+		meta l4proto { tcp, udp } th dport { 137, 138, 139, 445 } ip saddr { {{ smb_media_readers | join(', ') }} } accept
+{% endif %}
+		meta l4proto { tcp, udp } th dport { 137, 138, 139, 445 } iifname != "lo" counter drop
+	}
+}
