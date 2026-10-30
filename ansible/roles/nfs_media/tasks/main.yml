@@ -29,9 +29,33 @@
     fail_msg: "{{ nfs_media_interface }} is missing: enrol this VM in NetBird (--tags netbird_peer) or clear site.nfs.clients"
     quiet: true
 
-- name: The allowed readers (lab devices now, NetBird clients when active)
+- name: The local (insecure) readers and the full reader list
   ansible.builtin.set_fact:
-    nfs_media_readers: "{{ (nfs_media_lan_clients + (nfs_media_netbird_clients if nfs_media_netbird_active | bool else [])) | unique }}"
+    # Lab devices and, when a home address is set, any device on the home Wi-Fi. These use
+    # high source ports (insecure), unlike the NetBird clients (secure).
+    nfs_media_insecure_clients: >-
+      {{ (nfs_media_lan_clients + ([nfs_media_home_subnet] if nfs_media_home_ip | length > 0 else [])) | unique }}
+    nfs_media_readers: >-
+      {{ (nfs_media_lan_clients + ([nfs_media_home_subnet] if nfs_media_home_ip | length > 0 else [])
+          + (nfs_media_netbird_clients if nfs_media_netbird_active | bool else [])) | unique }}
+
+# A home-network address on the lab NIC so home devices reach the library (no gateway, so the
+# default route is untouched). Done before the NFS server.
+- name: Home-network address unit
+  ansible.builtin.template:
+    src: home-addr.service.j2
+    dest: /etc/systemd/system/{{ nfs_media_home_addr_unit }}.service
+    mode: "0644"
+  register: nfs_media_home_addr_unit_file
+  when: nfs_media_home_ip | length > 0
+
+- name: The home-network address is up and set at boot
+  ansible.builtin.systemd_service:
+    name: "{{ nfs_media_home_addr_unit }}"
+    enabled: true
+    state: "{{ 'restarted' if nfs_media_home_addr_unit_file is changed else 'started' }}"
+    daemon_reload: "{{ nfs_media_home_addr_unit_file is changed }}"
+  when: nfs_media_home_ip | length > 0 and not ansible_check_mode
 
 - name: The library folders exist (read only, never created here)
   ansible.builtin.stat:
