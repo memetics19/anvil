@@ -91,8 +91,9 @@ check() { if eval "$2" >/dev/null 2>&1; then ok "$1"; else bad_ "$1"; fi; }
 # --- node_exporter ----------------------------------------------------------------------------
 if converge node_exporter node_exporter; then
   check "node_exporter: the service runs" "in_vm systemctl is-active node_exporter"
-  check "node_exporter: metrics are served" \
-    "in_vm sh -c 'curl -fsS http://127.0.0.1:9200/metrics || curl -fsS http://$vm_ip:9100/metrics' | grep -q node_exporter_build_info"
+  # Saved first, then searched: grep -q in a pipe would cut curl off and fail under pipefail.
+  in_vm sh -c "curl -fsS http://$vm_ip:9100/metrics || curl -fsS http://127.0.0.1:9200/metrics" >"$tmp/metrics" 2>/dev/null
+  check "node_exporter: metrics are served" "grep -q '^node_exporter_build_info' '$tmp/metrics'"
 fi
 
 # --- smb_media: read-only guest shares, readers only ------------------------------------------
