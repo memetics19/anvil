@@ -26,6 +26,8 @@ nav:
   - Provisioning: provisioning.md
   - Hardware: hardware.md
   - Packer images (roadmap): packer.md
+  - Monitoring and alerting (roadmap): monitoring.md
+  - OpenClaw, an ops colleague (roadmap): openclaw.md
   - Services: services.md
   - Secrets: secrets.md
   - Cisco switch: cisco-switch.md

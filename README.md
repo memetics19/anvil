@@ -301,13 +301,26 @@ Done:
 - [x] cloudflared pinned: one `cloudflared_version`, installed from Cloudflare's apt
   repository and held. Upgrades go one connector at a time while the others keep the
   tunnel up. The token is read from a root-only file, not the process list.
+- [x] Single sign-on with Authentik on the second server: forward auth in front of every
+  gateway app, a second factor on every login, Proxmox (OpenID Connect) and the Ceph
+  dashboard (SAML) logging in through it
+- [x] A local language model (Ollama and Open WebUI) on the second server, CPU only
+- [x] The media library streamed to home devices over NFS and SMB, read only
+
+Next focus:
+
+- [ ] Monitoring and alerting: Grafana as the only metrics dashboard, VictoriaMetrics,
+  exporters for every host, both iDRACs, ZFS and backups, and alerts to ntfy that are
+  quiet unless a person must act. Plan: [docs/monitoring.md](docs/monitoring.md)
+- [ ] OpenClaw as an ops colleague: it reads what monitoring finds, discusses every change
+  before it makes it, fixes a short reviewed list of simple things on its own, and sends
+  code changes as pull requests. Claude through an API key, never a subscription token.
+  Plan: [docs/openclaw.md](docs/openclaw.md)
 
 Planned:
 
-- [ ] Monitoring: VictoriaMetrics, Grafana, exporters, alerts to ntfy
 - [ ] Patch tracking: [PatchMon](https://github.com/PatchMon/PatchMon) for pending and
   security updates on every host (on the second server)
-- [ ] Single sign-on (Authelia) in front of the gateway
 - [ ] Self-hosted NetBird next to the hosted one. The server and dashboard run. The routing
   peer waits for a route that passes gRPC, which the Cloudflare tunnel does not.
 - [ ] Split the generic core (roles, Terraform modules, scripts) from this lab's site
