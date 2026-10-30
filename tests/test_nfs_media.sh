@@ -26,6 +26,7 @@ render() {
   tasks:
     - ansible.builtin.set_fact: $2
     - ansible.builtin.set_fact:
+        nfs_media_insecure_clients: "{{ nfs_media_lan_clients }}"
         nfs_media_readers: "{{ (nfs_media_lan_clients + (nfs_media_netbird_clients if nfs_media_netbird_active | bool else [])) | unique }}"
     - ansible.builtin.template:
         src: $PWD/ansible/roles/nfs_media/templates/{{ item }}.j2

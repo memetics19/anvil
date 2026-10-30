@@ -1,0 +1,86 @@
+# SMB for the media library: read-only, guest, the readers only. The guard loads before
+# Samba; the library is only ever read.
+- name: The readers are single addresses or /32s or a subnet
+  ansible.builtin.assert:
+    that:
+      - smb_media_readers | length > 0
+      - smb_media_readers | reject('match', '^([0-9]+\.){3}[0-9]+(/[0-9]{1,2})?$') | list | length == 0
+    fail_msg: "smb_media needs site.admin_sources or a home_ip (for the home subnet)"
+    quiet: true
+
+- name: The library folders exist (read only, never created here)
+  ansible.builtin.stat:
+    path: "{{ item.path }}"
+  loop: "{{ smb_media_shares }}"
+  register: smb_media_paths
+
+- name: Every shared folder is there
+  ansible.builtin.assert:
+    that: smb_media_paths.results | selectattr('stat.isdir', 'defined') | rejectattr('stat.isdir') | list | length == 0
+          and smb_media_paths.results | rejectattr('stat.isdir', 'defined') | list | length == 0
+    fail_msg: "a folder in smb_media_shares is missing or not a directory"
+    quiet: true
+
+# --- firewall first ------------------------------------------------------------------------
+- name: Config directory
+  ansible.builtin.file:
+    path: "{{ smb_media_guard_file | dirname }}"
+    state: directory
+    mode: "0755"
+
+- name: SMB guard (checked with nft -c before it is installed)
+  ansible.builtin.template:
+    src: smb-guard.nft.j2
+    dest: "{{ smb_media_guard_file }}"
+    mode: "0644"
+    validate: nft -c -f %s
+  register: smb_media_guard
+
+- name: Boot unit for the guard
+  ansible.builtin.template:
+    src: smb-guard.service.j2
+    dest: /etc/systemd/system/smb-guard.service
+    mode: "0644"
+  register: smb_media_guard_unit
+
+- name: The guard is loaded at boot
+  ansible.builtin.systemd_service:
+    name: smb-guard
+    enabled: true
+    daemon_reload: "{{ smb_media_guard_unit is changed }}"
+
+- name: Is the guard loaded
+  ansible.builtin.command:
+    argv: [nft, list, table, inet, anvil_smb_guard]
+  register: smb_media_guard_live
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Load the guard (one transaction)
+  ansible.builtin.command:
+    argv: [nft, -f, "{{ smb_media_guard_file }}"]
+  changed_when: true
+  when: smb_media_guard is changed or smb_media_guard_live.rc != 0
+
+# --- Samba ---------------------------------------------------------------------------------
+- name: Samba
+  ansible.builtin.apt:
+    name: samba
+    state: present
+
+- name: The share config
+  ansible.builtin.template:
+    src: smb.conf.j2
+    dest: /etc/samba/smb.conf
+    mode: "0644"
+    validate: testparm -s %s
+  notify: Restart samba
+
+- name: Samba runs
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop: [smbd, nmbd]
+  when: not ansible_check_mode

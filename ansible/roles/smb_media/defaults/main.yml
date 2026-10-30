@@ -1,0 +1,18 @@
+# The media library over SMB (Samba), read-only, for home devices: a phone or Fire TV finds
+# it at once in VLC's Local Network, which NFS on Android often will not. Guest access (no
+# password), restricted to the same readers as NFS by both Samba (hosts allow) and an
+# nftables guard. The library is only ever read; the role never creates or changes a folder.
+smb_media_shares:
+  - {name: Movies, path: /home/ubuntu/media/movies}
+  - {name: TV, path: /home/ubuntu/media/tv}
+# Who may connect: the operator's lab devices (site.admin_sources) and, when the VM has a
+# home address (role nfs_media sets site.hosts.<vm>.home_ip), any device on the home Wi-Fi.
+smb_media_lan_clients: "{{ site.admin_sources | default([]) }}"
+smb_media_home_ip: "{{ site.hosts[inventory_hostname].home_ip | default('') }}"
+smb_media_home_subnet: >-
+  {{ (site.pve.uplink_ip | default('')).split('.')[:3] | join('.') }}.0/{{ site.pve.uplink_prefix | default('24') }}
+smb_media_readers: >-
+  {{ (smb_media_lan_clients + ([smb_media_home_subnet] if smb_media_home_ip | length > 0 else [])) | unique }}
+# Everyone reads as the library's owner (the VM's first user): read-only.
+smb_media_guest_user: ubuntu
+smb_media_guard_file: /etc/anvil/smb-guard.nft

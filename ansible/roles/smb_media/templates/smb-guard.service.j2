@@ -1,0 +1,16 @@
+# Managed by anvil (ansible/roles/smb_media): the SMB guard, loaded before Samba.
+[Unit]
+Description=anvil: SMB only from the allowed readers
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target smbd.service nmbd.service shutdown.target
+Wants=network-pre.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f {{ smb_media_guard_file }}
+
+[Install]
+WantedBy=multi-user.target
