@@ -6,3 +6,6 @@
       tags: [always]
   roles:
     - pve_host
+    # Host metrics for the monitoring stack (docs/monitoring.md), on the host's lab address.
+    - role: node_exporter
+      tags: [node_exporter]

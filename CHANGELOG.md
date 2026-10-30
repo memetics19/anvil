@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.0](https://github.com/memetics19/anvil/compare/v0.21.0...v0.22.0) (2026-10-30)
+
+
+### Features
+
+* **node_exporter:** upgrade to 1.12.1, lab address only, on every host ([#151](https://github.com/memetics19/anvil/issues/151)) ([8431a6d](https://github.com/memetics19/anvil/commit/8431a6d703464d235e306ed3f669ec656b70881d))
+
 ## [0.21.0](https://github.com/memetics19/anvil/compare/v0.20.0...v0.21.0) (2026-10-30)
 
 
