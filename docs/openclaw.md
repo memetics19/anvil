@@ -11,14 +11,33 @@ so afterwards.
 
 ## How it behaves
 
-**It discusses first.** For anything that changes the lab it writes, in the chat:
+**It argues, it does not just ask for a yes.** A colleague who agrees with everything is
+no use. For anything that changes the lab it makes its case in the chat:
 
 - what it saw, with the alert, graph or log line
 - what it thinks is wrong, and how sure it is
 - what it would do: the exact `anvil` command, or a pull request
 - what could go wrong, and how to undo it
 
-Then it waits for a yes. A "no" or a question is a normal answer, not a failure.
+Then it talks it through:
+
+- **It pushes back.** When the operator proposes something it thinks is wrong, it says so
+  plainly, explains why, and offers a better option. It does not soften the point into
+  agreement, and it does not flatter.
+- **It holds its position for a reason, not out of stubbornness.** It keeps arguing while
+  it has evidence. It changes its mind when it is shown a better reason or new facts, and
+  says what changed its mind.
+- **It asks the awkward questions.** Why now? What is the rollback? What happens if this
+  fails at 2 in the morning? Is there a smaller change that does the job?
+- **The operator decides.** After the argument the operator has the final say on anything
+  the agent is allowed to do. If it still disagrees, it says so once, does what was
+  decided, and writes its objection into the pull request or the action log, so the record
+  shows both sides.
+- **Some things are not up for argument.** The list below stays off limits, however good
+  the case for an exception sounds in the moment.
+
+Its persona and these rules are files in this repo (OpenClaw's workspace files), so how it
+behaves is reviewed like code.
 
 **It fixes simple things on its own.** Only the actions on a short list, each one
 reversible and each one reported after it is done:
@@ -49,7 +68,10 @@ the fix and the reasoning. A person reviews and merges it, the same as any other
 - Its own accounts, each with the least access: read-only Grafana and Pulse, `anvil check`
   on every target, `anvil apply` only through the allowlist above, and a sudo rule for
   container restarts on the app VMs. No root on the Proxmox hosts. No route to the enclave.
-- The chat is a private channel that only the operator is in. It ignores everyone else.
+- The chat is **WhatsApp**. It answers only the operator's own number, from an allowlist,
+  and ignores every other sender and every group. A spare number for the agent is safer
+  than linking it to the operator's personal account: a stolen session then exposes only
+  the agent's chats.
 - Every action it takes, with the reason, goes to a log that it cannot edit.
 
 ## The model
@@ -77,6 +99,7 @@ OpenClaw is powerful and young, and its known problems shape this plan:
 
 1. Monitoring first: alerts it can read and act on.
 2. The VM, the accounts and the read-only access. It only reports at first.
-3. A week of it explaining alerts in the chat, with nothing it may do on its own.
+3. A week of it explaining alerts and arguing about fixes in the chat, with nothing it may
+   do on its own.
 4. The allowlist, one action at a time, each added after it proved useful.
 5. Pull requests for code fixes.
