@@ -111,8 +111,8 @@ make vm HOST=apps ARGS="--check --diff"
 make vm HOST=apps
 ```
 
-The run checks every entry before it touches Pi-hole. `tests/test_gateway.sh` and
-`tests/test_homepage.sh` cover the rules. To take a service down but keep its entry, set
+The run checks every entry before it touches Pi-hole. `tests/unit/test_gateway.sh` and
+`tests/unit/test_homepage.sh` cover the rules. To take a service down but keep its entry, set
 `enabled: false`. That removes its route and DNS record.
 
 A site that Caddy serves itself, with no upstream, is a `static` entry: `{name: docs,
@@ -268,7 +268,7 @@ The saved plan holds site values, so it is mode 600. It is removed:
 - after `tf-apply`, whether that succeeds or fails
 
 The guard reads the plan's JSON through a pipe, so the JSON never lands on disk.
-`tests/test_plan_guard.sh` tests the guard.
+`tests/unit/test_plan_guard.sh` tests the guard.
 
 ### Timed rollbacks
 
@@ -317,7 +317,7 @@ Vaultwarden and the gateway together. To restart something by hand, do the same:
 - `make ceph` refuses an OSD disk that holds the root or EFI file system, is mounted, or is
   used by a guest, a non-Ceph LVM volume group or a ZFS pool. The full list is in
   [Ceph](services.md#ceph).
-- `tests/test_media_untouched.sh` checks that nothing in `ansible/` or `scripts/` can reach
+- `tests/unit/test_media_untouched.sh` checks that nothing in `ansible/` or `scripts/` can reach
   the media library.
 - Secrets travel through pipes and stdin. They never go on argv and are never logged.
 
@@ -365,20 +365,23 @@ Docker on the guests is not pinned. apt and unattended-upgrades keep it current.
 
 ## Tests
 
-CI runs `make lint secrets-scan`, every `tests/test_*.sh` and the CLI's Go tests. Locally:
+The tests are split into unit, integration, smoke and end to end layers, one folder each
+under `tests/` ([tests/README.md](../tests/README.md)).
+CI runs the linters, the secrets scan, the CLI's Go tests and the unit and integration
+layers. Locally:
 
 ```sh
-make lint secrets-scan
-for t in tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
-(cd cli && go vet ./... && go test ./...)
+make test
+make test-unit T=gateway
 ```
 
-`tests/test_vaultwarden.sh` needs `age` and `sqlite3`.
+The integration layer needs Linux with passwordless sudo. `tests/integration/test_vaultwarden.sh`
+also needs `age` and `sqlite3`.
 
 [gitleaks](https://github.com/gitleaks/gitleaks) also runs in pre-commit. On top of its
 default rules, [`.gitleaks.toml`](../.gitleaks.toml) catches private IPv4 addresses,
 Cloudflare tunnel tokens, NetBird setup keys, password hashes and literal passwords.
-`tests/test_secrets_scan.sh` checks that each rule fires on generated fixtures.
+`tests/unit/test_secrets_scan.sh` checks that each rule fires on generated fixtures.
 
 ## Troubleshooting
 

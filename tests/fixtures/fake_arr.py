@@ -1,4 +1,4 @@
-"""A fake Radarr, Sonarr and Prowlarr for tests/test_rotate.sh: only the API calls that
+"""A fake Radarr, Sonarr and Prowlarr for tests/unit/test_rotate.sh: only the API calls that
 anvil rotate makes. Each app checks X-Api-Key against the key in its config.xml.
 Usage: fake_arr.py <dir> <radarr port> <sonarr port> <prowlarr port>
 <dir>/<app>/config/config.xml hold the keys, <dir>/state.json what Prowlarr was told."""

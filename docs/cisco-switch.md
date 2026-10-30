@@ -122,7 +122,7 @@ switch, `make forget-host HOST=switch` drops the old key. `switch-cli.sh` refuse
 `SWITCH_KNOWN_HOSTS` of `/dev/null`, `none` or a file it cannot write, since that would
 turn pinning off.
 
-`tests/test_switch.sh` renders the plan from example output and checks that it names only
+`tests/integration/test_switch.sh` renders the plan from example output and checks that it names only
 the listed ports. It also runs the script against a fake switch.
 
 ## Rollback

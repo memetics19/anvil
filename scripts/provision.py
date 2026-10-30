@@ -674,7 +674,7 @@ def run(site, name, opts, out=print):
     if m.get("controller"):
         # Imported here, not at the top: the netboot HTTP server runs this file alone on the
         # Proxmox host (provision.py serve), where provision_dell.py is not copied.
-        sys.dont_write_bytecode = True  # no __pycache__ in scripts/ (tests/test_media_untouched.sh)
+        sys.dont_write_bytecode = True  # no __pycache__ in scripts/ (tests/unit/test_media_untouched.sh)
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import provision_dell
         if info:

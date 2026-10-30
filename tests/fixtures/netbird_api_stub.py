@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A small in-memory stand-in for the NetBird management API (tests/test_netbird_server.sh).
+"""A small in-memory stand-in for the NetBird management API (tests/unit/test_netbird_server.sh).
 
 Serves only what ansible/roles/netbird_server/files/netbird_api.py calls. Starts with a
 fresh instance (setup required). Writes every non-GET request as one line to the log file

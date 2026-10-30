@@ -27,7 +27,7 @@ iptv_streamlink_version: 8.6.2
 # The web TV page the helper serves (files/streams/web, copied into the image). mpegts.js
 # is vendored from the npm release tarball mpegts.js-1.8.2.tgz (2026-08-14, Apache-2.0,
 # licence in mpegts.LICENSE.txt): dist/mpegts.js, sha256 below, checked by
-# tests/test_iptv_web.sh.
+# tests/unit/test_iptv_web.sh.
 iptv_mpegts_version: 1.8.2
 iptv_mpegts_sha256: bda31748736a69cb610c2edf4623e633f1f4f47b5bda83668c8d287e51b0c3a8
 iptv_web_files: [index.html, app.css, app.js, mpegts.js, mpegts.LICENSE.txt, mpegts.js.LICENSE.txt]

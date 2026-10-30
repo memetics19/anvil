@@ -10,10 +10,8 @@
 
 <!-- Tick what you ran. Say what you saw on a real lab if you applied it there. -->
 
-- [ ] `make lint`
-- [ ] `make secrets-scan`
-- [ ] `for t in tests/test_*.sh; do bash "$t" || echo "FAILED $t"; done`
-- [ ] `cd cli && go vet ./... && go test ./...` (when the CLI changed)
+- [ ] `make test` (lint, secrets scan, Go tests, unit and integration tests)
+- [ ] A new or changed test is in the folder of its layer (`tests/README.md`)
 - [ ] `anvil check <target>` shows only the expected changes
 - [ ] Applied on a lab and checked the result
 

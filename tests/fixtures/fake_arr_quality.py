@@ -1,4 +1,4 @@
-"""A fake Sonarr and Radarr for tests/test_arr_quality.sh: the quality profile and quality
+"""A fake Sonarr and Radarr for tests/unit/test_arr_quality.sh: the quality profile and quality
 definition endpoints only. Each app checks X-Api-Key against the key in its config.xml.
 Usage: fake_arr_quality.py <dir> <sonarr port> <radarr port>
 <dir>/<app>/config.xml hold the keys, <dir>/<app>.json the state, written on every change."""

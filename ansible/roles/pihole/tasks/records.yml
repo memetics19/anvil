@@ -4,7 +4,7 @@
 #   fqdn: the full name, served as is (split horizon: a public hostname answered with a
 #         home-reachable address on this network),
 # and gives the address with either `ref` (a dotted path into the site dict, e.g.
-# hosts.vault.ip) or `ip`. Values are not logged. Tested by tests/test_pihole_records.sh.
+# hosts.vault.ip) or `ip`. Values are not logged. Tested by tests/unit/test_pihole_records.sh.
 # The gateway's names (pihole_gateway_services, enabled entries) are added as fqdn records
 # <name>.<pihole_gateway_domain> -> pihole_gateway_ref.
 - name: Gateway names as records

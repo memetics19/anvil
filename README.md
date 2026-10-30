@@ -316,9 +316,9 @@ Next focus:
   before it makes it, fixes a short reviewed list of simple things on its own, and sends
   code changes as pull requests. Claude through an API key, never a subscription token.
   Plan: [docs/openclaw.md](docs/openclaw.md)
-- [ ] A layered test suite for the next release: unit, smoke, integration and end to end,
-  with one `make test` that runs the whole suite. Today the checks are 35 shell tests and
-  the Go tests, listed one by one in CI.
+- [ ] A layered test suite: unit, integration, smoke and end to end, one folder each, with
+  `make test` for what runs anywhere. Unit and integration run in CI by folder.
+  Smoke and end to end come next. See [tests/README.md](tests/README.md)
 
 Planned:
 
