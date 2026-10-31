@@ -9,10 +9,16 @@ smb_media_shares:
 # peers (site.admin_vpn_sources) and, when the VM has a home address (role nfs_media sets
 # site.hosts.<vm>.home_ip), any device on the home Wi-Fi.
 smb_media_lan_clients: "{{ site.admin_sources | default([]) }}"
-# The netbird VM routes the lab's /16 without masquerade, so a phone on the VPN arrives with
-# its own NetBird address. It opens the share at the VM's lab address: no VPN route reaches
-# the home address. Empty turns VPN access off.
-smb_media_vpn_clients: "{{ site.admin_vpn_sources | default([]) }}"
+# On the VPN, a phone opens the share at the VM's lab address: no VPN route reaches the home
+# address. NetBird's cloud route for the lab's /16 masquerades, so a VPN client arrives as
+# the routing peer's lab address (the netbird VM, smb_media_vpn_router), not its own: that
+# address is a reader, which lets in every peer NetBird's access policy lets onto the lab
+# route. The operator's own peers (site.admin_vpn_sources) are readers too, for a route
+# without masquerade. Empty router and list turn VPN access off.
+smb_media_vpn_router: "{{ site.hosts.netbird.ip | default('') }}"
+smb_media_vpn_clients: >-
+  {{ (site.admin_vpn_sources | default([]))
+     + ([smb_media_vpn_router ~ '/32'] if smb_media_vpn_router | length > 0 else []) }}
 smb_media_home_ip: "{{ site.hosts[inventory_hostname].home_ip | default('') }}"
 smb_media_home_subnet: >-
   {{ (site.pve.uplink_ip | default('')).split('.')[:3] | join('.') }}.0/{{ site.pve.uplink_prefix | default('24') }}
