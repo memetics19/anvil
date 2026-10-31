@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.2](https://github.com/memetics19/anvil/compare/v0.25.1...v0.25.2) (2026-10-31)
+
+
+### Bug Fixes
+
+* **smb_media:** admit the VPN's routing peer, NetBird masquerades the lab route ([#173](https://github.com/memetics19/anvil/issues/173)) ([680db12](https://github.com/memetics19/anvil/commit/680db12e6f4ebb3d90fcb1ca5bdd04cebfe6948b))
+
 ## [0.25.1](https://github.com/memetics19/anvil/compare/v0.25.0...v0.25.1) (2026-10-31)
 
 
