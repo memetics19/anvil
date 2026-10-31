@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.24.0](https://github.com/memetics19/anvil/compare/v0.23.1...v0.24.0) (2026-10-31)
+
+
+### Features
+
+* **arr:** Prowlarr's indexers as code, plus Knaben and 1337x ([#164](https://github.com/memetics19/anvil/issues/164)) ([2cf2a47](https://github.com/memetics19/anvil/commit/2cf2a477d9b9da081f0d831cca94fe411fd176d5))
+* **pihole:** strict ad blocking lists ([#166](https://github.com/memetics19/anvil/issues/166)) ([0aab61c](https://github.com/memetics19/anvil/commit/0aab61c455fa6e6256c991dda2f9deb8b1f4b83c))
+
+
+### Bug Fixes
+
+* **media:** a wider season search when Sonarr finds nothing it takes ([#165](https://github.com/memetics19/anvil/issues/165)) ([6ca68f3](https://github.com/memetics19/anvil/commit/6ca68f37ff707f6e9a3471bbc3879c3e478f6d1a))
+
 ## [0.23.1](https://github.com/memetics19/anvil/compare/v0.23.0...v0.23.1) (2026-10-30)
 
 
