@@ -19,6 +19,11 @@
   ansible.builtin.import_tasks: api_keys.yml
   tags: [homepage, rotate]
 
+# Prowlarr's indexers, through its API on this host (files/arr-indexers.py).
+- name: Indexers
+  ansible.builtin.import_tasks: indexers.yml
+  tags: [arr, arr_indexers]
+
 # The quality policy, through each app's API on this host (files/arr-quality.py).
 - name: Quality policy of Sonarr and Radarr
   ansible.builtin.import_tasks: quality.yml

@@ -88,6 +88,21 @@ make vm HOST=ragnarok ARGS="--tags arr_quality --check"   # what would change
 make vm HOST=ragnarok ARGS="--tags arr_quality"
 ```
 
+Prowlarr's indexers are code too (tag `arr_indexers`, `arr_stack_prowlarr_indexers`). Each
+is a Prowlarr definition name. A missing one is added and a switched-off one switched on.
+Indexers added in the web UI are left alone, and nothing is removed. `tags: [cloudflare]`
+sends one through FlareSolverr. Prowlarr tests a site before it saves it, so a site that is
+down or blocked is reported and skipped. Prowlarr then syncs the indexers to Sonarr and
+Radarr.
+
+Knaben searches many public sites at once. 1337x goes through FlareSolverr. EZTV is not in
+the list: it fails Prowlarr's connection test from this line.
+
+```sh
+make vm HOST=ragnarok ARGS="--tags arr_indexers --check"  # what would be added
+make vm HOST=ragnarok ARGS="--tags arr_indexers"
+```
+
 ### Guide server
 
 The `iptv_epg` role runs nginx on port 8899. It serves `/home/ubuntu/iptv-epg/output`,
