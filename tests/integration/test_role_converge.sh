@@ -19,6 +19,15 @@ fail=0
 ok() { echo "ok   $1"; }
 bad_() { echo "FAIL $1"; fail=1; }
 in_vm() { docker exec "$name" "$@"; }
+# has <regex> <command...>: the command's output matches. The output is read in full first:
+# grep -q in a pipe stops early, the command then dies of SIGPIPE, and pipefail calls the
+# whole check failed although it matched.
+has() {
+  local re=$1 out
+  shift
+  out=$("$@" 2>/dev/null) || return 1
+  grep -qE "$re" <<<"$out"
+}
 
 # --- the stand-in VM ------------------------------------------------------------------------
 docker build -q -t anvil-converge tests/fixtures/converge >"$tmp/build.log" 2>&1 ||
@@ -27,7 +36,12 @@ docker run -d --name "$name" --privileged --tmpfs /run --tmpfs /run/lock \
   -p 127.0.0.1::22 anvil-converge >/dev/null || { echo "FAIL the container starts"; exit 1; }
 
 ssh-keygen -q -t ed25519 -N '' -f "$tmp/key"
-for _ in $(seq 60); do in_vm systemctl is-system-running 2>/dev/null | grep -qE 'running|degraded' && break; sleep 1; done
+for _ in $(seq 60); do
+  # is-system-running exits non-zero when degraded, so its output is checked, not its code.
+  state=$(in_vm systemctl is-system-running 2>/dev/null)
+  grep -qE 'running|degraded' <<<"$state" && break
+  sleep 1
+done
 in_vm install -d -m 0700 -o ubuntu -g ubuntu /home/ubuntu/.ssh
 docker cp "$tmp/key.pub" "$name:/home/ubuntu/.ssh/authorized_keys"
 in_vm chown ubuntu:ubuntu /home/ubuntu/.ssh/authorized_keys
@@ -119,14 +133,14 @@ if converge tcp_options_guard tcp_options_guard; then
   check "tcp_options_guard: a plain connection works" "grep -qx 'plain: connected' '$tmp/probe'"
   check "tcp_options_guard: a SYN with IP options is dropped" "grep -qx 'with IP options: timed out' '$tmp/probe'"
   check "tcp_options_guard: its counter saw it" \
-    "in_vm nft list chain inet anvil_tcp_options_guard prerouting | grep -qE 'counter packets [1-9]'"
+    "has 'counter packets [1-9]' in_vm nft list chain inet anvil_tcp_options_guard prerouting"
 fi
 
 # --- port_guard: on, then off -------------------------------------------------------------------
 in_vm systemd-run --unit guarded-app python3 -m http.server 18080 --bind 0.0.0.0 >/dev/null
 if converge port_guard "port_guard on" '{"port_guard_ports": [18080]}'; then
   check "port_guard: the table is loaded and names the port" \
-    "in_vm nft list table inet anvil_port_guard | grep -q 18080"
+    "has 18080 in_vm nft list table inet anvil_port_guard"
   check "port_guard: its boot unit is enabled" "in_vm systemctl is-enabled port-guard"
 fi
 if converge port_guard "port_guard off" '{"port_guard_ports": []}'; then
