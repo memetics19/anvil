@@ -1,0 +1,18 @@
+# Prowlarr's indexers, as declared in the defaults (files/arr-indexers.py). The script reads
+# the API key from Prowlarr's config.xml on the VM: no key reaches argv, the log or the
+# controller. In check mode it runs with --check, which only reads.
+- name: Indexers | Prowlarr's indexers
+  ansible.builtin.script:
+    cmd: >-
+      arr-indexers.py {{ '--check' if ansible_check_mode else '' }} {{ {
+        'url': 'http://' ~ arr_stack_api_host ~ ':' ~ arr_stack_api.prowlarr.port,
+        'config_xml': arr_stack_config_xml_files.prowlarr,
+        'indexers': arr_stack_prowlarr_indexers } | to_json | quote }}
+    executable: python3
+  register: arr_stack_indexers_run
+  changed_when: "arr_stack_indexers_run.stdout_lines | select('search', ': (would|do:) ') | list | length > 0"
+  check_mode: false
+
+- name: Indexers | report
+  ansible.builtin.debug:
+    msg: "{{ arr_stack_indexers_run.stdout_lines }}"
