@@ -1,6 +1,7 @@
 # Blocklists live in Pi-hole's gravity database, not in its config file. The role keeps
-# pihole_blocklists present and enabled (type 0 = block list) and runs a gravity update
-# when it added or enabled one, or when one has never been downloaded (an interrupted run).
+# pihole_blocklists present and enabled (type 0 = block list), switches off the ones in
+# pihole_blocklists_retired, and runs a gravity update when it changed one, or when one has
+# never been downloaded (an interrupted run).
 # Lists added in the web UI are left alone and only counted. The container's own weekly
 # job refreshes the lists after that.
 - name: Block lists in gravity (address|enabled|downloaded)
@@ -30,14 +31,24 @@
       {%- set want = pihole_blocklists | map(attribute='url') | list -%}
       {{ {'fix': pihole_blocklists | rejectattr('url', 'in', have | dict2items | selectattr('value.enabled') | map(attribute='key') | list) | list,
           'never_downloaded': want | select('in', have | dict2items | rejectattr('value.downloaded') | map(attribute='key') | list) | list,
-          'unmanaged': have | dict2items | rejectattr('key', 'in', want) | list | length} }}
+          'retire': pihole_blocklists_retired | select('in', have | dict2items | selectattr('value.enabled') | map(attribute='key') | list) | list,
+          'unmanaged': have | dict2items | rejectattr('key', 'in', want + pihole_blocklists_retired) | list | length} }}
 
 - name: Report the block lists
   ansible.builtin.debug:
     msg: >-
       block lists: {{ pihole_blocklists | length }} managed, add or enable {{ pihole_adlist.fix | length }}{{
+      ', switch off ' ~ pihole_adlist.retire | length ~ ' retired' if pihole_adlist.retire else '' }}{{
       ', ' ~ pihole_adlist.never_downloaded | length ~ ' never downloaded' if pihole_adlist.never_downloaded else '' }}{{
       '; ' ~ pihole_adlist.unmanaged ~ ' added by hand (left alone)' if pihole_adlist.unmanaged else '' }}
+
+# Check mode skips the commands below, so it reports their change here instead: anvil check
+# and apply see it.
+- name: Would change the block lists
+  ansible.builtin.debug:
+    msg: "would add or enable {{ pihole_adlist.fix | length }}, switch off {{ pihole_adlist.retire | length }}, then update gravity"
+  changed_when: true
+  when: ansible_check_mode and (pihole_adlist.fix | length > 0 or pihole_adlist.retire | length > 0)
 
 - name: Add or enable the managed lists
   ansible.builtin.command:
@@ -51,13 +62,23 @@
   changed_when: true
   when: pihole_adlist.fix | length > 0
 
+- name: Switch off the retired lists
+  ansible.builtin.command:
+    argv: [docker, exec, -i, pihole, pihole-FTL, sqlite3, /etc/pihole/gravity.db]
+    stdin: |
+      {% for u in pihole_adlist.retire %}
+      UPDATE adlist SET enabled = 0 WHERE type = 0 AND address = '{{ u | replace("'", "''") }}';
+      {% endfor %}
+  changed_when: true
+  when: pihole_adlist.retire | length > 0
+
 # Downloads every list and rebuilds the gravity table; FTL reloads it.
 - name: Gravity update
   ansible.builtin.command:
     argv: [docker, exec, pihole, pihole, -g]
   register: pihole_gravity
   changed_when: true
-  when: pihole_adlist.fix | length > 0 or pihole_adlist.never_downloaded | length > 0
+  when: pihole_adlist.fix | length > 0 or pihole_adlist.never_downloaded | length > 0 or pihole_adlist.retire | length > 0
 
 - name: Gravity holds domains
   ansible.builtin.command:

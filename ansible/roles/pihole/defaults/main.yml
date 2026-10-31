@@ -74,10 +74,25 @@ pihole_blocklists:
     comment: Prigent crypto (cryptojacking)
   - url: https://urlhaus.abuse.ch/downloads/hostfile/
     comment: URLhaus (malware)
-  # Ads, trackers, telemetry, phishing, scams. Adblock syntax: a listed domain blocks its
-  # subdomains too (Pi-hole 6 reads it).
-  - url: https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt
-    comment: HaGeZi Multi PRO
+  # Strict ad blocking. Adblock syntax: a listed domain blocks its subdomains too (Pi-hole 6
+  # reads it). PRO++ is HaGeZi PRO and more: ads, trackers, telemetry, phishing, scams, with
+  # a few more false positives. OISD big catches what HaGeZi misses. Pop-up ads blocks the
+  # pop-up and pop-under networks of streaming and download sites. The threat feed (medium)
+  # blocks malware, phishing and scam domains.
+  - url: https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.plus.txt
+    comment: HaGeZi Multi PRO++ (strict)
+  - url: https://big.oisd.nl
+    comment: OISD big
+  - url: https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/popupads.txt
+    comment: HaGeZi Pop-Up Ads
+  - url: https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.medium.txt
+    comment: HaGeZi Threat Intelligence Feeds (medium)
+
+# Lists the role switches off when they are on: replaced by a stricter one above, so they
+# only cost memory. They stay in gravity's table, switched off, and the web UI can switch
+# one back on.
+pihole_blocklists_retired:
+  - https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt
 
 # Domains blocked by regex (Pi-hole's domain list, type deny regex), with their subdomains.
 # Kept present and enabled. Entries added in the web UI are left alone. These are the ad and
