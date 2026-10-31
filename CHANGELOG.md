@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.25.0](https://github.com/memetics19/anvil/compare/v0.24.0...v0.25.0) (2026-10-31)
+
+
+### Features
+
+* **frigate:** more cameras from the site dict ([#170](https://github.com/memetics19/anvil/issues/170)) ([55492b9](https://github.com/memetics19/anvil/commit/55492b9bceb33b0f3cc6e3d6eaf5a2bd680cf4ae))
+
+
+### Bug Fixes
+
+* **tests:** read command output in full before matching it in the converge test ([#168](https://github.com/memetics19/anvil/issues/168)) ([8e53dca](https://github.com/memetics19/anvil/commit/8e53dca7d5ec142bbec960780cb8adbfb8ca395b))
+
 ## [0.24.0](https://github.com/memetics19/anvil/compare/v0.23.1...v0.24.0) (2026-10-31)
 
 
