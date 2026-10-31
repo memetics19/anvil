@@ -29,9 +29,13 @@ type fakeArr struct {
 	posts    map[string][]map[string]any
 	badKey   bool
 	addError int
-	profiles string // JSON array for qualityprofile; empty: Any, HD-1080p, Ultra-HD
-	epCalls  int    // how many times the episode list was asked for
-	epDelay  int    // return no episodes for the first epDelay calls (Sonarr still loading)
+	profiles string   // JSON array for qualityprofile; empty: Any, HD-1080p, Ultra-HD
+	epCalls  int      // how many times the episode list was asked for
+	epDelay  int      // return no episodes for the first epDelay calls (Sonarr still loading)
+	releases string   // JSON array for release (Sonarr's own season search); empty: none
+	pushes   []bool   // whether each release/push in turn is rejected; past the end: taken
+	noGrab   bool     // a taken push is never grabbed (Sonarr could not start it)
+	queued   []string // the names of grabbed pushes, for history/series
 }
 
 func (f *fakeArr) server(t *testing.T) *httptest.Server {
@@ -51,6 +55,24 @@ func (f *fakeArr) server(t *testing.T) *httptest.Server {
 			f.mu.Lock()
 			f.posts[p] = append(f.posts[p], body)
 			f.mu.Unlock()
+		}
+		if r.Method == http.MethodPost && p == "release/push" {
+			f.mu.Lock()
+			n := len(f.posts[p]) - 1
+			rejected := n < len(f.pushes) && f.pushes[n]
+			f.mu.Unlock()
+			if rejected {
+				_, _ = io.WriteString(w, `[{"rejected":true,"rejections":["WEBDL-720p is not wanted in profile"]}]`)
+			} else {
+				if !f.noGrab {
+					f.mu.Lock()
+					t, _ := f.posts[p][n]["title"].(string)
+					f.queued = append(f.queued, t)
+					f.mu.Unlock()
+				}
+				_, _ = io.WriteString(w, `[{"rejected":false}]`)
+			}
+			return
 		}
 		if r.Method == http.MethodPost {
 			if f.addError != 0 && (p == "movie" || p == "series") {
@@ -83,6 +105,8 @@ func (f *fakeArr) server(t *testing.T) *httptest.Server {
 				break
 			}
 			_, _ = io.WriteString(w, `[{"id":101,"seasonNumber":1},{"id":102,"seasonNumber":1},{"id":201,"seasonNumber":2}]`)
+		case p == "release":
+			_, _ = io.WriteString(w, or(f.releases, `[]`))
 		case p == "qualityprofile":
 			if f.profiles != "" {
 				_, _ = io.WriteString(w, f.profiles)
@@ -95,8 +119,19 @@ func (f *fakeArr) server(t *testing.T) *httptest.Server {
 				root = "/tv"
 			}
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"path": root, "freeSpace": f.free}})
+		case p == "history/series":
+			// The grabs of taken pushes, by the name they were pushed under.
+			f.mu.Lock()
+			recs := []map[string]any{}
+			for _, t := range f.queued {
+				recs = append(recs, map[string]any{"sourceTitle": t, "eventType": "grabbed"})
+			}
+			f.mu.Unlock()
+			_ = json.NewEncoder(w).Encode(recs)
 		case p == "queue":
 			_, _ = io.WriteString(w, or(f.queue, `{"records":[]}`))
+		case p == "indexer":
+			_, _ = io.WriteString(w, `[{"id":15,"name":"kat (Prowlarr)"},{"id":3,"name":"1337x (Prowlarr)"}]`)
 		case p == "wanted/missing":
 			_, _ = io.WriteString(w, or(f.missing, `{"records":[]}`))
 		default:
@@ -126,6 +161,44 @@ func mediaLab(t *testing.T, radarr, sonarr *fakeArr) *testlab.Lab {
 	old := mediaEnv
 	mediaEnv = func(*app.App) (mediaConfig, error) {
 		return mediaConfig{Radarr: arrEndpoint{rs.URL, testArrSentinel}, Sonarr: arrEndpoint{ss.URL, testArrSentinel}}, nil
+	}
+	t.Cleanup(func() { mediaEnv = old })
+	return l
+}
+
+// fakeProwlarr answers Prowlarr's search with hits, whatever the query, and records the
+// queries.
+type fakeProwlarr struct {
+	hits    string
+	mu      sync.Mutex
+	queries []string
+}
+
+func (f *fakeProwlarr) server(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Api-Key") != testArrSentinel || r.URL.Path != "/api/v1/search" {
+			http.NotFound(w, r)
+			return
+		}
+		f.mu.Lock()
+		f.queries = append(f.queries, r.URL.Query().Get("query"))
+		f.mu.Unlock()
+		_, _ = io.WriteString(w, or(f.hits, `[]`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// mediaLabProwlarr is mediaLab with Prowlarr too.
+func mediaLabProwlarr(t *testing.T, sonarr *fakeArr, prowlarr *fakeProwlarr) *testlab.Lab {
+	t.Helper()
+	l := testlab.New(t)
+	rs, ss, ps := (&fakeArr{}).server(t), sonarr.server(t), prowlarr.server(t)
+	old := mediaEnv
+	mediaEnv = func(*app.App) (mediaConfig, error) {
+		return mediaConfig{Radarr: arrEndpoint{rs.URL, testArrSentinel}, Sonarr: arrEndpoint{ss.URL, testArrSentinel},
+			Prowlarr: arrEndpoint{ps.URL, testArrSentinel}}, nil
 	}
 	t.Cleanup(func() { mediaEnv = old })
 	return l

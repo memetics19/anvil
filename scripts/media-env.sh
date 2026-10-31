@@ -5,8 +5,9 @@
 # the web UI, which an API client with only a key cannot pass. The lab API stays reachable
 # (the arr apps' port guard admits the operator's own devices, site.admin_sources). The keys
 # come from kv/homelab/<host>/arr (role arr_stack) and only ever go through pipes and to
-# stdout, never on a command line: run this into a pipe, not a terminal.
-#   {"radarr": {"url": "http://<lab ip>:7878", "key": "..."}, "sonarr": {...}}
+# stdout, never on a command line: run this into a pipe, not a terminal. Prowlarr is there
+# when its key is, for the wider season search.
+#   {"radarr": {"url": "http://<lab ip>:7878", "key": "..."}, "sonarr": {...}, "prowlarr": {...}}
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=/dev/null  # env.sh ends in a top-level return
@@ -31,5 +32,7 @@ vault kv get -format=json -mount=kv "homelab/$host/arr" | jq -ce '
       | ($s | getpath($v.host | split("."))) as $ip | "http://\($ip):\($v.port)";
   { radarr: {url: url("radarr"), key: $k.radarr_api_key},
     sonarr: {url: url("sonarr"), key: $k.sonarr_api_key} }
+  + (if $k.prowlarr_api_key and ([$s.services[] | select(.name == "prowlarr")] | length > 0)
+     then {prowlarr: {url: url("prowlarr"), key: $k.prowlarr_api_key}} else {} end)
   | select(.radarr.key and .sonarr.key)' ||
   { echo "media-env: kv/homelab/$host/arr has no radarr_api_key or sonarr_api_key (make vm HOST=$host ARGS=\"--tags homepage\")" >&2; exit 1; }
