@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.1](https://github.com/memetics19/anvil/compare/v0.25.0...v0.25.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **smb_media:** let the operator's NetBird peers open the shares ([#171](https://github.com/memetics19/anvil/issues/171)) ([fb6eaa0](https://github.com/memetics19/anvil/commit/fb6eaa03bf648a81b6c25fd0d5acf026488c1444))
+
 ## [0.25.0](https://github.com/memetics19/anvil/compare/v0.24.0...v0.25.0) (2026-10-31)
 
 
