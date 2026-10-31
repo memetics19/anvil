@@ -1,0 +1,29 @@
+# Every camera the config lists: front_door first, then the ones in
+# site.frigate_stack.cameras, each with its stream URL on the shared login.
+- name: The cameras and their streams
+  ansible.builtin.set_fact:
+    frigate_stack_cameras: >-
+      {%- set out = [{'name': 'front_door', 'url': frigate_stack_rtsp_url}] -%}
+      {%- for c in frigate_stack_more_cameras -%}
+      {%- set _ = out.append({'name': c.name | default(''),
+            'url': 'rtsp://' ~ frigate_stack_camera_user ~ ':' ~ frigate_stack_camera_password ~ '@'
+                   ~ (c.host | default('')) ~ ':' ~ (c.port | default(554)) ~ (c.path | default('/stream1')),
+            'host': c.host | default(''),
+            'detect_width': c.detect_width | default(1280),
+            'detect_height': c.detect_height | default(720)}) -%}
+      {%- endfor -%}
+      {{ out }}
+  no_log: true
+
+- name: Each more camera has a name, an address and the shared login
+  ansible.builtin.assert:
+    that:
+      - frigate_stack_cameras | map(attribute='name') | unique | list | length == frigate_stack_cameras | length
+      - frigate_stack_cameras[1:] | map(attribute='name') | reject('match', '^[a-z0-9_]+$') | list | length == 0
+      - frigate_stack_cameras[1:] | map(attribute='host') | reject('match', '^[A-Za-z0-9.-]+$') | list | length == 0
+      - frigate_stack_more_cameras | length == 0 or (frigate_stack_camera_user | length > 0 and frigate_stack_camera_password | length > 0)
+    fail_msg: >-
+      site.frigate_stack.cameras: each entry needs a name (lower case letters, digits, _, not
+      front_door and not twice) and a host, and {{ frigate_stack_vault_frigate_path }} needs
+      rtsp_user and rtsp_password
+    quiet: true

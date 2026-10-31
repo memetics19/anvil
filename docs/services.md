@@ -27,6 +27,27 @@ result into the template.
 - Mosquitto is not published. Frigate and frigate-notify reach it on the compose network.
 - The images are pinned by tag and digest in `frigate_stack/defaults/main.yml`.
 
+Cameras come from the site dict. The first is `front_door` (`site.frigate_stack.camera`:
+`host`, `port`, `path`). More go in `site.frigate_stack.cameras`, a list of `name`, `host`
+and optional `port` (554), `path` (`/stream1`), `detect_width` and `detect_height`
+(1280x720). They all use the same login, `rtsp_user` and `rtsp_password` in Vault. Each
+camera detects and records, has a go2rtc stream for live view, and is in the camera group.
+A name is lower case letters, digits and `_`. Keep it once there are recordings, because
+they are filed under it.
+
+To add one, write it with check-and-set (as in [usage.md](usage.md)), then run the role:
+
+```sh
+source scripts/env.sh
+cur=$(vault kv get -format=json -mount=kv homelab/site)
+ver=$(jq -r .data.metadata.version <<<"$cur")
+jq -c '.data.data | .site.frigate_stack.cameras += [{name: "driveway", host: "192.0.2.37"}]' <<<"$cur" |
+  vault kv put -mount=kv -cas="$ver" homelab/site -
+unset cur ver
+anvil check frigate --tags frigate
+anvil apply frigate --tags frigate
+```
+
 ### Docmost (wiki)
 
 `make vm HOST=frigate ARGS="--tags docmost"` runs the `docmost` role. It manages the
