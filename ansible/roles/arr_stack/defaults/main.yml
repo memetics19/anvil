@@ -34,6 +34,31 @@ arr_stack_api:
   radarr: {port: 7878, version: v3}
   prowlarr: {port: 9696, version: v1}
 
+# Prowlarr's indexers (tag arr_indexers, files/arr-indexers.py), by Prowlarr definition name.
+# A missing one is added and a switched-off one switched on. Indexers added in the web UI
+# are left alone. tags: [cloudflare] sends one through the FlareSolverr proxy. Prowlarr
+# syncs them to Sonarr and Radarr. Public sites only: a private tracker needs an account.
+# Knaben searches many public sites at once (1337x, TorrentGalaxy and more) and finds
+# Indian web series the others miss. 1337x is a large general site. EZTV is left out: it
+# fails Prowlarr's connection test from here (DNS or SSL, blocked upstream).
+arr_stack_prowlarr_indexers:
+  - {definition: Knaben}
+  - {definition: 1337x, tags: [cloudflare]}
+  - {definition: thepiratebay}
+  - {definition: limetorrents}
+  - {definition: torrentdownloads, tags: [cloudflare]}
+  - {definition: torrentdownload}
+  - {definition: torrentkitty}
+  - {definition: torrent9}
+  - {definition: kickasstorrents-to, tags: [cloudflare]}
+  - {definition: kickasstorrents-ws, tags: [cloudflare]}
+  - {definition: uindex, tags: [cloudflare]}
+  - {definition: yts}
+  - {definition: nyaasi}
+  - {definition: SubsPlease}
+  - {definition: nekobt}
+  - {definition: bangumi-moe}
+
 # The quality policy of Sonarr and Radarr (tag arr_quality, files/arr-quality.py): one
 # profile that takes every quality of at least arr_stack_quality_min_resolution, except
 # the names holding an exclude word (remuxes and disc images are 30 to 80 GB). Its cutoff
