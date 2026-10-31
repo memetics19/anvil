@@ -22,7 +22,7 @@ cat >"$tmp/play.yml" <<PLAY
       admin_sources: [198.51.100.30/32, 198.51.100.31/32]
       admin_vpn_sources: [203.0.113.7/32]
       pve: {uplink_ip: 192.0.2.250, uplink_prefix: 24}
-      hosts: {ragnarok: {home_ip: 192.0.2.247}}
+      hosts: {ragnarok: {home_ip: 192.0.2.247}, netbird: {ip: 198.51.100.40}}
   vars_files:
     - $PWD/ansible/roles/smb_media/defaults/main.yml
   tasks:
@@ -38,11 +38,11 @@ c=$tmp/smb.conf; g=$tmp/smb-guard.nft
 check "guest access, no password" "grep -q 'map to guest = Bad User' '$c' && grep -q 'guest ok = yes' '$c'"
 check "the movies and tv shares, read-only" \
   "grep -q '^\[Movies\]' '$c' && grep -q '^\[TV\]' '$c' && [ \$(grep -c 'read only = yes' '$c') = 2 ] && ! grep -q 'read only = no' '$c'"
-check "the home subnet, the operator devices and their VPN peers are allowed, others denied" \
-  "grep -q 'hosts allow = 198.51.100.30/32 198.51.100.31/32 203.0.113.7/32 192.0.2.0/24' '$c' && grep -q 'hosts deny = 0.0.0.0/0' '$c'"
+check "the home subnet, the operator devices, their VPN peers and the VPN's routing peer are allowed, others denied" \
+  "grep -q 'hosts allow = 198.51.100.30/32 198.51.100.31/32 203.0.113.7/32 198.51.100.40/32 192.0.2.0/24' '$c' && grep -q 'hosts deny = 0.0.0.0/0' '$c'"
 check "SMB2 minimum, no printers" "grep -q 'server min protocol = SMB2' '$c' && grep -q 'load printers = no' '$c'"
 check "guard: SMB ports accepted only from the readers" \
-  "grep -q 'th dport { 137, 138, 139, 445 } ip saddr { 198.51.100.30/32, 198.51.100.31/32, 203.0.113.7/32, 192.0.2.0/24 } accept' '$g'"
+  "grep -q 'th dport { 137, 138, 139, 445 } ip saddr { 198.51.100.30/32, 198.51.100.31/32, 203.0.113.7/32, 198.51.100.40/32, 192.0.2.0/24 } accept' '$g'"
 check "guard: SMB dropped from everyone else (not loopback)" \
   "grep -q 'th dport { 137, 138, 139, 445 } iifname != \"lo\" counter drop' '$g'"
 check "guard: replaced in one transaction" "grep -qx 'delete table inet anvil_smb_guard' '$g'"

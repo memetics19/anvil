@@ -242,7 +242,8 @@ Network at home, which NFS often does not.
 Who may connect, by Samba's `hosts allow` and the `anvil_smb_guard` firewall table:
 
 - the operator's lab devices (`site.admin_sources`)
-- the operator's NetBird peers (`site.admin_vpn_sources`)
+- the VPN: the netbird VM's lab address, plus the operator's NetBird peers
+  (`site.admin_vpn_sources`)
 - any device on the home Wi-Fi, when ragnarok has a home address
 
 Which address to open in VLC:
@@ -250,9 +251,13 @@ Which address to open in VLC:
 - At home: the home address (`site.hosts.ragnarok.home_ip`), or the share VLC lists under
   Local Network.
 - On the VPN: the lab address (`site.hosts.ragnarok.ip`), as `smb://<lab address>/Movies`.
-  The netbird VM routes the lab's /16 without masquerade, so the phone arrives with its own
-  NetBird address. No VPN route reaches the home address, and Local Network discovery does
-  not cross the VPN.
+  No VPN route reaches the home address, and Local Network discovery does not cross the
+  VPN.
+
+NetBird's cloud route for the lab's /16 masquerades. A phone on the VPN reaches ragnarok as
+the netbird VM's lab address, not its own NetBird address (a packet capture on ragnarok
+showed it). So that address is a reader, and every peer NetBird's access policy lets onto
+the lab route can read the shares, as every device on the home Wi-Fi can.
 
 ## netbird
 
