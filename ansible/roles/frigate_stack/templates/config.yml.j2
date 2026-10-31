@@ -12,16 +12,17 @@ mqtt:
   topic_prefix: frigate
 
 cameras:
-  front_door:
+{% for cam in frigate_stack_cameras %}
+  {{ cam.name }}:
     ffmpeg:
       inputs:
-        - path: {{ frigate_stack_rtsp_url }}
+        - path: {{ cam.url }}
           roles:
             - detect
             - record
     detect:
-      width: 1280
-      height: 720
+      width: {{ cam.detect_width | default(1280) }}
+      height: {{ cam.detect_height | default(720) }}
       fps: 2
     objects:
       track:
@@ -35,6 +36,7 @@ cameras:
       enabled: true
       expire_interval: 60
     webui_url: https://frigate.{{ site.domain }}
+{% endfor %}
 detectors:
   cpu:
     type: cpu
@@ -48,7 +50,9 @@ snapshots:
     default: 3
 go2rtc:
   streams:
-    front_door: {{ frigate_stack_rtsp_url }}
+{% for cam in frigate_stack_cameras %}
+    {{ cam.name }}: {{ cam.url }}
+{% endfor %}
 detect:
   enabled: true
 version: 0.17-0
@@ -56,7 +60,10 @@ camera_groups:
   {{ frigate_stack_camera_group }}:
     order: 1
     icon: LuAlignHorizontalJustifyEnd
-    cameras: front_door
+    cameras:
+{% for cam in frigate_stack_cameras %}
+      - {{ cam.name }}
+{% endfor %}
 semantic_search:
   enabled: false
   model_size: small

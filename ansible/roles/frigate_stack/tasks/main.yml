@@ -40,6 +40,10 @@
     frigate_stack_gotify_token: "{{ frigate_stack_notify_secrets.gotify_token | default('') }}"
   no_log: true
 
+# Every camera the config lists, and their checks (tasks/cameras.yml).
+- name: The cameras
+  ansible.builtin.include_tasks: cameras.yml
+
 - name: The secrets and site values are present
   ansible.builtin.assert:
     that:

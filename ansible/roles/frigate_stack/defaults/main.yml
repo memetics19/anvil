@@ -20,6 +20,11 @@ frigate_stack_timezone: "{{ site.timezone | default('Asia/Kolkata') }}"
 # main stream), and the login is the "Camera Account" set in the Tapo app, not the TP-Link
 # cloud login.
 frigate_stack_camera: "{{ site.frigate_stack.camera | default({}) }}"
+# More cameras (site.frigate_stack.cameras): a list of {name, host, port, path}, on the same
+# login as the first (rtsp_user and rtsp_password in Vault). name is Frigate's camera name:
+# lower case letters, digits and _. Keep it once there are recordings: they are filed under
+# it. detect_width and detect_height set the detection size (default 1280x720).
+frigate_stack_more_cameras: "{{ site.frigate_stack.cameras | default([]) }}"
 # Name of Frigate's camera group (site.frigate_stack.camera_group when set).
 frigate_stack_camera_group: "{{ site.frigate_stack.camera_group | default('Home') }}"
 # Frigate's config.yml comes from the template. Set false while editing it in the Frigate UI,
