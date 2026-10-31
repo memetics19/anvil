@@ -37,7 +37,10 @@ the download to qBittorrent. The addresses and API keys come from Vault
                               match.
       --pick N                take match N of the list without asking
       --season N              for a series, get only season N (asks when not given; "all"
-                              at the prompt gets every season)
+                              at the prompt gets every season). When Sonarr finds no
+                              release it takes, anvil searches wider through Prowlarr
+                              (more phrasings, season packs at 1080p or 4K) and hands
+                              the best one to Sonarr under a name it can parse
       --quality NAME          quality profile (default 1080p+, the one role arr_stack keeps:
                               1080p and 4K, never 720p. Else HD-1080p, else the first)
       --yes                   do not ask before adding when the disk is nearly full
@@ -56,6 +59,8 @@ type arrEndpoint struct {
 type mediaConfig struct {
 	Radarr arrEndpoint `json:"radarr"`
 	Sonarr arrEndpoint `json:"sonarr"`
+	// Prowlarr is for the wider season search. Empty: none.
+	Prowlarr arrEndpoint `json:"prowlarr"`
 }
 
 // mediaEnv returns the endpoints. Tests replace it.
@@ -219,6 +224,7 @@ type mediaOpts struct {
 	pick           int
 	season         int
 	quality        string
+	prowlarr       arrEndpoint
 }
 
 func cmdMedia(a *app.App, args []string) int {
@@ -277,6 +283,7 @@ func cmdMedia(a *app.App, args []string) int {
 	if o.tv {
 		c = sonarr
 	}
+	o.prowlarr = cfg.Prowlarr
 	switch sub {
 	case "search":
 		return mediaSearch(a, c, term)
@@ -403,7 +410,10 @@ func mediaGet(a *app.App, c arr, term string, o mediaOpts) int {
 				fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
 				return 1
 			}
-			fmt.Fprintf(a.Stdout, "%s is already added: %s searches season %d again. Follow it with: anvil media status\n", it.label(), c.name(), season)
+			fmt.Fprintf(a.Stdout, "%s is already added: %s searches season %d again.\n", it.label(), c.name(), season)
+			if !c.widerSeason(a, o.prowlarr, it.Title, it.ID, season) {
+				return 1
+			}
 			return 0
 		}
 		cmd := map[string]any{"name": "MoviesSearch", "movieIds": []int{it.ID}}
@@ -468,8 +478,14 @@ func mediaGet(a *app.App, c arr, term string, o mediaOpts) int {
 			return 1
 		}
 	}
-	fmt.Fprintf(a.Stdout, "Added %s (%s, %s free). %s is searching for it now.\nFollow it with: anvil media status\n",
-		what, profileName, human(free), c.name())
+	fmt.Fprintf(a.Stdout, "Added %s (%s, %s free). %s is searching for it now.\n", what, profileName, human(free), c.name())
+	if c.tv && season > 0 {
+		if !c.widerSeason(a, o.prowlarr, it.Title, created.ID, season) {
+			return 1
+		}
+		return 0
+	}
+	fmt.Fprintln(a.Stdout, "Follow it with: anvil media status")
 	return 0
 }
 

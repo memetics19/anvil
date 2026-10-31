@@ -538,6 +538,13 @@ anvil media status --watch               # the free space, refreshed every 10 se
 - A series is added one season at a time, so a run does not pull every season at once. It
   asks which season (a number, or `all`); `--season N` skips the question, `--yes` means
   all. Only that season is monitored and searched.
+- When Sonarr finds no release of that season it takes, anvil searches wider. Sonarr asks
+  for `<title> S02`, so a pack named `<title> 2026 Hindi Season 02 Complete 1080p` is never
+  found, and Sonarr could not parse that name anyway. anvil asks Prowlarr for
+  `<title> Season 2`, `<title> S02` and the title alone, keeps season packs at 1080p or 4K
+  (1080p first, then the most seeders), and pushes the best one to Sonarr as
+  `<title> S02 1080p HDRip`. Sonarr still decides by its profile. anvil says it is
+  downloading only once Sonarr has recorded the grab, and tries the next pack otherwise.
 - It uses the first root folder.
 - A movie or series that is already added but has no file gets a new search, not a second
   add.
