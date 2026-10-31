@@ -212,6 +212,27 @@ sudo mount -a
 
 Then add `/mnt/media/movies` and `/mnt/media/tv` as libraries in Jellyfin.
 
+### Media over SMB (VLC on phones and TVs)
+
+`make vm HOST=ragnarok ARGS="--tags smb_media"` shares `Movies` and `TV` read-only over
+SMB, as a guest with no password (role `smb_media`). VLC on Android finds it under Local
+Network at home, which NFS often does not.
+
+Who may connect, by Samba's `hosts allow` and the `anvil_smb_guard` firewall table:
+
+- the operator's lab devices (`site.admin_sources`)
+- the operator's NetBird peers (`site.admin_vpn_sources`)
+- any device on the home Wi-Fi, when ragnarok has a home address
+
+Which address to open in VLC:
+
+- At home: the home address (`site.hosts.ragnarok.home_ip`), or the share VLC lists under
+  Local Network.
+- On the VPN: the lab address (`site.hosts.ragnarok.ip`), as `smb://<lab address>/Movies`.
+  The netbird VM routes the lab's /16 without masquerade, so the phone arrives with its own
+  NetBird address. No VPN route reaches the home address, and Local Network discovery does
+  not cross the VPN.
+
 ## netbird
 
 `make vm HOST=netbird` runs the "Netbird workloads" play. This VM is the emergency VPN

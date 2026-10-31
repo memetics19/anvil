@@ -5,14 +5,20 @@
 smb_media_shares:
   - {name: Movies, path: /home/ubuntu/media/movies}
   - {name: TV, path: /home/ubuntu/media/tv}
-# Who may connect: the operator's lab devices (site.admin_sources) and, when the VM has a
-# home address (role nfs_media sets site.hosts.<vm>.home_ip), any device on the home Wi-Fi.
+# Who may connect: the operator's lab devices (site.admin_sources), the operator's NetBird
+# peers (site.admin_vpn_sources) and, when the VM has a home address (role nfs_media sets
+# site.hosts.<vm>.home_ip), any device on the home Wi-Fi.
 smb_media_lan_clients: "{{ site.admin_sources | default([]) }}"
+# The netbird VM routes the lab's /16 without masquerade, so a phone on the VPN arrives with
+# its own NetBird address. It opens the share at the VM's lab address: no VPN route reaches
+# the home address. Empty turns VPN access off.
+smb_media_vpn_clients: "{{ site.admin_vpn_sources | default([]) }}"
 smb_media_home_ip: "{{ site.hosts[inventory_hostname].home_ip | default('') }}"
 smb_media_home_subnet: >-
   {{ (site.pve.uplink_ip | default('')).split('.')[:3] | join('.') }}.0/{{ site.pve.uplink_prefix | default('24') }}
 smb_media_readers: >-
-  {{ (smb_media_lan_clients + ([smb_media_home_subnet] if smb_media_home_ip | length > 0 else [])) | unique }}
+  {{ (smb_media_lan_clients + smb_media_vpn_clients
+      + ([smb_media_home_subnet] if smb_media_home_ip | length > 0 else [])) | unique }}
 # Everyone reads as the library's owner (the VM's first user): read-only.
 smb_media_guest_user: ubuntu
 smb_media_guard_file: /etc/anvil/smb-guard.nft
