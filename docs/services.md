@@ -119,6 +119,14 @@ Radarr.
 Knaben searches many public sites at once. 1337x goes through FlareSolverr. EZTV is not in
 the list: it fails Prowlarr's connection test from this line.
 
+`base_url` puts an indexer on one of its mirrors, for a site this line blocks. Nyaa uses
+`nyaa.iss.ink`: `nyaa.si` gets its connection reset now and then, and Prowlarr then keeps it
+off for hours.
+
+`arr_stack_app_indexers_off` switches off indexers added by hand in Sonarr or Radarr, by
+name. They are never deleted. Radarr's four Jackett routes from before Prowlarr are off:
+RARBG, 1337x, The Pirate Bay and Torznab.
+
 ```sh
 make vm HOST=ragnarok ARGS="--tags arr_indexers --check"  # what would be added
 make vm HOST=ragnarok ARGS="--tags arr_indexers"
