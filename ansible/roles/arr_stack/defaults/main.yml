@@ -54,10 +54,19 @@ arr_stack_prowlarr_indexers:
   - {definition: kickasstorrents-ws, tags: [cloudflare]}
   - {definition: uindex, tags: [cloudflare]}
   - {definition: yts}
-  - {definition: nyaasi}
+  # nyaa.si is blocked on this line now and then (the connection is reset during TLS), and
+  # Prowlarr then keeps it off for hours. A mirror from Prowlarr's own list instead:
+  # nyaa.land is behind a Cloudflare check Prowlarr cannot pass, nyaa.iss.ink works.
+  - {definition: nyaasi, base_url: "https://nyaa.iss.ink/"}
   - {definition: SubsPlease}
   - {definition: nekobt}
   - {definition: bangumi-moe}
+
+# Indexers added by hand in Sonarr or Radarr (not synced by Prowlarr) that the run switches
+# off, by name, per app. Never deleted. Radarr's are Jackett routes left from before
+# Prowlarr: RARBG (TheRARBG, failing) and duplicates of Prowlarr's 1337x and The Pirate Bay.
+arr_stack_app_indexers_off:
+  radarr: [RARBG, 1337x, The Pirate Bay, Torznab]
 
 # The quality policy of Sonarr and Radarr (tag arr_quality, files/arr-quality.py): one
 # profile that takes every quality of at least arr_stack_quality_min_resolution, except

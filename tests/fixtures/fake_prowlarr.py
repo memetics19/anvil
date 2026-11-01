@@ -1,5 +1,5 @@
 """A fake Prowlarr for tests/unit/test_arr_indexers.sh: indexers, schema, tags and app
-profiles, kept in memory. Writes are logged one JSON line each to <dir>/writes.
+profiles, kept in memory. It answers as a fake Radarr too, on /api/v3/indexer. Writes are logged one JSON line each to <dir>/writes.
 It checks X-Api-Key against the key in <dir>/config.xml.
 Usage: fake_prowlarr.py <dir> <port file>"""
 import json
@@ -12,7 +12,12 @@ d, port_file = sys.argv[1], sys.argv[2]
 KEY = re.search(r"<ApiKey>([0-9a-f]{32})</ApiKey>", open(f"{d}/config.xml").read()).group(1)
 state = {
     "indexer": [{"id": 1, "name": "The Pirate Bay", "definitionName": "thepiratebay", "enable": True, "tags": []},
-                {"id": 2, "name": "LimeTorrents", "definitionName": "limetorrents", "enable": False, "tags": []}],
+                {"id": 2, "name": "LimeTorrents", "definitionName": "limetorrents", "enable": False, "tags": []},
+                {"id": 3, "name": "Nyaa.si", "definitionName": "nyaasi", "enable": True, "tags": [],
+                 "indexerUrls": ["https://nyaa.example/"], "fields": [{"name": "baseUrl", "value": None}]}],
+    "v3indexer": [{"id": 14, "name": "RARBG", "enableRss": True, "enableAutomaticSearch": True, "enableInteractiveSearch": True},
+                  {"id": 15, "name": "Gone", "enableRss": False, "enableAutomaticSearch": False, "enableInteractiveSearch": False},
+                  {"id": 22, "name": "1337x (Prowlarr)", "enableRss": True, "enableAutomaticSearch": True, "enableInteractiveSearch": True}],
     "schema": [{"name": "Knaben", "definitionName": "Knaben", "indexerUrls": ["https://knaben.example/"],
                 "fields": [{"name": "baseUrl", "value": None}]},
                {"name": "1337x", "definitionName": "1337x", "indexerUrls": ["https://1337x.example/"],
@@ -44,6 +49,9 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.ok():
             return
+        if self.path.split("?")[0] == "/api/v3/indexer":
+            self.send(200, state["v3indexer"])
+            return
         p = self.path.split("?")[0].removeprefix("/api/v1/")
         key = {"indexer/schema": "schema"}.get(p, p)
         if key in state:
@@ -54,7 +62,7 @@ class H(BaseHTTPRequestHandler):
     def write(self, method):
         if not self.ok():
             return
-        p = self.path.removeprefix("/api/v1/")
+        p = self.path.removeprefix("/api/v1/").replace("/api/v3/", "v3/")
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
         with open(f"{d}/writes", "a") as f:
             f.write(json.dumps({"method": method, "path": p, "body": body}) + "\n")
