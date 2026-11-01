@@ -522,8 +522,16 @@ The `pihole` role runs compose project `/opt/pihole`.
   gateway, with `web_password` from `kv/homelab/apps/pihole`. Settings the role passes are
   read-only in the UI.
 - Its only upstream is Unbound, at a fixed address on the project's own Docker network
-  (`site.hosts.apps.dns_subnet` and `dns_unbound_ip`, never published). Unbound resolves
-  from the root servers, validates DNSSEC and has a healthcheck.
+  (`site.hosts.apps.dns_subnet` and `dns_unbound_ip`, never published). Unbound validates
+  DNSSEC and has a healthcheck.
+- Unbound forwards every query over DNS over TLS (port 853) to Quad9 and Cloudflare
+  (`pihole_unbound_dot_upstreams`), checked against their certificate names. The ISP sees
+  neither the queries nor the answers and cannot change them. Quad9 and Cloudflare see the
+  queries instead. There is no fallback to plain DNS. Quad9 also blocks known malware
+  domains. An empty list makes Unbound resolve from the root servers again, unencrypted.
+- A change to Unbound's settings is checked with `unbound-checkconf` of the same image
+  before it is installed. The run then restarts Unbound and checks that Pi-hole answers on
+  every address, which with DNS over TLS proves the upstreams work.
 - Either container can restart on its own, and resolution comes back without a run.
 
 #### Rate limit
