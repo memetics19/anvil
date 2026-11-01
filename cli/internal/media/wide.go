@@ -15,13 +15,15 @@ import (
 	"github.com/memetics19/anvil/cli/internal/app"
 )
 
-// The wider season search. Sonarr searches a season as "<title> S02". Some packs are named
+// The wider search. Sonarr searches a season as "<title> S02". Some packs are named
 // otherwise ("<title> 2026 Hindi Season 02 Complete 1080p"): Sonarr's query does not find
 // them, and Sonarr cannot parse their name when it sees one. When Sonarr finds no release it
 // takes, anvil asks Prowlarr with more phrasings, keeps season packs at 1080p or 4K, and
 // pushes the best one to Sonarr under a clean name ("<title> S02 1080p HDRip"). Sonarr
 // still decides: it takes the push only when its profile allows it, and then follows and
-// imports the download as its own.
+// imports the download as its own. Radarr gets the same for a movie: "<title> <year>" and
+// the title alone, releases that start with the title and name the year, pushed as
+// "<title> <year> 1080p WEB-DL".
 
 // How long widerSeason waits for Sonarr to record the grab of a pushed release, and how
 // often it looks. Sonarr hands it to qBittorrent within seconds. Tests set these near zero.
@@ -149,14 +151,81 @@ func cleanName(series string, n int, h hit) string {
 	return strings.Join(parts, " ")
 }
 
+// movieRelease reports whether title is a release of the movie: it starts with the movie's
+// title, names its year, and names no season or episode.
+func movieRelease(movie string, year int, title string) bool {
+	w := words(title)
+	if !strings.HasPrefix(w+" ", words(movie)+" ") {
+		return false
+	}
+	rest := strings.TrimPrefix(w, words(movie))
+	if !regexp.MustCompile(fmt.Sprintf(`\b%d\b`, year)).MatchString(rest) {
+		return false
+	}
+	return !regexp.MustCompile(`\bs\d+ ?e\d+\b|\bs\d+\b|\bseason\b|\bepisode\b`).MatchString(rest)
+}
+
+// cleanMovieName is the name Radarr can parse: "<title> <year> 1080p WEB-DL Hindi".
+func cleanMovieName(movie string, year int, h hit) string {
+	res := "1080p"
+	if h.res == 2160 {
+		res = "2160p"
+	}
+	parts := []string{movie, fmt.Sprint(year), res}
+	if s := sourceRE.FindString(h.Title); s != "" {
+		parts = append(parts, s)
+	}
+	for _, l := range languages {
+		if regexp.MustCompile(`(?i)\b` + l + `\b`).MatchString(h.Title) {
+			parts = append(parts, l)
+			break
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+// widen is what one wider search is for: a season of a series, or a movie.
+type widen struct {
+	what     string            // "season 2", or the movie's label
+	releases string            // the app's own search: release?...
+	queries  []string          // the phrasings Prowlarr is asked, all at once
+	match    func(string) bool // whether a release title is what is wanted
+	clean    func(hit) string  // the name the app can parse
+	history  string            // where the app records its grabs
+}
+
 // widerSeason runs after the season search has started. It returns false only on an error
 // worth an exit code: finding nothing is not one, since Sonarr keeps watching the season.
 func (c arr) widerSeason(a *app.App, prowlarr arrEndpoint, series string, seriesID, n int) bool {
-	fmt.Fprintf(a.Stdout, "Checking what %s finds for season %d...\n", c.name(), n)
+	return c.wider(a, prowlarr, widen{
+		what:     fmt.Sprintf("season %d", n),
+		releases: fmt.Sprintf("release?seriesId=%d&seasonNumber=%d", seriesID, n),
+		queries:  []string{fmt.Sprintf("%s Season %d", series, n), fmt.Sprintf("%s S%02d", series, n), series},
+		match:    func(t string) bool { return seasonPack(series, t, n) },
+		clean:    func(h hit) string { return cleanName(series, n, h) },
+		history:  fmt.Sprintf("history/series?seriesId=%d&eventType=1", seriesID),
+	})
+}
+
+// widerMovie is the same for a movie, after Radarr's search has started. A release must
+// start with the movie's title and name its year.
+func (c arr) widerMovie(a *app.App, prowlarr arrEndpoint, title string, year, movieID int) bool {
+	return c.wider(a, prowlarr, widen{
+		what:     fmt.Sprintf("%s (%d)", title, year),
+		releases: fmt.Sprintf("release?movieId=%d", movieID),
+		queries:  []string{fmt.Sprintf("%s %d", title, year), title},
+		match:    func(t string) bool { return movieRelease(title, year, t) },
+		clean:    func(h hit) string { return cleanMovieName(title, year, h) },
+		history:  fmt.Sprintf("history/movie?movieId=%d&eventType=1", movieID),
+	})
+}
+
+func (c arr) wider(a *app.App, prowlarr arrEndpoint, w widen) bool {
+	fmt.Fprintf(a.Stdout, "Checking what %s finds for %s...\n", c.name(), w.what)
 	slow := c
 	slow.client = slowClient
 	var rels []release
-	if err := slow.do("GET", fmt.Sprintf("release?seriesId=%d&seasonNumber=%d", seriesID, n), nil, &rels); err != nil {
+	if err := slow.do("GET", w.releases, nil, &rels); err != nil {
 		fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
 		return false
 	}
@@ -170,29 +239,36 @@ func (c arr) widerSeason(a *app.App, prowlarr arrEndpoint, series string, series
 			reasons[s]++
 		}
 	}
+	// The app's own search runs at the same time, and may have grabbed a release already:
+	// then it rejects the rest as "in queue already meets cutoff". It is handled.
+	for s := range reasons {
+		if strings.Contains(strings.ToLower(s), "in queue already meets cutoff") {
+			fmt.Fprintf(a.Stdout, "%s already has a release of %s in the queue. Follow it with: anvil media status\n", c.name(), w.what)
+			return true
+		}
+	}
 	if len(rels) == 0 {
-		fmt.Fprintf(a.Stdout, "%s found no release for season %d.\n", c.name(), n)
+		fmt.Fprintf(a.Stdout, "%s found no release for %s.\n", c.name(), w.what)
 	} else {
 		var why []string
 		for s, k := range reasons {
 			why = append(why, fmt.Sprintf("%s (%d)", s, k))
 		}
 		sort.Strings(why)
-		fmt.Fprintf(a.Stdout, "%s found %d release(s) for season %d and takes none: %s.\n", c.name(), len(rels), n, strings.Join(why, ", "))
+		fmt.Fprintf(a.Stdout, "%s found %d release(s) for %s and takes none: %s.\n", c.name(), len(rels), w.what, strings.Join(why, ", "))
 	}
 	if prowlarr.URL == "" || prowlarr.Key == "" {
-		fmt.Fprintln(a.Stdout, "The wider search needs Prowlarr (scripts/media-env.sh). Sonarr keeps watching the season.")
+		fmt.Fprintf(a.Stdout, "The wider search needs Prowlarr (scripts/media-env.sh). %s keeps looking.\n", c.name())
 		return true
 	}
 
 	fmt.Fprintln(a.Stdout, "Searching wider through Prowlarr...")
 	// The phrasings run at once: Prowlarr asks every indexer for each, and the slow ones
 	// (behind FlareSolverr) take a minute or more.
-	queries := []string{fmt.Sprintf("%s Season %d", series, n), fmt.Sprintf("%s S%02d", series, n), series}
-	results := make([][]hit, len(queries))
-	errs := make([]error, len(queries))
+	results := make([][]hit, len(w.queries))
+	errs := make([]error, len(w.queries))
 	var wg sync.WaitGroup
-	for i, q := range queries {
+	for i, q := range w.queries {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -201,7 +277,7 @@ func (c arr) widerSeason(a *app.App, prowlarr arrEndpoint, series string, series
 	}
 	wg.Wait()
 	seen := map[string]bool{}
-	var packs []hit
+	var found []hit
 	for i, hs := range results {
 		if errs[i] != nil {
 			fmt.Fprintf(a.Stderr, "anvil: media: %v\n", errs[i])
@@ -209,30 +285,30 @@ func (c arr) widerSeason(a *app.App, prowlarr arrEndpoint, series string, series
 		}
 		for _, h := range hs {
 			key := h.GUID + "|" + h.Title
-			if seen[key] || !strings.EqualFold(h.Protocol, "torrent") || !seasonPack(series, h.Title, n) {
+			if seen[key] || !strings.EqualFold(h.Protocol, "torrent") || !w.match(h.Title) {
 				continue
 			}
 			seen[key] = true
 			if h.res = resolution(h.Title); h.res >= 1080 {
-				packs = append(packs, h)
+				found = append(found, h)
 			}
 		}
 	}
-	// 1080p before 4K (the policy prefers 1080p: a 4K pack can be ten times the size), then
-	// the most seeders.
-	sort.SliceStable(packs, func(i, j int) bool {
-		if (packs[i].res == 1080) != (packs[j].res == 1080) {
-			return packs[i].res == 1080
+	// 1080p before 4K (the policy prefers 1080p: a 4K release can be ten times the size),
+	// then the most seeders.
+	sort.SliceStable(found, func(i, j int) bool {
+		if (found[i].res == 1080) != (found[j].res == 1080) {
+			return found[i].res == 1080
 		}
-		return packs[i].Seeders > packs[j].Seeders
+		return found[i].Seeders > found[j].Seeders
 	})
-	if len(packs) == 0 {
-		fmt.Fprintf(a.Stdout, "No season %d pack at 1080p or better anywhere yet. Sonarr keeps watching the season.\n", n)
+	if len(found) == 0 {
+		fmt.Fprintf(a.Stdout, "Nothing for %s at 1080p or better anywhere yet. %s keeps looking.\n", w.what, c.name())
 		return true
 	}
-	// Sonarr downloads a release through the indexer it came from: that indexer follows
-	// Prowlarr's download link to the torrent or magnet. Its id is Sonarr's, matched by name
-	// ("kickasstorrents.to (Prowlarr)").
+	// The app downloads a release through the indexer it came from: that indexer follows
+	// Prowlarr's download link to the torrent or magnet. Its id is the app's, matched by
+	// name ("kickasstorrents.to (Prowlarr)").
 	var idx []struct {
 		ID   int    `json:"id"`
 		Name string `json:"name"`
@@ -249,11 +325,11 @@ func (c arr) widerSeason(a *app.App, prowlarr arrEndpoint, series string, series
 		}
 		return 0
 	}
-	for i, h := range packs {
+	for i, h := range found {
 		if i == 3 {
 			break
 		}
-		name := cleanName(series, n, h)
+		name := w.clean(h)
 		body := map[string]any{"title": name, "protocol": "torrent", "publishDate": h.PublishDate,
 			"indexer": h.Indexer, "size": h.Size, "seeders": h.Seeders}
 		if h.DownloadURL != "" {
@@ -261,9 +337,9 @@ func (c arr) widerSeason(a *app.App, prowlarr arrEndpoint, series string, series
 		} else {
 			body["downloadUrl"] = h.MagnetURL
 		}
-		// Prowlarr often puts its own download link in magnetUrl too. Sonarr would try to
+		// Prowlarr often puts its own download link in magnetUrl too. The app would try to
 		// parse that as a magnet and fail, so only a real magnet goes there. The download link
-		// is followed through the indexer, to a torrent or a magnet, as in Sonarr's own grabs.
+		// is followed through the indexer, to a torrent or a magnet, as in the app's own grabs.
 		if strings.HasPrefix(h.MagnetURL, "magnet:") {
 			body["magnetUrl"] = h.MagnetURL
 		}
@@ -276,8 +352,8 @@ func (c arr) widerSeason(a *app.App, prowlarr arrEndpoint, series string, series
 			continue
 		}
 		if len(out) > 0 && !out[0].Rejected {
-			// Taken is not downloading yet: Sonarr still has to hand it to qBittorrent.
-			if c.grabbed(seriesID, name) {
+			// Taken is not downloading yet: the app still has to hand it to qBittorrent.
+			if c.grabbed(w.history, name) {
 				fmt.Fprintf(a.Stdout, "Found %q (%s, %d seeders, %s).\nGave it to %s as %q, and it is downloading. Follow it with: anvil media status\n",
 					h.Title, human(h.Size), h.Seeders, h.Indexer, c.name(), name)
 				return true
@@ -291,19 +367,19 @@ func (c arr) widerSeason(a *app.App, prowlarr arrEndpoint, series string, series
 		}
 		fmt.Fprintf(a.Stdout, "%s does not take %q: %s\n", c.name(), h.Title, why)
 	}
-	fmt.Fprintf(a.Stdout, "Nothing it takes yet. Sonarr keeps watching season %d.\n", n)
+	fmt.Fprintf(a.Stdout, "Nothing it takes yet. %s keeps looking for %s.\n", c.name(), w.what)
 	return true
 }
 
-// grabbed waits for Sonarr's history to record the grab of a release, by the name it was
-// pushed under. The queue is no use for this: it shows the torrent's own name.
-func (c arr) grabbed(seriesID int, title string) bool {
+// grabbed waits for the app's history (path) to record the grab of a release, by the name
+// it was pushed under. The queue is no use for this: it shows the torrent's own name.
+func (c arr) grabbed(path, title string) bool {
 	deadline := time.Now().Add(queueWait)
 	for {
 		var hs []struct {
 			SourceTitle string `json:"sourceTitle"`
 		}
-		if err := c.do("GET", fmt.Sprintf("history/series?seriesId=%d&eventType=1", seriesID), nil, &hs); err == nil {
+		if err := c.do("GET", path, nil, &hs); err == nil {
 			for _, h := range hs {
 				if strings.EqualFold(h.SourceTitle, title) {
 					return true
