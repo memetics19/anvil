@@ -545,9 +545,15 @@ anvil media status --watch               # the free space, refreshed every 10 se
   (1080p first, then the most seeders), and pushes the best one to Sonarr as
   `<title> S02 1080p HDRip`. Sonarr still decides by its profile. anvil says it is
   downloading only once Sonarr has recorded the grab, and tries the next pack otherwise.
+- A movie gets the same from Radarr, when it is added or searched again without a file.
+  anvil asks Prowlarr for `<title> <year>` and the title alone, keeps releases that start
+  with the title and name the year (no series episodes), and pushes the best as
+  `<title> <year> 1080p WEB-DL`.
 - It uses the first root folder.
 - A movie or series that is already added but has no file gets a new search, not a second
-  add.
+  add. If it is on another profile than the one `get` adds with (an old `Any`, which takes
+  disc images, 720p and SD), it is moved to that profile first, and `get` says so. Other
+  items are never moved.
 - Under 15 GB of free space it asks first. `--yes` skips the question.
 
 The addresses are the gateway names (`radarr.<gateway-domain>`, `sonarr.<gateway-domain>`),

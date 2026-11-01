@@ -20,22 +20,23 @@ const testArrSentinel = "sentinel-arr-value-7d31"
 // fakeArr is Radarr (or Sonarr with tv) for the tests. It answers the calls anvil media
 // makes and records the bodies it is sent.
 type fakeArr struct {
-	tv       bool
-	lookup   string // JSON array for */lookup
-	queue    string // JSON object for queue
-	missing  string // JSON object for wanted/missing
-	free     int64
-	mu       sync.Mutex
-	posts    map[string][]map[string]any
-	badKey   bool
-	addError int
-	profiles string   // JSON array for qualityprofile; empty: Any, HD-1080p, Ultra-HD
-	epCalls  int      // how many times the episode list was asked for
-	epDelay  int      // return no episodes for the first epDelay calls (Sonarr still loading)
-	releases string   // JSON array for release (Sonarr's own season search); empty: none
-	pushes   []bool   // whether each release/push in turn is rejected; past the end: taken
-	noGrab   bool     // a taken push is never grabbed (Sonarr could not start it)
-	queued   []string // the names of grabbed pushes, for history/series
+	tv          bool
+	lookup      string // JSON array for */lookup
+	queue       string // JSON object for queue
+	missing     string // JSON object for wanted/missing
+	free        int64
+	mu          sync.Mutex
+	posts       map[string][]map[string]any
+	badKey      bool
+	addError    int
+	profiles    string   // JSON array for qualityprofile; empty: Any, HD-1080p, Ultra-HD
+	epCalls     int      // how many times the episode list was asked for
+	epDelay     int      // return no episodes for the first epDelay calls (Sonarr still loading)
+	releases    string   // JSON array for release (Sonarr's own season search); empty: none
+	pushes      []bool   // whether each release/push in turn is rejected; past the end: taken
+	noGrab      bool     // a taken push is never grabbed (Sonarr could not start it)
+	itemProfile string   // the qualityProfileId GET movie/<id> or series/<id> answers; empty: 1
+	queued      []string // the names of grabbed pushes, for history/series
 }
 
 func (f *fakeArr) server(t *testing.T) *httptest.Server {
@@ -93,6 +94,9 @@ func (f *fakeArr) server(t *testing.T) *httptest.Server {
 			return
 		}
 		switch {
+		case (strings.HasPrefix(p, "movie/") || strings.HasPrefix(p, "series/")) && !strings.HasSuffix(p, "/lookup"):
+			// One library item: on profile 1 (Any) unless the test says otherwise.
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 9, "title": "x", "qualityProfileId": json.RawMessage(or(f.itemProfile, "1"))})
 		case strings.HasSuffix(p, "/lookup"):
 			_, _ = io.WriteString(w, f.lookup)
 		case p == "episode":
@@ -119,7 +123,7 @@ func (f *fakeArr) server(t *testing.T) *httptest.Server {
 				root = "/tv"
 			}
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"path": root, "freeSpace": f.free}})
-		case p == "history/series":
+		case p == "history/series" || p == "history/movie":
 			// The grabs of taken pushes, by the name they were pushed under.
 			f.mu.Lock()
 			recs := []map[string]any{}
@@ -195,6 +199,20 @@ func mediaLabProwlarr(t *testing.T, sonarr *fakeArr, prowlarr *fakeProwlarr) *te
 	t.Helper()
 	l := testlab.New(t)
 	rs, ss, ps := (&fakeArr{}).server(t), sonarr.server(t), prowlarr.server(t)
+	old := mediaEnv
+	mediaEnv = func(*app.App) (mediaConfig, error) {
+		return mediaConfig{Radarr: arrEndpoint{rs.URL, testArrSentinel}, Sonarr: arrEndpoint{ss.URL, testArrSentinel},
+			Prowlarr: arrEndpoint{ps.URL, testArrSentinel}}, nil
+	}
+	t.Cleanup(func() { mediaEnv = old })
+	return l
+}
+
+// mediaLabMovies is mediaLabProwlarr for Radarr.
+func mediaLabMovies(t *testing.T, radarr *fakeArr, prowlarr *fakeProwlarr) *testlab.Lab {
+	t.Helper()
+	l := testlab.New(t)
+	rs, ss, ps := radarr.server(t), (&fakeArr{tv: true}).server(t), prowlarr.server(t)
 	old := mediaEnv
 	mediaEnv = func(*app.App) (mediaConfig, error) {
 		return mediaConfig{Radarr: arrEndpoint{rs.URL, testArrSentinel}, Sonarr: arrEndpoint{ss.URL, testArrSentinel},

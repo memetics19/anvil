@@ -40,7 +40,8 @@ the download to qBittorrent. The addresses and API keys come from Vault
                               at the prompt gets every season). When Sonarr finds no
                               release it takes, anvil searches wider through Prowlarr
                               (more phrasings, season packs at 1080p or 4K) and hands
-                              the best one to Sonarr under a name it can parse
+                              the best one to Sonarr under a name it can parse. A movie
+                              gets the same from Radarr.
       --quality NAME          quality profile (default 1080p+, the one role arr_stack keeps:
                               1080p and 4K, never 720p. Else HD-1080p, else the first)
       --yes                   do not ask before adding when the disk is nearly full
@@ -405,6 +406,12 @@ func mediaGet(a *app.App, c arr, term string, o mediaOpts) int {
 			fmt.Fprintf(a.Stdout, "%s is already in the library.\n", it.label())
 			return 0
 		}
+		// The quality policy holds only for items on its profile. One added before it (on
+		// Any, which takes disc images, 720p and SD) is moved to it before the search.
+		if err := c.useProfile(a, it, o.quality); err != nil {
+			fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
+			return 1
+		}
 		if c.tv && season > 0 {
 			if err := c.searchSeason(it.ID, season); err != nil {
 				fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
@@ -423,6 +430,13 @@ func mediaGet(a *app.App, c arr, term string, o mediaOpts) int {
 		if err := c.do("POST", "command", cmd, nil); err != nil {
 			fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
 			return 1
+		}
+		if !c.tv {
+			fmt.Fprintf(a.Stdout, "%s is already added: %s searches for it again.\n", it.label(), c.name())
+			if !c.widerMovie(a, o.prowlarr, it.Title, it.Year, it.ID) {
+				return 1
+			}
+			return 0
 		}
 		fmt.Fprintf(a.Stdout, "%s is already added: %s searches for it again. Follow it with: anvil media status\n", it.label(), c.name())
 		return 0
@@ -481,6 +495,12 @@ func mediaGet(a *app.App, c arr, term string, o mediaOpts) int {
 	fmt.Fprintf(a.Stdout, "Added %s (%s, %s free). %s is searching for it now.\n", what, profileName, human(free), c.name())
 	if c.tv && season > 0 {
 		if !c.widerSeason(a, o.prowlarr, it.Title, created.ID, season) {
+			return 1
+		}
+		return 0
+	}
+	if !c.tv {
+		if !c.widerMovie(a, o.prowlarr, it.Title, it.Year, created.ID) {
 			return 1
 		}
 		return 0
@@ -599,6 +619,41 @@ func (c arr) searchSeason(seriesID, season int) error {
 		return err
 	}
 	return c.do("POST", "command", map[string]any{"name": "SeasonSearch", "seriesId": seriesID, "seasonNumber": season}, nil)
+}
+
+// useProfile puts an item that is in the library on the profile get would add it with,
+// when it is on another one, and says so.
+func (c arr) useProfile(a *app.App, it item, want string) error {
+	id, name, err := c.profile(want)
+	if err != nil {
+		return err
+	}
+	var cur map[string]any
+	if err := c.do("GET", fmt.Sprintf("%s/%d", c.kind(), it.ID), nil, &cur); err != nil {
+		return err
+	}
+	old, _ := cur["qualityProfileId"].(float64)
+	if int(old) == id {
+		return nil
+	}
+	oldName := fmt.Sprintf("profile %d", int(old))
+	var ps []struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+	if c.do("GET", "qualityprofile", nil, &ps) == nil {
+		for _, p := range ps {
+			if p.ID == int(old) {
+				oldName = p.Name
+			}
+		}
+	}
+	cur["qualityProfileId"] = id
+	if err := c.do("PUT", fmt.Sprintf("%s/%d", c.kind(), it.ID), cur, nil); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.Stdout, "Moved %s to the %s profile (it was on %s).\n", it.label(), name, oldName)
+	return nil
 }
 
 func (c arr) profile(want string) (int, string, error) {
