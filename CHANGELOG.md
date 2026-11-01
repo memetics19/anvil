@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.26.0](https://github.com/memetics19/anvil/compare/v0.25.2...v0.26.0) (2026-11-01)
+
+
+### Features
+
+* **media:** the wider search for movies, and the policy profile before a search ([#176](https://github.com/memetics19/anvil/issues/176)) ([40ec5f4](https://github.com/memetics19/anvil/commit/40ec5f46ca3af1f220f2466f9f107af39e5fdf3f))
+* **pihole:** DNS over TLS from Unbound to Quad9 and Cloudflare ([#177](https://github.com/memetics19/anvil/issues/177)) ([bc9183f](https://github.com/memetics19/anvil/commit/bc9183f3981152ebe9d2384d9f64202586ba8478))
+
+
+### Bug Fixes
+
+* **arr:** Nyaa on a mirror, and Radarr's old Jackett indexers off ([#175](https://github.com/memetics19/anvil/issues/175)) ([9b7e44e](https://github.com/memetics19/anvil/commit/9b7e44e7e709595bc1b4e3b8cee13c8d3595e376))
+
 ## [0.25.2](https://github.com/memetics19/anvil/compare/v0.25.1...v0.25.2) (2026-10-31)
 
 
