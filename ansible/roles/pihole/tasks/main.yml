@@ -114,6 +114,8 @@
     mode: "0755"
 
 # Read by Unbound (uid 101) inside the container, so world-readable; it holds no secret.
+# Checked with unbound-checkconf of the same image before it is installed: a bad file would
+# keep Unbound down, and with it DNS for the whole home.
 - name: Unbound settings
   ansible.builtin.template:
     src: unbound.conf.j2
@@ -121,7 +123,10 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Restart unbound
+    validate: >-
+      docker run --rm --network none --entrypoint unbound-checkconf
+      -v %s:/etc/unbound/custom.conf.d/pihole.conf:ro {{ pihole_unbound_image }}
+  register: pihole_unbound_conf
 
 - name: Render the env file
   ansible.builtin.set_fact:
@@ -158,6 +163,18 @@
   ansible.builtin.set_fact:
     pihole_compose_up: "{{ compose_project_plan.up | default([]) }}"
 
+# Right away, not as a handler: the check below must test the new settings. Pi-hole answers
+# from its cache for the second Unbound is down.
+- name: Restart Unbound for its new settings
+  ansible.builtin.command:
+    argv: [docker, compose, --project-name, pihole, --file, "{{ pihole_dir }}/docker-compose.yaml", restart, unbound]
+  changed_when: true
+  when:
+    - pihole_unbound_conf is changed
+    - not ansible_check_mode
+    - "'unbound' not in pihole_compose_up"
+
+# With DNS over TLS upstreams this also proves they work: Unbound has no plain DNS fallback.
 - name: Pi-hole answers DNS through Unbound on every address
   ansible.builtin.command:
     argv: [dig, +short, +time=3, +tries=1, "@{{ item }}", example.com, A]

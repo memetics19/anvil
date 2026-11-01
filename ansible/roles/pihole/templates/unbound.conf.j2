@@ -4,3 +4,14 @@
 server:
     msg-cache-size: {{ pihole_unbound_msg_cache }}
     rrset-cache-size: {{ pihole_unbound_rrset_cache }}
+{% if pihole_unbound_dot_upstreams | length > 0 %}
+
+# Every query over DNS over TLS to these resolvers, verified against their certificate name
+# (the image's tls-cert-bundle). No fallback to plain DNS.
+forward-zone:
+    name: "."
+    forward-tls-upstream: yes
+{% for u in pihole_unbound_dot_upstreams %}
+    forward-addr: {{ u.address }}@853#{{ u.name }}
+{% endfor %}
+{% endif %}

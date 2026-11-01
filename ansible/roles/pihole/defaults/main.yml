@@ -21,6 +21,16 @@ pihole_web_published: false
 # recursively and validates DNSSEC.
 pihole_dns_subnet: "{{ site.hosts[inventory_hostname].dns_subnet }}"
 pihole_unbound_ip: "{{ site.hosts[inventory_hostname].dns_unbound_ip }}"
+# Unbound's upstream. A list: it forwards every query over DNS over TLS (port 853) to these
+# resolvers, checked against their certificate name, and still validates DNSSEC itself. The
+# ISP sees neither the queries nor the answers and cannot change them, and the resolvers see
+# the queries instead. There is no fallback to plain DNS. Quad9 also blocks known malware
+# domains. Empty: Unbound resolves recursively from the root servers, unencrypted.
+pihole_unbound_dot_upstreams:
+  - {address: 9.9.9.9, name: dns.quad9.net}
+  - {address: 149.112.112.112, name: dns.quad9.net}
+  - {address: 1.1.1.1, name: cloudflare-dns.com}
+  - {address: 1.0.0.1, name: cloudflare-dns.com}
 pihole_unbound_msg_cache: 16m
 pihole_unbound_rrset_cache: 32m
 
