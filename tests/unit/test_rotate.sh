@@ -119,5 +119,12 @@ for k in "${all_keys[@]}"; do grep -qF "$k" "$tmp/all" && leaked=1; done
 out=$(scripts/rotate.sh vault 2>&1) && bad_ "rotate.sh accepted vault"
 grep -q "no rotation for 'vault'" <<<"$out" && ok "rotate.sh refuses an unknown secret" ||
   bad_ "rotate.sh: $out"
+# --tags arr (anvil check|apply arr) must not run the rotation: its tasks carry the play's arr
+# tag, which never alone does not hold back.
+python3 -c 'import yaml
+t = [x for x in yaml.safe_load(open("ansible/roles/arr_stack/tasks/main.yml")) if x.get("ansible.builtin.import_tasks") == "rotate.yml"][0]
+assert "rotate" in t["tags"] and "never" in t["tags"] and "rotate'"'"' in ansible_run_tags" in t["when"], t' 2>/dev/null &&
+  ok "the rotation runs only with --tags rotate, not with --tags arr" ||
+  bad_ "the rotation runs only with --tags rotate, not with --tags arr"
 
 exit $fail
