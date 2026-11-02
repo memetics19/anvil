@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.1](https://github.com/memetics19/anvil/compare/v0.27.0...v0.27.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* **port_guard:** check the gateway only on ports something listens on ([#183](https://github.com/memetics19/anvil/issues/183)) ([b68060a](https://github.com/memetics19/anvil/commit/b68060aea57ed71e9dd5894b068aff83666d7bf5))
+
 ## [0.27.0](https://github.com/memetics19/anvil/compare/v0.26.0...v0.27.0) (2026-11-02)
 
 
