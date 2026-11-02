@@ -56,5 +56,34 @@ check "vms.yml: the guard runs before the ARR stack" \
   "python3 -c 'import yaml; p=yaml.safe_load(open(\"ansible/playbooks/vms.yml\")); r=[x for x in p if x[\"name\"]==\"Ragnarok workloads\"][0][\"roles\"]
 n=[x[\"role\"] for x in r]; assert n.index(\"port_guard\") < n.index(\"arr_stack\")'"
 
+# The gateway check covers only ports something listens on: the role's own expression, run
+# on sample ss output (a port of an app not started yet must not fail the run).
+python3 - "$tmp" <<'PY'
+import sys, yaml
+tmp = sys.argv[1]
+def find(tasks):
+    for t in tasks:
+        if t.get("name") == "Which guarded ports are up":
+            return t
+        for k in ("block", "rescue", "always"):
+            if k in t and (r := find(t[k])):
+                return r
+expr = find(yaml.safe_load(open("ansible/roles/port_guard/tasks/main.yml")))["ansible.builtin.set_fact"]["port_guard_up"]
+play = [{"name": "up ports", "hosts": "localhost", "gather_facts": False,
+         "vars": {"port_guard_ports": [8989, 7878, 6767],
+                  "port_guard_listening": {"stdout_lines": [
+                      "LISTEN 0 4096 192.0.2.119:8989 0.0.0.0:*",
+                      "LISTEN 0 4096 192.0.2.119:7878 0.0.0.0:*",
+                      "LISTEN 0 4096 [::]:22 [::]:*"]}},
+         "tasks": [{"ansible.builtin.set_fact": {"port_guard_up": expr}},
+                   {"ansible.builtin.copy": {"content": "{{ port_guard_up | to_json }}", "dest": f"{tmp}/up.json", "mode": "0644"}}]}]
+yaml.safe_dump(play, open(f"{tmp}/up.yml", "w"))
+PY
+ansible-playbook -i localhost, -c local "$tmp/up.yml" >"$tmp/up.log" 2>&1
+check "the gateway check skips a port nothing listens on yet, checks the rest" \
+  "[ \"\$(cat '$tmp/up.json')\" = '[8989, 7878]' ]"
+check "the gateway check loops over the listening ports only" \
+  "python3 -c 'import yaml,json; s=json.dumps(yaml.safe_load(open(\"ansible/roles/port_guard/tasks/main.yml\"))); assert \"\\\"loop\\\": \\\"{{ port_guard_up }}\\\"\" in s'"
+
 [ "$fail" -eq 0 ] && echo "PASS: port guard"
 exit "$fail"
