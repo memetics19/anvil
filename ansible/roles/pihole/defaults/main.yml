@@ -1,8 +1,8 @@
 # Pi-hole (DNS filtering for the home and lab networks) with Unbound as its only upstream,
 # one compose project "pihole" in /opt/pihole on the apps VM.
 pihole_dir: /opt/pihole
-# Pinned by tag and digest (2026-10-21).
-pihole_image: pihole/pihole:2026.10.0@sha256:d34134716fc32038b052a8674c7c6879e0ff21f0e6d8af345166fffa2c27c113
+# Pinned by tag and digest (2026-11-02).
+pihole_image: pihole/pihole:2026.10.1@sha256:30f803ad5dd60ff96cc0a63008a2e9271af481c1b0399a182192b2e91152c1f9
 pihole_unbound_image: klutchell/unbound:1.26.1@sha256:9a3939ca33d6d3b42b81a70391bb8e43f0a08d2bd7a3fdffb43d427493345c36
 
 # DNS (53 tcp/udp) and the web UI are published on these addresses only: the VM's lab and
