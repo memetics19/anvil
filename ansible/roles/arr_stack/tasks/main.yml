@@ -32,6 +32,11 @@
   ansible.builtin.import_tasks: quality.yml
   tags: [arr, arr_quality]
 
+# Bazarr, the subtitles, through its API on this host (files/arr-bazarr.py).
+- name: Subtitles
+  ansible.builtin.import_tasks: subtitles.yml
+  tags: [arr, arr_subtitles]
+
 # The apps' own logins: off behind the gateway's single sign-on (arr_stack_app_logins).
 - name: App logins
   ansible.builtin.import_tasks: logins.yml

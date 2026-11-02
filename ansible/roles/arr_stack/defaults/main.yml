@@ -1,5 +1,5 @@
 # ARR stack on ragnarok: compose project "ubuntu" (/home/ubuntu/docker-compose.yaml) with
-# qbittorrent, prowlarr, jackett, flaresolverr, radarr and sonarr. Jellyfin, dispatcharr and
+# qbittorrent, prowlarr, jackett, flaresolverr, radarr, sonarr and bazarr. Jellyfin, dispatcharr and
 # privoxy were removed on 2026-10-21 and must not come back.
 # The apps keep their own config (API keys, indexers, users) in ./<app>/config; it is not
 # templated and is set up again by hand on a rebuild. The media library is only ever a
@@ -67,6 +67,21 @@ arr_stack_prowlarr_indexers:
 # Prowlarr: RARBG (TheRARBG, failing) and duplicates of Prowlarr's 1337x and The Pirate Bay.
 arr_stack_app_indexers_off:
   radarr: [RARBG, 1337x, The Pirate Bay, Torznab]
+
+# Bazarr, the subtitles (tag arr_subtitles, files/arr-bazarr.py), through its API on this
+# host. It is connected to Sonarr and Radarr, gets one language profile with
+# arr_stack_subtitle_languages (ISO 639-1 codes), and every series and movie without a
+# profile gets that one, as new ones do. Subtitles already inside a file count. Providers:
+# OpenSubtitles.com, with the account in Vault (kv/<arr_stack_bazarr_vault_path>, keys
+# opensubtitles_username and opensubtitles_password); without it, Bazarr is set up but
+# downloads nothing. Sonarr and Radarr also import the .srt files a release ships with.
+# Bazarr has no login of its own: the port guard and the gateway's single sign-on are in
+# front of it, as for the other apps.
+arr_stack_subtitle_languages: [en]
+arr_stack_subtitle_profile: English
+arr_stack_bazarr_vault_path: "homelab/{{ inventory_hostname }}/bazarr"
+arr_stack_bazarr_port: 6767
+arr_stack_bazarr_config: "{{ arr_stack_dir }}/bazarr/config/config/config.yaml"
 
 # The quality policy of Sonarr and Radarr (tag arr_quality, files/arr-quality.py): one
 # profile that takes every quality of at least arr_stack_quality_min_resolution, except

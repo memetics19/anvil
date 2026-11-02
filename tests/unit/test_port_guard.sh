@@ -40,7 +40,7 @@ check "replies pass first" "grep -qx $'\t\tct state established,related accept' 
 check "the VM's own containers pass" "grep -qx $'\t\tiifname \"docker0\" accept' '$g' && grep -qx $'\t\tiifname \"br-\*\" accept' '$g'"
 check "only the gateway and Pulse pass from outside" "grep -qx $'\t\tip saddr { 192.0.2.121, 192.0.2.115 } accept' '$g'"
 check "the ARR web ports on the VM's address are dropped for everyone else, not the torrent port" \
-  "grep -qx $'\t\tmeta l4proto tcp ct original ip daddr 192.0.2.119 ct original proto-dst { 8989, 7878, 9696, 9117, 8080 } counter drop' '$g' && ! grep -q 6881 '$g'"
+  "grep -qx $'\t\tmeta l4proto tcp ct original ip daddr 192.0.2.119 ct original proto-dst { 8989, 7878, 9696, 9117, 8080, 6767 } counter drop' '$g' && ! grep -q 6881 '$g'"
 check "the table replaces itself in one load" "grep -qx 'delete table inet anvil_port_guard' '$g'"
 check "nothing but the guard's own drop" "[ \$(grep -v '^[[:space:]]*#' '$g' | grep -c drop) = 1 ]"
 
