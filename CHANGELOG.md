@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.27.0](https://github.com/memetics19/anvil/compare/v0.26.0...v0.27.0) (2026-11-02)
+
+
+### Features
+
+* **arr:** Bazarr for subtitles, set up as code ([#180](https://github.com/memetics19/anvil/issues/180)) ([4656428](https://github.com/memetics19/anvil/commit/46564284e74af5aa3b7cefca4b933cd945617c85))
+
+
+### Bug Fixes
+
+* **arr:** --tags arr no longer runs the API key rotation ([#181](https://github.com/memetics19/anvil/issues/181)) ([214b9a6](https://github.com/memetics19/anvil/commit/214b9a6822e9a4fd954746518f55e826b82babb0))
+* **pihole:** update Pi-hole to 2026.10.1 ([#179](https://github.com/memetics19/anvil/issues/179)) ([0659f97](https://github.com/memetics19/anvil/commit/0659f97f1f585072b4df5fdd0497cde6ef1bfdd8))
+
 ## [0.26.0](https://github.com/memetics19/anvil/compare/v0.25.2...v0.26.0) (2026-11-01)
 
 
