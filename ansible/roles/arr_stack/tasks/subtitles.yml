@@ -1,0 +1,74 @@
+# Bazarr, the subtitles, through its API on this host (files/arr-bazarr.py). The API keys are
+# read from each app's file on the VM. The OpenSubtitles.com account comes from Vault and
+# reaches the script on stdin, never on its command line, so the script is staged in a
+# private directory first (in check mode too: only that directory is written, and removed).
+- name: Subtitles | the OpenSubtitles.com account (none yet is fine)
+  ansible.builtin.set_fact:
+    arr_stack_bazarr_account: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', arr_stack_bazarr_vault_path,
+                 engine_mount_point=arr_stack_vault_mount,
+                 url=lookup('env', 'VAULT_ADDR'),
+                 token=lookup('env', 'VAULT_TOKEN'),
+                 ca_cert=lookup('env', 'VAULT_CACERT'),
+                 errors='ignore') | default({}, true)).secret | default({}, true) }}
+  no_log: true
+
+- name: Subtitles | Bazarr, connected and set
+  block:
+    - name: Subtitles | staging directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: arr-bazarr.
+      register: arr_stack_bazarr_stage
+      changed_when: false
+      check_mode: false
+
+    - name: Subtitles | the script
+      ansible.builtin.copy:
+        src: arr-bazarr.py
+        dest: "{{ arr_stack_bazarr_stage.path }}/arr-bazarr.py"
+        mode: "0700"
+      changed_when: false
+      check_mode: false
+
+    - name: Subtitles | apply the policy
+      ansible.builtin.command:
+        argv: >-
+          {{ ['python3', arr_stack_bazarr_stage.path ~ '/arr-bazarr.py']
+             + (['--check'] if ansible_check_mode else [])
+             + [{'url': 'http://' ~ arr_stack_api_host ~ ':' ~ arr_stack_bazarr_port,
+                 'config_yaml': arr_stack_bazarr_config,
+                 'sonarr': {'host': 'sonarr', 'port': arr_stack_api.sonarr.port,
+                            'url': 'http://' ~ arr_stack_api_host ~ ':' ~ arr_stack_api.sonarr.port,
+                            'config_xml': arr_stack_config_xml_files.sonarr},
+                 'radarr': {'host': 'radarr', 'port': arr_stack_api.radarr.port,
+                            'url': 'http://' ~ arr_stack_api_host ~ ':' ~ arr_stack_api.radarr.port,
+                            'config_xml': arr_stack_config_xml_files.radarr},
+                 'languages': arr_stack_subtitle_languages,
+                 'profile': arr_stack_subtitle_profile} | to_json] }}
+        stdin: "{{ arr_stack_bazarr_account | to_json }}"
+      register: arr_stack_bazarr_run
+      changed_when: "arr_stack_bazarr_run.stdout_lines | select('search', ': (would|do:) ') | list | length > 0"
+      # Reported and checked below: no_log would hide why it failed.
+      failed_when: false
+      check_mode: false
+      no_log: true
+  always:
+    - name: Subtitles | remove the staging directory
+      ansible.builtin.file:
+        path: "{{ arr_stack_bazarr_stage.path }}"
+        state: absent
+      changed_when: false
+      check_mode: false
+      when: arr_stack_bazarr_stage.path is defined
+
+# The script prints no key and no part of the account, so its output is shown.
+- name: Subtitles | report
+  ansible.builtin.debug:
+    msg: "{{ arr_stack_bazarr_run.stdout_lines | default([]) + arr_stack_bazarr_run.stderr_lines | default([]) }}"
+
+- name: Subtitles | the run passed
+  ansible.builtin.assert:
+    that: arr_stack_bazarr_run.rc == 0
+    fail_msg: "arr-bazarr.py failed (the lines above say why)"
+    quiet: true

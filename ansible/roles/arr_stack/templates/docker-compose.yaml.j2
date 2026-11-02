@@ -95,3 +95,23 @@ services:
       - TZ={{ arr_stack_timezone }}
     depends_on:
       - qbittorrent
+
+  # Subtitles: finds what Sonarr's and Radarr's files lack and saves .srt next to them. It
+  # sees the library on the same paths as they do, so no path mapping is needed.
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    restart: unless-stopped
+    ports:
+      - "{{ site.hosts[inventory_hostname].ip }}:6767:6767"
+    volumes:
+      - ./bazarr/config:/config
+      - /home/ubuntu/media/movies:/movies
+      - /home/ubuntu/media/tv:/tv
+    environment:
+      - PUID={{ arr_stack_uid }}
+      - PGID={{ arr_stack_gid }}
+      - TZ={{ arr_stack_timezone }}
+    depends_on:
+      - sonarr
+      - radarr

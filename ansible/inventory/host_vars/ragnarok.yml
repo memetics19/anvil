@@ -1,8 +1,8 @@
-# The ARR apps' web ports (Sonarr, Radarr, Prowlarr, Jackett, qBittorrent): their own logins
-# are off because the gateway's single sign-on stands in front of them, so only the gateway,
-# Pulse and this VM's containers may reach them (role port_guard). qBittorrent's torrent port
-# stays open.
-port_guard_ports: [8989, 7878, 9696, 9117, 8080]
+# The ARR apps' web ports (Sonarr, Radarr, Prowlarr, Jackett, qBittorrent, Bazarr): their own
+# logins are off because the gateway's single sign-on stands in front of them, so only the
+# gateway, Pulse and this VM's containers may reach them (role port_guard). qBittorrent's
+# torrent port stays open.
+port_guard_ports: [8989, 7878, 9696, 9117, 8080, 6767]
 # Their own logins are off: single sign-on on the gateway is the login (role arr_stack).
 arr_stack_app_logins: false
 # The operator's own devices reach the arr apps' API directly (anvil media, which an API key

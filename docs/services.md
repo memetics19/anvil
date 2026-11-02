@@ -132,6 +132,37 @@ make vm HOST=ragnarok ARGS="--tags arr_indexers --check"  # what would be added
 make vm HOST=ragnarok ARGS="--tags arr_indexers"
 ```
 
+### Subtitles (Bazarr)
+
+Bazarr finds subtitles that the files lack and saves them as `.srt` next to the episode or
+movie, where VLC and other players pick them up. It runs in the ARR stack and sees the
+library on the same paths as Sonarr and Radarr. It never changes a video file.
+
+`make vm HOST=ragnarok ARGS="--tags arr_subtitles"` sets it up through its API
+(`files/arr-bazarr.py`):
+
+- connected to Sonarr and Radarr, with their API keys
+- the languages in `arr_stack_subtitle_languages` (English), in one language profile
+  that new series and movies get, and every one that has no profile yet
+- subtitles already inside a file count, so those files need nothing
+- OpenSubtitles.com as the provider, with the account from Vault. Providers switched on in
+  the web UI are kept.
+
+It also turns on Sonarr's and Radarr's import of the `.srt` files a release ships with. Many
+MP4 releases carry their subtitles that way, and they were lost when the download was
+removed.
+
+The OpenSubtitles.com account (a free one allows about 20 downloads a day). Type the
+password, then Ctrl-D:
+
+```sh
+vault kv put -mount=kv homelab/ragnarok/bazarr opensubtitles_username=<user> opensubtitles_password=-
+make vm HOST=ragnarok ARGS="--tags arr_subtitles"
+```
+
+Without the account, Bazarr is set up but downloads nothing, and the run says so. Bazarr has
+no login of its own: the port guard and the gateway's single sign-on are in front of it.
+
 ### Guide server
 
 The `iptv_epg` role runs nginx on port 8899. It serves `/home/ubuntu/iptv-epg/output`,
