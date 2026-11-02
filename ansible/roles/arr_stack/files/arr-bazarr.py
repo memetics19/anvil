@@ -44,15 +44,29 @@ def xml_key(path):
     return m.group(1)
 
 
+def auth_apikey(text):
+    """The apikey in the auth section of Bazarr's config.yaml, read line by line."""
+    in_auth = False
+    for line in text.splitlines():
+        if line and not line[0].isspace():
+            in_auth = line.rstrip() == "auth:"
+            continue
+        if in_auth:
+            key, _, value = line.strip().partition(":")
+            value = value.strip().strip("'\"")
+            if key == "apikey" and re.fullmatch(r"[0-9a-f]{32}", value):
+                return value
+    return None
+
+
 def bazarr_key(path, wait=90):
     """Bazarr writes its key into config.yaml (auth: apikey:) on its first start."""
     deadline = time.time() + wait
     while True:
         try:
-            text = open(path, encoding="utf-8").read()
-            m = re.search(r"^auth:\n(?:[ \t]+.*\n)*?[ \t]+apikey:[ \t]*['\"]?([0-9a-f]{32})", text, re.M)
-            if m:
-                return m.group(1)
+            key = auth_apikey(open(path, encoding="utf-8").read())
+            if key:
+                return key
         except FileNotFoundError:
             pass
         if time.time() > deadline:
