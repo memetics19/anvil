@@ -9,10 +9,13 @@
     compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
 
 # New API keys, only when asked (anvil rotate). Before the copy into Vault, so a run with
-# both tags stores the new keys.
+# both tags stores the new keys. The tasks also carry the play's arr tag, and never does not
+# hold back a task whose other tag is asked for: so --tags arr ran them too, and failed on
+# the empty arr_stack_rotate. The condition keeps them to --tags rotate.
 - name: New API keys
   ansible.builtin.import_tasks: rotate.yml
   tags: [never, rotate]
+  when: "'rotate' in ansible_run_tags"
 
 # Read only: the apps' API keys into Vault for the Homepage widgets.
 - name: API keys for the dashboard
