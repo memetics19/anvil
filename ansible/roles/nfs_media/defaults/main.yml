@@ -35,4 +35,23 @@ nfs_media_home_prefix: "{{ site.pve.uplink_prefix | default('24') }}"
 nfs_media_home_subnet: >-
   {{ (site.pve.uplink_ip | default('')).split('.')[:3] | join('.') }}.0/{{ site.pve.uplink_prefix | default('24') }}
 nfs_media_home_addr_unit: anvil-nfs-home-addr
+# VPN access. Both NetBird routing peers for the lab's /16, the netbird VM and the Proxmox
+# host, masquerade: a phone on the VPN arrives as the lab address of whichever its NetBird
+# picked (site.hosts.netbird.ip, site.pve.ip), not as its own. Those addresses are readers.
+# That also lets in what the Proxmox host masquerades from its VLANs, home devices like the
+# home Wi-Fi, which reads the library already. The operator's own peers
+# (site.admin_vpn_sources) are readers too, for a route without masquerade. Empty: no VPN
+# access.
+nfs_media_vpn_routers: "{{ [site.hosts.netbird.ip | default(''), site.pve.ip | default('')] | select | list }}"
+nfs_media_vpn_clients: >-
+  {{ (site.admin_vpn_sources | default([])) + (nfs_media_vpn_routers | map('regex_replace', '$', '/32') | list) }}
+# The readers that connect from high source ports (exported "insecure"): the lab devices,
+# the VPN (masqueraded), and the home Wi-Fi when there is a home address. Then every reader,
+# the NetBird clients (secure) included when active (nfs_media_netbird_active, from the run).
+nfs_media_insecure_clients: >-
+  {{ (nfs_media_lan_clients + nfs_media_vpn_clients
+      + ([nfs_media_home_subnet] if nfs_media_home_ip | length > 0 else [])) | unique }}
+nfs_media_readers: >-
+  {{ (nfs_media_insecure_clients
+      + (nfs_media_netbird_clients if nfs_media_netbird_active | default(false) | bool else [])) | unique }}
 nfs_media_guard_file: /etc/anvil/nfs-guard.nft
