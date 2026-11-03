@@ -1,0 +1,5 @@
+# A reload keeps open sessions. try-: nothing to do when sshd only starts per connection.
+- name: Reload sshd
+  ansible.builtin.command:
+    argv: [systemctl, try-reload-or-restart, ssh]
+  changed_when: true

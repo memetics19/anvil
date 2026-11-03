@@ -15,6 +15,9 @@
     # Drop IPv4 TCP with IP options (CVE-2026-98432).
     - role: tcp_options_guard
       tags: [tcp_options_guard]
+    # SSH by key only (root by key too: the nodes and Ansible use it).
+    - role: ssh_hardening
+      tags: [ssh_hardening]
     # Host metrics for the monitoring stack (docs/monitoring.md), on the host's lab address.
     - role: node_exporter
       tags: [node_exporter]
@@ -38,7 +41,7 @@
       # Only the inventory of this run: nothing on a host changes.
       changed_when: false
 
-- name: Cluster members' TCP options guard
+- name: Cluster members' TCP options guard and SSH
   hosts: cluster_members
   roles:
     - role: host_hardening
@@ -47,3 +50,5 @@
     # Drop IPv4 TCP with IP options (CVE-2026-98432).
     - role: tcp_options_guard
       tags: [tcp_options_guard]
+    - role: ssh_hardening
+      tags: [ssh_hardening]

@@ -136,6 +136,14 @@ if converge tcp_options_guard tcp_options_guard; then
     "has 'counter packets [1-9]' in_vm nft list chain inet anvil_tcp_options_guard prerouting"
 fi
 
+# --- ssh_hardening: keys only, and a key still gets in ----------------------------------------
+if converge ssh_hardening ssh_hardening; then
+  check "ssh_hardening: password login is off" "has '^passwordauthentication no$' in_vm sshd -T"
+  check "ssh_hardening: X11 forwarding is off" "has '^x11forwarding no$' in_vm sshd -T"
+  check "ssh_hardening: a key still logs in" \
+    "ssh -i '$tmp/key' -p '$port' -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile='$tmp/known_hosts' ubuntu@127.0.0.1 true"
+fi
+
 # --- port_guard: on, then off -------------------------------------------------------------------
 in_vm systemd-run --unit guarded-app python3 -m http.server 18080 --bind 0.0.0.0 >/dev/null
 if converge port_guard "port_guard on" '{"port_guard_ports": [18080]}'; then
@@ -148,6 +156,30 @@ if converge port_guard "port_guard off" '{"port_guard_ports": []}'; then
   check "port_guard off: its files are gone" \
     "! in_vm test -e /etc/systemd/system/port-guard.service && ! in_vm test -e /etc/anvil/port-guard.nft"
 fi
+
+# --- security-check: the smoke test's detector flags what it should ----------------------------
+# tests/smoke/security-check.sh against planted problems: a program in /tmp, a process named
+# like a miner, a listener nobody allowed. What is allowed must not be flagged.
+docker cp tests/smoke/security-check.sh "$name:/usr/local/sbin/security-check.sh"
+in_vm sh -c 'printf "#!/bin/sh\n" >/tmp/dropper && chmod +x /tmp/dropper'
+in_vm cp /bin/sleep /usr/local/bin/xmrig
+in_vm systemd-run --unit fake-miner /usr/local/bin/xmrig 600 >/dev/null
+in_vm systemd-run --unit stray-listener python3 -m http.server 18081 --bind 0.0.0.0 >/dev/null
+sleep 2
+key_fp=$(ssh-keygen -lf "$tmp/key.pub" | awk '{print $2}')
+allowed="sshd/22,node_exporter/9100,smbd/*,nmbd/*,python3/18080"
+in_vm /usr/local/sbin/security-check.sh "$key_fp" "$allowed" "" >"$tmp/sec" 2>&1
+sec_rc=$?
+check "security-check: it fails when something is wrong" "[ $sec_rc = 1 ]"
+check "security-check: a program in /tmp" "grep -qx 'problem: executable file in a temporary directory: /tmp/dropper' '$tmp/sec'"
+check "security-check: a miner by name" "grep -qx 'problem: miner process: xmrig' '$tmp/sec'"
+check "security-check: a listener nobody allowed" "grep -qx 'problem: unexpected listener: python3 on tcp/18081' '$tmp/sec'"
+check "security-check: an allowed listener passes" "! grep -q '/18080' '$tmp/sec'"
+check "security-check: the known key passes" "! grep -q 'unknown SSH key' '$tmp/sec'"
+check "security-check: no address in its output" "! grep -qE '([0-9]{1,3}\.){3}[0-9]{1,3}' '$tmp/sec'"
+in_vm /usr/local/sbin/security-check.sh "" "$allowed" "" >"$tmp/sec2" 2>&1
+check "security-check: an unknown key" "grep -q 'problem: unknown SSH key in /home/ubuntu/.ssh/authorized_keys' '$tmp/sec2'"
+[ "$fail" = 0 ] || cat "$tmp/sec"
 
 [ "$fail" = 0 ] && echo "PASS: roles converge"
 exit "$fail"

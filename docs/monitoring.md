@@ -8,7 +8,9 @@ host and service is doing, and alerts that are worth reading when they arrive.
 - **Pulse** checks that services answer and runs the public status page.
 - **Homepage** shows a few live widgets.
 - **The nightly `anvil drift`** pushes a message to ntfy when the lab no longer matches
-  the code.
+  the code or a smoke test fails. The `security` smoke test is one of them: it looks for
+  intrusion and mining on every host (tests/README.md). Run it by hand with
+  `anvil test smoke security`. Schedule the nightly run once with `anvil drift --install`.
 - **node_exporter** runs on some VMs, but nothing collects its metrics. The role pins
   version 1.0.1, from 2020, and it listens on every address.
 

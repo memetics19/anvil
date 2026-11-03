@@ -1,0 +1,53 @@
+# Key login must work before password login goes away: the login user has a key, and this
+# run did not log in with a password.
+- name: The login user
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ ansible_user | default('root') }}"
+
+- name: Its authorized keys
+  ansible.builtin.stat:
+    path: "{{ ansible_facts.getent_passwd[ansible_user | default('root')][4] }}/.ssh/authorized_keys"
+  register: ssh_hardening_keys
+
+- name: Key login works for it
+  ansible.builtin.assert:
+    that:
+      - ssh_hardening_keys.stat.exists
+      - ssh_hardening_keys.stat.size > 0
+      - ansible_password is not defined
+    fail_msg: >-
+      {{ ansible_user | default('root') }} has no authorized key, or this run logged in with a
+      password. Install a key first (make bootstrap-ssh), or this host would lock you out.
+    quiet: true
+
+- name: Settings
+  ansible.builtin.template:
+    src: 00-anvil.conf.j2
+    dest: "{{ ssh_hardening_dropin }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload sshd
+
+# sshd -T reads the files on disk, all of them, as the next connection will.
+- name: What sshd will use
+  ansible.builtin.command:
+    argv: [/usr/sbin/sshd, -T]
+  register: ssh_hardening_effective
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: It takes keys only
+  ansible.builtin.assert:
+    that:
+      - "'passwordauthentication no' in ssh_hardening_effective.stdout_lines"
+      - "'kbdinteractiveauthentication no' in ssh_hardening_effective.stdout_lines"
+      - "'x11forwarding no' in ssh_hardening_effective.stdout_lines"
+      - ssh_hardening_effective.stdout is search('(?m)^permitrootlogin (no|prohibit-password|without-password)$')
+    fail_msg: >-
+      Another file wins over {{ ssh_hardening_dropin }}: sshd_config must Include
+      /etc/ssh/sshd_config.d/*.conf before its own settings. sshd was not reloaded.
+    quiet: true
+  when: not ansible_check_mode

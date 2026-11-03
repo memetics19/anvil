@@ -1,0 +1,122 @@
+# Read-only security checks on every host, for tests/smoke/test_security.sh. It runs with
+# --check, and tests/smoke/security-check.sh only reads. Each host's problems are gathered
+# and reported together. Messages name processes, ports, files and units, never addresses.
+#
+# What is allowed lives here: the SSH keys (the operator's key, the one Terraform and
+# make bootstrap-ssh install, and each Proxmox node's own root key), the listeners per host
+# and the containers that may run privileged. A new service adds its port here.
+
+- name: The operator's SSH key
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Its fingerprint
+      ansible.builtin.command:
+        argv: [ssh-keygen, -lf, "{{ lookup('ansible.builtin.env', 'HOME') }}/.ssh/id_ed25519.pub"]
+      register: smoke_operator_key
+      changed_when: false
+      check_mode: false
+
+# The Proxmox nodes log in to each other as root with their own keys.
+- name: The Proxmox nodes' own keys
+  hosts: proxmox
+  gather_facts: false
+  pre_tasks:
+    - name: Resolve the site dict once for this run
+      ansible.builtin.import_tasks: ../../ansible/playbooks/tasks/site.yml
+  tasks:
+    - name: Add the other cluster members
+      run_once: true
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: cluster_members
+        ansible_host: "{{ site.provision.machines[item].network.cidr | split('/') | first }}"
+        ansible_user: root
+      loop: "{{ site.cluster.members | default([]) }}"
+      changed_when: false
+
+- name: Every node's root key
+  hosts: proxmox:cluster_members
+  gather_facts: false
+  tasks:
+    - name: Fingerprints
+      ansible.builtin.raw: for f in /root/.ssh/id_*.pub; do ssh-keygen -lf "$f"; done
+      register: smoke_node_keys
+      changed_when: false
+      check_mode: false
+
+# The checks run in three plays as in hosts.yml: the Proxmox hosts log in as root and may have no sudo, the
+# VMs need become and the site lookup, and the cluster members are added at run time. They
+# only gather: a play whose every host fails would end the run before the others are checked.
+- name: Security, Proxmox host
+  hosts: proxmox
+  gather_facts: false
+  vars: &smoke_vars
+    smoke_listen:
+      all: [sshd/22, node_exporter/9100]
+      proxmox: [pveproxy/8006, spiceproxy/3128, rpcbind/111, corosync/5405, chronyd/123,
+                chronyd-vlan/123, dnsmasq/67, apt-cacher-ng/3142, netbird/*, kernel/51820,
+                ceph-mon/3300, ceph-mon/6789, ceph-osd/*, ceph-mgr/*, radosgw/7480]
+      apps: [docker-proxy/53, docker-proxy/80, docker-proxy/443]
+      frigate: [docker-proxy/3000, docker-proxy/8080, docker-proxy/8971, cloudflared/*]
+      identity: [docker-proxy/9000]
+      llm: [docker-proxy/8080]
+      netbird: [docker-proxy/80, docker-proxy/8081, docker-proxy/8082, docker-proxy/8443,
+                cloudflared/*, netbird/*, kernel/51820]
+      ragnarok: [rpcbind/111, rpc.mountd/20048, rpc.statd/*, kernel/*, smbd/139, smbd/445,
+                 nmbd/137, nmbd/138, cloudflared/*, docker-proxy/6767, docker-proxy/6881,
+                 docker-proxy/7878, docker-proxy/8080, docker-proxy/8334, docker-proxy/8899,
+                 docker-proxy/8989, docker-proxy/9117, docker-proxy/9696, docker-proxy/34400,
+                 docker-proxy/34401]
+      vault: [vault/8200, vault/8201]
+      vaultwarden: [docker-proxy/8080]
+    smoke_privileged_ok: []
+    smoke_is_node: "{{ inventory_hostname in groups['proxmox'] + groups['cluster_members'] | default([]) }}"
+    smoke_keys: >-
+      {{ ([hostvars['localhost'].smoke_operator_key.stdout.split()[1]]
+          + ((groups['proxmox'] + groups['cluster_members'] | default([]))
+             | map('extract', hostvars, ['smoke_node_keys', 'stdout_lines'])
+             | flatten | map('split') | map(attribute=1) | list
+             if smoke_is_node else [])) | unique }}
+    smoke_allowed: >-
+      {{ smoke_listen.all
+         + (smoke_listen.proxmox if smoke_is_node else smoke_listen[inventory_hostname] | default([])) }}
+  tasks: &smoke_tasks
+    - name: Run the checks
+      ansible.builtin.script:
+        cmd: >-
+          security-check.sh {{ smoke_keys | join(',') | quote }} {{ smoke_allowed | join(',') | quote }}
+          {{ smoke_privileged_ok | join(',') | quote }}
+      register: smoke_security
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+- name: Security, VMs
+  hosts: guests:apps_servers:identity_servers:llm_servers:enclave
+  gather_facts: false
+  become: true
+  vars: *smoke_vars
+  pre_tasks:
+    - name: Resolve the site dict once for this run
+      ansible.builtin.import_tasks: ../../ansible/playbooks/tasks/site.yml
+  tasks: *smoke_tasks
+
+- name: Security, cluster members
+  hosts: cluster_members
+  gather_facts: false
+  vars: *smoke_vars
+  tasks: *smoke_tasks
+
+- name: Every host has no problem
+  hosts: proxmox:cluster_members:guests:apps_servers:identity_servers:llm_servers:enclave
+  gather_facts: false
+  tasks:
+    - name: This host has no problem
+      ansible.builtin.assert:
+        that: smoke_security.rc == 0
+        fail_msg: >-
+          {{ smoke_security.stdout_lines | select('match', '^problem: ')
+             | map('regex_replace', '^problem: ', '') | join('. ')
+             or 'the checks did not run (rc ' ~ smoke_security.rc ~ ')' }}
+        quiet: true
