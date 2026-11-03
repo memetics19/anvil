@@ -136,6 +136,14 @@ if converge tcp_options_guard tcp_options_guard; then
     "has 'counter packets [1-9]' in_vm nft list chain inet anvil_tcp_options_guard prerouting"
 fi
 
+# --- ssh_hardening: keys only, and a key still gets in ----------------------------------------
+if converge ssh_hardening ssh_hardening; then
+  check "ssh_hardening: password login is off" "has '^passwordauthentication no$' in_vm sshd -T"
+  check "ssh_hardening: X11 forwarding is off" "has '^x11forwarding no$' in_vm sshd -T"
+  check "ssh_hardening: a key still logs in" \
+    "ssh -i '$tmp/key' -p '$port' -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile='$tmp/known_hosts' ubuntu@127.0.0.1 true"
+fi
+
 # --- port_guard: on, then off -------------------------------------------------------------------
 in_vm systemd-run --unit guarded-app python3 -m http.server 18080 --bind 0.0.0.0 >/dev/null
 if converge port_guard "port_guard on" '{"port_guard_ports": [18080]}'; then

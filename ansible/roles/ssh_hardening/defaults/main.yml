@@ -1,0 +1,15 @@
+# SSH by key only. A drop-in whose name sorts first: sshd keeps the first value it reads
+# for a setting, and reads sshd_config.d before the rest of sshd_config. So this file wins
+# over cloud-init's 50-cloudimg-settings.conf (password login on) and over the Proxmox
+# installer's PermitRootLogin yes.
+ssh_hardening_dropin: /etc/ssh/sshd_config.d/00-anvil.conf
+# Root still logs in by key: the Proxmox nodes log in to each other as root, Ansible does,
+# and it is the break-glass way into the enclave. The Proxmox web console still takes the
+# root password.
+ssh_hardening_settings:
+  PasswordAuthentication: "no"
+  KbdInteractiveAuthentication: "no"
+  PermitEmptyPasswords: "no"
+  PermitRootLogin: prohibit-password
+  X11Forwarding: "no"
+  LoginGraceTime: 30

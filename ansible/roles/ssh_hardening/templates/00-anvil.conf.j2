@@ -1,0 +1,5 @@
+# Managed by anvil (role ssh_hardening). SSH by key only. sshd keeps the first value it
+# reads for a setting, and this file is read first.
+{% for name, value in ssh_hardening_settings.items() %}
+{{ name }} {{ value }}
+{% endfor %}

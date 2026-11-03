@@ -1132,6 +1132,30 @@ Checks:
 By hand, from a lab VM: `python3 tests/fixtures/tcp_opts_probe.py <address> 22` prints
 `plain: connected` and `with IP options: timed out`.
 
+## SSH
+
+Every VM, the Proxmox host and the other cluster members take SSH by key only (role
+`ssh_hardening`). Password and keyboard-interactive login are off, root logs in by key only,
+and X11 forwarding is off.
+
+The settings sit in one file, `/etc/ssh/sshd_config.d/00-anvil.conf`. sshd keeps the first
+value it reads for a setting and reads that folder first. So the file wins over cloud-init's
+`50-cloudimg-settings.conf` and over the `PermitRootLogin yes` the Proxmox installer writes.
+
+The role checks before it changes anything. The login user must have an authorized key, and
+the run must not have logged in with a password. After the change it asks sshd what it will
+use (`sshd -T`). sshd reloads, so open sessions stay.
+
+Ways in without a key:
+
+- The Proxmox web console still takes the root password. Its shell reaches every node, and
+  the VM consoles reach every VM.
+- `make bootstrap-ssh` logs in with a password, so it only works on a host that does not have
+  this role yet. A new VM gets its key from Terraform.
+
+Apply it to the VMs with `anvil apply vms --tags ssh_hardening` and to the nodes with
+`anvil apply host --tags ssh_hardening`. Each shows the change and asks first.
+
 ## Secrets enclave
 
 Vault and Vaultwarden live on their own network: the SDN vnet `secrets`, in the simple
