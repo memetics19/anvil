@@ -7,7 +7,7 @@ FROM ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       systemd systemd-sysv dbus openssh-server sudo python3 python3-apt nftables \
-      ca-certificates curl iproute2 smbclient \
+      ca-certificates curl iproute2 smbclient procps kmod \
  && echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' >/etc/sudoers.d/ubuntu \
  && chmod 0440 /etc/sudoers.d/ubuntu \
  && systemctl enable ssh
