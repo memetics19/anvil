@@ -29,15 +29,8 @@
     fail_msg: "{{ nfs_media_interface }} is missing: enrol this VM in NetBird (--tags netbird_peer) or clear site.nfs.clients"
     quiet: true
 
-- name: The local (insecure) readers and the full reader list
-  ansible.builtin.set_fact:
-    # Lab devices and, when a home address is set, any device on the home Wi-Fi. These use
-    # high source ports (insecure), unlike the NetBird clients (secure).
-    nfs_media_insecure_clients: >-
-      {{ (nfs_media_lan_clients + ([nfs_media_home_subnet] if nfs_media_home_ip | length > 0 else [])) | unique }}
-    nfs_media_readers: >-
-      {{ (nfs_media_lan_clients + ([nfs_media_home_subnet] if nfs_media_home_ip | length > 0 else [])
-          + (nfs_media_netbird_clients if nfs_media_netbird_active | bool else [])) | unique }}
+# The readers (nfs_media_insecure_clients, nfs_media_readers) are in the defaults: the lab
+# devices, the VPN's routing peers, the home Wi-Fi and the NetBird clients.
 
 # A home-network address on the lab NIC so home devices reach the library (no gateway, so the
 # default route is untouched). Done before the NFS server.

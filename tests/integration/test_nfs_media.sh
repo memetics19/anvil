@@ -25,9 +25,6 @@ render() {
     - $PWD/ansible/roles/nfs_media/defaults/main.yml
   tasks:
     - ansible.builtin.set_fact: $2
-    - ansible.builtin.set_fact:
-        nfs_media_insecure_clients: "{{ nfs_media_lan_clients }}"
-        nfs_media_readers: "{{ (nfs_media_lan_clients + (nfs_media_netbird_clients if nfs_media_netbird_active | bool else [])) | unique }}"
     - ansible.builtin.template:
         src: $PWD/ansible/roles/nfs_media/templates/{{ item }}.j2
         dest: $tmp/{{ item }}
@@ -59,6 +56,14 @@ check "with NetBird active, both readers are exported" \
   "[ \$(grep -o '198[.]51[.]100[.]30/32([^)]*,insecure)' '$e' | wc -l) -eq 2 ] && [ \$(grep -o '100[.]64[.]0[.][0-9]*([^)]*,secure)' '$e' | wc -l) -eq 4 ]"
 check "guard: accepts both the lab devices and the NetBird clients" \
   "grep -q 'ip saddr { 198.51.100.30/32, 100.64.0.7, 100.64.0.9 } accept' '$g'"
+
+# The VPN: both routing peers masquerade, so their lab addresses are readers, insecure (a
+# masqueraded connection comes from a high port), next to the operator's own peers.
+render '{admin_sources: [198.51.100.30/32], admin_vpn_sources: [203.0.113.7/32], hosts: {netbird: {ip: 198.51.100.40}}, pve: {ip: 198.51.100.50}}' '{nfs_media_netbird_active: false}'
+check "the VPN's routing peers and the operator's peers are exported, insecure" \
+  "[ \$(grep -oE '(198[.]51[.]100[.](40|50)|203[.]0[.]113[.]7)/32([^)]*,insecure)' '$e' | wc -l) -eq 6 ]"
+check "guard: accepts the VPN's routing peers" \
+  "grep -q 'ip saddr { 198.51.100.30/32, 203.0.113.7/32, 198.51.100.40/32, 198.51.100.50/32 } accept' '$g'"
 
 if [ "$(uname)" = Linux ] && sudo -n true 2>/dev/null && command -v nft >/dev/null; then
   check "guard: parses (nft -c)" "sudo nft -c -f '$g'"
