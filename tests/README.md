@@ -42,6 +42,7 @@ They only read. Ansible playbooks run with `--check`, and each command in them o
 | `hosts` | On every host: no failed systemd unit, no filesystem 95% full, no container restarting or unhealthy, and the TCP options guard loaded. |
 | `enclave` | Vault is unsealed. No other VM can open a connection to Vault or Vaultwarden, while each of them reaches the gateway. |
 | `media` | NFS exports exactly the movies and TV folders, and SMB offers exactly the Movies and TV shares. |
+| `security` | On every host: SSH takes keys only and every authorized key is a known one, every listener is expected, nothing runs from a temporary directory or from memory only, no miner (by name, pool port or the msr module), no privileged container, no changed system file, no password guessing, automatic security updates on, no reboot due for more than a week. The allowed keys, listeners and containers are in `tests/smoke/security.yml`. |
 
 Their output names services, hosts and units, never an address. `tests/smoke/lib.sh` holds
 the shared helpers.
