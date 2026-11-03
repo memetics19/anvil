@@ -15,7 +15,8 @@ services:
     image: {{ frigate_stack_frigate_image }}
     container_name: frigate
     shm_size: "256m"
-    privileged: true
+    # Not privileged: detection runs on the CPU, and there is no Coral or GPU to hand in.
+    # A Coral later goes in as a device (/dev/bus/usb), never as privileged mode.
     restart: unless-stopped
     depends_on:
       - mqtt
@@ -29,8 +30,6 @@ services:
       # 8971 is the authenticated UI: the gateway (lab address) and the host's nginx (loopback).
       - "127.0.0.1:8971:8971"
       - "{{ site.hosts[inventory_hostname].ip }}:8971:8971"
-    devices:
-      - /dev/bus/usb:/dev/bus/usb
     environment:
       FRIGATE_RTSP_PASSWORD: {{ frigate_stack_compose_rtsp_password }}
     networks:
