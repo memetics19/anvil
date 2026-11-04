@@ -291,8 +291,19 @@ Then add `/mnt/media/movies` and `/mnt/media/tv` as libraries in Jellyfin.
 ### Media over SMB (VLC on phones and TVs)
 
 `make vm HOST=ragnarok ARGS="--tags smb_media"` shares `Movies` and `TV` read-only over
-SMB, as a guest with no password (role `smb_media`). VLC on Android finds it under Local
-Network at home, which NFS often does not.
+SMB (role `smb_media`). VLC on Android finds it under Local Network at home, which NFS often
+does not.
+
+Two ways in, both read-only:
+
+- **The user `media`**, for VLC on Android. Its password is in Vault, `kv/homelab/ragnarok/smb`
+  (key `password`), generated there by the first run. Copy it to the clipboard without
+  showing it: `vault kv get -mount=kv -field=password homelab/ragnarok/smb | pbcopy`.
+- **A guest**, for the Mac's Finder: user `guest`, no password.
+
+VLC on Android needs the user. It signs every request, and a guest session has no key to
+check a signature with, so Samba drops the connection (`smb2_signing_check_pdu` in its log)
+and VLC asks for a login again and again. The user has a key.
 
 Who may connect, by Samba's `hosts allow` and the `anvil_smb_guard` firewall table:
 
@@ -309,9 +320,9 @@ Which address to open in VLC:
   No VPN route reaches the home address, and Local Network discovery does not cross the
   VPN.
 
-NetBird's cloud route for the lab's /16 masquerades. A phone on the VPN reaches ragnarok as
-the netbird VM's lab address, not its own NetBird address (a packet capture on ragnarok
-showed it). So that address is a reader, and every peer NetBird's access policy lets onto
+NetBird's routes for the lab's /16 masquerade. A phone on the VPN reaches ragnarok as the
+lab address of the routing peer it went through (the netbird VM or the Proxmox host), not its
+own NetBird address (a packet capture on ragnarok showed it). So that address is a reader, and every peer NetBird's access policy lets onto
 the lab route can read the shares, as every device on the home Wi-Fi can.
 
 ## netbird
