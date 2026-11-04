@@ -9,7 +9,7 @@
 - name: The keyrings trixie's files name
   ansible.builtin.stat:
     path: "{{ item }}"
-  loop: [ "{{ pve_repos_debian_keyring }}", "{{ pve_repos_proxmox_keyring }}" ]
+  loop: ["{{ pve_repos_debian_keyring }}", "{{ pve_repos_proxmox_keyring }}"]
   register: pve_repos_keyrings
   when: pve_repos_release != 'bookworm'
 
