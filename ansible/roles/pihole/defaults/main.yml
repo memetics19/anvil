@@ -107,7 +107,8 @@ pihole_blocklists_retired:
 # Domains blocked by regex (Pi-hole's domain list, type deny regex), with their subdomains.
 # Kept present and enabled. Entries added in the web UI are left alone. These are the ad and
 # tracking networks a free torrent client (uTorrent) shows ads from, which no list above
-# blocks.
+# blocks, and TP-Link's cloud: the Tapo cameras stay local, Frigate records them over RTSP and
+# nothing leaves the house (docs/services.md, Frigate). Their NTP stays allowed.
 pihole_deny_regex:
   - {regex: '(^|\.)rainberrytv\.com$', comment: uTorrent's ad and media service (Rainberry)}
   - {regex: '(^|\.)seedtag\.com$', comment: ad network}
@@ -116,6 +117,9 @@ pihole_deny_regex:
   - {regex: '(^|\.)e-planning\.net$', comment: ad network}
   - {regex: '(^|\.)betweendigital\.com$', comment: ad network}
   - {regex: '(^|\.)id5-sync\.com$', comment: cross-site tracking ID}
+  - {regex: '(^|\.)tplinkcloud\.com$', comment: TP-Link and Tapo cloud (the cameras stay local)}
+  - {regex: '(^|\.)tplinknbu\.com$', comment: Tapo device cloud gateway and Tapo Care}
+  - {regex: '(^|\.)tplinkra\.com$', comment: TP-Link remote access}
 
 # Hard caps, swap included. The apps VM is shared with Vaultwarden.
 pihole_mem_limit: 384m

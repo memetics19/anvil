@@ -48,6 +48,22 @@ anvil check frigate --tags frigate
 anvil apply frigate --tags frigate
 ```
 
+The cameras stay off TP-Link's cloud. Pi-hole blocks `tplinkcloud.com`, `tplinknbu.com` and
+`tplinkra.com` with their subdomains (`pihole_deny_regex`), so nothing a camera sees leaves
+the house. Frigate records them over RTSP inside the lab and does not need the cloud. Their
+time server lookups stay allowed.
+
+- Every camera must use Pi-hole as its DNS server, and Pi-hole only. In the Tapo app set it
+  under the camera's network settings, then restart the camera. A camera with its own DNS
+  server set walks around the block.
+- The Tapo app's live view, its alerts, Tapo Care and remote access stop. Frigate's alerts
+  take their place.
+- Firmware updates come from the cloud too. To update, switch the three entries off in
+  Pi-hole's web UI (Domains), update in the Tapo app, then switch them on again or run the
+  role.
+- A device can skip DNS and connect to an address it already knows. For a hard wall, put the
+  cameras on their own VLAN with no internet (role `pve_vlans`, `cameras_internet`).
+
 ### Docmost (wiki)
 
 `make vm HOST=frigate ARGS="--tags docmost"` runs the `docmost` role. It manages the
