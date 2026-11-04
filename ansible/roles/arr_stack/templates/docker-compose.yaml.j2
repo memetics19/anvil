@@ -1,7 +1,7 @@
 # Managed by anvil (ansible/roles/arr_stack); changes here are overwritten on the next run.
 services:
   qbittorrent:
-    image: lscr.io/linuxserver/qbittorrent:latest
+    image: {{ arr_stack_qbittorrent_image }}
     container_name: qbittorrent
     restart: unless-stopped
     ports:
@@ -18,7 +18,7 @@ services:
       - WEBUI_PORT=8080
 
   prowlarr:
-    image: lscr.io/linuxserver/prowlarr:latest
+    image: {{ arr_stack_prowlarr_image }}
     container_name: prowlarr
     restart: unless-stopped
     ports:
@@ -31,7 +31,7 @@ services:
       - TZ={{ arr_stack_timezone }}
 
   jackett:
-    image: lscr.io/linuxserver/jackett:latest
+    image: {{ arr_stack_jackett_image }}
     container_name: jackett
     restart: unless-stopped
     ports:
@@ -47,7 +47,7 @@ services:
       - flaresolverr
 
   flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
+    image: {{ arr_stack_flaresolverr_image }}
     container_name: flaresolverr
     restart: unless-stopped
     # Not published: Prowlarr reaches it as flaresolverr:8191 on the compose network.
@@ -63,7 +63,7 @@ services:
       retries: 3
 
   radarr:
-    image: lscr.io/linuxserver/radarr:latest
+    image: {{ arr_stack_radarr_image }}
     container_name: radarr
     restart: unless-stopped
     ports:
@@ -80,7 +80,7 @@ services:
       - qbittorrent
 
   sonarr:
-    image: lscr.io/linuxserver/sonarr:latest
+    image: {{ arr_stack_sonarr_image }}
     container_name: sonarr
     restart: unless-stopped
     ports:
@@ -99,7 +99,7 @@ services:
   # Subtitles: finds what Sonarr's and Radarr's files lack and saves .srt next to them. It
   # sees the library on the same paths as they do, so no path mapping is needed.
   bazarr:
-    image: lscr.io/linuxserver/bazarr:latest
+    image: {{ arr_stack_bazarr_image }}
     container_name: bazarr
     restart: unless-stopped
     ports:
