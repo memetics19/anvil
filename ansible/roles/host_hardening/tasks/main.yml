@@ -1,0 +1,71 @@
+# --- Blocked kernel modules --------------------------------------------------------------------
+# fwupd's request at boot is masked first: with the module blocked, the request would fail and
+# leave systemd-modules-load failed.
+- name: Nothing asks for the blocked modules at boot
+  ansible.builtin.file:
+    src: /dev/null
+    dest: "/etc/modules-load.d/fwupd-{{ item }}.conf"
+    state: link
+    force: true
+  loop: "{{ host_hardening_blocked_modules }}"
+
+- name: The blocked modules never load
+  ansible.builtin.copy:
+    dest: /etc/modprobe.d/anvil-blocked.conf
+    content: |
+      # Managed by anvil (role host_hardening). Modules nothing here needs.
+      {% for m in host_hardening_blocked_modules %}
+      install {{ m }} /bin/false
+      {% endfor %}
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Loaded modules
+  ansible.builtin.command:
+    argv: [cat, /proc/modules]
+  register: host_hardening_modules
+  changed_when: false
+  check_mode: false
+
+- name: Unload the blocked ones
+  ansible.builtin.command:
+    argv: [modprobe, -r, "{{ item }}"]
+  loop: "{{ host_hardening_blocked_modules }}"
+  when: host_hardening_modules.stdout is search('(?m)^' ~ item ~ ' ')
+  changed_when: true
+
+# --- rpcbind -------------------------------------------------------------------------------------
+- name: No rpcbind
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+    masked: true
+  loop: [rpcbind.socket, rpcbind.service]
+  when: host_hardening_rpcbind_off | bool
+
+# --- Automatic security updates ------------------------------------------------------------------
+- name: Automatic security updates
+  when: host_hardening_auto_security_updates | bool
+  block:
+    - name: The unattended-upgrades package
+      ansible.builtin.apt:
+        name: unattended-upgrades
+        state: present
+
+    - name: Debian security updates only, no reboot
+      ansible.builtin.template:
+        src: 52anvil-unattended-upgrades.j2
+        dest: /etc/apt/apt.conf.d/52anvil-unattended-upgrades
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Every day
+      ansible.builtin.template:
+        src: 21anvil-auto-upgrades.j2
+        dest: /etc/apt/apt.conf.d/21anvil-auto-upgrades
+        owner: root
+        group: root
+        mode: "0644"

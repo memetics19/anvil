@@ -1,0 +1,7 @@
+// Managed by anvil (role host_hardening). Debian security updates only: the list is cleared
+// first, so Debian's default origins (all point release updates) do not apply.
+#clear Unattended-Upgrade::Origins-Pattern;
+Unattended-Upgrade::Origins-Pattern {
+        "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
+};
+Unattended-Upgrade::Automatic-Reboot "false";

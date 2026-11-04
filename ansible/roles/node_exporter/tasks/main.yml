@@ -58,6 +58,14 @@
       notify: Restart node_exporter
       when: not ansible_check_mode
 
+# The download is not left behind: an executable in /tmp is what the security smoke test
+# looks for.
+- name: No download left in /tmp
+  ansible.builtin.file:
+    path: "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}{{ item }}"
+    state: absent
+  loop: ["", .tar.gz]
+
 - name: Ownership of the node_exporter binary
   ansible.builtin.file:
     path: "{{ node_exporter_binary }}"

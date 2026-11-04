@@ -6,6 +6,12 @@
       tags: [always]
   roles:
     - pve_host
+    # No msr module, no rpcbind (no NFS here), Debian security updates by themselves.
+    - role: host_hardening
+      tags: [host_hardening]
+      vars: &node_hardening
+        host_hardening_rpcbind_off: true
+        host_hardening_auto_security_updates: true
     # Drop IPv4 TCP with IP options (CVE-2026-98432).
     - role: tcp_options_guard
       tags: [tcp_options_guard]
@@ -38,6 +44,9 @@
 - name: Cluster members' TCP options guard and SSH
   hosts: cluster_members
   roles:
+    - role: host_hardening
+      tags: [host_hardening]
+      vars: *node_hardening
     # Drop IPv4 TCP with IP options (CVE-2026-98432).
     - role: tcp_options_guard
       tags: [tcp_options_guard]
