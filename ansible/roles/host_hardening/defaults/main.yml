@@ -1,0 +1,10 @@
+# Kernel modules nothing here needs and a miner wants. msr lets a miner retune the CPU for
+# RandomX, 15 to 30% faster. fwupd asks for it at boot (/usr/lib/modules-load.d/fwupd-msr.conf).
+host_hardening_blocked_modules: [msr]
+# rpcbind answers on every address, and only NFS v3 needs it. The Proxmox nodes mount no NFS,
+# so host.yml switches it off there. ragnarok serves NFS and keeps it.
+host_hardening_rpcbind_off: false
+# Debian security updates install themselves, for the hosts whose image does not do it
+# already (the Proxmox nodes, host.yml). Only the Debian-Security origin: Proxmox's own
+# packages and kernels stay a manual upgrade. Nothing reboots on its own.
+host_hardening_auto_security_updates: false

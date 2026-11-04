@@ -268,7 +268,7 @@ docker run --rm -v "$PWD":/vhs ghcr.io/charmbracelet/vhs docs/assets/anvil.tape
 Done:
 
 - [x] Secret scanning, linters, CI
-- [x] Trivy on every pull request and weekly. The repository and the release binary block on
+- [x] Trivy on every pull request and every night. The repository and the release binary block on
   a fixable HIGH or CRITICAL finding. Every pinned container image is reported.
 - [x] Inventory, SSH bootstrap, Proxmox host base role
 - [x] Host network with automatic rollback

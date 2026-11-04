@@ -1,6 +1,6 @@
 name: security
 
-# Trivy, on pull requests, on main and weekly (new advisories appear after a merge):
+# Trivy, on pull requests, on main and every night (new advisories appear after a merge):
 #   repo     the repository: Go and Python dependencies, Terraform, committed secrets
 #   binary   the anvil binary as a release builds it (Go's standard library is inside it)
 #   caddy    the patched Caddy role caddy builds (Go, replaced modules), as every host runs it
@@ -18,8 +18,10 @@ on:
     paths-ignore:
       - README.md
       - docs/assets/anvil-*.svg
+  # Every night, 05:17 UTC: a CVE published today against a pinned image shows up tomorrow,
+  # not at the end of the week.
   schedule:
-    - cron: "17 5 * * 1"
+    - cron: "17 5 * * *"
   workflow_dispatch:
 
 permissions:

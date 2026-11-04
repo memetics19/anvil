@@ -1110,7 +1110,7 @@ make vm HOST=identity ARGS="--tags authentik"   # checks /-/health/ready/
 Wazuh is the security monitor. It runs on its own VM on the second node, `wazuh`
 (role `wazuh_server`, `terraform/vm_wazuh.tf`, 4 vCPU, 8 GB, 80 GB). It is wazuh-docker's
 single-node deployment (4.14.9): the manager, the indexer and the dashboard. Agents on every
-host report to it (role `wazuh_agent`, next). It watches files for changes, looks for
+host report to it (role `wazuh_agent`, see Wazuh agents). It watches files for changes, looks for
 rootkits, reads logins and sudo, and lists the known CVEs of every installed package.
 
 What anvil changes from the upstream deployment:
@@ -1140,6 +1140,24 @@ One-time setup:
 The indexer reads its users' passwords on its first start only. To change one later, change
 it in Vault, apply, then load it into the running indexer:
 `docker exec -it wazuh-wazuh.indexer-1 bash /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh -cd /usr/share/wazuh-indexer/config/opensearch-security/ -nhnv -cacert /usr/share/wazuh-indexer/config/certs/root-ca.pem -cert /usr/share/wazuh-indexer/config/certs/admin.pem -key /usr/share/wazuh-indexer/config/certs/admin-key.pem -h localhost`.
+
+## Host hardening
+
+Role `host_hardening` closes small doors on every VM and Proxmox node.
+
+- **No msr module.** A miner loads it to retune the CPU and mine 15 to 30% faster. Nothing
+  here needs it. fwupd asks for it at boot, so that request is masked, and the module is
+  blocked and unloaded.
+- **No rpcbind on the Proxmox nodes.** It answers on every address and only NFS v3 needs it.
+  The nodes mount no NFS. ragnarok serves NFS and keeps it.
+- **Security updates on the Proxmox nodes by themselves.** The VMs' Ubuntu does this already.
+  The nodes get unattended-upgrades for the Debian-Security origin only. Proxmox's own
+  packages and kernels stay a manual upgrade, and nothing reboots on its own.
+
+The first daily run on a node installs every security update that is waiting. Check the
+log after it: `/var/log/unattended-upgrades/unattended-upgrades.log`.
+
+Apply it with `anvil apply vms --tags host_hardening` and `anvil apply host --tags host_hardening`.
 
 ## TCP options guard
 
@@ -1191,6 +1209,23 @@ Ways in without a key:
 
 Apply it to the VMs with `anvil apply vms --tags ssh_hardening` and to the nodes with
 `anvil apply host --tags ssh_hardening`. Each shows the change and asks first.
+
+## Wazuh agents
+
+Every VM except the enclave's, the Proxmox host and the other cluster members run the Wazuh
+agent (role `wazuh_agent`). Each reports to the Wazuh server: file changes, rootkit checks,
+logins and sudo, and its installed packages, which the server matches against known CVEs.
+
+- The package comes from Wazuh's own repository. Its signing key is pinned by digest, so a
+  changed key is refused. The key expires on 15 May 2027: update the digest when Wazuh renews it.
+- The agent is held at the server's version (4.14.9). Bump both together.
+- It enrolls by itself with the `enrollment` password from Vault (`kv/homelab/wazuh`), kept in
+  `/var/ossec/etc/authd.pass` for root and the wazuh group only.
+- Vault and Vaultwarden run no agent. Nothing in the secrets enclave may open a connection out,
+  and that rule matters more than their logs.
+
+Apply after the server: `anvil apply vms --tags wazuh_agent` and `anvil apply host --tags wazuh_agent`.
+Each run waits until the agent reports connected.
 
 ## Secrets enclave
 
