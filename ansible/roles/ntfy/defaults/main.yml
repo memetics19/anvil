@@ -3,8 +3,9 @@
 # its auth database (./data/lib/auth.db, app data, not templated). Anonymous access is denied.
 ntfy_dir: /home/ubuntu/ntfy
 ntfy_owner: ubuntu
-# The image tag in use today (untagged, so latest).
-ntfy_image: binwiederhier/ntfy
+# Pinned to a version and its digest (the one that ran on 2026-11-04), so a pull never brings
+# in something new by surprise.
+ntfy_image: binwiederhier/ntfy:v2.19.2@sha256:9114cd5cdcb8c2ea1239bd710caae867e82c2deda68271b9db151240b403b3f4
 ntfy_port: 8081
 # Base URL in links ntfy hands out: the VM's LAN address.
 ntfy_base_url: "http://{{ site.hosts[inventory_hostname].ip }}:{{ ntfy_port }}"
