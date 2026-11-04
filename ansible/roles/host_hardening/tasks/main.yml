@@ -36,7 +36,7 @@
   changed_when: true
 
 # --- rpcbind -------------------------------------------------------------------------------------
-- name: rpcbind is off
+- name: No rpcbind
   ansible.builtin.systemd:
     name: "{{ item }}"
     state: stopped
@@ -49,7 +49,7 @@
 - name: Automatic security updates
   when: host_hardening_auto_security_updates | bool
   block:
-    - name: unattended-upgrades
+    - name: The unattended-upgrades package
       ansible.builtin.apt:
         name: unattended-upgrades
         state: present
