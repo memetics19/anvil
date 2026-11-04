@@ -1,0 +1,88 @@
+- name: A release this role knows
+  ansible.builtin.assert:
+    that: pve_repos_release in ['bookworm', 'trixie']
+    fail_msg: "pve_repos knows bookworm and trixie, not {{ pve_repos_release }}"
+    quiet: true
+
+# Before the upgrade, trixie's .sources files need Proxmox's archive keyring, which the
+# latest Proxmox VE 8.4 installs.
+- name: The keyrings trixie's files name
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: [ "{{ pve_repos_debian_keyring }}", "{{ pve_repos_proxmox_keyring }}" ]
+  register: pve_repos_keyrings
+  when: pve_repos_release != 'bookworm'
+
+- name: They are there
+  ansible.builtin.assert:
+    that: pve_repos_keyrings.results | rejectattr('stat.exists') | list | length == 0
+    fail_msg: >-
+      Missing {{ pve_repos_keyrings.results | rejectattr('stat.exists') | map(attribute='item') | join(', ') }}.
+      Update to the latest Proxmox VE 8.4 first (apt full-upgrade on bookworm).
+    quiet: true
+  when: pve_repos_release != 'bookworm'
+
+- name: Debian sources.list
+  ansible.builtin.template:
+    src: sources.list.j2
+    dest: /etc/apt/sources.list
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Update apt cache
+
+- name: Proxmox VE without a subscription (bookworm)
+  ansible.builtin.copy:
+    content: "deb {{ pve_repos_proxmox }}/pve bookworm pve-no-subscription\n"
+    dest: /etc/apt/sources.list.d/pve-no-sub.list
+    owner: root
+    group: root
+    mode: "0644"
+  when: pve_repos_release == 'bookworm'
+  notify: Update apt cache
+
+- name: Debian and Proxmox VE (deb822)
+  when: pve_repos_release != 'bookworm'
+  block:
+    - name: The .sources files
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/apt/sources.list.d/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: [debian.sources, proxmox.sources]
+      notify: Update apt cache
+
+    - name: No .list file besides them
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/pve-no-sub.list
+        state: absent
+      notify: Update apt cache
+
+- name: No enterprise repository
+  ansible.builtin.file:
+    path: "/etc/apt/sources.list.d/{{ item }}"
+    state: absent
+  loop: [pve-enterprise.list, pve-enterprise.sources]
+  notify: Update apt cache
+
+- name: Does this node run Ceph
+  ansible.builtin.stat:
+    path: /usr/bin/ceph-mon
+  register: pve_repos_ceph_mon
+
+- name: Ceph's repository
+  ansible.builtin.include_tasks: ceph.yml
+  when: pve_repos_ceph_mon.stat.exists
+
+- name: No Ceph repository on a node without Ceph
+  ansible.builtin.file:
+    path: "/etc/apt/sources.list.d/{{ item }}"
+    state: absent
+  loop: [ceph.list, ceph.sources]
+  when: not pve_repos_ceph_mon.stat.exists
+  notify: Update apt cache
+
+- name: Refresh apt now
+  ansible.builtin.meta: flush_handlers

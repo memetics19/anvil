@@ -1,24 +1,7 @@
+# Debian's and Proxmox's repositories are role pve_repos (host.yml runs it first).
 - name: Apt sources
   tags: [repos]
   block:
-    - name: Debian sources.list
-      ansible.builtin.template:
-        src: sources.list.j2
-        dest: /etc/apt/sources.list
-        mode: "0644"
-        owner: root
-        group: root
-      notify: Update apt cache
-
-    - name: Proxmox no-subscription repository
-      ansible.builtin.template:
-        src: pve-no-sub.list.j2
-        dest: /etc/apt/sources.list.d/pve-no-sub.list
-        mode: "0644"
-        owner: root
-        group: root
-      notify: Update apt cache
-
     - name: NetBird signing key
       ansible.builtin.shell:
         cmd: set -o pipefail; curl -fsSL {{ pve_host_netbird_key_url }} | gpg --dearmor -o {{ pve_host_netbird_keyring }}
