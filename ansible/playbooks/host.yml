@@ -6,6 +6,12 @@
       tags: [always]
   roles:
     - pve_host
+    # No msr module, no rpcbind (no NFS here), Debian security updates by themselves.
+    - role: host_hardening
+      tags: [host_hardening]
+      vars: &node_hardening
+        host_hardening_rpcbind_off: true
+        host_hardening_auto_security_updates: true
     # Drop IPv4 TCP with IP options (CVE-2026-98432).
     - role: tcp_options_guard
       tags: [tcp_options_guard]
@@ -38,8 +44,27 @@
 - name: Cluster members' TCP options guard and SSH
   hosts: cluster_members
   roles:
+    - role: host_hardening
+      tags: [host_hardening]
+      vars: *node_hardening
     # Drop IPv4 TCP with IP options (CVE-2026-98432).
     - role: tcp_options_guard
       tags: [tcp_options_guard]
     - role: ssh_hardening
       tags: [ssh_hardening]
+
+# Wazuh agents on the nodes (docs/services.md, Wazuh). The cluster members have no site dict
+# of their own: the manager's address comes from the main host's.
+- name: Wazuh agent, Proxmox host
+  hosts: proxmox
+  roles:
+    - role: wazuh_agent
+      tags: [wazuh_agent]
+
+- name: Wazuh agent, cluster members
+  hosts: cluster_members
+  vars:
+    wazuh_agent_manager: "{{ hostvars[groups['proxmox'][0]].site.hosts.wazuh.ip }}"
+  roles:
+    - role: wazuh_agent
+      tags: [wazuh_agent]

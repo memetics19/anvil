@@ -1,7 +1,7 @@
 # Managed by anvil (ansible/roles/iptv_epg); changes here are overwritten on the next run.
 services:
   web:
-    image: nginx:alpine
+    image: {{ iptv_epg_web_image }}
     container_name: iptv-epg-web
     restart: unless-stopped
     ports:

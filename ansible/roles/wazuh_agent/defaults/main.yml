@@ -1,0 +1,15 @@
+# The Wazuh agent on a host (docs/services.md, Wazuh). It reports to the manager on the wazuh
+# VM: file changes, rootkit checks, logins and sudo, and the installed packages for the CVE
+# list. Not on the secrets enclave's VMs: nothing there may open a connection out.
+wazuh_agent_version: 4.14.9-1
+wazuh_agent_apt_key_url: https://packages.wazuh.com/key/GPG-KEY-WAZUH
+# Pinned so a changed key is refused instead of trusted. It expires on 2027-05-15: update the
+# digest when Wazuh publishes the renewed key.
+wazuh_agent_gpg_sha256: a378ca8dfa6b72122df288f64a0cde54f1cbfa3db9b43e6865cb73def35b5b17
+wazuh_agent_apt_keyring: /usr/share/keyrings/wazuh.asc
+wazuh_agent_apt_repo: https://packages.wazuh.com/4.x/apt/
+wazuh_agent_manager: "{{ site.hosts.wazuh.ip }}"
+# The enrollment password, from Vault (role wazuh_server writes it).
+wazuh_agent_vault_mount: kv
+wazuh_agent_vault_path: homelab/wazuh
+wazuh_agent_conf: /var/ossec/etc/ossec.conf
