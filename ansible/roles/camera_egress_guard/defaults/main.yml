@@ -1,0 +1,15 @@
+# The cameras reach nothing outside the house (docs/services.md, Frigate). Each camera's
+# gateway is the Proxmox host's home address (set in the Tapo app), so everything a camera
+# sends beyond the home network passes this host. Here it may answer Frigate and ask for the
+# time, and everything else is dropped and counted. A network wall, where Pi-hole's TP-Link
+# block is only a lookup wall.
+#
+# The cameras, from the site dict: the first camera and every one in the cameras list.
+camera_egress_guard_cameras: >-
+  {{ ([site.frigate_stack.camera.host | default('')]
+      + (site.frigate_stack.cameras | default([]) | map(attribute='host') | list))
+     | select | unique | list }}
+# NTP (UDP 123) stays allowed, so the cameras' own clocks stay right. Frigate keeps its own.
+camera_egress_guard_allow_ntp: true
+camera_egress_guard_file: /etc/anvil/camera-egress-guard.nft
+camera_egress_guard_table: anvil_camera_egress

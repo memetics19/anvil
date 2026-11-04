@@ -68,3 +68,12 @@
   roles:
     - role: wazuh_agent
       tags: [wazuh_agent]
+
+# The cameras use the Proxmox host's home address as their gateway: everything they send
+# beyond the home network is dropped here, except replies to Frigate and NTP
+# (docs/services.md, Frigate).
+- name: Camera egress guard
+  hosts: proxmox
+  roles:
+    - role: camera_egress_guard
+      tags: [camera_egress_guard]

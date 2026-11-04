@@ -1166,6 +1166,49 @@ Checks:
 By hand, from a lab VM: `python3 tests/fixtures/tcp_opts_probe.py <address> 22` prints
 `plain: connected` and `with IP options: timed out`.
 
+## Camera egress guard
+
+The cameras reach nothing outside the house (role `camera_egress_guard`, on the Proxmox host).
+Each camera uses the Proxmox host's home address as its gateway, so everything it sends beyond
+the home network passes that host. There a camera may answer the connections Frigate and Pulse
+open to it, and ask for the time (NTP). Every other packet is dropped and counted.
+
+This is a network wall. Pi-hole's TP-Link block only stops the lookups: a camera that knew an
+address could still connect. Through the guard it cannot, whatever the address. The cameras
+ask only for IPv4 addresses, and the home network gives them no IPv6 way out.
+
+The cameras come from the site dict (`site.frigate_stack.camera` and `.cameras`), so a new
+camera is guarded once you add it there and apply.
+
+Set each camera once, in the Tapo app, under the camera's network settings (IP address,
+static):
+
+| Setting | Value |
+|---|---|
+| IP address | the camera's address, as in the site dict |
+| Subnet mask | the home network's, usually 255.255.255.0 |
+| Gateway | the Proxmox host's home address (`<proxmox-home-address>`) |
+| DNS | Pi-hole's home address only, no second server |
+
+Then restart the camera. Frigate keeps recording: it reaches the cameras from inside the lab,
+and their replies now come back through the Proxmox host.
+
+Check it is working. The drop counter grows while a camera tries to call out, and the Tapo
+app's live view on mobile data fails:
+
+```sh
+ssh root@<proxmox-address> nft list table inet anvil_camera_egress
+```
+
+The camera VLAN (20) has no internet either (`cameras_internet: false`): DNS and NTP only.
+When an access point puts the cameras on that VLAN, the Proxmox host is their gateway by
+design, and this guard and the static settings above are no longer needed.
+
+Firmware updates need the internet. To update a camera, set its gateway back to the router for
+the update, then back to the Proxmox host.
+
+Apply it with `anvil apply host --tags camera_egress_guard`.
+
 ## SSH
 
 Every VM, the Proxmox host and the other cluster members take SSH by key only (role

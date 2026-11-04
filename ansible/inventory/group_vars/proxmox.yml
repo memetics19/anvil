@@ -20,9 +20,11 @@ vlans:
     tag: 20
     egress: "{{ ['dns'] + (['internet'] if cameras_internet | bool else []) }}"
   - {name: personal, tag: 30, egress: [dns, web, internet]}
-# VLAN 20 may reach the internet (the camera vendor's app needs it). false: DNS and NTP only.
+# VLAN 20 may not reach the internet: DNS and NTP only. The cameras stay local to Frigate and
+# send nothing to the vendor's cloud (docs/services.md, Frigate). true would let them out,
+# which the vendor's app needs.
 # VLAN 20 stays NATed either way: its DNS queries to Pi-hole leave with the host's address.
-cameras_internet: true
+cameras_internet: false
 
 # Pi-hole (apps): the VLANs' resolver. DHCP hands out the first address.
 vlan_pihole: "{{ [site.hosts.apps.ip, site.hosts.apps.home_ip | default('')] | select | list }}"
