@@ -1,0 +1,15 @@
+# Managed by anvil (role camera_egress_guard). Loads the guard before the network is up, so
+# the cameras never get a moment out after a boot.
+[Unit]
+Description=The cameras reach nothing outside the house
+DefaultDependencies=no
+Before=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f {{ camera_egress_guard_file }}
+
+[Install]
+WantedBy=multi-user.target
