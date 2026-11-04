@@ -1,0 +1,121 @@
+- name: The enrollment password, from Vault
+  ansible.builtin.set_fact:
+    wazuh_agent_enrollment: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', wazuh_agent_vault_path,
+                engine_mount_point=wazuh_agent_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret.enrollment | default('') }}
+  no_log: true
+
+- name: It is there
+  ansible.builtin.assert:
+    that: wazuh_agent_enrollment | length > 0
+    fail_msg: "kv/{{ wazuh_agent_vault_path }} has no enrollment password: apply the Wazuh server first (anvil apply wazuh)"
+    quiet: true
+
+# --- The package, from Wazuh's repository, held at wazuh_agent_version --------------------------
+- name: Wazuh apt signing key
+  ansible.builtin.get_url:
+    url: "{{ wazuh_agent_apt_key_url }}"
+    dest: "{{ wazuh_agent_apt_keyring }}"
+    checksum: "sha256:{{ wazuh_agent_gpg_sha256 }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Wazuh apt repository
+  ansible.builtin.copy:
+    content: "deb [signed-by={{ wazuh_agent_apt_keyring }}] {{ wazuh_agent_apt_repo }} stable main\n"
+    dest: /etc/apt/sources.list.d/wazuh.list
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Update apt cache
+
+- name: Refresh apt cache before installing
+  ansible.builtin.meta: flush_handlers
+
+- name: Installed agent version
+  ansible.builtin.command:
+    argv: [dpkg-query, -W, -f, "${Version}", wazuh-agent]
+  register: wazuh_agent_installed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Install the agent {{ wazuh_agent_version }}
+  when: wazuh_agent_installed.stdout | default('') != wazuh_agent_version
+  block:
+    - name: Release the hold
+      ansible.builtin.dpkg_selections:
+        name: wazuh-agent
+        selection: install
+      when: wazuh_agent_installed.rc == 0
+
+    # The manager's address at install time, so the package writes a working ossec.conf.
+    - name: Install it
+      ansible.builtin.apt:
+        name: "wazuh-agent={{ wazuh_agent_version }}"
+        state: present
+        allow_downgrade: true
+      environment:
+        WAZUH_MANAGER: "{{ wazuh_agent_manager }}"
+        WAZUH_AGENT_NAME: "{{ inventory_hostname }}"
+      notify: Restart wazuh-agent
+
+    - name: Hold it
+      ansible.builtin.dpkg_selections:
+        name: wazuh-agent
+        selection: hold
+      when: not ansible_check_mode
+
+# --- Its settings -------------------------------------------------------------------------------
+# The agent enrolls by itself with this password at its first start.
+- name: The enrollment password
+  ansible.builtin.copy:
+    content: "{{ wazuh_agent_enrollment }}\n"
+    dest: /var/ossec/etc/authd.pass
+    owner: root
+    group: wazuh
+    mode: "0640"
+  no_log: true
+  notify: Restart wazuh-agent
+  when: not ansible_check_mode or wazuh_agent_installed.rc == 0
+
+- name: The manager's address
+  ansible.builtin.replace:
+    path: "{{ wazuh_agent_conf }}"
+    regexp: '<address>[^<]*</address>'
+    replace: "<address>{{ wazuh_agent_manager }}</address>"
+  notify: Restart wazuh-agent
+  when: not ansible_check_mode or wazuh_agent_installed.rc == 0
+
+- name: Its name is the inventory name
+  ansible.builtin.replace:
+    path: "{{ wazuh_agent_conf }}"
+    regexp: '<agent_name>[^<]*</agent_name>'
+    replace: "<agent_name>{{ inventory_hostname }}</agent_name>"
+  notify: Restart wazuh-agent
+  when: not ansible_check_mode or wazuh_agent_installed.rc == 0
+
+- name: Running and on at boot
+  ansible.builtin.systemd:
+    name: wazuh-agent
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: not ansible_check_mode
+
+- name: Flush a restart now, then wait for it to connect
+  ansible.builtin.meta: flush_handlers
+
+- name: Connected to the manager
+  ansible.builtin.command:
+    argv: [grep, -E, '^status=.connected.', /var/ossec/var/run/wazuh-agentd.state]
+  register: wazuh_agent_state
+  changed_when: false
+  retries: 12
+  delay: 5
+  until: wazuh_agent_state.rc == 0
+  when: not ansible_check_mode
