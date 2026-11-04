@@ -51,8 +51,9 @@ g=$tmp/canary-ssh.nft
 check "real SSH: the sources are admitted" "grep -q 'tcp dport 22 ip saddr { 192.0.2.31/32, 192.0.2.10, 192.0.2.115 } accept' '$g'"
 check "real SSH: anyone else is dropped" "grep -qE '^\s+tcp dport 22 counter drop$' '$g'"
 check "real SSH: open connections stay" "grep -q 'ct state established,related accept' '$g'"
-if command -v nft >/dev/null && [ "$(uname)" = Linux ]; then
-  check "nft accepts the guard" "nft -c -f '$g'"
+# Checking a ruleset needs root: only where sudo asks no password (CI, Linux).
+if command -v nft >/dev/null && sudo -n true 2>/dev/null; then
+  check "nft accepts the guard" "sudo -n nft -c -f '$g'"
 fi
 check "the settings file is root only (the token is in it)" \
   "awk '/name: Its settings/{f=1} f && /mode:/{print; exit}' $r/tasks/main.yml | grep -q '\"0600\"'"
