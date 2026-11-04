@@ -20,7 +20,7 @@
       tags: [base, enclave]
 
 - name: Guest base
-  hosts: guests:vault_servers:apps_servers:vaultwarden_servers:identity_servers:llm_servers
+  hosts: guests:vault_servers:apps_servers:vaultwarden_servers:identity_servers:llm_servers:canary_servers
   pre_tasks:
     - name: Resolve the site dict once for this run
       ansible.builtin.import_tasks: tasks/site.yml
@@ -31,14 +31,14 @@
 
 # Every VM, the enclave's too: drop IPv4 TCP with IP options (CVE-2026-98432).
 - name: TCP options guard
-  hosts: guests:vault_servers:apps_servers:vaultwarden_servers:identity_servers:llm_servers
+  hosts: guests:vault_servers:apps_servers:vaultwarden_servers:identity_servers:llm_servers:canary_servers
   roles:
     - role: tcp_options_guard
       tags: [tcp_options_guard]
 
 # Every VM, the enclave's too: SSH by key only, no X11.
 - name: SSH hardening
-  hosts: guests:vault_servers:apps_servers:vaultwarden_servers:identity_servers:llm_servers
+  hosts: guests:vault_servers:apps_servers:vaultwarden_servers:identity_servers:llm_servers:canary_servers
   roles:
     - role: ssh_hardening
       tags: [ssh_hardening]
@@ -242,3 +242,10 @@
   roles:
     - role: llm
       tags: [llm]
+
+# The tripwire (OpenCanary) on its own VM. Alerts to ntfy (docs/services.md, Tripwire).
+- name: Canary
+  hosts: canary_servers
+  roles:
+    - role: canary
+      tags: [canary]

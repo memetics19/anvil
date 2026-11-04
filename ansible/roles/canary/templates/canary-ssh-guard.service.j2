@@ -1,0 +1,13 @@
+# Managed by anvil (role canary). Loads the SSH guard at boot.
+[Unit]
+Description=Only the admin sources reach the canary's real SSH
+Before=ssh.service ssh.socket
+After=nftables.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f {{ canary_ssh_guard_file }}
+
+[Install]
+WantedBy=multi-user.target

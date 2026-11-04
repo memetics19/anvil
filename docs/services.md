@@ -1105,6 +1105,43 @@ age -d -i <(security find-generic-password -s homelab -a backup-age-identity -w)
 make vm HOST=identity ARGS="--tags authentik"   # checks /-/health/ready/
 ```
 
+## Tripwire (OpenCanary)
+
+A small VM on the second node, `canary`, runs OpenCanary (role `canary`,
+`terraform/vm_canary.tf`). It looks like a forgotten NAS: FTP, Telnet, a web login page, SSH
+on 2222, MySQL, SQL Server, RDP, VNC, Redis, TFTP and SNMP. Nothing legitimate ever talks to
+it. So any connection, login attempt or port scan sends an ntfy message at once, with the
+source address and what it tried. It catches what nightly checks miss: someone, or something,
+looking around the network right now.
+
+The real SSH stays on port 22 for the admin sources and the VPN routers only. Anyone else gets
+no answer there. A changed rule goes in with a timed rollback, so a mistake cannot lock you
+out for more than two minutes.
+
+One-time setup, before the first apply:
+
+1. Add the VM to the site dict in Vault, with an address nothing uses
+   (`site.hosts.canary`, shaped like `site/site.example.yml`), then `anvil apply tf`.
+2. Give it a write-only ntfy user and keep its token in Vault. On the netbird VM:
+
+   ```sh
+   docker exec -it ntfy ntfy user add canary
+   docker exec ntfy ntfy access canary canary write-only
+   docker exec ntfy ntfy access <your ntfy user> canary read-only
+   ```
+
+   Then pipe its token into Vault, so it never shows or lands in a shell history:
+
+   ```sh
+   ssh <netbird VM> docker exec ntfy ntfy token add canary | awk '{print $2}' |
+     vault kv put -mount=kv homelab/canary/ntfy url=https://ntfy.<domain>/canary token=-
+   ```
+
+3. `anvil apply canary`, and subscribe to the `canary` topic in the ntfy app.
+
+Test it: `nc -vz <canary address> 21` from the Mac. A message arrives within seconds. The
+security audit's scans trip it too, which is the point.
+
 ## TCP options guard
 
 Every VM, the Proxmox host and the other cluster members drop incoming IPv4 TCP packets

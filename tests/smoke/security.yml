@@ -70,6 +70,8 @@
                  docker-proxy/34401]
       vault: [vault/8200, vault/8201]
       vaultwarden: [docker-proxy/8080]
+      # OpenCanary's fake services (role canary), every port it chooses to open.
+      canary: [twistd/*]
     smoke_privileged_ok: []
     smoke_is_node: "{{ inventory_hostname in groups['proxmox'] + groups['cluster_members'] | default([]) }}"
     smoke_keys: >-
@@ -93,7 +95,7 @@
       check_mode: false
 
 - name: Security, VMs
-  hosts: guests:apps_servers:identity_servers:llm_servers:enclave
+  hosts: guests:apps_servers:identity_servers:llm_servers:enclave:canary_servers
   gather_facts: false
   become: true
   vars: *smoke_vars
