@@ -242,3 +242,11 @@
   roles:
     - role: llm
       tags: [llm]
+
+# Wazuh agents (docs/services.md, Wazuh), after the Wazuh server. Not the secrets enclave:
+# nothing there may open a connection out.
+- name: Wazuh agents
+  hosts: guests:apps_servers:identity_servers:llm_servers
+  roles:
+    - role: wazuh_agent
+      tags: [wazuh_agent]

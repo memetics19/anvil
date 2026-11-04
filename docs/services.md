@@ -1156,6 +1156,23 @@ Ways in without a key:
 Apply it to the VMs with `anvil apply vms --tags ssh_hardening` and to the nodes with
 `anvil apply host --tags ssh_hardening`. Each shows the change and asks first.
 
+## Wazuh agents
+
+Every VM except the enclave's, the Proxmox host and the other cluster members run the Wazuh
+agent (role `wazuh_agent`). Each reports to the Wazuh server: file changes, rootkit checks,
+logins and sudo, and its installed packages, which the server matches against known CVEs.
+
+- The package comes from Wazuh's own repository. Its signing key is pinned by digest, so a
+  changed key is refused. The key expires on 15 May 2027: update the digest when Wazuh renews it.
+- The agent is held at the server's version (4.14.9). Bump both together.
+- It enrolls by itself with the `enrollment` password from Vault (`kv/homelab/wazuh`), kept in
+  `/var/ossec/etc/authd.pass` for root and the wazuh group only.
+- Vault and Vaultwarden run no agent. Nothing in the secrets enclave may open a connection out,
+  and that rule matters more than their logs.
+
+Apply after the server: `anvil apply vms --tags wazuh_agent` and `anvil apply host --tags wazuh_agent`.
+Each run waits until the agent reports connected.
+
 ## Secrets enclave
 
 Vault and Vaultwarden live on their own network: the SDN vnet `secrets`, in the simple

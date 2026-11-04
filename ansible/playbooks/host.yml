@@ -43,3 +43,19 @@
       tags: [tcp_options_guard]
     - role: ssh_hardening
       tags: [ssh_hardening]
+
+# Wazuh agents on the nodes (docs/services.md, Wazuh). The cluster members have no site dict
+# of their own: the manager's address comes from the main host's.
+- name: Wazuh agent, Proxmox host
+  hosts: proxmox
+  roles:
+    - role: wazuh_agent
+      tags: [wazuh_agent]
+
+- name: Wazuh agent, cluster members
+  hosts: cluster_members
+  vars:
+    wazuh_agent_manager: "{{ hostvars[groups['proxmox'][0]].site.hosts.wazuh.ip }}"
+  roles:
+    - role: wazuh_agent
+      tags: [wazuh_agent]
