@@ -3,3 +3,5 @@
 # which Threadfin reads. The service itself is kept as it runs today.
 iptv_epg_dir: /home/ubuntu/iptv-epg
 iptv_epg_port: 8899
+# The web server's image, pinned to a version and its digest (the one that ran on 2026-11-04).
+iptv_epg_web_image: nginx:1.29.4-alpine@sha256:8491795299c8e739b7fcc6285d531d9812ce2666e07bd3dd8db00020ad132295

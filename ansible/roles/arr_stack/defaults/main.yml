@@ -5,6 +5,16 @@
 # templated and is set up again by hand on a rebuild. The media library is only ever a
 # bind-mount source in the template (tests/unit/test_media_untouched.sh).
 arr_stack_dir: /home/ubuntu
+# The images, each pinned to a version and its digest, so a pull never brings in something
+# new by surprise. Bump them on purpose: the nightly Trivy scan (security.yml) says when a
+# pinned image has known CVEs. These are the versions that ran on 2026-11-04.
+arr_stack_qbittorrent_image: lscr.io/linuxserver/qbittorrent:5.1.4-r1-ls432@sha256:a68c4cfb7b07c39cf3f13e7f1d23d333c1e4a60304d37bc1eec7af3eacfe12d5
+arr_stack_prowlarr_image: lscr.io/linuxserver/prowlarr:2.7.0.5723-ls166@sha256:04be30163fbaf48d6aeee7b5893c9f6614ffbad6d853971df0d6dcdf01c7f104
+arr_stack_jackett_image: lscr.io/linuxserver/jackett:v0.24.590-ls262@sha256:06eb91e8ecfa3aa2bdb323041257ac6360b6d20e5b68d66050bbbcb5be3c93e7
+arr_stack_flaresolverr_image: ghcr.io/flaresolverr/flaresolverr:v3.4.6@sha256:7962759d99d7e125e108e0f5e7f3cdbcd36161776d058d1d9b7153b92ef1af9e
+arr_stack_radarr_image: lscr.io/linuxserver/radarr:6.4.4.10685-ls324@sha256:084b3b2ab1d0ef930660727259546a241f2bdf67c9ed085d54bf1486a6887c9b
+arr_stack_sonarr_image: lscr.io/linuxserver/sonarr:4.0.20.3014-ls1@sha256:48e36b608b461273b9dae857725cd0561a127f2c694b687318f6d0c5ce63e5c9
+arr_stack_bazarr_image: lscr.io/linuxserver/bazarr:v1.6.2-ls370@sha256:9a625883f054e722795affe5e3ca71057e6ed817ecdf99f4a99624346fcc509c
 arr_stack_compose_file: "{{ arr_stack_dir }}/docker-compose.yaml"
 # linuxserver.io images run the apps as this uid/gid (the VM's first user).
 arr_stack_uid: 1000
