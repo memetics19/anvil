@@ -1163,7 +1163,8 @@ One-time setup, before the first apply:
 
    Then make its token from the Mac and pipe it into Vault, so it never shows or lands in a
    shell history. sudo on the VM takes its password from the Keychain on stdin, because a pipe
-   has no terminal to ask on:
+   has no terminal to ask on. The url is ntfy's lab address, not the public name, so an
+   alert still gets out when the internet or the gateway is down:
 
    ```sh
    source scripts/env.sh
@@ -1173,7 +1174,7 @@ One-time setup, before the first apply:
    if [ -n "$t" ]
    then
      printf '%s' "$t" |
-       vault kv put -mount=kv homelab/canary/ntfy url=https://ntfy.<domain>/canary token=-
+       vault kv put -mount=kv homelab/canary/ntfy url=http://<netbird VM>:8081/canary token=-
    else
      echo "no token made, run the ssh line without awk to see why"
    fi
