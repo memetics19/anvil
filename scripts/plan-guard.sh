@@ -10,8 +10,9 @@
 #     only grow: that keeps every byte (anvil increase-disk). Protected: any
 #     proxmox_virtual_environment_vm named ragnarok (its disk holds
 #     the media library), vault (it holds secrets), apps or vaultwarden (Vaultwarden's data), at any
-#     module path. Tuning options (discard, iothread, cache, ...)
-#     may change. A pure create (new box, rebuild) is allowed; delete/replace never are.
+#     module path, or the resource of a module of one of those names (module.apps). Tuning
+#     options (discard, iothread, cache, ...) may change. A pure create (new box, rebuild) is
+#     allowed. Delete and replace never are.
 # Prints the offending resource addresses only (no attribute values).
 set -euo pipefail
 
@@ -49,7 +50,10 @@ disks=$(q -r --arg t "$protected_type" --argjson n "$protected_names" '
   def shrinks($b; $a): [ ($b | sizes) as $x | ($a | sizes) as $y | $x | keys[]
                          | select(($y[.] // null) == null or $y[.] < $x[.]) ] | length > 0;
   .resource_changes // [] | .[]
-  | select(.type == $t and (.name as $x | $n | index($x)))
+  # A VM is known by its resource name, or by the name of its module when the resource sits
+  # in one (modules/ubuntu_vm names it "this", so module.apps is apps).
+  | select(.type == $t and ([.name, ((.module_address // "") | split(".") | last // "" | sub("\\[.*$"; ""))]
+                            | any(. as $x | $n | index($x))))
   | select(.change.actions | index("update"))   # an existing VM only: a pure create is fine
   | select(((.change.before.disk // null) | ident) != ((.change.after.disk // null) | ident)
            or shrinks(.change.before.disk; .change.after.disk)
