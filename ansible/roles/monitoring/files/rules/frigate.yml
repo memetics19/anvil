@@ -29,7 +29,7 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "Frigate skips frames from {{ $labels.camera_name }}"
-          description: "Frigate has skipped {{ $value | printf \"%.1f\" }} frames a second from {{ $labels.camera_name }} for 15 minutes. Detection is missing what happens there."
+          description: "{{ $value | printf \"%.1f\" }} frames a second skipped for 15 minutes. Detection misses what happens there."
           runbook: "https://memetics19.github.io/anvil/monitoring/#cameraskippingframes"
 
       - alert: FrigateDetectorSlow
