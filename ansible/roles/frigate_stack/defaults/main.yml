@@ -46,6 +46,13 @@ frigate_stack_private_files:
 # which acts as admin); checked by logging in each run. Tag homepage.
 frigate_stack_homepage_user: homepage
 frigate_stack_api: http://127.0.0.1:5000/api
+# Frigate's Prometheus metrics, for the monitoring VM (role monitoring): nginx on the lab
+# address answers /api/metrics alone, from the internal API, and only to these sources.
+# Every other path gets 404. Port 5000 itself, the whole API with no login, stays on loopback.
+frigate_stack_metrics_port: 9711
+frigate_stack_metrics_sources: >-
+  {{ ([site.hosts.monitoring.ip] if site.hosts.monitoring is defined else [])
+     + (site.admin_sources | default([])) + (site.admin_vpn_sources | default([])) }}
 frigate_stack_repo_scripts: "{{ playbook_dir }}/../../scripts"
 # Pinned by tag and digest. A bump is a deliberate change of these lines.
 frigate_stack_frigate_image: ghcr.io/blakeblackshear/frigate:0.17.2@sha256:d4351369984d4a9e2a49ac59736f6490856a7ea11f7790040746d21496967010

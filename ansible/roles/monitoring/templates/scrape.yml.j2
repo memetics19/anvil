@@ -30,6 +30,28 @@ scrape_configs:
         replacement: blackbox:9115
 {% endfor %}
 
+{% if monitoring_frigate_target | length > 0 %}
+  # Frigate: cameras, detection, recording storage (role frigate_stack). Labelled host
+  # frigate, so a down VM (HostDown) holds back its Frigate alerts. The per-process series
+  # carry the ffmpeg command line, with each camera's address, and a pid that changes on every
+  # restart: both labels are dropped, and so are the "Other" helper processes.
+  - job_name: frigate
+    metrics_path: /api/metrics
+    static_configs:
+      - targets: ["{{ monitoring_frigate_target }}"]
+        labels: {host: frigate}
+    metric_relabel_configs:
+      - source_labels: [__name__, type]
+        regex: "frigate_(cpu|mem)_usage_percent;Other"
+        action: drop
+      - source_labels: [pid]
+        regex: frigate\.full_system
+        target_label: name
+        replacement: full_system
+      - regex: cmdline|pid
+        action: labeldrop
+{% endif %}
+
   # The stack itself.
   - job_name: victoriametrics
     static_configs:

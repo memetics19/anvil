@@ -1,0 +1,53 @@
+# Managed by anvil (role monitoring). Alert rules for Frigate, the camera recorder (job frigate,
+# role frigate_stack). Each one is something a person must act on, waits before it fires
+# (for:) and links to its fix (docs/monitoring.md, Alerts). A down Frigate VM fires HostDown,
+# which holds these back (same host label).
+groups:
+  - name: frigate
+    rules:
+      - alert: FrigateDown
+        expr: up{job="frigate"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Frigate is not answering"
+          description: "Frigate's metrics have not answered for 5 minutes while its VM is up. Nothing is being recorded."
+          runbook: "https://memetics19.github.io/anvil/monitoring/#frigatedown"
+
+      - alert: CameraOffline
+        expr: frigate_camera_fps == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Camera {{ $labels.camera_name }} sends no video"
+          description: "Frigate has had no frames from {{ $labels.camera_name }} for 5 minutes. It is not recording that camera."
+          runbook: "https://memetics19.github.io/anvil/monitoring/#cameraoffline"
+
+      - alert: CameraSkippingFrames
+        expr: frigate_skipped_fps > 0.5
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "Frigate skips frames from {{ $labels.camera_name }}"
+          description: "{{ $value | printf \"%.1f\" }} frames a second skipped for 15 minutes. Detection misses what happens there."
+          runbook: "https://memetics19.github.io/anvil/monitoring/#cameraskippingframes"
+
+      - alert: FrigateDetectorSlow
+        expr: frigate_detector_inference_speed_seconds > 0.2
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "Frigate's {{ $labels.name }} detector is slow"
+          description: "Each detection takes {{ $value | humanizeDuration }}, for 15 minutes. Usually it takes about 50 ms."
+          runbook: "https://memetics19.github.io/anvil/monitoring/#frigatedetectorslow"
+
+      - alert: FrigateStorageLow
+        expr: |
+          100 * frigate_storage_free_bytes{storage="/media/frigate/recordings"}
+            / frigate_storage_total_bytes{storage="/media/frigate/recordings"} < 10
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "Frigate's recording disk is almost full"
+          description: "Less than 10% free for recordings ({{ $value | printf \"%.1f\" }}% left). Frigate deletes the oldest footage early to make room."
+          runbook: "https://memetics19.github.io/anvil/monitoring/#frigatestoragelow"

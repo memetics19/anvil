@@ -66,6 +66,11 @@ check "grafana resolves Authentik's name to the gateway" \
 check "alertmanager serves its API at the root" "grep -q -- '--web.route-prefix=/\$' \$c"
 check "the Lab dashboard is the home page" \
   "grep -q 'GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/lab.json' \$c && [ -f $r/files/dashboards/lab.json ]"
+# Frigate: scraped on its metrics port as host frigate, without the command lines (camera
+# addresses) and the pids.
+check "frigate is scraped on its metrics port, as host frigate" \
+  "grep -A4 'job_name: frigate' \$s | grep -q 'metrics_path: /api/metrics' && grep -A6 'job_name: frigate' \$s | grep -q '192.0.2.114:9711' && grep -A7 'job_name: frigate' \$s | grep -q 'host: frigate'"
+check "frigate's command lines and pids are dropped" "grep -A20 'job_name: frigate' \$s | grep -B1 'action: labeldrop' | grep -q 'regex: cmdline|pid'"
 check "every image is pinned to a digest" \
   "[ \"\$(grep -cE '^\s+image: ' $c)\" = 6 ] && ! grep -E '^\s+image: ' $c | grep -v '@sha256:'"
 check "only Grafana and Alertmanager's API are published, on the lab address" \
