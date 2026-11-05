@@ -46,6 +46,7 @@ cat >"$tmp/play.yml" <<PLAY
         - {name: ceph, host: pve.ip, port: 8443, scheme: https}
         - {name: tv, host: hosts.ragnarok.ip, port: 34401, scheme: http, title: Live TV}
         - {name: mystery, host: hosts.ragnarok.ip, port: 1234, scheme: http}
+        - {name: grafana, host: hosts.monitoring.ip, port: 3000, scheme: http}
       pve: {ip: 192.0.2.10}
       hosts: {identity: {ip: 192.0.2.125, home_ip: 198.51.100.48}, apps: {ip: 192.0.2.121}}
     authentik_secrets:
@@ -54,6 +55,7 @@ cat >"$tmp/play.yml" <<PLAY
       bootstrap_password: test-bootstrap-password
       bootstrap_token: test-bootstrap-token
       proxmox_client_secret: test-proxmox-client-secret
+      grafana_client_secret: test-grafana-client-secret
     authentik_backup_keys: {s3_access_key: FAKEACCESSKEY0000000, s3_secret_key: fakesecretkey0000000000000000000000000000}
   vars_files:
     - $PWD/ansible/roles/authentik/defaults/main.yml
@@ -74,7 +76,7 @@ if ansible-playbook -i localhost, -c local "$tmp/play.yml" >"$tmp/render.log" 2>
   bad_ "templates render"; cat "$tmp/render.log"; exit 1; fi
 
 c=$tmp/docker-compose.yaml
-secrets='test-secret-key|test-postgres-password|test-bootstrap-password|test-bootstrap-token|test-proxmox-client-secret'
+secrets='test-secret-key|test-postgres-password|test-bootstrap-password|test-bootstrap-token|test-proxmox-client-secret|test-grafana-client-secret'
 # shellcheck disable=SC2329  # called through check's eval
 py() { python3 -c "import yaml; s=yaml.safe_load(open('$c'))['services']; $1"; }
 
@@ -109,11 +111,13 @@ check "authentik.env: the four secrets and the bootstrap email, no Postgres pass
    ! grep -q POSTGRES_PASSWORD '$tmp/authentik.env'"
 check "db.env: only the Postgres password" \
   "[ \"\$(grep -v '^#' '$tmp/db.env')\" = 'POSTGRES_PASSWORD=test-postgres-password' ]"
-check "vault: kv/homelab/identity/authentik with the five keys" \
-  "[ \"\$(cat '$tmp/vault')\" = 'homelab/identity/authentik secret_key,postgres_password,bootstrap_password,bootstrap_token,proxmox_client_secret' ]"
+check "vault: kv/homelab/identity/authentik with the six keys" \
+  "[ \"\$(cat '$tmp/vault')\" = 'homelab/identity/authentik secret_key,postgres_password,bootstrap_password,bootstrap_token,proxmox_client_secret,grafana_client_secret' ]"
 
 check "authentik.env: the Proxmox client secret for the blueprint" \
   "grep -qx 'ANVIL_PROXMOX_CLIENT_SECRET=test-proxmox-client-secret' '$tmp/authentik.env'"
+check "authentik.env: Grafana's client secret for the blueprint" \
+  "grep -qx 'ANVIL_GRAFANA_CLIENT_SECRET=test-grafana-client-secret' '$tmp/authentik.env'"
 check "compose: the worker reads anvil's blueprints read-only, the server does not" \
   "py 'assert \"./blueprints:/blueprints/anvil:ro\" in s[\"worker\"][\"volumes\"] and not any(\"blueprints\" in v for v in s[\"server\"][\"volumes\"])'"
 
@@ -145,7 +149,7 @@ check "blueprint: the embedded outpost serves the gateway provider at the browse
   "bpy 'o=by(\"authentik_outposts.outpost\")[0]; assert o[\"identifiers\"]==dict(managed=\"goauthentik.io/outposts/embedded\")
 assert o[\"attrs\"][\"providers\"]==[[\"!KeyOf\",\"gateway-provider\"]] and o[\"attrs\"][\"config\"][\"authentik_host\"]==\"https://auth.lab.example.com\"'"
 check "blueprint: every app is bound to the group only" \
-  "bpy 'b=by(\"authentik_policies.policybinding\"); assert len(b)==7 and all(x[\"identifiers\"][\"group\"]==[\"!KeyOf\",\"sso-group\"] for x in b)'"
+  "bpy 'b=by(\"authentik_policies.policybinding\"); assert len(b)==8 and all(x[\"identifiers\"][\"group\"]==[\"!KeyOf\",\"sso-group\"] for x in b)'"
 check "blueprint: Proxmox may use the login code flow and refresh tokens, nothing else" \
   "bpy 'p=by(\"authentik_providers_oauth2.oauth2provider\")[0][\"attrs\"]; assert p[\"grant_types\"]==[\"authorization_code\",\"refresh_token\"]'"
 check "blueprint: a tile per service except auth and the Proxmox app's name, a disabled one removed" \
@@ -161,7 +165,12 @@ assert t[\"lab-tv\"][\"name\"]==\"Live TV\" and t[\"lab-tv\"][\"meta_icon\"]==\"
 assert (t[\"lab-mystery\"][\"name\"], t[\"lab-mystery\"][\"group\"])==(\"mystery\",\"Other\")'"
 check "blueprint: every present tile is bound to the group only" \
   "bpy 'b=[x[\"identifiers\"][\"target\"][1] for x in by(\"authentik_policies.policybinding\")]
-assert sorted(b)==[\"ceph-app\",\"gateway-app\",\"proxmox-app\",\"tile-mystery\",\"tile-pve2\",\"tile-sonarr\",\"tile-tv\"], b'"
+assert sorted(b)==[\"ceph-app\",\"gateway-app\",\"grafana-app\",\"proxmox-app\",\"tile-mystery\",\"tile-pve2\",\"tile-sonarr\",\"tile-tv\"], b'"
+check "blueprint: Grafana logs in by OpenID Connect, back to its exact login URL only" \
+  "bpy 'p=[x for x in by(\"authentik_providers_oauth2.oauth2provider\") if x[\"identifiers\"][\"name\"]==\"anvil-grafana\"][0][\"attrs\"]
+assert p[\"client_id\"]==\"grafana\" and p[\"client_type\"]==\"confidential\"
+assert p[\"redirect_uris\"]==[{\"matching_mode\": \"strict\", \"url\": \"https://grafana.lab.example.com/login/generic_oauth\"}], p[\"redirect_uris\"]
+a=[x for x in by(\"authentik_core.application\") if x[\"identifiers\"][\"slug\"]==\"grafana\"][0]; assert a[\"attrs\"][\"provider\"]==[\"!KeyOf\",\"grafana-provider\"]'"
 check "blueprint: Ceph logs in by SAML at its gateway name, by Authentik user name" \
   "bpy 'p=by(\"authentik_providers_saml.samlprovider\")[0][\"attrs\"]
 assert p[\"acs_url\"]==\"https://ceph.lab.example.com/auth/saml2\" and p[\"audience\"]==\"https://ceph.lab.example.com/auth/saml2/metadata\"

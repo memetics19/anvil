@@ -237,9 +237,11 @@ entries:
 
   # --- app tiles ------------------------------------------------------------------------------
   # Links in the user library to every gateway name, for members of the group. The gateway
-  # provider above protects them all: a tile is only a link.
+  # provider above protects them all: a tile is only a link. Apps with their own login above
+  # (Proxmox, Grafana) are in the library already.
 {% for e in site.services | default([]) if e.name | default('') not in authentik_tiles_skip
-     and e.name | default('') != (authentik_proxmox_names | first | default('')) %}
+     and e.name | default('') != (authentik_proxmox_names | first | default(''))
+     and e.name | default('') != authentik_grafana_name %}
 {%   set c = authentik_tiles_catalog[e.name] | default({}) %}
 {%   set icon = e.icon | default(c.icon | default('')) | string %}
   - model: authentik_core.application
