@@ -96,19 +96,35 @@ groups what fires and sends it to ntfy:
 Grafana shows the firing alerts and sets silences (Alerting, the Alertmanager data source).
 Every rule file is checked by vmalert before it is installed.
 
-One-time setup: a write-only ntfy user for Alertmanager, its token in Vault. On the netbird VM:
+One-time setup: a write-only ntfy user for Alertmanager, its token in Vault. On the netbird
+VM (`ssh -t ubuntu@<netbird VM>`), where `ubuntu` runs docker through sudo:
 
 ```sh
-docker exec -it ntfy ntfy user add alertmanager
-docker exec ntfy ntfy access alertmanager 'lab-*' write-only
-docker exec ntfy ntfy access <your ntfy user> 'lab-*' read-only
+sudo docker exec -it ntfy ntfy user add alertmanager
+sudo docker exec ntfy ntfy access alertmanager 'lab-*' write-only
 ```
 
-Then pipe its token into Vault, so it never shows or lands in a shell history:
+Nothing logs in with its password, so any long random string will do. An ntfy admin reads
+every topic already. A user who is not an admin also needs
+`sudo docker exec ntfy ntfy access <your ntfy user> 'lab-*' read-only`.
+
+Then make its token from the Mac and pipe it into Vault, so it never shows or lands in a
+shell history. sudo on the VM takes its password from the Keychain on stdin, because a pipe
+has no terminal to ask on:
 
 ```sh
-ssh <netbird VM> docker exec ntfy ntfy token add alertmanager | awk '{print $2}' |
-  vault kv put -mount=kv homelab/monitoring/ntfy url=https://ntfy.<domain> token=-
+source scripts/env.sh
+t=$(security find-generic-password -s homelab -a vm-sudo-password -w |
+  ssh ubuntu@<netbird VM> "sudo -S -p '' docker exec ntfy ntfy token add alertmanager 2>&1" |
+  awk '/^token tk_/{print $2}')
+if [ -n "$t" ]
+then
+  printf '%s' "$t" |
+    vault kv put -mount=kv homelab/monitoring/ntfy url=https://ntfy.<domain> token=-
+else
+  echo "no token made, run the ssh line without awk to see why"
+fi
+unset t
 ```
 
 Subscribe to `lab-critical` and `lab-warning` in the ntfy app, then `anvil apply monitoring`.

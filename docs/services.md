@@ -1149,19 +1149,35 @@ One-time setup, before the first apply:
 
 1. Add the VM to the site dict in Vault, with an address nothing uses
    (`site.hosts.canary`, shaped like `site/site.example.yml`), then `anvil apply tf`.
-2. Give it a write-only ntfy user and keep its token in Vault. On the netbird VM:
+2. Give it a write-only ntfy user and keep its token in Vault. On the netbird VM
+   (`ssh -t ubuntu@<netbird VM>`), where `ubuntu` runs docker through sudo:
 
    ```sh
-   docker exec -it ntfy ntfy user add canary
-   docker exec ntfy ntfy access canary canary write-only
-   docker exec ntfy ntfy access <your ntfy user> canary read-only
+   sudo docker exec -it ntfy ntfy user add canary
+   sudo docker exec ntfy ntfy access canary canary write-only
    ```
 
-   Then pipe its token into Vault, so it never shows or lands in a shell history:
+   Nothing logs in with its password, so any long random string will do. An ntfy admin reads
+   every topic already. A user who is not an admin also needs
+   `sudo docker exec ntfy ntfy access <your ntfy user> canary read-only`.
+
+   Then make its token from the Mac and pipe it into Vault, so it never shows or lands in a
+   shell history. sudo on the VM takes its password from the Keychain on stdin, because a pipe
+   has no terminal to ask on:
 
    ```sh
-   ssh <netbird VM> docker exec ntfy ntfy token add canary | awk '{print $2}' |
-     vault kv put -mount=kv homelab/canary/ntfy url=https://ntfy.<domain>/canary token=-
+   source scripts/env.sh
+   t=$(security find-generic-password -s homelab -a vm-sudo-password -w |
+     ssh ubuntu@<netbird VM> "sudo -S -p '' docker exec ntfy ntfy token add canary 2>&1" |
+     awk '/^token tk_/{print $2}')
+   if [ -n "$t" ]
+   then
+     printf '%s' "$t" |
+       vault kv put -mount=kv homelab/canary/ntfy url=https://ntfy.<domain>/canary token=-
+   else
+     echo "no token made, run the ssh line without awk to see why"
+   fi
+   unset t
    ```
 
 3. `anvil apply canary`, and subscribe to the `canary` topic in the ntfy app.
