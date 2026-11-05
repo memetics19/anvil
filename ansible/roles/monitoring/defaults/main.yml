@@ -80,6 +80,11 @@ monitoring_node_targets: >-
 monitoring_grafana_name: grafana
 monitoring_grafana_url: "https://{{ monitoring_grafana_name }}.{{ gateway_domain }}"
 monitoring_authentik_url: "https://{{ authentik_auth_name | default('auth') }}.{{ gateway_domain }}"
+# Grafana's server calls Authentik's token and userinfo URLs itself. The VMs resolve through
+# site.guest_dns (public resolvers), which do not know the gateway names, so the Grafana
+# container gets Authentik's name at the gateway's lab address. The gateway serves the
+# wildcard certificate, so TLS still checks the name.
+monitoring_gateway_ip: "{{ site.hosts[groups['apps_servers'] | first].ip }}"
 monitoring_oidc_client_id: grafana
 monitoring_authentik_vault_path: "homelab/{{ groups['identity_servers'] | first | default('identity') }}/authentik"
 # Grafana's own admin login, for when Authentik is down: Vault kv/<path>, key admin_password,
