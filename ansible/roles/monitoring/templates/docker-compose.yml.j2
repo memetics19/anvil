@@ -92,6 +92,9 @@ services:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
       - --web.external-url={{ monitoring_grafana_url }}/alertmanager
+      # The external URL is for links in messages only. Without this, a path in it moves the API
+      # there too, and vmalert, Grafana and Wazuh, which post to /api/v2, get 404.
+      - --web.route-prefix=/
     volumes:
       - ./alertmanager:/etc/alertmanager:ro
       - alertmanager-data:/alertmanager
