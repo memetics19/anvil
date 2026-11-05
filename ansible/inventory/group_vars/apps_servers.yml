@@ -16,6 +16,8 @@ host_firewall_rules:
   - {ip: "{{ _apps_ip }}", port: 53, proto: udp}
   - {ip: "{{ _apps_ip }}", port: 80, proto: tcp}
   - {ip: "{{ _apps_ip }}", port: 443, proto: tcp}
+  # node_exporter, for the monitoring VM. It listens on the lab address only.
+  - {ip: "{{ _apps_ip }}", port: 9100, proto: tcp}
   - {ip: "{{ _apps_home_ip }}", port: 22, proto: tcp}
   - {ip: "{{ _apps_home_ip }}", port: 53, proto: tcp}
   - {ip: "{{ _apps_home_ip }}", port: 53, proto: udp}
