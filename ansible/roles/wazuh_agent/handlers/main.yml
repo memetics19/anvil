@@ -7,3 +7,5 @@
     name: wazuh-agent
     state: restarted
     daemon_reload: true
+  # In check mode on a new host the agent is not installed yet.
+  when: not ansible_check_mode
