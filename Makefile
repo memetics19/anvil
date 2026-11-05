@@ -6,7 +6,7 @@ HVAC_CHECK := py=$$(ansible-playbook --version | sed -n 's/^  python version = .
 	"$${py:-python3}" -c 'import hvac' 2>/dev/null || { \
 	  echo "hvac is missing in the Python that runs Ansible; fix: \"$$py\" -m pip install hvac" >&2; exit 1; }
 
-.PHONY: lint secrets-scan test test-unit test-integration test-smoke test-all bootstrap-ssh forget-host grow-disk rotate pools cluster host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply provision-iso provision provision-clean docs docs-publish cli release-snapshot
+.PHONY: lint secrets-scan dashboards dashboards-check test test-unit test-integration test-smoke test-all bootstrap-ssh forget-host grow-disk rotate pools cluster host host-network enclave vlans switch ceph vms vm test-netplan vault vault-unseal vault-policies site-to-vault backup vaultwarden-drill tf-init tf-plan tf-apply provision-iso provision provision-clean docs docs-publish cli release-snapshot
 
 lint:
 	@set -eu -o pipefail; \
@@ -28,6 +28,27 @@ secrets-scan:
 
 # The test suite by layer (tests/README.md). T=<name> runs only the tests whose name has it.
 # make test runs everything that needs no lab: lint, the secrets scan, unit and integration.
+# Every Grafana dashboard is Grafonnet (Jsonnet) in $(DASHBOARDS), built to the JSON role monitoring
+# installs ($(DASHBOARDS_OUT)). Tools: go-jsonnet and jsonnet-bundler (docs/monitoring.md, Dashboards).
+DASHBOARDS := dashboards
+DASHBOARDS_OUT := ansible/roles/monitoring/files/dashboards
+JSONNET_VERSION := v0.22.0
+JB_VERSION := v0.6.0
+dashboards:
+	@set -eu; export PATH="$$(go env GOPATH)/bin:$$PATH"; \
+	command -v jsonnet >/dev/null || { echo "jsonnet missing: go install github.com/google/go-jsonnet/cmd/jsonnet@$(JSONNET_VERSION)"; exit 1; }; \
+	command -v jb >/dev/null || { echo "jb missing: go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@$(JB_VERSION)"; exit 1; }; \
+	cd $(DASHBOARDS) && jb install >/dev/null 2>&1; \
+	for f in *.jsonnet; do jsonnet -J vendor "$$f" > "$(CURDIR)/$(DASHBOARDS_OUT)/$${f%.jsonnet}.json"; echo "built $${f%.jsonnet}.json"; done
+
+# CI: the committed JSON is exactly what the Jsonnet builds, and no dashboard is JSON only.
+dashboards-check:
+	@set -eu; export PATH="$$(go env GOPATH)/bin:$$PATH"; tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
+	cd $(DASHBOARDS) && jb install >/dev/null 2>&1; \
+	for f in *.jsonnet; do jsonnet -J vendor "$$f" > "$$tmp/$${f%.jsonnet}.json"; done; \
+	if diff -r "$$tmp" "$(CURDIR)/$(DASHBOARDS_OUT)"; then echo "dashboards: the JSON matches its Jsonnet"; \
+	else echo "dashboards: run make dashboards and commit the JSON (a JSON file needs a .jsonnet source)"; exit 1; fi
+
 test: lint secrets-scan test-unit test-integration
 
 test-unit:

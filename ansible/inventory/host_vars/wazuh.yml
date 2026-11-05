@@ -1,0 +1,4 @@
+# The Wazuh VM. Its dashboard (443) answers only the gateway, Pulse and the admin sources
+# (role port_guard). Agents' ports 1514 and 1515 stay open to every host.
+port_guard_ports: [443]
+port_guard_extra_sources: "{{ (site.admin_sources | default([])) + (site.admin_vpn_sources | default([])) }}"

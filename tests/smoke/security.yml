@@ -72,6 +72,8 @@
       vaultwarden: [docker-proxy/8080]
       # OpenCanary's fake services (role canary), every port it chooses to open.
       canary: [twistd/*]
+      # Wazuh: the dashboard, agent events and enrollment (role wazuh_server).
+      wazuh: [docker-proxy/443, docker-proxy/1514, docker-proxy/1515]
       # Grafana (role monitoring).
       monitoring: [docker-proxy/3000]
     smoke_privileged_ok: []
@@ -97,7 +99,7 @@
       check_mode: false
 
 - name: Security, VMs
-  hosts: guests:apps_servers:identity_servers:llm_servers:enclave:canary_servers:monitoring_servers
+  hosts: guests:apps_servers:identity_servers:llm_servers:enclave:canary_servers:wazuh_servers:monitoring_servers
   gather_facts: false
   become: true
   vars: *smoke_vars

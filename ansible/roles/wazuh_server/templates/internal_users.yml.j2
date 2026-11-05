@@ -1,0 +1,18 @@
+# Managed by anvil (role wazuh_server). Only the two users the stack needs: admin (the manager
+# and the dashboard login) and kibanaserver (the dashboard itself). The demo users are gone.
+# The indexer reads this on its first start. Later changes need securityadmin
+# (docs/services.md, Wazuh).
+---
+_meta:
+  type: "internalusers"
+  config_version: 2
+admin:
+  hash: "{{ wazuh_server_hashes.admin }}"
+  reserved: true
+  backend_roles:
+  - "admin"
+  description: "Administrator"
+kibanaserver:
+  hash: "{{ wazuh_server_hashes.kibanaserver }}"
+  reserved: true
+  description: "The dashboard's own user"

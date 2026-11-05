@@ -62,6 +62,22 @@ jobs:
       - name: Run the ${{ matrix.layer }} tests
         run: tests/run.sh ${{ matrix.layer }}
 
+  # Every dashboard is Grafonnet: the committed JSON must be what its Jsonnet builds.
+  dashboards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache: false
+      - name: Jsonnet and jsonnet-bundler, at the versions the Makefile names
+        run: |
+          go install "github.com/google/go-jsonnet/cmd/jsonnet@$(sed -nE 's/^JSONNET_VERSION := //p' Makefile)"
+          go install "github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@$(sed -nE 's/^JB_VERSION := //p' Makefile)"
+      - name: The dashboards' JSON matches their Jsonnet
+        run: make dashboards-check
+
   cli:
     runs-on: ubuntu-latest
     steps:

@@ -1,0 +1,167 @@
+# --- Passwords: Vault first, a missing one generated and written there ----------------------
+# vault kv get exits 2 only when the path is absent. Any other failure stops the run, so a
+# read that failed is never taken for "nothing there" and overwritten.
+- name: The passwords in Vault
+  ansible.builtin.command:
+    argv: [vault, kv, get, -format=json, "-mount={{ wazuh_server_vault_mount }}", "{{ wazuh_server_vault_path }}"]
+  delegate_to: localhost
+  become: false
+  register: wazuh_server_vault_get
+  changed_when: false
+  check_mode: false
+  failed_when: wazuh_server_vault_get.rc not in [0, 2]
+  no_log: true
+
+- name: What Vault holds
+  ansible.builtin.set_fact:
+    wazuh_server_vault: >-
+      {{ (wazuh_server_vault_get.stdout | from_json).data.data
+         if wazuh_server_vault_get.rc == 0 else {} }}
+    wazuh_server_new: {}
+  no_log: true
+
+# Letters and digits, then one of each class Wazuh's API password rules ask for.
+- name: The missing ones, generated
+  ansible.builtin.set_fact:
+    wazuh_server_new: >-
+      {{ wazuh_server_new | combine({item: lookup('ansible.builtin.password',
+           '/dev/null length=28 chars=ascii_letters,digits') ~ 'aZ7.'}) }}
+  loop: "{{ wazuh_server_secret_keys | reject('in', wazuh_server_vault.keys() | list) | list }}"
+  no_log: true
+
+- name: Write the new ones into Vault
+  ansible.builtin.command:
+    argv: [vault, kv, "{{ 'patch' if wazuh_server_vault_get.rc == 0 else 'put' }}",
+           "-mount={{ wazuh_server_vault_mount }}", "{{ wazuh_server_vault_path }}", "-"]
+    stdin: "{{ wazuh_server_new | to_json }}"
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  no_log: true
+  when: wazuh_server_new | length > 0 and not ansible_check_mode
+
+- name: All of them
+  ansible.builtin.set_fact:
+    wazuh_server_secrets: "{{ wazuh_server_vault | combine(wazuh_server_new) }}"
+  no_log: true
+
+# --- The VM ---------------------------------------------------------------------------------
+- name: The indexer needs many memory maps
+  ansible.posix.sysctl:
+    name: vm.max_map_count
+    value: "262144"
+    sysctl_file: /etc/sysctl.d/60-wazuh.conf
+    reload: true
+
+- name: Python bcrypt, for the indexer's password hashes
+  ansible.builtin.apt:
+    name: python3-bcrypt
+    state: present
+
+- name: Folders
+  ansible.builtin.file:
+    path: "{{ wazuh_server_dir }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  loop: ["", config, config/wazuh_indexer, config/wazuh_dashboard, config/wazuh_cluster, config/wazuh_indexer_ssl_certs]
+
+- name: Upstream's files
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ wazuh_server_dir }}/config/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - {src: wazuh.indexer.yml, dest: wazuh_indexer/wazuh.indexer.yml}
+    - {src: opensearch_dashboards.yml, dest: wazuh_dashboard/opensearch_dashboards.yml}
+    - {src: certs.yml, dest: certs.yml}
+
+# --- Certificates, once -----------------------------------------------------------------------
+- name: Certificates already made
+  ansible.builtin.stat:
+    path: "{{ wazuh_server_dir }}/config/wazuh_indexer_ssl_certs/root-ca.pem"
+  register: wazuh_server_ca
+
+- name: Make the certificates (wazuh-certs-generator)
+  ansible.builtin.command:
+    argv: [docker, run, --rm, -e, CERT_TOOL_VERSION=4.14,
+           -v, "{{ wazuh_server_dir }}/config/wazuh_indexer_ssl_certs:/certificates/",
+           -v, "{{ wazuh_server_dir }}/config/certs.yml:/config/certs.yml:ro",
+           "{{ wazuh_server_certs_image }}"]
+  changed_when: true
+  when: not wazuh_server_ca.stat.exists and not ansible_check_mode
+
+# --- Passwords into the stack's files ----------------------------------------------------------
+- name: The hash helper
+  ansible.builtin.copy:
+    src: wazuh-hash.py
+    dest: /usr/local/sbin/wazuh-hash.py
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: The indexer users' hashes (kept while they still match)
+  ansible.builtin.command:
+    argv: [/usr/local/sbin/wazuh-hash.py, "{{ wazuh_server_dir }}/config/wazuh_indexer/internal_users.yml"]
+    stdin: >-
+      {{ {'admin': wazuh_server_secrets.indexer_admin, 'kibanaserver': wazuh_server_secrets.kibanaserver} | to_json }}
+  register: wazuh_server_hash_out
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when: wazuh_server_secrets.indexer_admin is defined
+
+- name: The hashes
+  ansible.builtin.set_fact:
+    wazuh_server_hashes: "{{ wazuh_server_hash_out.stdout | from_json }}"
+  no_log: true
+  when: wazuh_server_hash_out is not skipped
+
+- name: The stack's own files with the passwords (root only)
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ wazuh_server_dir }}/config/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop:
+    - {src: internal_users.yml.j2, dest: wazuh_indexer/internal_users.yml}
+    - {src: wazuh.yml.j2, dest: wazuh_dashboard/wazuh.yml}
+    - {src: wazuh_manager.conf.j2, dest: wazuh_cluster/wazuh_manager.conf}
+  no_log: true
+  when: wazuh_server_hashes is defined
+
+- name: The enrollment password
+  ansible.builtin.copy:
+    content: "{{ wazuh_server_secrets.enrollment }}\n"
+    dest: "{{ wazuh_server_dir }}/config/wazuh_cluster/authd.pass"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  when: wazuh_server_secrets.enrollment is defined
+
+# --- The stack -------------------------------------------------------------------------------
+- name: Wazuh compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ wazuh_server_dir }}"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yml.j2') }}"
+    compose_project_mode: "0600"
+    # Holds the passwords and the VM's address: keep it out of --diff output.
+    compose_project_diff: false
+
+- name: The dashboard answers
+  ansible.builtin.uri:
+    url: "https://{{ wazuh_server_bind_ip }}/app/login"
+    validate_certs: false
+    status_code: [200, 302]
+  register: wazuh_server_up
+  retries: 60
+  delay: 5
+  until: wazuh_server_up.status in [200, 302]
+  when: not ansible_check_mode
