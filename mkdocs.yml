@@ -24,6 +24,7 @@ nav:
   - Usage: usage.md
   - CLI: cli.md
   - Provisioning: provisioning.md
+  - Upgrading to Proxmox VE 9: upgrade-pve9.md
   - Hardware: hardware.md
   - Packer images (roadmap): packer.md
   - Monitoring and alerting: monitoring.md

@@ -48,6 +48,9 @@ site:
     identity: {node: pve2, vmid: 9005, ip: 192.0.2.125, home_ip: 198.51.100.48, mac: "02:00:00:00:00:05", home_mac: "02:00:00:00:00:06", disk_gb: 32}
     # The local language model VM (one lab NIC). cores/memory_mb/disk_gb default to 4/16384/40.
     llm: {node: pve2, vmid: 9007, ip: 192.0.2.126, mac: "02:00:00:00:00:09"}
+    # The tripwire VM (OpenCanary, terraform/vm_canary.tf), one lab NIC. Optional. Pick an
+    # address nothing uses: anything that connects to it is an alarm.
+    canary: {node: pve2, vmid: 9010, ip: 192.0.2.130, mac: "02:00:00:00:00:10"}
     # Metrics, dashboards and alerts (terraform/vm_monitoring.tf), one lab NIC. Optional.
     # cores/memory_mb/disk_gb default to 2/4096/60.
     monitoring: {node: pve2, vmid: 9012, ip: 192.0.2.132, mac: "02:00:00:00:00:12"}

@@ -84,3 +84,82 @@
     state: started
   loop: [smbd, nmbd]
   when: not ansible_check_mode
+
+# --- The read-only user -------------------------------------------------------------------
+# vault kv get exits 2 only when the path is absent. Any other failure stops the run, so a
+# read that failed is never taken for "nothing there" and overwritten.
+- name: User | its password in Vault
+  ansible.builtin.command:
+    argv: [vault, kv, get, -format=json, "-mount={{ smb_media_vault_mount }}", "{{ smb_media_vault_path }}"]
+  delegate_to: localhost
+  become: false
+  register: smb_media_vault_get
+  changed_when: false
+  check_mode: false
+  failed_when: smb_media_vault_get.rc not in [0, 2]
+  no_log: true
+  when: smb_media_user_password is not defined
+
+- name: User | the password Vault holds
+  ansible.builtin.set_fact:
+    smb_media_vault_password: >-
+      {{ ((smb_media_vault_get.stdout | from_json).data.data.password | default(''))
+         if (smb_media_vault_get.rc | default(1)) == 0 else '' }}
+  no_log: true
+  when: smb_media_user_password is not defined
+
+# A test's password, else Vault's, else a new one (written into Vault below).
+- name: User | the password to use
+  ansible.builtin.set_fact:
+    smb_media_password: >-
+      {{ smb_media_user_password if smb_media_user_password is defined
+         else smb_media_vault_password if smb_media_vault_password | length > 0
+         else lookup('ansible.builtin.password', '/dev/null length=24 chars=ascii_letters,digits') }}
+    smb_media_password_new: "{{ smb_media_user_password is not defined and smb_media_vault_password | length == 0 }}"
+  no_log: true
+
+- name: User | write a new password into Vault
+  ansible.builtin.command:
+    argv: [vault, kv, "{{ 'patch' if smb_media_vault_get.rc == 0 else 'put' }}",
+           "-mount={{ smb_media_vault_mount }}", "{{ smb_media_vault_path }}", "-"]
+    stdin: "{{ smb_media_vault_doc | to_json }}"
+  vars:
+    smb_media_vault_doc: "{{ dict(['password'] | zip([smb_media_password])) }}"
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  no_log: true
+  when: smb_media_password_new | bool and not ansible_check_mode
+
+- name: User | the system account (no shell, no home)
+  ansible.builtin.user:
+    name: "{{ smb_media_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: User | password last set
+  ansible.builtin.slurp:
+    src: "{{ smb_media_user_marker }}"
+  register: smb_media_marker
+  failed_when: false
+
+- name: User | set the Samba password (stdin, twice)
+  ansible.builtin.command:
+    argv: [smbpasswd, -s, -a, "{{ smb_media_user }}"]
+    stdin: "{{ smb_media_password }}\n{{ smb_media_password }}"
+  changed_when: true
+  no_log: true
+  when: >-
+    (smb_media_marker.content | default('') | b64decode | trim) != (smb_media_password | hash('sha256'))
+  register: smb_media_pw_set
+
+- name: User | remember which password is set
+  ansible.builtin.copy:
+    content: "{{ smb_media_password | hash('sha256') }}\n"
+    dest: "{{ smb_media_user_marker }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  when: smb_media_pw_set is changed and not ansible_check_mode

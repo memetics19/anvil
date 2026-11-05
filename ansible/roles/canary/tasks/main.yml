@@ -1,0 +1,128 @@
+- name: The ntfy topic and token, from Vault
+  ansible.builtin.set_fact:
+    canary_ntfy: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', canary_vault_path,
+                engine_mount_point=canary_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
+  no_log: true
+
+- name: Both are set
+  ansible.builtin.assert:
+    that:
+      - canary_ntfy.url | default('') is match('https?://')
+      - canary_ntfy.token | default('') | length > 0
+    fail_msg: "kv/{{ canary_vault_path }} needs url and token (docs/services.md, Tripwire)"
+    quiet: true
+
+# --- OpenCanary -------------------------------------------------------------------------------
+- name: Packages
+  ansible.builtin.apt:
+    name: "{{ canary_packages }}"
+    state: present
+
+- name: OpenCanary in its venv
+  ansible.builtin.pip:
+    name: "opencanary[required-for-snmp]=={{ canary_version }}"
+    virtualenv: "{{ canary_dir }}"
+    virtualenv_command: python3 -m venv
+  notify: Restart opencanary
+
+- name: Its folder
+  ansible.builtin.file:
+    path: "{{ canary_conf_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The token is in it: root only. OpenCanary reads it as root, before it drops to nobody.
+- name: Its settings
+  ansible.builtin.template:
+    src: opencanary.conf.j2
+    dest: "{{ canary_conf_dir }}/opencanary.conf"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Restart opencanary
+
+- name: The unit
+  ansible.builtin.template:
+    src: opencanary.service.j2
+    dest: /etc/systemd/system/opencanary.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart opencanary
+
+- name: Running and on at boot
+  ansible.builtin.systemd:
+    name: opencanary
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: not ansible_check_mode
+
+# --- The real SSH, for the admin sources only -------------------------------------------------
+- name: The guard's folder
+  ansible.builtin.file:
+    path: "{{ canary_ssh_guard_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: The guard
+  ansible.builtin.template:
+    src: canary-ssh.nft.j2
+    dest: "{{ canary_ssh_guard_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/nft -c -f %s
+  register: canary_ssh_guard
+
+- name: Its boot unit
+  ansible.builtin.template:
+    src: canary-ssh-guard.service.j2
+    dest: /etc/systemd/system/canary-ssh-guard.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: On at boot
+  ansible.builtin.systemd:
+    name: canary-ssh-guard
+    enabled: true
+    daemon_reload: true
+  when: not ansible_check_mode
+
+# A changed guard goes in with a timed rollback: unless Ansible gets in again within
+# canary_ssh_rollback_after seconds, the table is deleted and SSH is open as before.
+- name: Load a changed guard, with a rollback
+  when: canary_ssh_guard is changed and not ansible_check_mode
+  block:
+    - name: Arm the rollback
+      ansible.builtin.command:
+        argv: [systemd-run, --unit, canary-ssh-rollback, "--on-active={{ canary_ssh_rollback_after }}",
+               /usr/sbin/nft, delete, table, inet, "{{ canary_ssh_guard_table }}"]
+      changed_when: true
+
+    - name: Load it
+      ansible.builtin.command:
+        argv: [/usr/sbin/nft, -f, "{{ canary_ssh_guard_file }}"]
+      changed_when: true
+
+    - name: A new SSH connection
+      ansible.builtin.meta: reset_connection
+
+    - name: Ansible still gets in
+      ansible.builtin.wait_for_connection:
+        timeout: 30
+
+    - name: Cancel the rollback
+      ansible.builtin.command:
+        argv: [systemctl, stop, canary-ssh-rollback.timer]
+      changed_when: true
