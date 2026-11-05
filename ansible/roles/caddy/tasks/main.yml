@@ -21,6 +21,31 @@
     fail_msg: "kv/{{ caddy_vault_path }}: cloudflare_dns_token is missing or too short"
     quiet: true
 
+# Anubis signs its pass cookies with an ed25519 key: kept in Vault next to the Cloudflare
+# token (key anubis_ed25519_key, 64 hex characters), made once when it is not there. A new key
+# only means every browser solves the check again.
+- name: Anubis's signing key, or a new one
+  ansible.builtin.set_fact:
+    caddy_anubis_key: >-
+      {{ caddy_secrets.anubis_ed25519_key | default('')
+         if caddy_secrets.anubis_ed25519_key | default('') | length == 64
+         else lookup('ansible.builtin.password', '/dev/null length=64 chars=hexdigits') | lower }}
+  no_log: true
+  when: caddy_anubis_routes | length > 0
+
+- name: Write a new Anubis key into Vault
+  ansible.builtin.command:
+    argv: [vault, kv, patch, "-mount={{ caddy_vault_mount }}", "{{ caddy_vault_path }}", "-"]
+    stdin: "{{ dict(['anubis_ed25519_key'] | zip([caddy_anubis_key])) | to_json }}"
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  no_log: true
+  when:
+    - caddy_anubis_routes | length > 0
+    - caddy_secrets.anubis_ed25519_key | default('') != caddy_anubis_key
+    - not ansible_check_mode
+
 # --- files -----------------------------------------------------------------------------------
 - name: Project directories
   ansible.builtin.file:
@@ -81,6 +106,18 @@
 
 # Checked by the pinned Caddy before it replaces the live file (modules, syntax, CA files).
 # Holds the domain and upstream addresses: no --diff output.
+# The compose config hash includes the env file, so a new key recreates Anubis.
+- name: Anubis env file (its signing key)
+  ansible.builtin.copy:
+    content: "ED25519_PRIVATE_KEY_HEX={{ caddy_anubis_key }}\n"
+    dest: "{{ caddy_dir }}/anubis.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+  when: caddy_anubis_routes | length > 0
+
 - name: Caddyfile
   ansible.builtin.template:
     src: Caddyfile.j2
