@@ -32,6 +32,8 @@ services:
     restart: unless-stopped
     ports:
       - "{{ monitoring_bind_ip }}:{{ monitoring_grafana_port }}:3000"
+    extra_hosts:
+      - "{{ monitoring_authentik_url | urlsplit('hostname') }}:{{ monitoring_gateway_ip }}"
     environment:
       GF_SERVER_ROOT_URL: "{{ monitoring_grafana_url }}/"
       GF_SECURITY_ADMIN_USER: admin

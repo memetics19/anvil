@@ -23,6 +23,8 @@ all:
       hosts: {frigate: {}, apps: {}, monitoring: {}}
     identity_servers:
       hosts: {identity: {}}
+    apps_servers:
+      hosts: {apps: {}}
     enclave:
       hosts: {vault: {}}
 INV
@@ -57,6 +59,9 @@ PLAY
 if ansible-playbook -i "$tmp/inv.yml" -c local -e monitoring_bind_ip=192.0.2.132 "$tmp/play.yml" >"$tmp/render.log" 2>&1; then ok "templates render"; else bad_ "templates render"; cat "$tmp/render.log"; exit 1; fi
 c=$tmp/docker-compose.yml s=$tmp/scrape.yml
 
+# Grafana's server reaches Authentik at the gateway, not through the VM's public resolvers.
+check "grafana resolves Authentik's name to the gateway" \
+  "grep -A12 '^  grafana:' \$c | grep -q 'auth.lab.example.com:192.0.2.121'"
 check "every image is pinned to a digest" \
   "[ \"\$(grep -cE '^\s+image: ' $c)\" = 6 ] && ! grep -E '^\s+image: ' $c | grep -v '@sha256:'"
 check "only Grafana and Alertmanager's API are published, on the lab address" \
