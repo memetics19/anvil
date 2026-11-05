@@ -12,20 +12,6 @@ locals {
   llm_node = try(local.site.hosts.llm.node, var.node_name)
 }
 
-# The same pinned image as the other VMs, downloaded to the llm node.
-resource "proxmox_virtual_environment_download_file" "noble_cloudimg_llm" {
-  count               = local.llm == null ? 0 : 1
-  node_name           = local.llm_node
-  datastore_id        = "local"
-  content_type        = "import"
-  file_name           = "ubuntu-24.04-server-cloudimg-amd64-20261017.qcow2"
-  url                 = "https://cloud-images.ubuntu.com/releases/noble/release-20261017/ubuntu-24.04-server-cloudimg-amd64.img"
-  checksum            = "04e8f2461a16a44e78a370284471f29616cdd9baf1893df25807b71f985b6c94"
-  checksum_algorithm  = "sha256"
-  overwrite           = false
-  overwrite_unmanaged = false
-}
-
 resource "proxmox_virtual_environment_vm" "llm" {
   count         = local.llm == null ? 0 : 1
   node_name     = local.llm_node
@@ -58,7 +44,7 @@ resource "proxmox_virtual_environment_vm" "llm" {
   disk {
     datastore_id = nonsensitive(try(local.llm.datastore, "vmdata"))
     interface    = "scsi0"
-    import_from  = proxmox_virtual_environment_download_file.noble_cloudimg_llm[0].id
+    import_from  = proxmox_virtual_environment_download_file.noble_cloudimg[local.llm_node].id
     size         = nonsensitive(try(local.llm.disk_gb, 40))
     iothread     = true
     discard      = "on"

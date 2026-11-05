@@ -5,8 +5,9 @@ Packer builds from code, so a new VM starts ready instead of being set up after 
 
 ## Today
 
-1. Terraform imports a pinned Ubuntu 24.04 cloud image (`noble_cloudimg`, fixed by
-   SHA-256) into each new VM's disk.
+1. Terraform imports a pinned Ubuntu 24.04 cloud image (`noble_cloudimg` in
+   `terraform/images.tf`, fixed by SHA-256, one copy per Proxmox node) into each new VM's
+   disk.
 2. cloud-init sets the user, the SSH key and the network.
 3. Ansible then runs the guest roles on the running VM: `guest_base` (time, guest agent,
    fstrim, netplan), Docker, node_exporter and the rest.
