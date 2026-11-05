@@ -1,0 +1,5 @@
+- name: Restart opencanary
+  ansible.builtin.systemd:
+    name: opencanary
+    state: restarted
+    daemon_reload: true

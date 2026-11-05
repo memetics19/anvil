@@ -1,0 +1,15 @@
+# Managed by anvil (role canary). OpenCanary in the foreground. It binds its ports as root,
+# then runs as nobody in group adm, which may read the kernel log for port scans.
+[Unit]
+Description=OpenCanary tripwire
+After=network-online.target rsyslog.service
+Wants=network-online.target
+
+[Service]
+ExecStart={{ canary_dir }}/bin/opencanaryd --dev --uid=nobody --gid=adm
+WorkingDirectory={{ canary_conf_dir }}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

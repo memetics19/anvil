@@ -48,6 +48,9 @@ site:
     identity: {node: pve2, vmid: 9005, ip: 192.0.2.125, home_ip: 198.51.100.48, mac: "02:00:00:00:00:05", home_mac: "02:00:00:00:00:06", disk_gb: 32}
     # The local language model VM (one lab NIC). cores/memory_mb/disk_gb default to 4/16384/40.
     llm: {node: pve2, vmid: 9007, ip: 192.0.2.126, mac: "02:00:00:00:00:09"}
+    # The tripwire VM (OpenCanary, terraform/vm_canary.tf), one lab NIC. Optional. Pick an
+    # address nothing uses: anything that connects to it is an alarm.
+    canary: {node: pve2, vmid: 9010, ip: 192.0.2.130, mac: "02:00:00:00:00:10"}
     # In the secrets enclave: ip is its enclave address, enclave_mac its enclave NIC. While it
     # keeps its first NIC on the lab network: lab_ip and mac (that NIC); lab_nic_retired: true
     # takes it out (docs/services.md, Vault on the enclave).
