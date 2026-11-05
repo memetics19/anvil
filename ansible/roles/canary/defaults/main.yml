@@ -22,6 +22,12 @@ canary_services:
   redis: 6379
   tftp: 69
   snmp: 161
+# Noise kept out of ntfy. Port 22 is the real SSH, which the admin sources and Ansible use: a
+# connection to it is not a port scan (anyone else is dropped by the SSH guard, and a real scan
+# touches the fake ports too). Log type 1001 is OpenCanary's start-up chatter, one message per
+# fake service on every restart. A touch of a fake service has its own log type.
+canary_portscan_ignore_ports: [22]
+canary_logtype_ignore: [1001]
 # Alerts go to an ntfy topic with a publish token, from Vault: kv/homelab/canary/ntfy with the
 # keys url (the topic's URL) and token (docs/services.md, Tripwire, sets them up).
 canary_vault_mount: kv
