@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.29.3](https://github.com/memetics19/anvil/compare/v0.29.2...v0.29.3) (2026-11-05)
+
+
+### Bug Fixes
+
+* **monitoring:** Grafana reaches Authentik through the gateway ([#215](https://github.com/memetics19/anvil/issues/215)) ([d18200a](https://github.com/memetics19/anvil/commit/d18200a86808995443f5588ea64c1a119ab33865))
+* **wazuh_server, compose_project:** the dry run on a new VM works ([#212](https://github.com/memetics19/anvil/issues/212)) ([b19258c](https://github.com/memetics19/anvil/commit/b19258cf96d75dfab99b79625c9d46ba8c2bb014))
+* **wazuh_server:** the indexer and dashboard can read their password files ([#214](https://github.com/memetics19/anvil/issues/214)) ([badd314](https://github.com/memetics19/anvil/commit/badd314834c0300715612cab6cc8cd9d5b04d3bc))
+
 ## [0.29.2](https://github.com/memetics19/anvil/compare/v0.29.1...v0.29.2) (2026-11-05)
 
 
