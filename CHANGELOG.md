@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.30.0](https://github.com/memetics19/anvil/compare/v0.29.4...v0.30.0) (2026-11-05)
+
+
+### Features
+
+* **monitoring:** Frigate dashboard and alerts ([#221](https://github.com/memetics19/anvil/issues/221)) ([1e21019](https://github.com/memetics19/anvil/commit/1e2101908c78ffab6bd4f193e6d943ab66c30729))
+* **monitoring:** Lab dashboard, the whole homelab on one page ([#225](https://github.com/memetics19/anvil/issues/225)) ([1da4fee](https://github.com/memetics19/anvil/commit/1da4fee891de8f138907536e55460b0f7213b055))
+
+
+### Bug Fixes
+
+* **canary:** quiet the tripwire, and start its fake MySQL ([#220](https://github.com/memetics19/anvil/issues/220)) ([fbb5912](https://github.com/memetics19/anvil/commit/fbb5912d66fac53a74c7a664e72de535a2fa1d33))
+
 ## [0.29.4](https://github.com/memetics19/anvil/compare/v0.29.3...v0.29.4) (2026-11-05)
 
 
