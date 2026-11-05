@@ -27,6 +27,12 @@ on:
 permissions:
   contents: read
 
+# One run per branch at a time: a newer push cancels the older run. A burst of merges used to
+# start a full scan each, and the image registries turned the pulls away (TOOMANYREQUESTS).
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   TRIVY_VERSION: v0.76.1
 
@@ -197,6 +203,8 @@ jobs:
       security-events: write
     strategy:
       fail-fast: false
+      # Fewer pulls at once from the same registry.
+      max-parallel: 8
       matrix:
         image: ${{ fromJSON(needs.list-images.outputs.images) }}
     steps:
@@ -211,6 +219,19 @@ jobs:
           # the CVEs it fixed close. With the tag in the name, every bump left the old
           # version's alerts open forever and added the new ones on top.
           echo "category=trivy-image-$(echo "${short%:*}" | tr '/' '-')" >>"$GITHUB_OUTPUT"
+      # Pulled first, with retries: a registry's rate limit (TOOMANYREQUESTS) is a pause, not a
+      # failed scan. Trivy then reads the local copy and asks the registry nothing more.
+      - name: Pull the image
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          for wait in 0 30 60 120 240; do
+            sleep "$wait"
+            docker pull --quiet "$IMAGE" && exit 0
+            echo "pull failed, trying again"
+          done
+          echo "::error::could not pull $IMAGE"
+          exit 1
       - name: Scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
