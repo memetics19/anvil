@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.29.2](https://github.com/memetics19/anvil/compare/v0.29.1...v0.29.2) (2026-11-05)
+
+
+### Bug Fixes
+
+* **authentik:** retry the blueprint apply when Postgres picks it in a deadlock ([#207](https://github.com/memetics19/anvil/issues/207)) ([0780590](https://github.com/memetics19/anvil/commit/0780590961a3a91edb520d0f0b557a8930c61ad5))
+* **canary, wazuh_agent:** skip the restart handlers in check mode ([#211](https://github.com/memetics19/anvil/issues/211)) ([32439d9](https://github.com/memetics19/anvil/commit/32439d90377af9baeab834cb37c877454c0f7af0))
+* **inventory:** canary, wazuh and monitoring log in as ubuntu ([#208](https://github.com/memetics19/anvil/issues/208)) ([52ea51b](https://github.com/memetics19/anvil/commit/52ea51b2df931967551475be92dca73ecceacbd8))
+
 ## [0.29.1](https://github.com/memetics19/anvil/compare/v0.29.0...v0.29.1) (2026-11-05)
 
 
