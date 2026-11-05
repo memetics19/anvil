@@ -28,6 +28,19 @@
     fail_msg: "{{ compose_project_name }}: the project directory or file is inside a protected path"
     quiet: true
 
+# A dry run on a new VM installs nothing, so Docker may not be there yet. Then every service
+# in the file would be brought up, and the steps that ask Docker are skipped.
+- name: Docker is installed
+  ansible.builtin.stat:
+    path: /usr/bin/docker
+  register: compose_project_docker
+
+- name: Docker is there for a real run
+  ansible.builtin.assert:
+    that: compose_project_docker.stat.exists or ansible_check_mode
+    fail_msg: "{{ compose_project_name }}: docker is not installed (role docker)"
+    quiet: true
+
 - name: Config hash of each service in the rendered file
   ansible.builtin.command:
     argv:
@@ -46,6 +59,7 @@
   register: compose_project_hash_want
   changed_when: false
   check_mode: false
+  when: compose_project_docker.stat.exists
 
 # One line per container: name|service|config-hash|compose-version (fields may be empty).
 - name: Config hash of each container of the project
@@ -64,6 +78,7 @@
   register: compose_project_hash_have
   changed_when: false
   check_mode: false
+  when: compose_project_docker.stat.exists
 
 # up: wanted service with no container, or a container whose hash differs.
 # legacy: made by docker-compose v1 (another hash scheme): reported, not recreated.
@@ -100,6 +115,19 @@
       {%- endif -%}
       {%- endfor -%}
       {{ {'up': up, 'legacy': legacy, 'unknown': unknown, 'orphans': orphans, 'existing': have | list} }}
+  when: compose_project_docker.stat.exists
+
+- name: Every service in the file, while Docker is not there
+  ansible.builtin.set_fact:
+    compose_project_plan:
+      up: >-
+        {{ (compose_project_content | default('{}') | from_yaml).services | default({}) | list
+           | reject('in', compose_project_skip_services) | sort }}
+      legacy: []
+      unknown: []
+      orphans: []
+      existing: []
+  when: not compose_project_docker.stat.exists
 
 # Some compose versions (Ubuntu's 2.40) label a container with a hash that `config --hash`
 # never reproduces, so a container that matches its file still looks changed. For a
@@ -127,6 +155,7 @@
   changed_when: false
   failed_when: false
   check_mode: false
+  when: compose_project_docker.stat.exists
 
 - name: Leave alone what compose would leave running
   ansible.builtin.set_fact:
@@ -140,6 +169,7 @@
       {%- endif -%}
       {%- endfor -%}
       {{ compose_project_plan | combine({'up': compose_project_plan.up | reject('in', same) | list}) }}
+  when: compose_project_docker.stat.exists
 
 - name: Compose services to bring up
   ansible.builtin.debug:
