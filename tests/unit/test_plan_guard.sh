@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Guardrail test for scripts/plan-guard.sh: it must refuse plans that destroy or
 # replace anything, change the identity of ragnarok's disks (the media disk), shrink a
-# protected disk, or that errored or were cut down with -target; and it must accept a clean
+# protected disk (also when the VM sits in a module and its resource is named "this"), or that errored or were cut down with -target; and it must accept a clean
 # plan and a protected disk that only grows (anvil increase-disk).
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
@@ -40,6 +40,12 @@ plan errored.json      '.resource_changes[0].change.actions = ["no-op"] | .error
 plan targeted.json     '.resource_changes[0].change.actions = ["no-op"] | .complete = false'
 plan empty.json        'del(.resource_changes)'
 plan module-disk.json  '.resource_changes[0].address = "module.vms.proxmox_virtual_environment_vm.ragnarok" | .resource_changes[0].module_address = "module.vms" | .resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0].datastore_id = "other"'
+# A VM in modules/ubuntu_vm: its resource is named "this", the module carries the VM's name.
+plan mod-apps-store.json  '.resource_changes[0].address = "module.apps.proxmox_virtual_environment_vm.this" | .resource_changes[0].name = "this" | .resource_changes[0].module_address = "module.apps" | .resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0].datastore_id = "other"'
+plan mod-apps-shrink.json '.resource_changes[0].address = "module.apps.proxmox_virtual_environment_vm.this" | .resource_changes[0].name = "this" | .resource_changes[0].module_address = "module.apps" | .resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0].size = 512'
+plan mod-apps-grow.json   '.resource_changes[0].address = "module.apps.proxmox_virtual_environment_vm.this" | .resource_changes[0].name = "this" | .resource_changes[0].module_address = "module.apps" | .resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0].size = 2048'
+plan mod-idx-store.json   '.resource_changes[0].address = "module.apps[0].proxmox_virtual_environment_vm.this" | .resource_changes[0].name = "this" | .resource_changes[0].module_address = "module.apps[0]" | .resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0].datastore_id = "other"'
+plan mod-canary-store.json '.resource_changes[0].address = "module.canary[0].proxmox_virtual_environment_vm.this" | .resource_changes[0].name = "this" | .resource_changes[0].module_address = "module.canary[0]" | .resource_changes[0].change.actions = ["update"] | .resource_changes[0].change.after.disk[0].datastore_id = "other"'
 plan no-complete.json  '.resource_changes[0].change.actions = ["no-op"] | del(.complete)'
 plan no-errored.json   '.resource_changes[0].change.actions = ["no-op"] | del(.errored)'
 printf 'not json' > "$tmp/garbage.json"
@@ -82,6 +88,11 @@ expect "$tmp/errored.json"      1
 expect "$tmp/targeted.json"     1
 expect "$tmp/empty.json"        0
 expect "$tmp/module-disk.json"  1
+expect "$tmp/mod-apps-store.json"  1   # apps in a module: its disk moved
+expect "$tmp/mod-apps-shrink.json" 1   # apps in a module: its disk shrank
+expect "$tmp/mod-apps-grow.json"   0   # apps in a module: a disk may grow
+expect "$tmp/mod-idx-store.json"   1   # a counted module instance is still apps
+expect "$tmp/mod-canary-store.json" 0  # canary is not a protected VM
 expect "$tmp/no-complete.json"  1
 expect "$tmp/no-errored.json"   1
 expect "$tmp/garbage.json"      1
