@@ -1,7 +1,9 @@
 # An Ubuntu VM made from the pinned cloud image: cloud-init sets the user, the key, the DNS and
 # a static address per NIC. Everything goes through the Proxmox API. The guest agent and the
-# rest come later from Ansible (role guest_base). Every VM of the lab that is not adopted from
-# an existing install is one of these (the vault VM, in the secrets enclave, has its own).
+# rest come later from Ansible (role guest_base). Every VM on the lab network that Terraform
+# made is one of these. The two in the secrets enclave (vm_vault.tf, vm_vaultwarden.tf) are
+# written out on their own: their NICs are on the enclave vnet and they boot with its
+# vendor-data. Adopted VMs are in vms_existing.tf.
 
 resource "proxmox_virtual_environment_vm" "this" {
   node_name     = var.node
