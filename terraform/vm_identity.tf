@@ -14,21 +14,6 @@ locals {
   identity_node = try(local.site.hosts.identity.node, var.node_name)
 }
 
-# The same pinned image as noble_cloudimg (vm_vault.tf), downloaded to the identity node:
-# a cloud image in a node's local store can only be imported on that node.
-resource "proxmox_virtual_environment_download_file" "noble_cloudimg_identity" {
-  count               = local.identity == null ? 0 : 1
-  node_name           = local.identity_node
-  datastore_id        = "local"
-  content_type        = "import"
-  file_name           = "ubuntu-24.04-server-cloudimg-amd64-20261017.qcow2"
-  url                 = "https://cloud-images.ubuntu.com/releases/noble/release-20261017/ubuntu-24.04-server-cloudimg-amd64.img"
-  checksum            = "04e8f2461a16a44e78a370284471f29616cdd9baf1893df25807b71f985b6c94"
-  checksum_algorithm  = "sha256"
-  overwrite           = false
-  overwrite_unmanaged = false
-}
-
 resource "proxmox_virtual_environment_vm" "identity" {
   count         = local.identity == null ? 0 : 1
   node_name     = local.identity_node
@@ -61,7 +46,7 @@ resource "proxmox_virtual_environment_vm" "identity" {
   disk {
     datastore_id = nonsensitive(try(local.identity.datastore, "vmdata"))
     interface    = "scsi0"
-    import_from  = proxmox_virtual_environment_download_file.noble_cloudimg_identity[0].id
+    import_from  = proxmox_virtual_environment_download_file.noble_cloudimg[local.identity_node].id
     size         = nonsensitive(try(local.identity.disk_gb, 32))
     iothread     = true
     discard      = "on"

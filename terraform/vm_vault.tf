@@ -5,23 +5,6 @@
 # Addresses and VMID are site values (var.site_json); the public key is read at plan
 # time from var.ssh_public_key_path and is not committed.
 
-# Bumping the image: the URL and checksum are pinned to one release. Changing them makes
-# the provider replace this download (plan-guard rejects the delete). Do not edit it in
-# place. Either add a new pinned download_file resource (new name, new file_name) for
-# new VMs, or `terraform state rm` this one first and then change it, so no replace
-# is planned. The vault VM never re-imports (see ignore_changes below).
-resource "proxmox_virtual_environment_download_file" "noble_cloudimg" {
-  node_name           = var.node_name
-  datastore_id        = "local"
-  content_type        = "import"
-  file_name           = "ubuntu-24.04-server-cloudimg-amd64-20261017.qcow2"
-  url                 = "https://cloud-images.ubuntu.com/releases/noble/release-20261017/ubuntu-24.04-server-cloudimg-amd64.img"
-  checksum            = "04e8f2461a16a44e78a370284471f29616cdd9baf1893df25807b71f985b6c94"
-  checksum_algorithm  = "sha256"
-  overwrite           = false
-  overwrite_unmanaged = false
-}
-
 resource "proxmox_virtual_environment_vm" "vault" {
   node_name     = var.node_name
   vm_id         = nonsensitive(local.site.hosts.vault.vmid)
@@ -52,7 +35,7 @@ resource "proxmox_virtual_environment_vm" "vault" {
   disk {
     datastore_id = "local-lvm"
     interface    = "scsi0"
-    import_from  = proxmox_virtual_environment_download_file.noble_cloudimg.id
+    import_from  = proxmox_virtual_environment_download_file.noble_cloudimg[var.node_name].id
     size         = nonsensitive(try(local.site.hosts.vault.disk_gb, 10))
     iothread     = true
     discard      = "on"
