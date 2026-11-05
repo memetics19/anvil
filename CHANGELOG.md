@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.29.0](https://github.com/memetics19/anvil/compare/v0.28.0...v0.29.0) (2026-11-05)
+
+
+### Features
+
+* **canary:** an OpenCanary tripwire that alerts on ntfy ([#194](https://github.com/memetics19/anvil/issues/194)) ([591a190](https://github.com/memetics19/anvil/commit/591a190d86180bf04d15e79d2a6b1704a0fc59a2))
+* **monitoring:** Grafana, alerts, Wazuh and the internet line, one pane of glass ([#201](https://github.com/memetics19/anvil/issues/201)) ([51e8363](https://github.com/memetics19/anvil/commit/51e83639670afd022e9fba8efb24a63a8ae870ff))
+* **pve:** repositories by release, and the Proxmox VE 9 runbook ([#193](https://github.com/memetics19/anvil/issues/193)) ([3696c68](https://github.com/memetics19/anvil/commit/3696c68990266b5a77005deb6c89b9a298efea68))
+* **wazuh:** the Wazuh server on its own VM ([#195](https://github.com/memetics19/anvil/issues/195)) ([17034ae](https://github.com/memetics19/anvil/commit/17034ae5ab609abfe7eb9a4c3911418d8857a56e))
+
+
+### Bug Fixes
+
+* **pihole:** a check run counts pending deny regexes as a change ([#199](https://github.com/memetics19/anvil/issues/199)) ([6e47e8d](https://github.com/memetics19/anvil/commit/6e47e8d6ac2f3cb9bf2c2526a7e190c37ca5e62a))
+* **smb:** a read-only user for VLC on Android ([#200](https://github.com/memetics19/anvil/issues/200)) ([b35c383](https://github.com/memetics19/anvil/commit/b35c3835461df63ebacd526320b243735017b0fa))
+
 ## [0.28.0](https://github.com/memetics19/anvil/compare/v0.27.1...v0.28.0) (2026-11-04)
 
 
