@@ -10,82 +10,30 @@ locals {
   wazuh_node = try(local.site.hosts.wazuh.node, var.node_name)
 }
 
-resource "proxmox_virtual_environment_vm" "wazuh" {
-  count         = local.wazuh == null ? 0 : 1
-  node_name     = local.wazuh_node
-  vm_id         = nonsensitive(local.wazuh.vmid)
-  name          = "wazuh"
-  on_boot       = true
-  scsi_hardware = "virtio-scsi-single"
-  # Never let the provider reboot or power off a VM to apply a change.
-  reboot_after_update = false
+module "wazuh" {
+  source = "./modules/ubuntu_vm"
+  count  = local.wazuh == null ? 0 : 1
 
-  agent {
-    enabled = true
-    wait_for_ip {
-      disabled = true
-    }
-  }
+  name      = "wazuh"
+  node      = local.wazuh_node
+  vm_id     = nonsensitive(local.wazuh.vmid)
+  cores     = nonsensitive(try(local.wazuh.cores, 4))
+  memory_mb = nonsensitive(try(local.wazuh.memory_mb, 8192))
+  datastore = nonsensitive(try(local.wazuh.datastore, "vmdata"))
+  disk_gb   = nonsensitive(try(local.wazuh.disk_gb, 80))
+  image_id  = proxmox_virtual_environment_download_file.noble_cloudimg[local.wazuh_node].id
 
-  cpu {
-    sockets = 1
-    cores   = nonsensitive(try(local.wazuh.cores, 4))
-    type    = "x86-64-v2-AES"
-  }
+  nics = [
+    # net0: lab network, default route.
+    { mac = nonsensitive(local.wazuh.mac), address = "${local.wazuh.ip}/${split("/", local.site.lan_cidr)[1]}", gateway = local.site.pve.gateway_alias_ip },
+  ]
 
-  memory {
-    dedicated = nonsensitive(try(local.wazuh.memory_mb, 8192))
-    floating  = nonsensitive(try(local.wazuh.memory_mb, 8192))
-  }
+  ssh_public_key = trimspace(file(pathexpand(var.ssh_public_key_path)))
+  dns_domain     = local.site.domain
+  dns_servers    = local.site.guest_dns
+}
 
-  disk {
-    datastore_id = nonsensitive(try(local.wazuh.datastore, "vmdata"))
-    interface    = "scsi0"
-    import_from  = proxmox_virtual_environment_download_file.noble_cloudimg[local.wazuh_node].id
-    size         = nonsensitive(try(local.wazuh.disk_gb, 80))
-    iothread     = true
-    discard      = "on"
-  }
-
-  # net0: lab network, default route.
-  network_device {
-    bridge      = "vmbr0"
-    model       = "virtio"
-    mac_address = nonsensitive(local.wazuh.mac)
-    firewall    = true
-  }
-
-  operating_system {
-    type = "l26"
-  }
-
-  initialization {
-    datastore_id = nonsensitive(try(local.wazuh.datastore, "vmdata"))
-
-    user_account {
-      username = "ubuntu"
-      keys     = [trimspace(file(pathexpand(var.ssh_public_key_path)))]
-    }
-
-    dns {
-      domain  = local.site.domain
-      servers = local.site.guest_dns
-    }
-
-    ip_config {
-      ipv4 {
-        address = "${local.wazuh.ip}/${split("/", local.site.lan_cidr)[1]}"
-        gateway = local.site.pve.gateway_alias_ip
-      }
-    }
-  }
-
-  startup {
-    order    = 2
-    up_delay = 15
-  }
-
-  lifecycle {
-    ignore_changes = [disk[0].import_from]
-  }
+moved {
+  from = proxmox_virtual_environment_vm.wazuh[0]
+  to   = module.wazuh[0].proxmox_virtual_environment_vm.this
 }
