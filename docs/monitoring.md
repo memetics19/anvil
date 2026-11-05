@@ -58,6 +58,14 @@ The dashboards:
   (internet, router, DNS), ping time, packet loss, DNS lookups through Pi-hole, web pages.
 - **Security**: Wazuh's alerts (level 10 and up, critical 12 and up), hosts reporting, alerts by
   level over time, the top rules and hosts, failed logins, changed files and vulnerabilities.
+- **Frigate**: Frigate up, cameras sending video, detector speed and recording space now, a
+  camera timeline, frames per second per camera (received, processed, detected, skipped),
+  detector speed, detections by camera and object, CPU and memory per camera, and disk space.
+
+Frigate's metrics come from its own `/api/metrics`. Port 5000, Frigate's API with no login,
+stays on the Frigate VM's loopback. nginx on its lab address (port 9711) answers that one
+path, only to the monitoring VM and the admin sources, and every other path with 404. The
+scrape drops the process command lines, which hold each camera's address.
 
 ## Security: Wazuh in Grafana
 
@@ -181,6 +189,38 @@ Wazuh raised an alert of level 10 or more on a host (level 12 and up is critical
 names the host and the rule. Open the Security dashboard, or Wazuh's own for the full event,
 and act on what the rule says: a login from somewhere new, a changed system file, a known
 vulnerability. A rule that fires and needs no action is tuned in Wazuh, not silenced forever.
+
+### FrigateDown
+
+Critical. Frigate's metrics have not answered for 5 minutes while its VM is up, so nothing is
+recorded. On the Frigate VM: `sudo docker ps` and `sudo docker logs --tail 50 frigate`. A
+crash loop usually names a camera or a config line. `anvil apply frigate` puts the stack back.
+
+### CameraOffline
+
+Critical. Frigate has had no frames from a camera for 5 minutes. Check the camera has power
+and network: ping it, and look for it in the router's client list. A camera that came back
+with a new address needs its fixed address in the router again. Its stream in the Frigate UI,
+under the camera's settings, shows the ffmpeg error.
+
+### CameraSkippingFrames
+
+Warning. Frigate skips more than half a frame a second from a camera, for 15 minutes. The
+detector or the CPU cannot keep up, so motion there may go undetected. Look at the Frigate
+dashboard's detector speed and CPU panels. Lower that camera's detect fps or resolution, or
+give the VM more CPU.
+
+### FrigateDetectorSlow
+
+Warning. One detection takes more than 200 ms, for 15 minutes. Usually it takes about 50 ms
+on the CPU detector. The VM is short of CPU: check the Hosts dashboard for the Frigate VM and
+what else runs on its Proxmox node.
+
+### FrigateStorageLow
+
+Warning. Less than 10% of the recording disk is free. Frigate deletes the oldest footage
+early to make room, so less history is kept. Shorten the retention in Frigate's config, or
+grow the disk (`anvil increase-disk frigate <GB>`).
 
 ### MonitoringBlind
 

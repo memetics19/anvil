@@ -74,6 +74,11 @@ monitoring_node_targets: >-
   {%- set _ = out.append({'name': site.pve.hostname | default('pve'), 'address': site.pve.ip ~ ':9100'}) -%}
   {{ out }}
 
+# Frigate's metrics: role frigate_stack serves /api/metrics on this port of its lab address
+# (frigate_stack_metrics_port) to this VM only. None without a Frigate host.
+monitoring_frigate_port: 9711
+monitoring_frigate_target: "{{ (site.hosts.frigate.ip ~ ':' ~ monitoring_frigate_port) if site.hosts.frigate.ip is defined else '' }}"
+
 # Grafana's gateway name (site.services) and its login through Authentik (OpenID Connect).
 # Authentik's client is role authentik (client id grafana). Its secret is in Vault next to
 # Authentik's own, written by that role.

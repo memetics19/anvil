@@ -1,0 +1,739 @@
+{
+   "description": "The camera recorder: up now, cameras sending video, frames per second per camera, detector speed, detections, CPU and memory, and recording space. Managed by anvil: change dashboards/frigate.jsonnet.",
+   "editable": false,
+   "panels": [
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "mappings": [
+                  {
+                     "options": {
+                        "0": {
+                           "text": "Down"
+                        },
+                        "1": {
+                           "text": "Up"
+                        }
+                     },
+                     "type": "value"
+                  }
+               ],
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "green",
+                        "value": 1
+                     }
+                  ]
+               },
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 0,
+            "y": 0
+         },
+         "id": 1,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(up{job=\"frigate\"})",
+               "legendFormat": "Frigate",
+               "refId": "A"
+            }
+         ],
+         "title": "Frigate now",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 6,
+            "y": 0
+         },
+         "id": 2,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "count(frigate_camera_fps{job=\"frigate\"} > 0) or vector(0)",
+               "legendFormat": "Sending",
+               "refId": "A"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "count(frigate_camera_fps{job=\"frigate\"})",
+               "legendFormat": "Of",
+               "refId": "B"
+            }
+         ],
+         "title": "Cameras sending video",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 0.10000000000000001
+                     },
+                     {
+                        "color": "red",
+                        "value": 0.20000000000000001
+                     }
+                  ]
+               },
+               "unit": "s"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 12,
+            "y": 0
+         },
+         "id": 3,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(frigate_detector_inference_speed_seconds{job=\"frigate\"})",
+               "legendFormat": "{{name}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Detector speed",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 10
+                     },
+                     {
+                        "color": "green",
+                        "value": 25
+                     }
+                  ]
+               },
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 18,
+            "y": 0
+         },
+         "id": 4,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * frigate_storage_free_bytes{job=\"frigate\",storage=\"/media/frigate/recordings\"} / frigate_storage_total_bytes{job=\"frigate\",storage=\"/media/frigate/recordings\"}",
+               "legendFormat": "Free",
+               "refId": "A"
+            }
+         ],
+         "title": "Recording space free",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "mappings": [
+                  {
+                     "options": {
+                        "0": {
+                           "color": "red",
+                           "text": "Down"
+                        },
+                        "1": {
+                           "color": "green",
+                           "text": "Up"
+                        }
+                     },
+                     "type": "value"
+                  }
+               ]
+            }
+         },
+         "gridPos": {
+            "h": 6,
+            "w": 24,
+            "x": 0,
+            "y": 5
+         },
+         "id": 5,
+         "options": {
+            "showValue": "never"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "frigate_camera_fps{job=\"frigate\"} > bool 0",
+               "legendFormat": "{{camera_name}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Cameras",
+         "type": "state-timeline"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 11
+         },
+         "id": 6,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "frigate_camera_fps{job=\"frigate\"}",
+               "legendFormat": "{{camera_name}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Frames received per second",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 11
+         },
+         "id": 7,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "frigate_process_fps{job=\"frigate\"}",
+               "legendFormat": "{{camera_name}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Frames processed per second",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 19
+         },
+         "id": 8,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "frigate_detection_fps{job=\"frigate\"}",
+               "legendFormat": "{{camera_name}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Detections per second",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 19
+         },
+         "id": 9,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "frigate_skipped_fps{job=\"frigate\"}",
+               "legendFormat": "{{camera_name}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Frames skipped per second",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "s"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 27
+         },
+         "id": 10,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "frigate_detector_inference_speed_seconds{job=\"frigate\"}",
+               "legendFormat": "{{name}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Detector speed",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 27
+         },
+         "id": 11,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "sum by (camera, label) (increase(frigate_camera_events_total{job=\"frigate\"}[1h]))",
+               "legendFormat": "{{camera}} {{label}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Detections by camera and object, per hour",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 35
+         },
+         "id": 12,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "sum by (name) (frigate_cpu_usage_percent{job=\"frigate\",type=~\"Camera|detectors\"})",
+               "legendFormat": "{{name}}",
+               "refId": "A"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "frigate_cpu_usage_percent{job=\"frigate\",name=\"full_system\"}",
+               "legendFormat": "whole VM",
+               "refId": "B"
+            }
+         ],
+         "title": "CPU per camera and detector",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 35
+         },
+         "id": 13,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "sum by (name) (frigate_mem_usage_percent{job=\"frigate\",type=~\"Camera|detectors\"})",
+               "legendFormat": "{{name}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Memory per camera and detector",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "max": 100,
+               "min": 0,
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 43
+         },
+         "id": 14,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * frigate_storage_used_bytes{job=\"frigate\"} / frigate_storage_total_bytes{job=\"frigate\"}",
+               "legendFormat": "{{storage}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Disk space used",
+         "type": "timeseries"
+      }
+   ],
+   "refresh": "1m",
+   "schemaVersion": 39,
+   "tags": [
+      "anvil",
+      "frigate",
+      "cameras"
+   ],
+   "time": {
+      "from": "now-24h",
+      "to": "now"
+   },
+   "timezone": "browser",
+   "title": "Frigate",
+   "uid": "anvil-frigate"
+}

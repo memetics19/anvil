@@ -28,3 +28,20 @@ server {
         proxy_set_header X-Forwarded-Proto https;
     }
 }
+{% if frigate_stack_metrics_sources | length > 0 %}
+
+# Frigate's metrics for the monitoring VM: /api/metrics only, from the internal API.
+server {
+    listen {{ site.hosts[inventory_hostname].ip }}:{{ frigate_stack_metrics_port }};
+{% for s in frigate_stack_metrics_sources %}
+    allow {{ s }};
+{% endfor %}
+    deny all;
+    location = /api/metrics {
+        proxy_pass http://127.0.0.1:5000/api/metrics;
+    }
+    location / {
+        return 404;
+    }
+}
+{% endif %}
