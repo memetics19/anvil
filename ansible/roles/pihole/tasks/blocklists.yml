@@ -121,6 +121,14 @@
       deny regexes: {{ pihole_deny_regex | length }} managed, add or enable {{ pihole_regex_fix | length }}{{
       '; ' ~ pihole_regex_unmanaged ~ ' added by hand (left alone)' if pihole_regex_unmanaged | int > 0 else '' }}
 
+# A check run must count a pending regex as a change: anvil apply runs the check first and
+# stops at changed=0, so without this the real run never came.
+- name: Would change the deny regexes
+  ansible.builtin.debug:
+    msg: "would add or enable {{ pihole_regex_fix | length }} deny regexes, then reload the lists"
+  changed_when: true
+  when: ansible_check_mode and pihole_regex_fix | length > 0
+
 - name: Add or enable the managed deny regexes
   ansible.builtin.command:
     argv: [docker, exec, -i, pihole, pihole-FTL, sqlite3, /etc/pihole/gravity.db]
