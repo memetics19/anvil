@@ -58,6 +58,29 @@
       first (anvil apply identity --tags authentik), with grafana in site.services.
     quiet: true
 
+- name: Alertmanager's ntfy address and token, from Vault
+  ansible.builtin.set_fact:
+    monitoring_ntfy: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', monitoring_ntfy_vault_path,
+                engine_mount_point=monitoring_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT'), errors='ignore') | default({}, true) }}
+  no_log: true
+
+- name: Both are set
+  ansible.builtin.assert:
+    that:
+      - (monitoring_ntfy.secret.url | default('')) is match('https?://')
+      - (monitoring_ntfy.secret.token | default('')) | length > 0
+    fail_msg: "kv/{{ monitoring_ntfy_vault_path }} needs url and token (docs/monitoring.md, Alerts)"
+    quiet: true
+
+- name: Just the secret
+  ansible.builtin.set_fact:
+    monitoring_ntfy: "{{ monitoring_ntfy.secret }}"
+  no_log: true
+
 # --- Files -----------------------------------------------------------------------------------
 - name: Folders
   ansible.builtin.file:
@@ -67,7 +90,7 @@
     group: root
     mode: "0755"
   loop: ["", grafana, grafana/provisioning, grafana/provisioning/datasources,
-         grafana/provisioning/dashboards, grafana/dashboards]
+         grafana/provisioning/dashboards, grafana/dashboards, rules, alertmanager]
 
 - name: What vmagent scrapes
   ansible.builtin.template:
@@ -106,6 +129,38 @@
     mode: "0644"
     directory_mode: "0755"
 
+# Each rule file is checked by vmalert itself before it goes in.
+- name: The alert rules
+  ansible.builtin.copy:
+    src: "rules/{{ item | basename }}"
+    dest: "{{ monitoring_dir }}/rules/{{ item | basename }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "docker run --rm -v %s:/rules.yml:ro {{ monitoring_vmalert_image }} -rule=/rules.yml -dryRun"
+  loop: "{{ lookup('ansible.builtin.fileglob', role_path ~ '/files/rules/*.yml', wantlist=True) }}"
+  notify: Reload vmalert
+
+- name: Alertmanager's routes
+  ansible.builtin.template:
+    src: alertmanager.yml.j2
+    dest: "{{ monitoring_dir }}/alertmanager/alertmanager.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload alertmanager
+
+# Alertmanager runs as nobody (65534): the token is readable by it alone.
+- name: Alertmanager's ntfy token
+  ansible.builtin.copy:
+    content: "{{ monitoring_ntfy.token }}"
+    dest: "{{ monitoring_dir }}/alertmanager/ntfy-token"
+    owner: "65534"
+    group: "65534"
+    mode: "0400"
+  no_log: true
+  notify: Reload alertmanager
+
 # --- The stack -------------------------------------------------------------------------------
 - name: Monitoring compose project
   ansible.builtin.include_role:
@@ -138,4 +193,15 @@
   retries: 30
   delay: 3
   until: monitoring_grafana_health.status == 200
+  when: not ansible_check_mode
+
+- name: The alert services answer (vmalert, Alertmanager)
+  ansible.builtin.command:
+    argv: [docker, exec, grafana, wget, -qO-, "{{ item }}"]
+  loop: [http://vmalert:8880/health, http://alertmanager:9093/-/ready]
+  register: monitoring_alerting_health
+  changed_when: false
+  retries: 20
+  delay: 3
+  until: monitoring_alerting_health.rc == 0
   when: not ansible_check_mode

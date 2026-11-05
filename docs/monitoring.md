@@ -1,8 +1,8 @@
 # Monitoring and alerting
 
 One place to see how every host and service is doing, and alerts that are worth reading
-when they arrive. Steps 1 to 3 below are built (role `monitoring`): metrics from every host,
-kept 90 days, and Grafana. Alerting is next.
+when they arrive. Steps 1 to 3 and 5 below are built (role `monitoring`): metrics from every
+host, kept 90 days, Grafana, and alerts to ntfy.
 
 ## Set up
 
@@ -32,6 +32,66 @@ What runs on the VM (compose project `/opt/monitoring`, images pinned by digest)
 Dashboards are JSON files in `ansible/roles/monitoring/files/dashboards`, in the folder Lab.
 Grafana reads them every minute and cannot save changes to them: change the file. The first
 is **Hosts**: up and uptime, CPU, memory, disk space, load, network and disk traffic, per host.
+
+## Alerts
+
+vmalert checks the rules in `ansible/roles/monitoring/files/rules` every minute. Alertmanager
+groups what fires and sends it to ntfy:
+
+- **Critical** goes to the topic `lab-critical` at once, at top priority, and again every
+  4 hours while it lasts. A message also comes when it is fixed.
+- **Warning** goes to the topic `lab-warning`, held for the morning window (08:00 to 09:00):
+  a digest, one message per kind of alert.
+- While a host is down, its other alerts are held back: one message per problem.
+
+Grafana shows the firing alerts and sets silences (Alerting, the Alertmanager data source).
+Every rule file is checked by vmalert before it is installed.
+
+One-time setup: a write-only ntfy user for Alertmanager, its token in Vault. On the netbird VM:
+
+```sh
+docker exec -it ntfy ntfy user add alertmanager
+docker exec ntfy ntfy access alertmanager 'lab-*' write-only
+docker exec ntfy ntfy access <your ntfy user> 'lab-*' read-only
+```
+
+Then pipe its token into Vault, so it never shows or lands in a shell history:
+
+```sh
+ssh <netbird VM> docker exec ntfy ntfy token add alertmanager | awk '{print $2}' |
+  vault kv put -mount=kv homelab/monitoring/ntfy url=https://ntfy.<domain> token=-
+```
+
+Subscribe to `lab-critical` and `lab-warning` in the ntfy app, then `anvil apply monitoring`.
+
+What each alert means and what to do:
+
+### HostDown
+
+Critical. node_exporter on a host has not answered for 5 minutes, so the host or its network
+is down. Check the Proxmox web console: is the VM running, does its console answer? For a
+Proxmox host, check its iDRAC or its screen.
+
+### DiskAlmostFull
+
+Critical. Less than 5% is free on a filesystem. Find what grew: `sudo du -xh --max-depth=2 /`
+on the host. Remove it, or grow the disk (`anvil increase-disk <vm> <GB>`).
+
+### DiskFillingUp
+
+Warning. At the rate of the last 6 hours, a filesystem runs out of space in less than 3 days,
+and less than 25% is left. Look at the Hosts dashboard's disk space panel to see when it
+started, then as for DiskAlmostFull.
+
+### MemoryNearlyGone
+
+Warning. Less than 5% of memory has been available for 15 minutes. `top` or `docker stats` on
+the host shows what uses it. Lower a container's limit, or give the VM more memory.
+
+### MonitoringBlind
+
+Critical. No host metrics have arrived for 10 minutes: vmagent or VictoriaMetrics is down, so
+no other alert can fire. On the monitoring VM: `docker ps`, then `docker logs vmagent`.
 
 ## Before it
 
@@ -114,12 +174,12 @@ These are the rules, not suggestions. A rule that breaks them is changed or remo
    members do not run it yet.
 3. Done: VictoriaMetrics, vmagent and Grafana. Grafana behind the gateway with Authentik.
 4. The exporters above, one at a time, each with its dashboard as a JSON file.
-5. vmalert and Alertmanager with the first small rule set: host down, disk fill, ZFS and
-   SMART, power supplies, backups, certificates, Vault sealed.
+5. Done: vmalert and Alertmanager with the first small rule set: host down, disk full and
+   filling, memory, and monitoring blind. ZFS and SMART, power supplies, backups,
+   certificates and Vault sealed come with their exporters (step 4).
 6. `anvil apply` silences, and the drift check routed through Alertmanager.
 7. Two weeks of tuning before more rules are added.
 
 ## Open questions
 
 - Retention beyond 90 days, and whether old data moves to the Ceph store.
-- Whether the warning digest goes to ntfy or to email.

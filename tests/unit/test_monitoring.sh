@@ -42,15 +42,16 @@ cat >"$tmp/play.yml" <<PLAY
         vault: {ip: 203.0.113.20}
     monitoring_secrets: {admin_password: "$secret"}
     monitoring_oidc_secret: "$secret"
+    monitoring_ntfy: {url: "https://ntfy.example.com/", token: "$secret"}
   tasks:
     - ansible.builtin.template: {src: "$r/templates/{{ item }}.j2", dest: "$tmp/{{ item }}", mode: "0600"}
-      loop: [docker-compose.yml, scrape.yml, datasources.yml, dashboards.yml]
+      loop: [docker-compose.yml, scrape.yml, datasources.yml, dashboards.yml, alertmanager.yml]
 PLAY
 if ansible-playbook -i "$tmp/inv.yml" -c local -e monitoring_bind_ip=192.0.2.132 "$tmp/play.yml" >"$tmp/render.log" 2>&1; then ok "templates render"; else bad_ "templates render"; cat "$tmp/render.log"; exit 1; fi
 c=$tmp/docker-compose.yml s=$tmp/scrape.yml
 
 check "every image is pinned to a digest" \
-  "[ \"\$(grep -cE '^\s+image: ' $c)\" = 3 ] && ! grep -E '^\s+image: ' $c | grep -v '@sha256:'"
+  "[ \"\$(grep -cE '^\s+image: ' $c)\" = 5 ] && ! grep -E '^\s+image: ' $c | grep -v '@sha256:'"
 check "only Grafana is published, on the lab address" \
   "[ \"\$(grep -cE '^\s+- \"[0-9.]+:[0-9]+:[0-9]+\"' $c)\" = 1 ] && grep -q '\"192.0.2.132:3000:3000\"' $c"
 check "metrics kept 90 days" "grep -q -- '-retentionPeriod=90d' $c"
@@ -74,6 +75,37 @@ for d in "$r"/files/dashboards/*.json; do
   check "$n: every panel queries the provisioned data source" \
     "python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert all(t[\"datasource\"][\"uid\"]==\"victoriametrics\" for p in d[\"panels\"] for t in p.get(\"targets\",[]))' '$d'"
 done
+
+# --- Alerts ---
+a=$tmp/alertmanager.yml
+check "critical goes to its own topic at once, at top priority" \
+  "grep -q 'https://ntfy.example.com/lab-critical?template=alertmanager&priority=urgent' $a"
+check "warnings wait for the morning window" \
+  "grep -A6 'receiver: ntfy-warning' $a | grep -q 'active_time_intervals: \[morning\]' && grep -q 'start_time: \"02:30\"' $a"
+check "a down host holds back its other alerts" "grep -A3 'inhibit_rules' $a | grep -q 'alertname=\"HostDown\"' && grep -q 'equal: \[host\]' $a"
+check "the ntfy token is a file, not in the config" "grep -q 'credentials_file: /etc/alertmanager/ntfy-token' $a && ! grep -q '$secret' $a"
+check "the token file is for Alertmanager's user alone" "grep -A6 'name: Alertmanager.s ntfy token' $r/tasks/main.yml | grep -q 'mode: \"0400\"'"
+check "rule files are checked by vmalert before they go in" "grep -q -- '-rule=/rules.yml -dryRun' $r/tasks/main.yml"
+python3 - "$r/files/rules" docs/monitoring.md <<'PY' || fail=1
+import sys, os, re, yaml
+rules_dir, doc = sys.argv[1], open(sys.argv[2]).read()
+anchors = {re.sub(r'[^a-z0-9-]', '', h.strip().lower().replace(' ', '-')) for h in re.findall(r'(?m)^#{2,3} (.+)$', doc)}
+bad = 0
+for f in sorted(os.listdir(rules_dir)):
+    for g in yaml.safe_load(open(os.path.join(rules_dir, f)))["groups"]:
+        for r in g["rules"]:
+            n = r["alert"]
+            checks = {
+                "a level, critical or warning": r.get("labels", {}).get("severity") in ("critical", "warning"),
+                "waits before it fires": bool(re.fullmatch(r"\d+[smh]", str(r.get("for", "")))),
+                "a summary and a description": bool(r.get("annotations", {}).get("summary")) and bool(r["annotations"].get("description")),
+                "links to its section of the docs": r.get("annotations", {}).get("runbook", "").split("#")[-1] in anchors,
+            }
+            for what, ok in checks.items():
+                print(("ok   " if ok else "FAIL ") + f"rule {n}: {what}")
+                bad += not ok
+sys.exit(1 if bad else 0)
+PY
 
 check "Authentik makes Grafana's client secret" "grep -q 'grafana_client_secret\]' ansible/roles/authentik/defaults/main.yml"
 check "Authentik's Grafana app admits only the single sign-on group" \

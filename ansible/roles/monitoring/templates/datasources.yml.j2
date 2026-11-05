@@ -1,5 +1,5 @@
-# Managed by anvil (role monitoring). Grafana's one data source: VictoriaMetrics, which
-# speaks Prometheus's query API.
+# Managed by anvil (role monitoring). VictoriaMetrics (Prometheus's query API) for the
+# dashboards, and Alertmanager, where Grafana shows the alerts and sets silences.
 apiVersion: 1
 datasources:
   - name: VictoriaMetrics
@@ -11,3 +11,11 @@ datasources:
     editable: false
     jsonData:
       timeInterval: {{ monitoring_scrape_interval }}
+  - name: Alertmanager
+    uid: alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    editable: false
+    jsonData:
+      implementation: prometheus

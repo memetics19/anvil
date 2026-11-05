@@ -4,6 +4,8 @@ monitoring_dir: /opt/monitoring
 monitoring_victoriametrics_image: victoriametrics/victoria-metrics:v1.155.0@sha256:f60dc268b54ecf87f6e09d740c2b732838aa9193090cc741417c9f6386a130df
 monitoring_vmagent_image: victoriametrics/vmagent:v1.155.0@sha256:8e3c03905be15bba8312d4868e8ae6f9fc2fefee0a41d544472034249ca42bb4
 monitoring_grafana_image: grafana/grafana:13.2.5@sha256:9f7aa1e1e3246aade5792d35a738049f7f32f89cd51d1956cf426a4e86268a84
+monitoring_vmalert_image: victoriametrics/vmalert:v1.155.0@sha256:3256cba5ddaca5974eae6141105cec4ce37871f1c213f0a5c267ec0111bc68e1
+monitoring_alertmanager_image: prom/alertmanager:v0.34.2@sha256:39d8bb3966c694a124428a3a88fbcffd40bd069129ecd47c059f8a3f17c55f3b
 # How long the metrics are kept.
 monitoring_retention: 90d
 monitoring_scrape_interval: 30s
@@ -16,6 +18,21 @@ monitoring_grafana_port: 3000
 monitoring_victoriametrics_mem_limit: 1g
 monitoring_vmagent_mem_limit: 256m
 monitoring_grafana_mem_limit: 512m
+monitoring_vmalert_mem_limit: 128m
+monitoring_alertmanager_mem_limit: 128m
+
+# --- Alerts (docs/monitoring.md, Alerts) ------------------------------------------------------
+# vmalert evaluates the rules in files/rules every minute. Alertmanager groups them and sends
+# them to ntfy: critical at once on its own topic, warnings once a morning on another.
+monitoring_rules_interval: 1m
+# ntfy: Vault kv/<monitoring_ntfy_vault_path>, keys url (ntfy's base URL, no topic) and token
+# (a publish token of a write-only ntfy user; docs/monitoring.md says how to make one).
+monitoring_ntfy_vault_path: "homelab/{{ inventory_hostname }}/ntfy"
+monitoring_ntfy_topic_critical: lab-critical
+monitoring_ntfy_topic_warning: lab-warning
+# Warnings are held and sent only in this window, as a morning digest. In UTC, so it needs
+# no time zone data in the image: 02:30 to 03:30 UTC is 08:00 to 09:00 in India.
+monitoring_warning_window_utc: {start: "02:30", end: "03:30"}
 
 # What is scraped: node_exporter on every host of the inventory group node_exporter, and on
 # the Proxmox host, by their lab addresses. The secrets enclave runs none: nothing may reach in.

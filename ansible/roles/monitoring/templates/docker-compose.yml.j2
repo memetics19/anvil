@@ -63,7 +63,38 @@ services:
     depends_on: [victoriametrics]
     mem_limit: {{ monitoring_grafana_mem_limit }}
 
+  vmalert:
+    image: {{ monitoring_vmalert_image }}
+    container_name: vmalert
+    restart: unless-stopped
+    command:
+      - -datasource.url=http://victoriametrics:8428
+      - -remoteRead.url=http://victoriametrics:8428
+      - -remoteWrite.url=http://victoriametrics:8428
+      - -notifier.url=http://alertmanager:9093
+      - -rule=/etc/vmalert/rules/*.yml
+      - -evaluationInterval={{ monitoring_rules_interval }}
+      - -external.url={{ monitoring_grafana_url }}
+    volumes:
+      - ./rules:/etc/vmalert/rules:ro
+    depends_on: [victoriametrics, alertmanager]
+    mem_limit: {{ monitoring_vmalert_mem_limit }}
+
+  alertmanager:
+    image: {{ monitoring_alertmanager_image }}
+    container_name: alertmanager
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.external-url={{ monitoring_grafana_url }}/alertmanager
+    volumes:
+      - ./alertmanager:/etc/alertmanager:ro
+      - alertmanager-data:/alertmanager
+    mem_limit: {{ monitoring_alertmanager_mem_limit }}
+
 volumes:
   victoriametrics-data:
+  alertmanager-data:
   vmagent-data:
   grafana-data:
