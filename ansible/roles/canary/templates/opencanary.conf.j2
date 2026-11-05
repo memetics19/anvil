@@ -1,0 +1,52 @@
+{#- Managed by anvil (role canary). JSON, built here so it is always valid. -#}
+{%- set c = {
+  "device.node_id": canary_node_id,
+  "ip.ignorelist": [],
+  "logtype.ignorelist": [],
+  "logger": {
+    "class": "PyLogger",
+    "kwargs": {
+      "formatters": {"plain": {"format": "%(message)s"}},
+      "handlers": {
+        "console": {"class": "logging.StreamHandler", "stream": "ext://sys.stdout"},
+        "ntfy": {
+          "class": "opencanary.logger.WebhookHandler",
+          "url": canary_ntfy.url,
+          "method": "POST",
+          "data": "%(message)s",
+          "status_code": 200,
+          "headers": {
+            "Authorization": "Bearer " ~ canary_ntfy.token,
+            "Title": "Tripwire: someone touched " ~ canary_node_id,
+            "Priority": "5",
+            "Tags": "rotating_light"
+          }
+        }
+      }
+    }
+  },
+  "portscan.enabled": true,
+  "portscan.logfile": "/var/log/kern.log",
+  "portscan.synrate": 5,
+  "portscan.nmaposrate": 5,
+  "portscan.lorate": 3,
+  "portscan.ignore_localhost": true,
+  "portscan.ignore_ports": [],
+  "ftp.enabled": "ftp" in canary_services, "ftp.port": canary_services.ftp | default(21), "ftp.banner": "FTP server ready",
+  "telnet.enabled": "telnet" in canary_services, "telnet.port": canary_services.telnet | default(23), "telnet.banner": "", "telnet.honeycreds": [],
+  "http.enabled": "http" in canary_services, "http.port": canary_services.http | default(80), "http.banner": "Apache/2.4.58 (Ubuntu)", "http.skin": "nasLogin",
+  "http.log_unimplemented_method_requests": false, "http.log_redirect_request": false,
+  "https.enabled": false,
+  "httpproxy.enabled": false,
+  "ssh.enabled": "ssh" in canary_services, "ssh.port": canary_services.ssh | default(2222), "ssh.version": "SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10",
+  "mysql.enabled": "mysql" in canary_services, "mysql.port": canary_services.mysql | default(3306), "mysql.banner": "8.0.36-0ubuntu0.22.04.1",
+  "mssql.enabled": "mssql" in canary_services, "mssql.port": canary_services.mssql | default(1433), "mssql.version": "2012",
+  "rdp.enabled": "rdp" in canary_services, "rdp.port": canary_services.rdp | default(3389),
+  "vnc.enabled": "vnc" in canary_services, "vnc.port": canary_services.vnc | default(5900),
+  "redis.enabled": "redis" in canary_services, "redis.port": canary_services.redis | default(6379),
+  "tftp.enabled": "tftp" in canary_services, "tftp.port": canary_services.tftp | default(69),
+  "snmp.enabled": "snmp" in canary_services, "snmp.port": canary_services.snmp | default(161),
+  "git.enabled": false, "ntp.enabled": false, "sip.enabled": false, "smb.enabled": false,
+  "tcpbanner.enabled": false, "llmnr.enabled": false
+} -%}
+{{ c | to_nice_json(indent=2) }}

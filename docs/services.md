@@ -291,8 +291,19 @@ Then add `/mnt/media/movies` and `/mnt/media/tv` as libraries in Jellyfin.
 ### Media over SMB (VLC on phones and TVs)
 
 `make vm HOST=ragnarok ARGS="--tags smb_media"` shares `Movies` and `TV` read-only over
-SMB, as a guest with no password (role `smb_media`). VLC on Android finds it under Local
-Network at home, which NFS often does not.
+SMB (role `smb_media`). VLC on Android finds it under Local Network at home, which NFS often
+does not.
+
+Two ways in, both read-only:
+
+- **The user `media`**, for VLC on Android. Its password is in Vault, `kv/homelab/ragnarok/smb`
+  (key `password`), generated there by the first run. Copy it to the clipboard without
+  showing it: `vault kv get -mount=kv -field=password homelab/ragnarok/smb | pbcopy`.
+- **A guest**, for the Mac's Finder: user `guest`, no password.
+
+VLC on Android needs the user. It signs every request, and a guest session has no key to
+check a signature with, so Samba drops the connection (`smb2_signing_check_pdu` in its log)
+and VLC asks for a login again and again. The user has a key.
 
 Who may connect, by Samba's `hosts allow` and the `anvil_smb_guard` firewall table:
 
@@ -309,9 +320,9 @@ Which address to open in VLC:
   No VPN route reaches the home address, and Local Network discovery does not cross the
   VPN.
 
-NetBird's cloud route for the lab's /16 masquerades. A phone on the VPN reaches ragnarok as
-the netbird VM's lab address, not its own NetBird address (a packet capture on ragnarok
-showed it). So that address is a reader, and every peer NetBird's access policy lets onto
+NetBird's routes for the lab's /16 masquerade. A phone on the VPN reaches ragnarok as the
+lab address of the routing peer it went through (the netbird VM or the Proxmox host), not its
+own NetBird address (a packet capture on ragnarok showed it). So that address is a reader, and every peer NetBird's access policy lets onto
 the lab route can read the shares, as every device on the home Wi-Fi can.
 
 ## netbird
@@ -1120,6 +1131,43 @@ age -d -i <(security find-generic-password -s homelab -a backup-age-identity -w)
     sudo docker start authentik-server authentik-worker'
 make vm HOST=identity ARGS="--tags authentik"   # checks /-/health/ready/
 ```
+
+## Tripwire (OpenCanary)
+
+A small VM on the second node, `canary`, runs OpenCanary (role `canary`,
+`terraform/vm_canary.tf`). It looks like a forgotten NAS: FTP, Telnet, a web login page, SSH
+on 2222, MySQL, SQL Server, RDP, VNC, Redis, TFTP and SNMP. Nothing legitimate ever talks to
+it. So any connection, login attempt or port scan sends an ntfy message at once, with the
+source address and what it tried. It catches what nightly checks miss: someone, or something,
+looking around the network right now.
+
+The real SSH stays on port 22 for the admin sources and the VPN routers only. Anyone else gets
+no answer there. A changed rule goes in with a timed rollback, so a mistake cannot lock you
+out for more than two minutes.
+
+One-time setup, before the first apply:
+
+1. Add the VM to the site dict in Vault, with an address nothing uses
+   (`site.hosts.canary`, shaped like `site/site.example.yml`), then `anvil apply tf`.
+2. Give it a write-only ntfy user and keep its token in Vault. On the netbird VM:
+
+   ```sh
+   docker exec -it ntfy ntfy user add canary
+   docker exec ntfy ntfy access canary canary write-only
+   docker exec ntfy ntfy access <your ntfy user> canary read-only
+   ```
+
+   Then pipe its token into Vault, so it never shows or lands in a shell history:
+
+   ```sh
+   ssh <netbird VM> docker exec ntfy ntfy token add canary | awk '{print $2}' |
+     vault kv put -mount=kv homelab/canary/ntfy url=https://ntfy.<domain>/canary token=-
+   ```
+
+3. `anvil apply canary`, and subscribe to the `canary` topic in the ntfy app.
+
+Test it: `nc -vz <canary address> 21` from the Mac. A message arrives within seconds. The
+security audit's scans trip it too, which is the point.
 
 ## Host hardening
 
