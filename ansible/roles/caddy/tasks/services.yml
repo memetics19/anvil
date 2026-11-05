@@ -38,6 +38,19 @@
     caddy_sso_auth: "{{ caddy_routes | selectattr('name', 'equalto', caddy_sso_route) | rejectattr('static', 'defined') | first }}"
   no_log: true
 
+# Anubis on the routes (caddy_anubis_*): an entry's own `anubis` wins, else every route not
+# in caddy_anubis_exempt.
+- name: Anubis on the routes
+  ansible.builtin.set_fact:
+    caddy_routes: >-
+      {%- set out = [] -%}
+      {%- for r in caddy_routes -%}
+      {%- set _ = out.append(r | combine({'anubis': caddy_anubis_enabled | bool
+            and (r.anubis | default(r.name not in caddy_anubis_exempt)) is sameas true})) -%}
+      {%- endfor -%}
+      {{ out }}
+  no_log: true
+
 - name: Proxied and static routes
   ansible.builtin.set_fact:
     caddy_proxied: "{{ caddy_routes | rejectattr('static', 'defined') | list }}"

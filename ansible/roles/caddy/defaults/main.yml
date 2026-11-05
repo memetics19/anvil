@@ -94,6 +94,29 @@ caddy_sso_route: auth
 #   tv            the TV app on the Fire TV has no browser login
 caddy_sso_exempt: [auth, pass, vault, pulse, ntfy, gotify, tv]
 
+# Anubis (TecharoHQ/anubis) in front of the routes: a browser solves a small proof-of-work
+# check once, then a signed cookie lets it through for a week on every name under the domain.
+# Its default policy weighs each request: known AI crawlers are refused, a client that says
+# it is a browser (Mozilla, Opera) is challenged, anything else (phone apps, scripts, API
+# clients, Homepage's widgets) passes. One Anubis serves every route: the public listener
+# checks the operator-only sources first (it sees the real client), Anubis hands the request
+# on to Caddy's internal listener (caddy_anubis_backend_port), which holds the route itself.
+# Anubis has its own Docker network, which Caddy joins: never Caddy's gateway network, the
+# only one the secrets enclave admits. Each entry's `anubis: true|false` wins; otherwise
+# every route is in, except:
+#   auth          Authentik itself (its login flow and API)
+#   pass, vault   the secrets enclave: the Bitwarden extension and desktop app say they are
+#                 browsers but cannot solve a challenge
+#   tv            the TV players on the Fire TV
+caddy_anubis_enabled: true
+caddy_anubis_exempt: [auth, pass, vault, tv]
+caddy_anubis_image: ghcr.io/techarohq/anubis:v1.28.2@sha256:5fcbce70ee6168be5b226d19bec90111d0acd0daf13028fa06b044cf3ebbbd5f
+caddy_anubis_upstream: http://anubis:8923
+caddy_anubis_backend_port: 8090
+caddy_anubis_mem_limit: 64m
+# The routes behind it (tasks/services.yml sets `anubis` on each route).
+caddy_anubis_routes: "{{ caddy_routes | default([]) | selectattr('anubis', 'defined') | selectattr('anubis') | list }}"
+
 # CA certificates (public) for upstreams with `upstream_ca`, copied from the controller.
 # Vault's own CA (fetched by the vault_server role), not $VAULT_CACERT: that one may point
 # at a public bundle when the operator reaches Vault through the gateway (HOMELAB_VAULT_CACERT).
