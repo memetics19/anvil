@@ -64,6 +64,8 @@ check "grafana resolves Authentik's name to the gateway" \
   "grep -A12 '^  grafana:' \$c | grep -q 'auth.lab.example.com:192.0.2.121'"
 # vmalert, Grafana and Wazuh post to /api/v2 at the root: the API must stay there.
 check "alertmanager serves its API at the root" "grep -q -- '--web.route-prefix=/\$' \$c"
+check "the Lab dashboard is the home page" \
+  "grep -q 'GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/lab.json' \$c && [ -f $r/files/dashboards/lab.json ]"
 check "every image is pinned to a digest" \
   "[ \"\$(grep -cE '^\s+image: ' $c)\" = 6 ] && ! grep -E '^\s+image: ' $c | grep -v '@sha256:'"
 check "only Grafana and Alertmanager's API are published, on the lab address" \
