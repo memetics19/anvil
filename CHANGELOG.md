@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.1](https://github.com/memetics19/anvil/compare/v0.29.0...v0.29.1) (2026-11-05)
+
+
+### Bug Fixes
+
+* **authentik:** Postgres gets 512 MB, it was killed applying a blueprint ([#205](https://github.com/memetics19/anvil/issues/205)) ([8b7cdb4](https://github.com/memetics19/anvil/commit/8b7cdb4d0e8134167c4cf0994557644b8b853f68))
+
 ## [0.29.0](https://github.com/memetics19/anvil/compare/v0.28.0...v0.29.0) (2026-11-05)
 
 
