@@ -1,0 +1,242 @@
+# --- Secrets ---------------------------------------------------------------------------------
+# vault kv get exits 2 only when the path is absent. Any other failure stops the run, so a
+# read that failed is never taken for "nothing there" and overwritten.
+- name: Grafana's admin password in Vault
+  ansible.builtin.command:
+    argv: [vault, kv, get, -format=json, "-mount={{ monitoring_vault_mount }}", "{{ monitoring_vault_path }}"]
+  delegate_to: localhost
+  become: false
+  register: monitoring_vault_get
+  changed_when: false
+  check_mode: false
+  failed_when: monitoring_vault_get.rc not in [0, 2]
+  no_log: true
+
+- name: The password Vault holds
+  ansible.builtin.set_fact:
+    monitoring_vault_password: >-
+      {{ ((monitoring_vault_get.stdout | from_json).data.data.admin_password | default(''))
+         if monitoring_vault_get.rc == 0 else '' }}
+  no_log: true
+
+- name: The password to use, or a new one
+  ansible.builtin.set_fact:
+    monitoring_secrets:
+      admin_password: >-
+        {{ monitoring_vault_password if monitoring_vault_password | length > 0
+           else lookup('ansible.builtin.password', '/dev/null length=28 chars=ascii_letters,digits') }}
+  no_log: true
+
+- name: Write a new password into Vault
+  ansible.builtin.command:
+    argv: [vault, kv, "{{ 'patch' if monitoring_vault_get.rc == 0 else 'put' }}",
+           "-mount={{ monitoring_vault_mount }}", "{{ monitoring_vault_path }}", "-"]
+    stdin: "{{ monitoring_vault_doc | to_json }}"
+  vars:
+    monitoring_vault_doc: "{{ dict(['admin_password'] | zip([monitoring_secrets.admin_password])) }}"
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  no_log: true
+  when: monitoring_vault_password | length == 0 and not ansible_check_mode
+
+- name: Grafana's Authentik client secret (role authentik writes it)
+  ansible.builtin.set_fact:
+    monitoring_oidc_secret: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', monitoring_authentik_vault_path,
+                 engine_mount_point=monitoring_vault_mount,
+                 url=lookup('env', 'VAULT_ADDR'),
+                 token=lookup('env', 'VAULT_TOKEN'),
+                 ca_cert=lookup('env', 'VAULT_CACERT')).secret.grafana_client_secret) | default('') }}
+  no_log: true
+
+- name: It is there
+  ansible.builtin.assert:
+    that: monitoring_oidc_secret | length > 0
+    fail_msg: >-
+      kv/{{ monitoring_authentik_vault_path }} has no grafana_client_secret: apply Authentik
+      first (anvil apply identity --tags authentik), with grafana in site.services.
+    quiet: true
+
+- name: Alertmanager's ntfy address and token, from Vault
+  ansible.builtin.set_fact:
+    monitoring_ntfy: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', monitoring_ntfy_vault_path,
+                engine_mount_point=monitoring_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT'), errors='ignore') | default({}, true) }}
+  no_log: true
+
+- name: Both are set
+  ansible.builtin.assert:
+    that:
+      - (monitoring_ntfy.secret.url | default('')) is match('https?://')
+      - (monitoring_ntfy.secret.token | default('')) | length > 0
+    fail_msg: "kv/{{ monitoring_ntfy_vault_path }} needs url and token (docs/monitoring.md, Alerts)"
+    quiet: true
+
+- name: Just the secret
+  ansible.builtin.set_fact:
+    monitoring_ntfy: "{{ monitoring_ntfy.secret }}"
+  no_log: true
+
+- name: Wazuh | the read-only user's password (role wazuh_server writes it)
+  ansible.builtin.set_fact:
+    monitoring_wazuh_reader: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', monitoring_wazuh_vault_path,
+                engine_mount_point=monitoring_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret.grafana_reader }}
+  no_log: true
+  when: monitoring_wazuh_host | length > 0
+
+- name: Wazuh | its CA, to check the indexer's certificate
+  ansible.builtin.slurp:
+    src: "{{ monitoring_wazuh_ca }}"
+  delegate_to: "{{ monitoring_wazuh_host }}"
+  become: true
+  register: monitoring_wazuh_ca_read
+  when: monitoring_wazuh_host | length > 0
+
+- name: Wazuh | the CA as text
+  ansible.builtin.set_fact:
+    monitoring_wazuh_ca_pem: "{{ monitoring_wazuh_ca_read.content | b64decode | trim }}"
+  when: monitoring_wazuh_host | length > 0
+
+# --- Files -----------------------------------------------------------------------------------
+- name: Folders
+  ansible.builtin.file:
+    path: "{{ monitoring_dir }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: ["", grafana, grafana/provisioning, grafana/provisioning/datasources,
+         grafana/provisioning/dashboards, grafana/dashboards, rules, alertmanager]
+
+- name: What vmagent scrapes
+  ansible.builtin.template:
+    src: scrape.yml.j2
+    dest: "{{ monitoring_dir }}/scrape.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload vmagent
+
+# Grafana runs as uid 472. The file holds the Wazuh reader's password: for Grafana alone.
+- name: Grafana's data sources
+  ansible.builtin.template:
+    src: datasources.yml.j2
+    dest: "{{ monitoring_dir }}/grafana/provisioning/datasources/anvil.yml"
+    owner: "472"
+    group: "472"
+    mode: "0400"
+  no_log: true
+  notify: Restart grafana
+
+- name: How the blackbox exporter checks
+  ansible.builtin.template:
+    src: blackbox.yml.j2
+    dest: "{{ monitoring_dir }}/blackbox.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload blackbox
+
+- name: Grafana's dashboard provider
+  ansible.builtin.template:
+    src: dashboards.yml.j2
+    dest: "{{ monitoring_dir }}/grafana/provisioning/dashboards/anvil.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart grafana
+
+# Every dashboard is a file here (files/dashboards).
+- name: The dashboards
+  ansible.builtin.copy:
+    src: dashboards/
+    dest: "{{ monitoring_dir }}/grafana/dashboards/"
+    owner: root
+    group: root
+    mode: "0644"
+    directory_mode: "0755"
+
+# Each rule file is checked by vmalert itself before it goes in.
+- name: The alert rules
+  ansible.builtin.copy:
+    src: "rules/{{ item | basename }}"
+    dest: "{{ monitoring_dir }}/rules/{{ item | basename }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "docker run --rm -v %s:/rules.yml:ro {{ monitoring_vmalert_image }} -rule=/rules.yml -dryRun"
+  loop: "{{ lookup('ansible.builtin.fileglob', role_path ~ '/files/rules/*.yml', wantlist=True) }}"
+  notify: Reload vmalert
+
+- name: Alertmanager's routes
+  ansible.builtin.template:
+    src: alertmanager.yml.j2
+    dest: "{{ monitoring_dir }}/alertmanager/alertmanager.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload alertmanager
+
+# Alertmanager runs as nobody (65534): the token is readable by it alone.
+- name: Alertmanager's ntfy token
+  ansible.builtin.copy:
+    content: "{{ monitoring_ntfy.token }}"
+    dest: "{{ monitoring_dir }}/alertmanager/ntfy-token"
+    owner: "65534"
+    group: "65534"
+    mode: "0400"
+  no_log: true
+  notify: Reload alertmanager
+
+# --- The stack -------------------------------------------------------------------------------
+- name: Monitoring compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ monitoring_dir }}"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yml.j2') }}"
+    compose_project_mode: "0600"
+    # Holds Grafana's secrets and the VM's address: keep it out of --diff output.
+    compose_project_diff: false
+
+- name: Flush a reload or restart now
+  ansible.builtin.meta: flush_handlers
+
+- name: VictoriaMetrics answers
+  ansible.builtin.command:
+    argv: [docker, exec, grafana, wget, -qO-, http://victoriametrics:8428/health]
+  register: monitoring_vm_health
+  changed_when: false
+  retries: 20
+  delay: 3
+  until: monitoring_vm_health.rc == 0
+  when: not ansible_check_mode
+
+- name: Grafana answers
+  ansible.builtin.uri:
+    url: "http://{{ monitoring_bind_ip }}:{{ monitoring_grafana_port }}/api/health"
+    status_code: 200
+  register: monitoring_grafana_health
+  retries: 30
+  delay: 3
+  until: monitoring_grafana_health.status == 200
+  when: not ansible_check_mode
+
+- name: The alert services answer (vmalert, Alertmanager)
+  ansible.builtin.command:
+    argv: [docker, exec, grafana, wget, -qO-, "{{ item }}"]
+  loop: [http://vmalert:8880/health, http://alertmanager:9093/-/ready]
+  register: monitoring_alerting_health
+  changed_when: false
+  retries: 20
+  delay: 3
+  until: monitoring_alerting_health.rc == 0
+  when: not ansible_check_mode

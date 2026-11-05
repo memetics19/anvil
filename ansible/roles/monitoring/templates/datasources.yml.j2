@@ -1,0 +1,44 @@
+# Managed by anvil (role monitoring). VictoriaMetrics (Prometheus's query API) for the
+# dashboards, Alertmanager, where Grafana shows the alerts and sets silences, and Wazuh's
+# alerts, read-only. Readable by Grafana alone: it holds the Wazuh reader's password.
+apiVersion: 1
+datasources:
+  - name: VictoriaMetrics
+    uid: victoriametrics
+    type: prometheus
+    access: proxy
+    url: http://victoriametrics:8428
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: {{ monitoring_scrape_interval }}
+  - name: Alertmanager
+    uid: alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    editable: false
+    jsonData:
+      implementation: prometheus
+{% if monitoring_wazuh_reader is defined %}
+  - name: Wazuh
+    uid: wazuh
+    type: grafana-opensearch-datasource
+    access: proxy
+    url: "https://{{ site.hosts[monitoring_wazuh_host].ip }}:9200"
+    basicAuth: true
+    basicAuthUser: grafana
+    editable: false
+    jsonData:
+      database: "wazuh-alerts-*"
+      timeField: timestamp
+      flavor: opensearch
+      version: "2.19.0"
+      maxConcurrentShardRequests: 5
+      tlsAuthWithCACert: true
+      serverName: wazuh.indexer
+    secureJsonData:
+      basicAuthPassword: "{{ monitoring_wazuh_reader }}"
+      tlsCACert: |
+        {{ monitoring_wazuh_ca_pem | indent(8) }}
+{% endif %}

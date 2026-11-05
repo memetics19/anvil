@@ -1186,8 +1186,13 @@ What anvil changes from the upstream deployment:
   root only.
 - Agents enroll with the `enrollment` password. Upstream lets any host enroll.
 - The indexer keeps only the two users the stack needs. The demo users are gone.
-- Only the dashboard (443) and the agent ports (1514, 1515) are published, on the lab address.
-  The dashboard answers only the gateway, Pulse and the admin sources (`port_guard`).
+- Published on the lab address: the dashboard (443), the agent ports (1514, 1515) and the
+  indexer (9200). The dashboard and the indexer answer only the gateway, Pulse, the admin
+  sources and the monitoring VM (`port_guard`).
+- Grafana on the monitoring VM reads the alerts as the read-only indexer user `grafana`
+  (password `grafana_reader`), and every alert of level 10 and up goes to Alertmanager there
+  (`custom-alertmanager`). Security and monitoring share one screen and one alert path
+  ([monitoring.md](monitoring.md#security-wazuh-in-grafana)).
 
 One-time setup:
 

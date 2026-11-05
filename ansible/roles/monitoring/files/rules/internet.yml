@@ -1,0 +1,33 @@
+# Managed by anvil (role monitoring). The internet, as the blackbox exporter sees it from the
+# monitoring VM (docs/monitoring.md, Internet). An outage cannot be pushed while it lasts:
+# ntfy is out there too. The message comes when the line is back, and the outage is on the
+# Internet dashboard either way.
+groups:
+  - name: internet
+    rules:
+      - alert: RouterDown
+        expr: probe_success{job="ping",probe="router"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "The home router does not answer"
+          description: "Ping to the home router has failed for 2 minutes. The router, its power or the network to it is down."
+          runbook: "https://memetics19.github.io/anvil/monitoring/#routerdown"
+
+      - alert: InternetDown
+        expr: max(probe_success{job="ping",scope="internet"}) == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "The internet is down"
+          description: "Not one public address has answered a ping for 2 minutes, while the router answers: the ISP's side is down."
+          runbook: "https://memetics19.github.io/anvil/monitoring/#internetdown"
+
+      - alert: InternetFlaky
+        expr: 100 * (1 - avg(avg_over_time(probe_success{job="ping",scope="internet"}[15m]))) > 5
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "The internet loses packets"
+          description: "{{ $value | printf \"%.1f\" }}% of pings to public addresses failed over the last 15 minutes."
+          runbook: "https://memetics19.github.io/anvil/monitoring/#internetflaky"

@@ -1,0 +1,7 @@
+#!/bin/sh
+# Managed by anvil (role wazuh_server). Wazuh's integration wrapper: runs custom-alertmanager.py,
+# next to it, with Wazuh's own Python.
+WPYTHON_BIN="framework/python/bin/python3"
+DIR_NAME="$(cd "$(dirname "$0")" && pwd -P)"
+WAZUH_PATH="${WAZUH_PATH:-$(cd "${DIR_NAME}/.." && pwd)}"
+exec "${WAZUH_PATH}/${WPYTHON_BIN}" "${DIR_NAME}/$(basename "$0").py" "$@"

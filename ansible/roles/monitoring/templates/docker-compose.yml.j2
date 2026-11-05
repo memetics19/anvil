@@ -1,0 +1,118 @@
+{# Managed by anvil (role monitoring). Root only: it holds Grafana's secrets. #}
+services:
+  victoriametrics:
+    image: {{ monitoring_victoriametrics_image }}
+    container_name: victoriametrics
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/storage
+      - -retentionPeriod={{ monitoring_retention }}
+      - -httpListenAddr=:8428
+    volumes:
+      - victoriametrics-data:/storage
+    mem_limit: {{ monitoring_victoriametrics_mem_limit }}
+
+  vmagent:
+    image: {{ monitoring_vmagent_image }}
+    container_name: vmagent
+    restart: unless-stopped
+    command:
+      - -promscrape.config=/etc/vmagent/scrape.yml
+      - -remoteWrite.url=http://victoriametrics:8428/api/v1/write
+      - -remoteWrite.tmpDataPath=/vmagent-data
+    volumes:
+      - ./scrape.yml:/etc/vmagent/scrape.yml:ro
+      - vmagent-data:/vmagent-data
+    depends_on: [victoriametrics]
+    mem_limit: {{ monitoring_vmagent_mem_limit }}
+
+  grafana:
+    image: {{ monitoring_grafana_image }}
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "{{ monitoring_bind_ip }}:{{ monitoring_grafana_port }}:3000"
+    environment:
+      GF_SERVER_ROOT_URL: "{{ monitoring_grafana_url }}/"
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: "{{ monitoring_secrets.admin_password }}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # Log in through Authentik. Whoever Authentik lets into this app is an administrator:
+      # its policy admits only the single sign-on group.
+      GF_AUTH_GENERIC_OAUTH_ENABLED: "true"
+      GF_AUTH_GENERIC_OAUTH_NAME: Authentik
+      GF_AUTH_GENERIC_OAUTH_CLIENT_ID: "{{ monitoring_oidc_client_id }}"
+      GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: "{{ monitoring_oidc_secret }}"
+      GF_AUTH_GENERIC_OAUTH_SCOPES: openid profile email
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: "{{ monitoring_authentik_url }}/application/o/authorize/"
+      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: "{{ monitoring_authentik_url }}/application/o/token/"
+      GF_AUTH_GENERIC_OAUTH_API_URL: "{{ monitoring_authentik_url }}/application/o/userinfo/"
+      GF_AUTH_GENERIC_OAUTH_LOGIN_ATTRIBUTE_PATH: preferred_username
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: "'Admin'"
+      GF_AUTH_SIGNOUT_REDIRECT_URL: "{{ monitoring_authentik_url }}/application/o/{{ monitoring_oidc_client_id }}/end-session/"
+      GF_AUTH_OAUTH_AUTO_LOGIN: "true"
+      # Nothing phones home.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      # Plugins at pinned versions, installed when Grafana starts.
+      GF_PLUGINS_PREINSTALL_SYNC: "{{ monitoring_grafana_plugins | join(',') }}"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on: [victoriametrics]
+    mem_limit: {{ monitoring_grafana_mem_limit }}
+
+  vmalert:
+    image: {{ monitoring_vmalert_image }}
+    container_name: vmalert
+    restart: unless-stopped
+    command:
+      - -datasource.url=http://victoriametrics:8428
+      - -remoteRead.url=http://victoriametrics:8428
+      - -remoteWrite.url=http://victoriametrics:8428
+      - -notifier.url=http://alertmanager:9093
+      - -rule=/etc/vmalert/rules/*.yml
+      - -evaluationInterval={{ monitoring_rules_interval }}
+      - -external.url={{ monitoring_grafana_url }}
+    volumes:
+      - ./rules:/etc/vmalert/rules:ro
+    depends_on: [victoriametrics, alertmanager]
+    mem_limit: {{ monitoring_vmalert_mem_limit }}
+
+  alertmanager:
+    image: {{ monitoring_alertmanager_image }}
+    container_name: alertmanager
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.external-url={{ monitoring_grafana_url }}/alertmanager
+    volumes:
+      - ./alertmanager:/etc/alertmanager:ro
+      - alertmanager-data:/alertmanager
+    # Wazuh posts its alerts here (role wazuh_server). Guarded by port_guard.
+    ports:
+      - "{{ monitoring_bind_ip }}:{{ monitoring_alertmanager_port }}:9093"
+    mem_limit: {{ monitoring_alertmanager_mem_limit }}
+
+  blackbox:
+    image: {{ monitoring_blackbox_image }}
+    container_name: blackbox
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+    volumes:
+      - ./blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    # Ping without raw sockets: unprivileged ICMP for every group in the container.
+    sysctls:
+      net.ipv4.ping_group_range: "0 2147483647"
+    mem_limit: {{ monitoring_blackbox_mem_limit }}
+
+volumes:
+  victoriametrics-data:
+  alertmanager-data:
+  vmagent-data:
+  grafana-data:

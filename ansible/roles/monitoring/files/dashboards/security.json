@@ -1,0 +1,657 @@
+{
+   "description": "Wazuh's alerts: how many, how serious, which rules and hosts, failed logins, changed files and vulnerabilities. Managed by anvil: change dashboards/security.jsonnet.",
+   "editable": false,
+   "panels": [
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 1
+                     }
+                  ]
+               },
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 8,
+            "x": 0,
+            "y": 0
+         },
+         "id": 1,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "sum"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "timestamp",
+                     "id": "2",
+                     "settings": {
+                        "interval": "auto",
+                        "min_doc_count": "0"
+                     },
+                     "type": "date_histogram"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "rule.level:>=10",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Alerts, level 10 and up",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     },
+                     {
+                        "color": "red",
+                        "value": 1
+                     }
+                  ]
+               },
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 8,
+            "x": 8,
+            "y": 0
+         },
+         "id": 2,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "sum"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "timestamp",
+                     "id": "2",
+                     "settings": {
+                        "interval": "auto",
+                        "min_doc_count": "0"
+                     },
+                     "type": "date_histogram"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "rule.level:>=12",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Critical, level 12 and up",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 8,
+            "x": 16,
+            "y": 0
+         },
+         "id": 3,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [ ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "field": "agent.name",
+                     "id": "1",
+                     "type": "cardinality"
+                  }
+               ],
+               "query": "*",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Hosts reporting",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 5
+         },
+         "id": 4,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "rule.level",
+                     "id": "3",
+                     "settings": {
+                        "min_doc_count": "1",
+                        "order": "desc",
+                        "orderBy": "_count",
+                        "size": "16"
+                     },
+                     "type": "terms"
+                  },
+                  {
+                     "field": "timestamp",
+                     "id": "2",
+                     "settings": {
+                        "interval": "auto",
+                        "min_doc_count": "0"
+                     },
+                     "type": "date_histogram"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "rule.level:>=3",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Alerts by level",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 13
+         },
+         "id": 5,
+         "options": {
+            "showHeader": true,
+            "sortBy": [
+               {
+                  "desc": true,
+                  "displayName": "Count"
+               }
+            ]
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "rule.description",
+                     "id": "3",
+                     "settings": {
+                        "min_doc_count": "1",
+                        "order": "desc",
+                        "orderBy": "_count",
+                        "size": "15"
+                     },
+                     "type": "terms"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "rule.level:>=5",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Top rules",
+         "type": "table"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 13
+         },
+         "id": 6,
+         "options": {
+            "showHeader": true,
+            "sortBy": [
+               {
+                  "desc": true,
+                  "displayName": "Count"
+               }
+            ]
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "agent.name",
+                     "id": "3",
+                     "settings": {
+                        "min_doc_count": "1",
+                        "order": "desc",
+                        "orderBy": "_count",
+                        "size": "15"
+                     },
+                     "type": "terms"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "rule.level:>=5",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Top hosts",
+         "type": "table"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 21
+         },
+         "id": 7,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "agent.name",
+                     "id": "3",
+                     "settings": {
+                        "min_doc_count": "1",
+                        "order": "desc",
+                        "orderBy": "_count",
+                        "size": "10"
+                     },
+                     "type": "terms"
+                  },
+                  {
+                     "field": "timestamp",
+                     "id": "2",
+                     "settings": {
+                        "interval": "auto",
+                        "min_doc_count": "0"
+                     },
+                     "type": "date_histogram"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "rule.groups:(authentication_failed OR authentication_failures)",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Failed logins",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 21
+         },
+         "id": 8,
+         "options": {
+            "showHeader": true,
+            "sortBy": [
+               {
+                  "desc": true,
+                  "displayName": "Count"
+               }
+            ]
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "syscheck.path",
+                     "id": "3",
+                     "settings": {
+                        "min_doc_count": "1",
+                        "order": "desc",
+                        "orderBy": "_count",
+                        "size": "20"
+                     },
+                     "type": "terms"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "rule.groups:syscheck",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Changed files",
+         "type": "table"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 29
+         },
+         "id": 9,
+         "options": {
+            "showHeader": true,
+            "sortBy": [
+               {
+                  "desc": true,
+                  "displayName": "Count"
+               }
+            ]
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "data.vulnerability.severity",
+                     "id": "3",
+                     "settings": {
+                        "min_doc_count": "1",
+                        "order": "desc",
+                        "orderBy": "_count",
+                        "size": "10"
+                     },
+                     "type": "terms"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "rule.groups:vulnerability-detector",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Vulnerabilities by severity",
+         "type": "table"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 29
+         },
+         "id": 10,
+         "options": {
+            "showHeader": true,
+            "sortBy": [
+               {
+                  "desc": true,
+                  "displayName": "Count"
+               }
+            ]
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "agent.name",
+                     "id": "3",
+                     "settings": {
+                        "min_doc_count": "1",
+                        "order": "desc",
+                        "orderBy": "_count",
+                        "size": "15"
+                     },
+                     "type": "terms"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "rule.groups:vulnerability-detector",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Vulnerable hosts",
+         "type": "table"
+      }
+   ],
+   "refresh": "1m",
+   "schemaVersion": 39,
+   "tags": [
+      "anvil",
+      "security",
+      "wazuh"
+   ],
+   "time": {
+      "from": "now-24h",
+      "to": "now"
+   },
+   "timezone": "browser",
+   "title": "Security",
+   "uid": "anvil-security"
+}

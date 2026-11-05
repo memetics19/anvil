@@ -36,3 +36,6 @@ completions/
 
 # the binary `go build` writes in cli/cmd/anvil/
 /cli/cmd/anvil/anvil
+
+# Grafonnet and its dependencies, fetched by jb install (make dashboards)
+dashboards/vendor/

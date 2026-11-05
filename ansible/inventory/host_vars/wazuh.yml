@@ -1,4 +1,7 @@
-# The Wazuh VM. Its dashboard (443) answers only the gateway, Pulse and the admin sources
+# The Wazuh VM. Its dashboard (443) and its indexer (9200) answer only the gateway, Pulse, the
+# admin sources and the monitoring VM, whose Grafana reads the alerts with a read-only user
 # (role port_guard). Agents' ports 1514 and 1515 stay open to every host.
-port_guard_ports: [443]
-port_guard_extra_sources: "{{ (site.admin_sources | default([])) + (site.admin_vpn_sources | default([])) }}"
+port_guard_ports: [443, 9200]
+port_guard_extra_sources: >-
+  {{ (site.admin_sources | default([])) + (site.admin_vpn_sources | default([]))
+     + ([site.hosts.monitoring.ip] if site.hosts.monitoring is defined else []) }}

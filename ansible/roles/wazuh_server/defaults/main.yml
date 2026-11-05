@@ -10,14 +10,23 @@ wazuh_server_certs_image: wazuh/wazuh-certs-generator:0.0.4@sha256:369b4d58509aa
 # The indexer's Java heap. Half of the VM's 8 GB goes to the indexer and its page cache.
 wazuh_server_indexer_heap: 2g
 # Published on the VM's lab address: agent events (1514) and enrollment (1515) for every
-# host, and the dashboard (443) for the gateway only (port_guard). The API (55000) and the
-# indexer (9200) stay inside the compose network.
+# host, the dashboard (443) for the gateway, and the indexer (9200) for Grafana on the
+# monitoring VM, both guarded (port_guard, host_vars/wazuh.yml). The API (55000) stays inside
+# the compose network.
 wazuh_server_bind_ip: "{{ site.hosts[inventory_hostname].ip }}"
 # Passwords, in Vault kv/homelab/wazuh. A missing one is generated and written there.
 #   indexer_admin  the dashboard login (user admin) and the manager's indexer user
 #   kibanaserver   the dashboard's own indexer user
 #   api            the dashboard's API user (wazuh-wui)
 #   enrollment     what an agent shows to enroll (role wazuh_agent reads it too)
+#   grafana_reader the read-only indexer user Grafana reads the alerts with (role monitoring)
 wazuh_server_vault_mount: kv
 wazuh_server_vault_path: homelab/wazuh
-wazuh_server_secret_keys: [indexer_admin, kibanaserver, api, enrollment]
+wazuh_server_secret_keys: [indexer_admin, kibanaserver, api, enrollment, grafana_reader]
+# Alerts of this level and above go to Alertmanager on the monitoring VM, so security alerts
+# reach the phone the same way as the others (docs/monitoring.md, WazuhAlert). Level 12 and
+# above are critical, below that warnings. Off when the lab has no monitoring VM.
+wazuh_server_alertmanager_level: 10
+wazuh_server_alertmanager_critical_level: 12
+wazuh_server_alertmanager_url: >-
+  {{ ('http://' ~ site.hosts.monitoring.ip ~ ':9093/api/v2/alerts') if site.hosts.monitoring is defined else '' }}
