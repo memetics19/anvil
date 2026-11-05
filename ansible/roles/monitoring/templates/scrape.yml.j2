@@ -1,0 +1,20 @@
+# Managed by anvil (role monitoring). What vmagent scrapes, every {{ monitoring_scrape_interval }}.
+global:
+  scrape_interval: {{ monitoring_scrape_interval }}
+
+scrape_configs:
+  # CPU, memory, disks and network of every host (node_exporter).
+  - job_name: node
+    static_configs:
+{% for t in monitoring_node_targets %}
+      - targets: ["{{ t.address }}"]
+        labels: {host: "{{ t.name }}"}
+{% endfor %}
+
+  # The stack itself.
+  - job_name: victoriametrics
+    static_configs:
+      - targets: ["victoriametrics:8428"]
+  - job_name: vmagent
+    static_configs:
+      - targets: ["localhost:8429"]

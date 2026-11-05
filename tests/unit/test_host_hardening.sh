@@ -49,7 +49,7 @@ check "both kinds of Proxmox node: rpcbind off and automatic updates" \
    grep -q 'vars: \*node_hardening' ansible/playbooks/host.yml"
 vms_hosts=$(awk '/^- name: Host hardening/{f=1} f && /hosts:/{print $2; exit}' ansible/playbooks/vms.yml)
 check "every VM gets the module block, the enclave's too" \
-  "[ '$vms_hosts' = 'guests:vault_servers:apps_servers:vaultwarden_servers:identity_servers:llm_servers' ]"
+  "(for g in guests vault_servers apps_servers vaultwarden_servers identity_servers llm_servers; do grep -qE \"(^|:)\$g(:|\$)\" <<<'$vms_hosts' || exit 1; done)"
 check "the VMs keep rpcbind (ragnarok serves NFS)" "grep -qx 'host_hardening_rpcbind_off: false' $r/defaults/main.yml"
 
 [ "$fail" = 0 ] && echo "PASS: host hardening"

@@ -1,0 +1,13 @@
+# Managed by anvil (role monitoring). Every dashboard is a JSON file in the repository
+# (roles/monitoring/files/dashboards). Edits in the UI cannot be saved: change the file.
+apiVersion: 1
+providers:
+  - name: anvil
+    folder: Lab
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 60
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

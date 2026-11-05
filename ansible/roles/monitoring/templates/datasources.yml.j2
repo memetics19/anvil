@@ -1,0 +1,13 @@
+# Managed by anvil (role monitoring). Grafana's one data source: VictoriaMetrics, which
+# speaks Prometheus's query API.
+apiVersion: 1
+datasources:
+  - name: VictoriaMetrics
+    uid: victoriametrics
+    type: prometheus
+    access: proxy
+    url: http://victoriametrics:8428
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: {{ monitoring_scrape_interval }}

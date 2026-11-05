@@ -1,0 +1,13 @@
+# vmagent reads its scrape config again on SIGHUP: no restart, no gap.
+- name: Reload vmagent
+  ansible.builtin.command:
+    argv: [docker, kill, -s, HUP, vmagent]
+  changed_when: true
+  when: not ansible_check_mode
+
+# A data source is read at start. Dashboards are read every minute without a restart.
+- name: Restart grafana
+  ansible.builtin.command:
+    argv: [docker, restart, grafana]
+  changed_when: true
+  when: not ansible_check_mode

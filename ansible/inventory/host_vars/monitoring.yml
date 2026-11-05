@@ -1,0 +1,4 @@
+# The monitoring VM. Grafana (3000) answers only the gateway, Pulse and the admin sources
+# (role port_guard).
+port_guard_ports: [3000]
+port_guard_extra_sources: "{{ (site.admin_sources | default([])) + (site.admin_vpn_sources | default([])) }}"

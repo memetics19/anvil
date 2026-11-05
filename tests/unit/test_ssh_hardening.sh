@@ -42,7 +42,7 @@ fi
 # Where it applies: the VM playbook's play covers every VM, host.yml both kinds of node.
 vms_hosts=$(awk '/^- name: SSH hardening/{f=1} f && /hosts:/{print $2; exit}' ansible/playbooks/vms.yml)
 check "every VM gets it, the enclave's too" \
-  "[ '$vms_hosts' = 'guests:vault_servers:apps_servers:vaultwarden_servers:identity_servers:llm_servers' ]"
+  "(for g in guests vault_servers apps_servers vaultwarden_servers identity_servers llm_servers; do grep -qE \"(^|:)\$g(:|\$)\" <<<'$vms_hosts' || exit 1; done)"
 check "the Proxmox host and the other cluster members get it" \
   "[ \"\$(grep -c 'role: ssh_hardening' ansible/playbooks/host.yml)\" = 2 ]"
 

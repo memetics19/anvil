@@ -1,0 +1,41 @@
+# Metrics, dashboards and (next) alerts for the lab (docs/monitoring.md), on the monitoring
+# VM: VictoriaMetrics stores, vmagent scrapes, Grafana shows. One compose project.
+monitoring_dir: /opt/monitoring
+monitoring_victoriametrics_image: victoriametrics/victoria-metrics:v1.155.0@sha256:f60dc268b54ecf87f6e09d740c2b732838aa9193090cc741417c9f6386a130df
+monitoring_vmagent_image: victoriametrics/vmagent:v1.155.0@sha256:8e3c03905be15bba8312d4868e8ae6f9fc2fefee0a41d544472034249ca42bb4
+monitoring_grafana_image: grafana/grafana:13.2.5@sha256:9f7aa1e1e3246aade5792d35a738049f7f32f89cd51d1956cf426a4e86268a84
+# How long the metrics are kept.
+monitoring_retention: 90d
+monitoring_scrape_interval: 30s
+# Grafana is the only port published, on the VM's lab address, for the gateway, Pulse and the
+# admin sources (port_guard, host_vars/monitoring.yml). VictoriaMetrics and vmagent talk
+# inside the compose network only.
+monitoring_bind_ip: "{{ site.hosts[inventory_hostname].ip }}"
+monitoring_grafana_port: 3000
+# Memory caps.
+monitoring_victoriametrics_mem_limit: 1g
+monitoring_vmagent_mem_limit: 256m
+monitoring_grafana_mem_limit: 512m
+
+# What is scraped: node_exporter on every host of the inventory group node_exporter, and on
+# the Proxmox host, by their lab addresses. The secrets enclave runs none: nothing may reach in.
+monitoring_node_targets: >-
+  {%- set out = [] -%}
+  {%- for h in groups['node_exporter'] | default([]) if site.hosts[h].ip is defined -%}
+  {%- set _ = out.append({'name': h, 'address': site.hosts[h].ip ~ ':9100'}) -%}
+  {%- endfor -%}
+  {%- set _ = out.append({'name': site.pve.hostname | default('pve'), 'address': site.pve.ip ~ ':9100'}) -%}
+  {{ out }}
+
+# Grafana's gateway name (site.services) and its login through Authentik (OpenID Connect).
+# Authentik's client is role authentik (client id grafana). Its secret is in Vault next to
+# Authentik's own, written by that role.
+monitoring_grafana_name: grafana
+monitoring_grafana_url: "https://{{ monitoring_grafana_name }}.{{ gateway_domain }}"
+monitoring_authentik_url: "https://{{ authentik_auth_name | default('auth') }}.{{ gateway_domain }}"
+monitoring_oidc_client_id: grafana
+monitoring_authentik_vault_path: "homelab/{{ groups['identity_servers'] | first | default('identity') }}/authentik"
+# Grafana's own admin login, for when Authentik is down: Vault kv/<path>, key admin_password,
+# generated there when missing.
+monitoring_vault_mount: kv
+monitoring_vault_path: "homelab/{{ inventory_hostname }}/grafana"
