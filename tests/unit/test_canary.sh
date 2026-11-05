@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The tripwire (role canary): its settings render to valid JSON with every fake service on and
-# port scan detection on, alerts go to ntfy with the token in a header and nothing ignored, the
+# port scan detection on, alerts go to ntfy with the token in a header, no source ignored (only
+# the start-up chatter and the real SSH port), the MySQL banner one OpenCanary accepts, the
 # real SSH guard admits only its sources, and the token is never in the repository. Needs no lab.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
@@ -40,7 +41,13 @@ check "every fake service is on" \
 check "the fake SSH is not on 22, the real one keeps it" "py 'sys.exit(0 if c[\"ssh.port\"] == 2222 else 1)'"
 check "port scans are detected from the kernel log" \
   "py 'sys.exit(0 if c[\"portscan.enabled\"] and c[\"portscan.logfile\"] == \"/var/log/kern.log\" else 1)'"
-check "nothing is ignored" "py 'sys.exit(0 if c[\"ip.ignorelist\"] == [] and c[\"logtype.ignorelist\"] == [] else 1)'"
+check "no source address is ever ignored" "py 'sys.exit(0 if c[\"ip.ignorelist\"] == [] else 1)'"
+check "only the start-up chatter (1001) is left out" "py 'sys.exit(0 if c[\"logtype.ignorelist\"] == [1001] else 1)'"
+check "the real SSH port is not a port scan, every fake port is" \
+  "py 'sys.exit(0 if c[\"portscan.ignore_ports\"] == [22] else 1)'"
+# OpenCanary refuses to start its fake MySQL unless the banner starts with 3, 4, 5 or 6.
+check "the MySQL banner is one OpenCanary accepts" \
+  "py 'import re; sys.exit(0 if re.search(r\"^[3456]\\.[-_~.+\\w]+$\", c[\"mysql.banner\"]) else 1)'"
 check "alerts go to the ntfy topic" \
   "py 'h=c[\"logger\"][\"kwargs\"][\"handlers\"][\"ntfy\"]; sys.exit(0 if h[\"url\"].endswith(\"/canary\") and h[\"class\"] == \"opencanary.logger.WebhookHandler\" else 1)'"
 check "the token is a header, at top priority" \
