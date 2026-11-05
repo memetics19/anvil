@@ -93,8 +93,11 @@ check "integration: it links to its fix and ends by itself" \
   "pj 'a=d[\"body\"][0]; assert a[\"annotations\"][\"runbook\"].endswith(\"#wazuhalert\") and a[\"endsAt\"] > a[\"startsAt\"]'"
 check "integration: level 11 is a warning" \
   "python3 -c 'import importlib.util,sys,datetime; s=importlib.util.spec_from_file_location(\"m\", sys.argv[1]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); assert m.to_alertmanager({\"rule\":{\"level\":11}}, 12, datetime.datetime.now(datetime.timezone.utc))[0][\"labels\"][\"severity\"]==\"warning\"' '$r/files/custom-alertmanager.py'"
-check "the files with passwords are root only" \
+check "the files with passwords are mode 600" \
   "grep -A12 'name: The stack.s own files with the passwords' $r/tasks/main.yml | grep -q '\"0600\"' && grep -q 'compose_project_mode: \"0600\"' $r/tasks/main.yml"
+# The indexer and the dashboard run as a non-root user and must read their files.
+check "the indexer and dashboard files belong to the container user" \
+  "grep -A14 'name: The stack.s own files with the passwords' $r/tasks/main.yml | grep 'internal_users.yml' | grep -q 'wazuh_server_container_uid' && grep -A14 'name: The stack.s own files with the passwords' $r/tasks/main.yml | grep 'wazuh.yml' | grep -q 'wazuh_server_container_uid'"
 check "a failed Vault read stops the run, it is never taken for empty" \
   "grep -q 'failed_when: wazuh_server_vault_get.rc not in \[0, 2\]' $r/tasks/main.yml"
 
