@@ -1,0 +1,12 @@
+# Managed by anvil (role pve_repos).
+Types: deb
+URIs: {{ pve_repos_debian_mirror }}
+Suites: {{ pve_repos_release }} {{ pve_repos_release }}-updates
+Components: main contrib non-free-firmware
+Signed-By: {{ pve_repos_debian_keyring }}
+
+Types: deb
+URIs: {{ pve_repos_debian_security }}
+Suites: {{ pve_repos_release }}-security
+Components: main contrib non-free-firmware
+Signed-By: {{ pve_repos_debian_keyring }}

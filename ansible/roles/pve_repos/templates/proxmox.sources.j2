@@ -1,0 +1,6 @@
+# Managed by anvil (role pve_repos). Proxmox VE without a subscription.
+Types: deb
+URIs: {{ pve_repos_proxmox }}/pve
+Suites: {{ pve_repos_release }}
+Components: pve-no-subscription
+Signed-By: {{ pve_repos_proxmox_keyring }}

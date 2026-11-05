@@ -95,7 +95,10 @@ resource "proxmox_virtual_environment_vm" "netbird" {
   cpu {
     sockets = 1
     cores   = 1
-    type    = "host"
+    # A CPU model both nodes have, not "host": this VM moves to the other node and back
+    # live, to keep running while its node is down (docs/upgrade-pve9.md). With "host"
+    # it would see the newer CPU's features and could not move to the older one.
+    type = "x86-64-v2-AES"
   }
 
   # 3 GB: the cloud routing peer, Redis, ntfy, Pulse and the self-hosted NetBird server

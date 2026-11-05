@@ -114,7 +114,8 @@ fi
 # --- smb_media: read-only guest shares, readers only ------------------------------------------
 in_vm install -d -o ubuntu -g ubuntu /home/ubuntu/media/movies /home/ubuntu/media/tv
 in_vm sh -c 'echo film >/home/ubuntu/media/movies/film.txt && chown ubuntu:ubuntu /home/ubuntu/media/movies/film.txt'
-if converge smb_media smb_media; then
+smbpw=$(python3 -c 'import secrets; print(secrets.token_hex(12))')
+if converge smb_media smb_media "{\"smb_media_user_password\": \"$smbpw\"}"; then
   check "smb_media: Samba runs" "in_vm systemctl is-active smbd"
   check "smb_media: the guard is loaded" "in_vm nft list table inet anvil_smb_guard"
   check "smb_media: a guest reads a file" \
@@ -123,6 +124,13 @@ if converge smb_media smb_media; then
     "! in_vm smbclient -N //127.0.0.1/Movies -c 'put /etc/hostname written.txt' || ! in_vm test -e /home/ubuntu/media/movies/written.txt"
   check "smb_media: the library is unchanged" \
     "[ \"\$(in_vm ls /home/ubuntu/media/movies)\" = film.txt ]"
+  # VLC on Android signs every request, which a guest session cannot answer. The user can.
+  check "smb_media: the user reads a file with signing required" \
+    "in_vm smbclient -U 'media%$smbpw' --option='client signing=required' //127.0.0.1/Movies -c 'get film.txt /tmp/got2.txt' && in_vm grep -qx film /tmp/got2.txt"
+  check "smb_media: a wrong password is refused" \
+    "! in_vm smbclient -U 'media%wrong-$smbpw' //127.0.0.1/Movies -c 'ls'"
+  check "smb_media: the user cannot write" \
+    "! in_vm smbclient -U 'media%$smbpw' //127.0.0.1/Movies -c 'put /etc/hostname written2.txt' || ! in_vm test -e /home/ubuntu/media/movies/written2.txt"
 fi
 
 # --- tcp_options_guard: TCP with IP options is dropped, plain TCP is not (CVE-2026-98432) ---

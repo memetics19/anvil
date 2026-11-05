@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.28.0](https://github.com/memetics19/anvil/compare/v0.27.1...v0.28.0) (2026-11-04)
+
+
+### Features
+
+* **cameras:** a network wall, the cameras reach nothing outside ([#198](https://github.com/memetics19/anvil/issues/198)) ([b3af60b](https://github.com/memetics19/anvil/commit/b3af60b504f0373c0615ce227ce87d78428145dd))
+* **hardening:** no msr, no rpcbind on the nodes, security updates on the nodes ([#189](https://github.com/memetics19/anvil/issues/189)) ([57ab841](https://github.com/memetics19/anvil/commit/57ab841617c4b4a550051710d5adcfece47ddccd))
+* **pihole:** block TP-Link's cloud, the cameras stay local ([#197](https://github.com/memetics19/anvil/issues/197)) ([928fefc](https://github.com/memetics19/anvil/commit/928fefc4a1dbb1a6d52d26d7e6f8382088b17c40))
+* **ssh:** SSH by key only on every VM and Proxmox node ([#188](https://github.com/memetics19/anvil/issues/188)) ([4b58d06](https://github.com/memetics19/anvil/commit/4b58d06908e05707c67fba6a6c993ce782c1dafc))
+* **wazuh:** agents on every VM and Proxmox node ([#196](https://github.com/memetics19/anvil/issues/196)) ([daeff61](https://github.com/memetics19/anvil/commit/daeff617442cc2b40dc9676c1ba1e2cc9830f330))
+
+
+### Bug Fixes
+
+* **frigate:** not privileged ([#190](https://github.com/memetics19/anvil/issues/190)) ([861a90b](https://github.com/memetics19/anvil/commit/861a90b2a9bb4756c3261522d121ddb175ea45f0))
+* **media:** NFS and SMB over the VPN through either routing peer ([#185](https://github.com/memetics19/anvil/issues/185)) ([3f65310](https://github.com/memetics19/anvil/commit/3f653106a46c388680e1fbbe755be4226b47b031))
+
 ## [0.27.1](https://github.com/memetics19/anvil/compare/v0.27.0...v0.27.1) (2026-11-02)
 
 

@@ -1,0 +1,11 @@
+# Managed by anvil (role pve_repos).
+{% if pve_repos_release == 'bookworm' %}
+deb {{ pve_repos_debian_mirror }} bookworm main contrib
+
+deb {{ pve_repos_debian_mirror }} bookworm-updates main contrib
+
+# security updates
+deb http://security.debian.org bookworm-security main contrib
+{% else %}
+# The Debian repositories are in sources.list.d/debian.sources.
+{% endif %}

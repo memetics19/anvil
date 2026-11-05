@@ -1,0 +1,23 @@
+# The apt repositories of every Proxmox node: Debian, Proxmox VE without a subscription, and
+# Ceph on a node that runs it. No enterprise repository: it refuses downloads without a
+# subscription, so a node that has one gets no Proxmox updates at all.
+#
+# The release follows the node. For the major upgrade, name the nodes that move one step
+# ahead, before apt full-upgrade on them, one node at a time (docs/upgrade-pve9.md):
+#   anvil apply host --tags repos --args "-e pve_repos_upgrade=pve2"
+# bookworm (Proxmox VE 8) keeps the one-line .list files. trixie (Proxmox VE 9) gets the
+# deb822 .sources files of Proxmox's upgrade guide, and the .list files go.
+pve_repos_upgrade: ""
+pve_repos_next: {bookworm: trixie}
+pve_repos_release: >-
+  {{ pve_repos_next[ansible_facts['distribution_release']]
+     if inventory_hostname in (pve_repos_upgrade | string).split(',')
+     else ansible_facts['distribution_release'] }}
+pve_repos_debian_mirror: http://ftp.debian.org/debian
+pve_repos_debian_security: http://security.debian.org/debian-security
+pve_repos_proxmox: http://download.proxmox.com/debian
+# Ceph's release on the nodes that run it (role ceph_single installs it).
+pve_repos_ceph_release: squid
+# The keyrings trixie's .sources files name. Both ship with the latest Proxmox VE 8.4.
+pve_repos_debian_keyring: /usr/share/keyrings/debian-archive-keyring.gpg
+pve_repos_proxmox_keyring: /usr/share/keyrings/proxmox-archive-keyring.gpg

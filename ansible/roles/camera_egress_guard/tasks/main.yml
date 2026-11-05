@@ -1,0 +1,53 @@
+- name: At least one camera
+  ansible.builtin.assert:
+    that: camera_egress_guard_cameras | length > 0
+    fail_msg: "No camera in site.frigate_stack: nothing to guard"
+    quiet: true
+
+- name: The guard's folder
+  ansible.builtin.file:
+    path: "{{ camera_egress_guard_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: The guard
+  ansible.builtin.template:
+    src: camera-egress-guard.nft.j2
+    dest: "{{ camera_egress_guard_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/nft -c -f %s
+  register: camera_egress_guard_rules
+
+- name: Its boot unit
+  ansible.builtin.template:
+    src: camera-egress-guard.service.j2
+    dest: /etc/systemd/system/camera-egress-guard.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: camera_egress_guard_unit
+
+- name: On at boot
+  ansible.builtin.systemd:
+    name: camera-egress-guard
+    enabled: true
+    daemon_reload: "{{ camera_egress_guard_unit is changed }}"
+  when: not ansible_check_mode
+
+# Only the cameras' own packets are touched, so loading it cannot cut this host off.
+- name: Load a changed guard
+  ansible.builtin.command:
+    argv: [/usr/sbin/nft, -f, "{{ camera_egress_guard_file }}"]
+  changed_when: true
+  when: camera_egress_guard_rules is changed and not ansible_check_mode
+
+- name: Is it loaded
+  ansible.builtin.command:
+    argv: [/usr/sbin/nft, list, table, inet, "{{ camera_egress_guard_table }}"]
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode

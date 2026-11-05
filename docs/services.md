@@ -48,6 +48,22 @@ anvil check frigate --tags frigate
 anvil apply frigate --tags frigate
 ```
 
+The cameras stay off TP-Link's cloud. Pi-hole blocks `tplinkcloud.com`, `tplinknbu.com` and
+`tplinkra.com` with their subdomains (`pihole_deny_regex`), so nothing a camera sees leaves
+the house. Frigate records them over RTSP inside the lab and does not need the cloud. Their
+time server lookups stay allowed.
+
+- Every camera must use Pi-hole as its DNS server, and Pi-hole only. In the Tapo app set it
+  under the camera's network settings, then restart the camera. A camera with its own DNS
+  server set walks around the block.
+- The Tapo app's live view, its alerts, Tapo Care and remote access stop. Frigate's alerts
+  take their place.
+- Firmware updates come from the cloud too. To update, switch the three entries off in
+  Pi-hole's web UI (Domains), update in the Tapo app, then switch them on again or run the
+  role.
+- A device can skip DNS and connect to an address it already knows. For a hard wall, put the
+  cameras on their own VLAN with no internet (role `pve_vlans`, `cameras_internet`).
+
 ### Docmost (wiki)
 
 `make vm HOST=frigate ARGS="--tags docmost"` runs the `docmost` role. It manages the
@@ -275,8 +291,19 @@ Then add `/mnt/media/movies` and `/mnt/media/tv` as libraries in Jellyfin.
 ### Media over SMB (VLC on phones and TVs)
 
 `make vm HOST=ragnarok ARGS="--tags smb_media"` shares `Movies` and `TV` read-only over
-SMB, as a guest with no password (role `smb_media`). VLC on Android finds it under Local
-Network at home, which NFS often does not.
+SMB (role `smb_media`). VLC on Android finds it under Local Network at home, which NFS often
+does not.
+
+Two ways in, both read-only:
+
+- **The user `media`**, for VLC on Android. Its password is in Vault, `kv/homelab/ragnarok/smb`
+  (key `password`), generated there by the first run. Copy it to the clipboard without
+  showing it: `vault kv get -mount=kv -field=password homelab/ragnarok/smb | pbcopy`.
+- **A guest**, for the Mac's Finder: user `guest`, no password.
+
+VLC on Android needs the user. It signs every request, and a guest session has no key to
+check a signature with, so Samba drops the connection (`smb2_signing_check_pdu` in its log)
+and VLC asks for a login again and again. The user has a key.
 
 Who may connect, by Samba's `hosts allow` and the `anvil_smb_guard` firewall table:
 
@@ -293,9 +320,9 @@ Which address to open in VLC:
   No VPN route reaches the home address, and Local Network discovery does not cross the
   VPN.
 
-NetBird's cloud route for the lab's /16 masquerades. A phone on the VPN reaches ragnarok as
-the netbird VM's lab address, not its own NetBird address (a packet capture on ragnarok
-showed it). So that address is a reader, and every peer NetBird's access policy lets onto
+NetBird's routes for the lab's /16 masquerade. A phone on the VPN reaches ragnarok as the
+lab address of the routing peer it went through (the netbird VM or the Proxmox host), not its
+own NetBird address (a packet capture on ragnarok showed it). So that address is a reader, and every peer NetBird's access policy lets onto
 the lab route can read the shares, as every device on the home Wi-Fi can.
 
 ## netbird
@@ -1105,6 +1132,43 @@ age -d -i <(security find-generic-password -s homelab -a backup-age-identity -w)
 make vm HOST=identity ARGS="--tags authentik"   # checks /-/health/ready/
 ```
 
+## Tripwire (OpenCanary)
+
+A small VM on the second node, `canary`, runs OpenCanary (role `canary`,
+`terraform/vm_canary.tf`). It looks like a forgotten NAS: FTP, Telnet, a web login page, SSH
+on 2222, MySQL, SQL Server, RDP, VNC, Redis, TFTP and SNMP. Nothing legitimate ever talks to
+it. So any connection, login attempt or port scan sends an ntfy message at once, with the
+source address and what it tried. It catches what nightly checks miss: someone, or something,
+looking around the network right now.
+
+The real SSH stays on port 22 for the admin sources and the VPN routers only. Anyone else gets
+no answer there. A changed rule goes in with a timed rollback, so a mistake cannot lock you
+out for more than two minutes.
+
+One-time setup, before the first apply:
+
+1. Add the VM to the site dict in Vault, with an address nothing uses
+   (`site.hosts.canary`, shaped like `site/site.example.yml`), then `anvil apply tf`.
+2. Give it a write-only ntfy user and keep its token in Vault. On the netbird VM:
+
+   ```sh
+   docker exec -it ntfy ntfy user add canary
+   docker exec ntfy ntfy access canary canary write-only
+   docker exec ntfy ntfy access <your ntfy user> canary read-only
+   ```
+
+   Then pipe its token into Vault, so it never shows or lands in a shell history:
+
+   ```sh
+   ssh <netbird VM> docker exec ntfy ntfy token add canary | awk '{print $2}' |
+     vault kv put -mount=kv homelab/canary/ntfy url=https://ntfy.<domain>/canary token=-
+   ```
+
+3. `anvil apply canary`, and subscribe to the `canary` topic in the ntfy app.
+
+Test it: `nc -vz <canary address> 21` from the Mac. A message arrives within seconds. The
+security audit's scans trip it too, which is the point.
+
 ## Wazuh
 
 Wazuh is the security monitor. It runs on its own VM on the second node, `wazuh`
@@ -1185,6 +1249,49 @@ Checks:
 
 By hand, from a lab VM: `python3 tests/fixtures/tcp_opts_probe.py <address> 22` prints
 `plain: connected` and `with IP options: timed out`.
+
+## Camera egress guard
+
+The cameras reach nothing outside the house (role `camera_egress_guard`, on the Proxmox host).
+Each camera uses the Proxmox host's home address as its gateway, so everything it sends beyond
+the home network passes that host. There a camera may answer the connections Frigate and Pulse
+open to it, and ask for the time (NTP). Every other packet is dropped and counted.
+
+This is a network wall. Pi-hole's TP-Link block only stops the lookups: a camera that knew an
+address could still connect. Through the guard it cannot, whatever the address. The cameras
+ask only for IPv4 addresses, and the home network gives them no IPv6 way out.
+
+The cameras come from the site dict (`site.frigate_stack.camera` and `.cameras`), so a new
+camera is guarded once you add it there and apply.
+
+Set each camera once, in the Tapo app, under the camera's network settings (IP address,
+static):
+
+| Setting | Value |
+|---|---|
+| IP address | the camera's address, as in the site dict |
+| Subnet mask | the home network's, usually 255.255.255.0 |
+| Gateway | the Proxmox host's home address (`<proxmox-home-address>`) |
+| DNS | Pi-hole's home address only, no second server |
+
+Then restart the camera. Frigate keeps recording: it reaches the cameras from inside the lab,
+and their replies now come back through the Proxmox host.
+
+Check it is working. The drop counter grows while a camera tries to call out, and the Tapo
+app's live view on mobile data fails:
+
+```sh
+ssh root@<proxmox-address> nft list table inet anvil_camera_egress
+```
+
+The camera VLAN (20) has no internet either (`cameras_internet: false`): DNS and NTP only.
+When an access point puts the cameras on that VLAN, the Proxmox host is their gateway by
+design, and this guard and the static settings above are no longer needed.
+
+Firmware updates need the internet. To update a camera, set its gateway back to the router for
+the update, then back to the Proxmox host.
+
+Apply it with `anvil apply host --tags camera_egress_guard`.
 
 ## SSH
 

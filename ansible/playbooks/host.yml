@@ -5,6 +5,9 @@
       ansible.builtin.import_tasks: tasks/site.yml
       tags: [always]
   roles:
+    # Debian's and Proxmox's apt repositories, by the node's release (docs/upgrade-pve9.md).
+    - role: pve_repos
+      tags: [repos]
     - pve_host
     # No msr module, no rpcbind (no NFS here), Debian security updates by themselves.
     - role: host_hardening
@@ -44,6 +47,10 @@
 - name: Cluster members' TCP options guard and SSH
   hosts: cluster_members
   roles:
+    # Their apt repositories first: without them a member gets no Proxmox updates, and the
+    # roles below install packages.
+    - role: pve_repos
+      tags: [repos]
     - role: host_hardening
       tags: [host_hardening]
       vars: *node_hardening
@@ -68,3 +75,12 @@
   roles:
     - role: wazuh_agent
       tags: [wazuh_agent]
+
+# The cameras use the Proxmox host's home address as their gateway: everything they send
+# beyond the home network is dropped here, except replies to Frigate and NTP
+# (docs/services.md, Frigate).
+- name: Camera egress guard
+  hosts: proxmox
+  roles:
+    - role: camera_egress_guard
+      tags: [camera_egress_guard]
