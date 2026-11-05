@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.29.4](https://github.com/memetics19/anvil/compare/v0.29.3...v0.29.4) (2026-11-05)
+
+
+### Bug Fixes
+
+* **inventory:** the monitoring VM can scrape node_exporter on apps ([#218](https://github.com/memetics19/anvil/issues/218)) ([e7e867a](https://github.com/memetics19/anvil/commit/e7e867a124b7eaedf74155ea998db0ec22cf0f70))
+* **monitoring:** Alertmanager serves its API at the root ([#217](https://github.com/memetics19/anvil/issues/217)) ([d6ab4ea](https://github.com/memetics19/anvil/commit/d6ab4ea7edf8ebe0a22dd3ffe138b5ba7d3d1160))
+
 ## [0.29.3](https://github.com/memetics19/anvil/compare/v0.29.2...v0.29.3) (2026-11-05)
 
 
