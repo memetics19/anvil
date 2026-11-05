@@ -47,6 +47,7 @@ run() {
       services: $1
       gateway: $gw
     caddy_upstream_cas: {vault: /nonexistent/vault-ca.pem}
+    caddy_anubis_enabled: ${GW_ANUBIS:-false}
   tasks:
     - name: Routes
       ansible.builtin.include_role:
@@ -305,6 +306,52 @@ run "$(printf '%s' "$sso" | sed '/name: auth,/d')"
 if grep -q 'forward_auth\|goauthentik' "$tmp/Caddyfile"; then bad_ "sso: no auth route, no login check"; else ok "sso: no auth route, no login check"; fi
 reject "sso not a boolean" '[{name: a, host: pve.ip, port: 1, scheme: http, sso: "yes"}]'
 reject "auth behind itself" '[{name: auth, host: hosts.identity.ip, port: 9000, scheme: http, sso: true}]'
+
+
+# Anubis (caddy_anubis_*): the public listener keeps the operator-only check and hands the
+# request to Anubis, the internal listener holds the route. auth, vault and tv are left out
+# unless an entry says otherwise, and an entry can opt out.
+an='[
+  {name: auth, host: hosts.identity.ip, port: 9000, scheme: http, websocket: true},
+  {name: pve, host: pve.ip, port: 8006, scheme: https, insecure_upstream: true, websocket: true},
+  {name: vault, host: hosts.vault.ip, port: 8200, scheme: https, upstream_ca: vault},
+  {name: tv, host: hosts.ragnarok.ip, port: 34401, scheme: http, stream: true, anubis: true},
+  {name: files, host: hosts.ragnarok.ip, port: 8334, scheme: http, anubis: false},
+  {name: docs, static: docs}]'
+GW_ANUBIS=true run "$an"
+cp "$tmp/compose.yaml" "$tmp/compose-anubis.yaml"
+back() { awk -v n="handle @$1 {" '/^http:\/\/:8090 \{/ {b=1} b && $0 ~ n {on=1} on {print} on && /^\t}$/ {exit}' "$tmp/Caddyfile"; }
+ffirst() { block "$1" | grep -n -m1 -- "$2" | cut -d: -f1; }
+if block pve | grep -q 'reverse_proxy http://anubis:8923 {' && block pve | grep -q 'header_up X-Real-IP {remote_host}' \
+   && ! block pve | grep -q 'forward_auth\|192.0.2.10:8006' \
+   && [ "$(ffirst pve 'respond @pve_denied 403')" -lt "$(ffirst pve 'reverse_proxy http://anubis:8923')" ]
+then ok "anubis: pve's public route checks the operator first, then goes to Anubis"; else bad_ "anubis: pve's public route"; fi
+if back pve | grep -q 'forward_auth http://192.0.2.125:9000 {' && back pve | grep -q 'reverse_proxy https://192.0.2.10:8006 {' \
+   && back pve | grep -q 'tls_insecure_skip_verify' && back pve | grep -q 'stream_close_delay 5m' && ! back pve | grep -q '_denied'
+then ok "anubis: pve's route itself is on the internal listener, with its login check and upstream"; else bad_ "anubis: pve on the internal listener"; fi
+if block docs | grep -q 'reverse_proxy http://anubis:8923 {' && back docs | grep -q 'file_server'
+then ok "anubis: a static site goes through it too"; else bad_ "anubis: static site"; fi
+for n in auth vault; do
+  if block "$n" | grep -q 'anubis:8923' || back "$n" | grep -q .; then bad_ "anubis: $n is left out"; else ok "anubis: $n is left out"; fi
+done
+if block tv | grep -q 'reverse_proxy http://anubis:8923 {' && block tv | grep -q 'flush_interval -1' && ! block tv | grep -q 'response_header_timeout'
+then ok "anubis: an entry's anubis: true wins over the exempt list, a stream stays a stream"; else bad_ "anubis: tv opted in"; fi
+if block files | grep -q 'reverse_proxy http://192.0.2.119:8334 {' && ! back files | grep -q .
+then ok "anubis: an entry's anubis: false keeps it direct"; else bad_ "anubis: files opted out"; fi
+if grep -q '^http://:8090 {' "$tmp/Caddyfile" && awk '/servers :8090 \{/,/^\t}/' "$tmp/Caddyfile" | grep -q 'trusted_proxies static private_ranges'
+then ok "anubis: the internal listener keeps the client and scheme the public one set"; else bad_ "anubis: internal listener"; fi
+svc() { awk -v n="  $1:" '/^services:/ {s=1; next} on && /^ ?[a-z]|^  [a-z]/ {exit} /^[a-z]/ {s=0} s && $0 == n {on=1; next} on {print}' "$tmp/compose-anubis.yaml"; }
+if svc anubis | grep -q 'image: ghcr.io/techarohq/anubis:v[0-9.]*@sha256:[0-9a-f]\{64\}' \
+   && svc anubis | grep -q 'TARGET: "http://caddy:8090"' && svc anubis | grep -q 'path: anubis.env' \
+   && svc anubis | grep -q 'read_only: true' && ! svc anubis | grep -q 'gateway'
+then ok "anubis: pinned, on its own network only, its key from a file"; else bad_ "anubis: compose service"; fi
+if svc caddy | grep -q '^      anubis: {}' && awk '/^networks:/{f=1} f' "$tmp/compose-anubis.yaml" | grep -A1 '^  anubis:' | grep -q 'internal: true'
+then ok "anubis: Caddy joins its network, which has no route out"; else bad_ "anubis: networks"; fi
+gone() { ! grep -q 'anubis:8923\|:8090' "$tmp/Caddyfile" && ! grep -q '^  anubis:\|^      anubis:' "$tmp/compose.yaml"; }
+GW_ANUBIS=true run '[{name: auth, host: hosts.identity.ip, port: 9000, scheme: http}, {name: files, host: hosts.ragnarok.ip, port: 8334, scheme: http, anubis: false}]'
+if gone; then ok "anubis: no route uses it, nothing of it"; else bad_ "anubis: no route uses it, nothing of it"; fi
+run "$an"
+if gone; then ok "anubis: off, nothing of it"; else bad_ "anubis: off, nothing of it"; fi
 
 [ "$fail" -eq 0 ] && echo "PASS: gateway routes and records"
 exit "$fail"

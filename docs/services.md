@@ -748,6 +748,29 @@ Only members of the Authentik group `lab-admins` get through (see
 - If Authentik is down, the names behind it answer with an error. Proxmox stays reachable
   on its own address, port 8006.
 
+#### Anubis on the gateway
+
+[Anubis](https://github.com/TecharoHQ/anubis) checks each client before a route answers. A
+browser solves a small proof-of-work page once. Then a signed cookie lets it through for a
+week, on every gateway name. Known AI crawlers are refused. A client that does not say it is
+a browser passes untouched: the phone apps, scripts, API clients and Homepage's widgets.
+
+- Every route is behind it except `caddy_anubis_exempt`: `auth`, `pass`, `vault` and `tv`.
+  Authentik runs the login itself. The Bitwarden extension and desktop app say they are
+  browsers but cannot solve a challenge. The Fire TV players vary.
+- `anubis: true` or `anubis: false` on an entry of `site.services` overrides the list.
+  `caddy_anubis_enabled: false` turns it off everywhere.
+- One Anubis container serves every route, in two tiers on the one Caddy. The public
+  listener does the operator-only check first, because only it sees the real client. Then
+  it hands the request to Anubis, which passes it on to Caddy's internal listener (port
+  8090, never published) with the same name. That listener holds the route itself: single
+  sign-on, redirects, the upstream and its TLS settings, streams and websockets.
+- Anubis has its own Docker network with no route out, which Caddy joins. It is never on
+  Caddy's gateway network, the only one the secrets enclave admits.
+- Its signing key is in Vault next to the Cloudflare token (`kv/homelab/apps/caddy`, key
+  `anubis_ed25519_key`), made on the first run. A new key only means every browser solves
+  the check again.
+
 ### Homepage
 
 `https://home.<gateway-domain>` is a [Homepage](https://gethomepage.dev) dashboard (the
