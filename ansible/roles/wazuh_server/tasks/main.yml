@@ -122,17 +122,20 @@
   no_log: true
   when: wazuh_server_hash_out is not skipped
 
-- name: The stack's own files with the passwords (root only)
+# Mode 600, owned by the user that reads each file: the indexer and the dashboard run as
+# wazuh_server_container_uid in their containers, the manager as root. A root-only file the
+# indexer cannot read leaves its security index without users, and every request gets 503.
+- name: The stack's own files with the passwords (their reader only)
   ansible.builtin.template:
     src: "{{ item.src }}"
     dest: "{{ wazuh_server_dir }}/config/{{ item.dest }}"
-    owner: root
-    group: root
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
     mode: "0600"
   loop:
-    - {src: internal_users.yml.j2, dest: wazuh_indexer/internal_users.yml}
-    - {src: wazuh.yml.j2, dest: wazuh_dashboard/wazuh.yml}
-    - {src: wazuh_manager.conf.j2, dest: wazuh_cluster/wazuh_manager.conf}
+    - {src: internal_users.yml.j2, dest: wazuh_indexer/internal_users.yml, owner: "{{ wazuh_server_container_uid }}"}
+    - {src: wazuh.yml.j2, dest: wazuh_dashboard/wazuh.yml, owner: "{{ wazuh_server_container_uid }}"}
+    - {src: wazuh_manager.conf.j2, dest: wazuh_cluster/wazuh_manager.conf, owner: "0"}
   no_log: true
   notify: Restart the Wazuh manager
   when: wazuh_server_hashes is defined

@@ -7,6 +7,9 @@ wazuh_server_manager_image: wazuh/wazuh-manager:4.14.9@sha256:9d07740f7800246001
 wazuh_server_indexer_image: wazuh/wazuh-indexer:4.14.9@sha256:08a8d5a0f0416bdd97ca421b1b72fae97224c8fd99a143500b28b536ff6ac98c
 wazuh_server_dashboard_image: wazuh/wazuh-dashboard:4.14.9@sha256:8c003c6e08151d962e2ed541a6a1a86ac723f01b5d5678fc53dcbe544e739e7a
 wazuh_server_certs_image: wazuh/wazuh-certs-generator:0.0.4@sha256:369b4d58509aab074b188596870c81584f7120e653d9ef83c591f0f785dcf325
+# The user the indexer and dashboard images run as (wazuh-indexer, wazuh-dashboard). Their
+# password files belong to it.
+wazuh_server_container_uid: 1000
 # The indexer's Java heap. Half of the VM's 8 GB goes to the indexer and its page cache.
 wazuh_server_indexer_heap: 2g
 # Published on the VM's lab address: agent events (1514) and enrollment (1515) for every
