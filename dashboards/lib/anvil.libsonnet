@@ -6,7 +6,31 @@ local g = import 'github.com/grafana/grafonnet/gen/grafonnet-v13.0.0/main.libson
   g: g,
 
   // Grafana's data source uids, as provisioned.
-  ds: { metrics: 'victoriametrics' },
+  ds: { metrics: 'victoriametrics', wazuh: 'wazuh' },
+
+  // A query on Wazuh's alerts (OpenSearch, index wazuh-alerts-*): a Lucene filter, what to
+  // count, and how to bucket it. by: a field to split by (terms), over: time or none.
+  wazuh(query, by=null, size=10, over='time', metric={ id: '1', type: 'count' })::
+    {
+      datasource: { type: 'grafana-opensearch-datasource', uid: $.ds.wazuh },
+      query: query,
+      queryType: 'lucene',
+      luceneQueryType: 'Metric',
+      timeField: 'timestamp',
+      metrics: [metric],
+      bucketAggs:
+        (if by != null then [{ id: '3', type: 'terms', field: by,
+                               settings: { size: std.toString(size), order: 'desc', orderBy: '_count', min_doc_count: '1' } }] else [])
+        + (if over == 'time' then [{ id: '2', type: 'date_histogram', field: 'timestamp',
+                                     settings: { interval: 'auto', min_doc_count: '0' } }] else []),
+    },
+
+  // The data source a panel's queries go to: metrics by default.
+  on(panel, uid, type)::
+    panel + { datasource: { type: type, uid: uid } },
+
+  // refIds A, B, C... for a list of queries.
+  refs(qs):: [qs[i] + { refId: std.char(65 + i) } for i in std.range(0, std.length(qs) - 1)],
 
   // A PromQL query on VictoriaMetrics, with a legend.
   q(expr, legend='{{host}}')::
@@ -18,7 +42,7 @@ local g = import 'github.com/grafana/grafonnet/gen/grafonnet-v13.0.0/main.libson
     local ts = g.panel.timeSeries;
     ts.new(title)
     + ts.queryOptions.withDatasource('prometheus', self.ds.metrics)
-    + ts.queryOptions.withTargets(queries)
+    + ts.queryOptions.withTargets(self.refs(queries))
     + ts.standardOptions.withUnit(unit)
     + (if min != null then ts.standardOptions.withMin(min) else {})
     + (if max != null then ts.standardOptions.withMax(max) else {})
@@ -33,7 +57,7 @@ local g = import 'github.com/grafana/grafonnet/gen/grafonnet-v13.0.0/main.libson
     local st = g.panel.stat;
     st.new(title)
     + st.queryOptions.withDatasource('prometheus', self.ds.metrics)
-    + st.queryOptions.withTargets(queries)
+    + st.queryOptions.withTargets(self.refs(queries))
     + st.standardOptions.withUnit(unit)
     + st.options.withColorMode('background')
     + st.options.withGraphMode('none')
@@ -41,6 +65,25 @@ local g = import 'github.com/grafana/grafonnet/gen/grafonnet-v13.0.0/main.libson
     + st.options.reduceOptions.withCalcs(['lastNotNull'])
     + (if steps != [] then st.standardOptions.thresholds.withMode('absolute')
        + st.standardOptions.thresholds.withSteps([{ color: s[0], value: s[1] } for s in steps]) else {}),
+
+  // A table: a terms breakdown, biggest first.
+  table(title, queries)::
+    local tb = g.panel.table;
+    tb.new(title)
+    + tb.queryOptions.withTargets(self.refs(queries))
+    + tb.options.withShowHeader(true)
+    + tb.options.withSortBy([{ displayName: 'Count', desc: true }]),
+
+  // Up or down over time, one row per series: 1 is up (green), 0 is down (red).
+  timeline(title, queries)::
+    local st = g.panel.stateTimeline;
+    st.new(title)
+    + st.queryOptions.withDatasource('prometheus', self.ds.metrics)
+    + st.queryOptions.withTargets(self.refs(queries))
+    + st.standardOptions.withMappings([
+      { type: 'value', options: { '0': { text: 'Down', color: 'red' }, '1': { text: 'Up', color: 'green' } } },
+    ])
+    + st.options.withShowValue('never'),
 
   // A dashboard of the lab: uid, title, tags, refreshed every minute, last 24 hours, read-only.
   dashboard(uid, title, description, tags=[])::

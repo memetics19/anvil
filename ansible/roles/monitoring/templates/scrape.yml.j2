@@ -11,6 +11,25 @@ scrape_configs:
         labels: {host: "{{ t.name }}"}
 {% endfor %}
 
+  # The internet and DNS (blackbox exporter): one job per kind of check. Each target is sent to
+  # the exporter as ?target=, and named by its probe label.
+{% for job, module, targets in [('ping', 'icmp', monitoring_ping_targets), ('dns', 'dns', monitoring_dns_targets), ('http', 'http', monitoring_http_targets)] %}
+  - job_name: {{ job }}
+    metrics_path: /probe
+    params:
+      module: [{{ module }}]
+    static_configs:
+{% for t in targets if (t.address | default(t.url | default(''))) | length > 0 %}
+      - targets: ["{{ t.address | default(t.url) }}"]
+        labels: {probe: "{{ t.name }}"{% if t.scope is defined %}, scope: "{{ t.scope }}"{% endif %}}
+{% endfor %}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: __address__
+        replacement: blackbox:9115
+{% endfor %}
+
   # The stack itself.
   - job_name: victoriametrics
     static_configs:
@@ -18,3 +37,6 @@ scrape_configs:
   - job_name: vmagent
     static_configs:
       - targets: ["localhost:8429"]
+  - job_name: blackbox
+    static_configs:
+      - targets: ["blackbox:9115"]

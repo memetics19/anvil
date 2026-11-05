@@ -56,6 +56,8 @@ services:
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
       GF_NEWS_NEWS_FEED_ENABLED: "false"
+      # Plugins at pinned versions, installed when Grafana starts.
+      GF_PLUGINS_PREINSTALL_SYNC: "{{ monitoring_grafana_plugins | join(',') }}"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
@@ -91,7 +93,23 @@ services:
     volumes:
       - ./alertmanager:/etc/alertmanager:ro
       - alertmanager-data:/alertmanager
+    # Wazuh posts its alerts here (role wazuh_server). Guarded by port_guard.
+    ports:
+      - "{{ monitoring_bind_ip }}:{{ monitoring_alertmanager_port }}:9093"
     mem_limit: {{ monitoring_alertmanager_mem_limit }}
+
+  blackbox:
+    image: {{ monitoring_blackbox_image }}
+    container_name: blackbox
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+    volumes:
+      - ./blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    # Ping without raw sockets: unprivileged ICMP for every group in the container.
+    sysctls:
+      net.ipv4.ping_group_range: "0 2147483647"
+    mem_limit: {{ monitoring_blackbox_mem_limit }}
 
 volumes:
   victoriametrics-data:

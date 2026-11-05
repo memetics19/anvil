@@ -73,9 +73,9 @@
       # OpenCanary's fake services (role canary), every port it chooses to open.
       canary: [twistd/*]
       # Wazuh: the dashboard, agent events and enrollment (role wazuh_server).
-      wazuh: [docker-proxy/443, docker-proxy/1514, docker-proxy/1515]
+      wazuh: [docker-proxy/443, docker-proxy/1514, docker-proxy/1515, docker-proxy/9200]
       # Grafana (role monitoring).
-      monitoring: [docker-proxy/3000]
+      monitoring: [docker-proxy/3000, docker-proxy/9093]
     smoke_privileged_ok: []
     smoke_is_node: "{{ inventory_hostname in groups['proxmox'] + groups['cluster_members'] | default([]) }}"
     smoke_keys: >-

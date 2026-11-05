@@ -28,6 +28,9 @@ inhibit_rules:
   - source_matchers: ['alertname="HostDown"']
     target_matchers: ['alertname!="HostDown"']
     equal: [host]
+  # A dead router explains a dead internet.
+  - source_matchers: ['alertname="RouterDown"']
+    target_matchers: ['alertname=~"InternetDown|InternetFlaky"']
 
 receivers:
   - name: ntfy-critical

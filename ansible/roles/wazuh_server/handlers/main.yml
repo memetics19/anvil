@@ -1,0 +1,6 @@
+# The manager copies its config and integrations in when it starts (/wazuh-config-mount).
+- name: Restart the Wazuh manager
+  ansible.builtin.command:
+    argv: [docker, restart, wazuh-wazuh.manager-1]
+  changed_when: true
+  when: not ansible_check_mode

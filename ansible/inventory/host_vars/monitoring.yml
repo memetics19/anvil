@@ -1,4 +1,7 @@
-# The monitoring VM. Grafana (3000) answers only the gateway, Pulse and the admin sources
+# The monitoring VM. Grafana (3000) answers only the gateway, Pulse and the admin sources.
+# Alertmanager's API (9093) answers them and the Wazuh VM, which posts its alerts there
 # (role port_guard).
-port_guard_ports: [3000]
-port_guard_extra_sources: "{{ (site.admin_sources | default([])) + (site.admin_vpn_sources | default([])) }}"
+port_guard_ports: [3000, 9093]
+port_guard_extra_sources: >-
+  {{ (site.admin_sources | default([])) + (site.admin_vpn_sources | default([]))
+     + ([site.hosts.wazuh.ip] if site.hosts.wazuh is defined else []) }}

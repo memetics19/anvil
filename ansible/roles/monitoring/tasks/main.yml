@@ -81,6 +81,30 @@
     monitoring_ntfy: "{{ monitoring_ntfy.secret }}"
   no_log: true
 
+- name: Wazuh | the read-only user's password (role wazuh_server writes it)
+  ansible.builtin.set_fact:
+    monitoring_wazuh_reader: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', monitoring_wazuh_vault_path,
+                engine_mount_point=monitoring_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret.grafana_reader }}
+  no_log: true
+  when: monitoring_wazuh_host | length > 0
+
+- name: Wazuh | its CA, to check the indexer's certificate
+  ansible.builtin.slurp:
+    src: "{{ monitoring_wazuh_ca }}"
+  delegate_to: "{{ monitoring_wazuh_host }}"
+  become: true
+  register: monitoring_wazuh_ca_read
+  when: monitoring_wazuh_host | length > 0
+
+- name: Wazuh | the CA as text
+  ansible.builtin.set_fact:
+    monitoring_wazuh_ca_pem: "{{ monitoring_wazuh_ca_read.content | b64decode | trim }}"
+  when: monitoring_wazuh_host | length > 0
+
 # --- Files -----------------------------------------------------------------------------------
 - name: Folders
   ansible.builtin.file:
@@ -101,14 +125,25 @@
     mode: "0644"
   notify: Reload vmagent
 
-- name: Grafana's data source
+# Grafana runs as uid 472. The file holds the Wazuh reader's password: for Grafana alone.
+- name: Grafana's data sources
   ansible.builtin.template:
     src: datasources.yml.j2
     dest: "{{ monitoring_dir }}/grafana/provisioning/datasources/anvil.yml"
+    owner: "472"
+    group: "472"
+    mode: "0400"
+  no_log: true
+  notify: Restart grafana
+
+- name: How the blackbox exporter checks
+  ansible.builtin.template:
+    src: blackbox.yml.j2
+    dest: "{{ monitoring_dir }}/blackbox.yml"
     owner: root
     group: root
     mode: "0644"
-  notify: Restart grafana
+  notify: Reload blackbox
 
 - name: Grafana's dashboard provider
   ansible.builtin.template:

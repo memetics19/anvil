@@ -65,7 +65,8 @@
     owner: root
     group: root
     mode: "0750"
-  loop: ["", config, config/wazuh_indexer, config/wazuh_dashboard, config/wazuh_cluster, config/wazuh_indexer_ssl_certs]
+  loop: ["", config, config/wazuh_indexer, config/wazuh_dashboard, config/wazuh_cluster, config/wazuh_indexer_ssl_certs,
+         config/integrations]
 
 - name: Upstream's files
   ansible.builtin.copy:
@@ -107,7 +108,8 @@
   ansible.builtin.command:
     argv: [/usr/local/sbin/wazuh-hash.py, "{{ wazuh_server_dir }}/config/wazuh_indexer/internal_users.yml"]
     stdin: >-
-      {{ {'admin': wazuh_server_secrets.indexer_admin, 'kibanaserver': wazuh_server_secrets.kibanaserver} | to_json }}
+      {{ {'admin': wazuh_server_secrets.indexer_admin, 'kibanaserver': wazuh_server_secrets.kibanaserver,
+          'grafana': wazuh_server_secrets.grafana_reader} | to_json }}
   register: wazuh_server_hash_out
   changed_when: false
   check_mode: false
@@ -132,7 +134,19 @@
     - {src: wazuh.yml.j2, dest: wazuh_dashboard/wazuh.yml}
     - {src: wazuh_manager.conf.j2, dest: wazuh_cluster/wazuh_manager.conf}
   no_log: true
+  notify: Restart the Wazuh manager
   when: wazuh_server_hashes is defined
+
+# Alerts into Alertmanager (custom-alertmanager, files/). No secret in them.
+- name: The Alertmanager integration
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ wazuh_server_dir }}/config/integrations/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop: [custom-alertmanager, custom-alertmanager.py]
+  notify: Restart the Wazuh manager
 
 - name: The enrollment password
   ansible.builtin.copy:

@@ -1,8 +1,9 @@
 # Monitoring and alerting
 
-One place to see how every host and service is doing, and alerts that are worth reading
-when they arrive. Steps 1 to 3 and 5 below are built (role `monitoring`): metrics from every
-host, kept 90 days, Grafana, and alerts to ntfy.
+One place to see how every host and service is doing, how secure they are and how the
+internet line holds up, and alerts that are worth reading when they arrive. Built (role
+`monitoring`): metrics from every host, kept 90 days, Grafana, Wazuh's security alerts in
+Grafana, the internet line, and every alert to ntfy through one Alertmanager.
 
 ## Set up
 
@@ -46,8 +47,40 @@ go install github.com/google/go-jsonnet/cmd/jsonnet@v0.22.0
 go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.6.0
 ```
 
-The first dashboard is **Hosts**: up and uptime, CPU, memory, disk space, load, network and
-disk traffic, per host.
+The dashboards:
+
+- **Hosts**: up and uptime, CPU, memory, disk space, load, network and disk traffic, per host.
+- **Internet**: the line up now, uptime over 24 hours, 7 and 30 days, an outage timeline
+  (internet, router, DNS), ping time, packet loss, DNS lookups through Pi-hole, web pages.
+- **Security**: Wazuh's alerts (level 10 and up, critical 12 and up), hosts reporting, alerts by
+  level over time, the top rules and hosts, failed logins, changed files and vulnerabilities.
+
+## Security: Wazuh in Grafana
+
+Grafana reads Wazuh's alerts straight from its indexer, through the OpenSearch data source
+plugin (installed at a pinned version when Grafana starts). It reads as the user `grafana`,
+which can only read (role `wazuh_server` makes it; its password is `grafana_reader` in
+`kv/homelab/wazuh`). The indexer's certificate is checked against Wazuh's own CA. The indexer
+answers only the monitoring VM, the gateway, Pulse and the admin sources (`port_guard`).
+
+Wazuh sends every alert of level 10 and up to Alertmanager on the monitoring VM (a Wazuh
+integration, `custom-alertmanager`), as `WazuhAlert` with the host and the rule. From there it
+goes the way of every other alert: grouped, held back while its host is down, silenced in
+Grafana, and sent to ntfy. Level 12 and up is critical, the rest warnings. Wazuh's own
+dashboard stays, for digging into an alert.
+
+## Internet
+
+The blackbox exporter on the monitoring VM checks the line every 30 seconds:
+
+- ping to the home router and to three public resolvers (1.1.1.1, 8.8.8.8, 9.9.9.9)
+- a lookup of `example.com` through Pi-hole
+- two web pages (Google's and Cloudflare's)
+
+The internet counts as up while any public resolver answers. An outage cannot be pushed while
+it lasts, because ntfy is out there too: the message comes when the line is back, and the
+outage is on the Internet dashboard either way. Those records are the evidence for the ISP and
+for the status page.
 
 ## Alerts
 
@@ -103,6 +136,30 @@ started, then as for DiskAlmostFull.
 
 Warning. Less than 5% of memory has been available for 15 minutes. `top` or `docker stats` on
 the host shows what uses it. Lower a container's limit, or give the VM more memory.
+
+### RouterDown
+
+Critical. The home router has not answered a ping for 2 minutes. Its power, the router or the
+network to it is down. The internet alerts are held back while it lasts.
+
+### InternetDown
+
+Critical. Not one public address has answered a ping for 2 minutes, while the router answers:
+the ISP's side is down. The message arrives when the line is back. Note the time on the
+Internet dashboard, check the ISP's status, and raise the incident on the status page.
+
+### InternetFlaky
+
+Warning. More than 5% of pings to public addresses failed over 15 minutes. The Internet
+dashboard shows when and how much. If it repeats, take the packet loss and ping time panels to
+the ISP.
+
+### WazuhAlert
+
+Wazuh raised an alert of level 10 or more on a host (level 12 and up is critical). The message
+names the host and the rule. Open the Security dashboard, or Wazuh's own for the full event,
+and act on what the rule says: a login from somewhere new, a changed system file, a known
+vulnerability. A rule that fires and needs no action is tuned in Wazuh, not silenced forever.
 
 ### MonitoringBlind
 

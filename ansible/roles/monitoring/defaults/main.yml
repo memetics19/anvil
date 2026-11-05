@@ -6,20 +6,50 @@ monitoring_vmagent_image: victoriametrics/vmagent:v1.155.0@sha256:8e3c03905be15b
 monitoring_grafana_image: grafana/grafana:13.2.5@sha256:9f7aa1e1e3246aade5792d35a738049f7f32f89cd51d1956cf426a4e86268a84
 monitoring_vmalert_image: victoriametrics/vmalert:v1.155.0@sha256:3256cba5ddaca5974eae6141105cec4ce37871f1c213f0a5c267ec0111bc68e1
 monitoring_alertmanager_image: prom/alertmanager:v0.34.2@sha256:39d8bb3966c694a124428a3a88fbcffd40bd069129ecd47c059f8a3f17c55f3b
+monitoring_blackbox_image: prom/blackbox-exporter:v0.29.1@sha256:ea1c7aa3ef3f307cd03e85f34abb604478ccb90b567fc690da0cd9776da76b13
+# Grafana's plugins, installed at start at these versions: the OpenSearch data source reads
+# Wazuh's alerts. Signed by Grafana Labs.
+monitoring_grafana_plugins: [grafana-opensearch-datasource@2.34.6]
 # How long the metrics are kept.
 monitoring_retention: 90d
 monitoring_scrape_interval: 30s
-# Grafana is the only port published, on the VM's lab address, for the gateway, Pulse and the
-# admin sources (port_guard, host_vars/monitoring.yml). VictoriaMetrics and vmagent talk
-# inside the compose network only.
+# Published on the VM's lab address, both guarded (port_guard, host_vars/monitoring.yml):
+# Grafana, for the gateway, Pulse and the admin sources, and Alertmanager's API, for Wazuh's
+# alerts. VictoriaMetrics, vmagent, vmalert and the blackbox exporter talk inside the compose
+# network only.
 monitoring_bind_ip: "{{ site.hosts[inventory_hostname].ip }}"
 monitoring_grafana_port: 3000
+monitoring_alertmanager_port: 9093
 # Memory caps.
 monitoring_victoriametrics_mem_limit: 1g
 monitoring_vmagent_mem_limit: 256m
 monitoring_grafana_mem_limit: 512m
 monitoring_vmalert_mem_limit: 128m
 monitoring_alertmanager_mem_limit: 128m
+monitoring_blackbox_mem_limit: 64m
+
+# --- Wazuh in Grafana (docs/monitoring.md, Security) --------------------------------------------
+# Grafana reads Wazuh's alerts from its indexer, as the read-only user grafana (role
+# wazuh_server; its password is grafana_reader in Wazuh's Vault path). TLS is checked against
+# Wazuh's own CA, read from the Wazuh VM. Off when the lab has no Wazuh VM.
+monitoring_wazuh_host: "{{ groups['wazuh_servers'] | default([]) | first | default('') }}"
+monitoring_wazuh_vault_path: homelab/wazuh
+monitoring_wazuh_ca: /opt/wazuh/config/wazuh_indexer_ssl_certs/root-ca.pem
+
+# --- The internet (docs/monitoring.md, Internet) ------------------------------------------------
+# The blackbox exporter checks, every scrape: ping to the home router and to public resolvers,
+# a lookup through Pi-hole, and two web pages. scope internet: the ISP's side.
+monitoring_ping_targets:
+  - {name: router, address: "{{ site.pve.uplink_gw | default('') }}", scope: local}
+  - {name: cloudflare, address: 1.1.1.1, scope: internet}
+  - {name: google, address: 8.8.8.8, scope: internet}
+  - {name: quad9, address: 9.9.9.9, scope: internet}
+monitoring_dns_targets:
+  - {name: pihole, address: "{{ site.hosts.apps.ip | default('') }}"}
+monitoring_dns_query: example.com
+monitoring_http_targets:
+  - {name: google, url: "https://www.google.com/generate_204"}
+  - {name: cloudflare, url: "https://www.cloudflare.com/cdn-cgi/trace"}
 
 # --- Alerts (docs/monitoring.md, Alerts) ------------------------------------------------------
 # vmalert evaluates the rules in files/rules every minute. Alertmanager groups them and sends

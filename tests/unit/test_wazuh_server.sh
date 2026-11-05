@@ -15,7 +15,7 @@ bad_() { echo "FAIL $1"; fail=1; }
 check() { if eval "$2" >/dev/null 2>&1; then ok "$1"; else bad_ "$1"; fi; }
 r=$PWD/ansible/roles/wazuh_server
 pw() { python3 -c 'import secrets; print(secrets.token_hex(14) + "aZ7.")'; }
-admin=$(pw) kibana=$(pw) api=$(pw) enroll=$(pw)
+admin=$(pw) kibana=$(pw) api=$(pw) enroll=$(pw) reader=$(pw)
 
 cat >"$tmp/play.yml" <<PLAY
 - name: Render the Wazuh server
@@ -23,21 +23,27 @@ cat >"$tmp/play.yml" <<PLAY
   gather_facts: false
   vars_files: [$r/defaults/main.yml]
   vars:
-    wazuh_server_secrets: {indexer_admin: "$admin", kibanaserver: "$kibana", api: "$api", enrollment: "$enroll"}
-    wazuh_server_hashes: {admin: "\$2b\$12\$adminhash", kibanaserver: "\$2b\$12\$kibanahash"}
+    wazuh_server_secrets: {indexer_admin: "$admin", kibanaserver: "$kibana", api: "$api", enrollment: "$enroll", grafana_reader: "$reader"}
+    wazuh_server_hashes: {admin: "\$2b\$12\$adminhash", kibanaserver: "\$2b\$12\$kibanahash", grafana: "\$2b\$12\$grafanahash"}
   tasks:
     - ansible.builtin.template: {src: "$r/templates/{{ item }}.j2", dest: "$tmp/{{ item }}", mode: "0600"}
       loop: [docker-compose.yml, internal_users.yml, wazuh.yml, wazuh_manager.conf]
+      vars: {wazuh_server_alertmanager_url: "http://192.0.2.132:9093/api/v2/alerts"}
+    # Without a monitoring VM: no Alertmanager integration.
+    - ansible.builtin.template: {src: "$r/templates/wazuh_manager.conf.j2", dest: "$tmp/no-monitoring.conf", mode: "0600"}
+      vars: {wazuh_server_alertmanager_url: ""}
 PLAY
 if ansible-playbook -i localhost, -c local -e wazuh_server_bind_ip=192.0.2.131 "$tmp/play.yml" >"$tmp/render.log" 2>&1; then ok "templates render"; else bad_ "templates render"; cat "$tmp/render.log"; exit 1; fi
 c=$tmp/docker-compose.yml
 
 check "every image is pinned to a digest" \
   "[ \"\$(grep -cE '^\s+image: ' $c)\" = 3 ] && ! grep -E '^\s+image: ' $c | grep -v '@sha256:'"
-check "published: dashboard and agent ports, on the lab address only" \
-  "[ \"\$(grep -cE '^\s+- \"192\.0\.2\.131:(443:5601|1514:1514|1515:1515)\"$' $c)\" = 3 ] &&
-   [ \"\$(awk '/ports:/{f=1;next} f&&/^[[:space:]]+- /{n++;next} {f=0} END{print n}' $c)\" = 3 ]"
-check "no syslog, API or indexer port outside" "! grep -qE '\"(514|55000|9200)' $c"
+check "published: dashboard, agent ports and the indexer, on the lab address only" \
+  "[ \"\$(grep -cE '^\s+- \"192\.0\.2\.131:(443:5601|1514:1514|1515:1515|9200:9200)\"$' $c)\" = 4 ] &&
+   [ \"\$(awk '/ports:/{f=1;next} f&&/^[[:space:]]+- /{n++;next} {f=0} END{print n}' $c)\" = 4 ]"
+check "no syslog or API port outside" "! grep -qE '\"[0-9.]+:(514|55000):' $c"
+check "the indexer answers only the monitoring VM, the gateway, Pulse and the admin sources" \
+  "grep -qx 'port_guard_ports: \[443, 9200\]' ansible/inventory/host_vars/wazuh.yml && grep -q 'site.hosts.monitoring.ip' ansible/inventory/host_vars/wazuh.yml"
 check "the passwords come from the secrets" \
   "grep -q 'INDEXER_PASSWORD=$admin' $c && grep -q 'DASHBOARD_PASSWORD=$kibana' $c && grep -q 'API_PASSWORD=$api' $c && grep -q '$api' $tmp/wazuh.yml"
 check "every password in the compose file is one of the generated ones" \
@@ -46,8 +52,47 @@ check "every password in the compose file is one of the generated ones" \
 check "the templates hold no password, only variables" \
   "! grep -rhE 'PASSWORD=[^{]|password: \"[^{]|hash: \"[^{]' $r/templates"
 check "agents enroll with a password" "grep -q '<use_password>yes</use_password>' $tmp/wazuh_manager.conf && grep -q 'authd.pass' $c"
-check "the indexer keeps only admin and kibanaserver" \
-  "[ \"\$(grep -cE '^[a-z]+:$' $tmp/internal_users.yml)\" = 2 ] && grep -qx 'admin:' $tmp/internal_users.yml && grep -qx 'kibanaserver:' $tmp/internal_users.yml"
+check "the indexer keeps only admin, kibanaserver and grafana" \
+  "[ \"\$(grep -cE '^[a-z]+:$' $tmp/internal_users.yml)\" = 3 ] && grep -qx 'admin:' $tmp/internal_users.yml && grep -qx 'kibanaserver:' $tmp/internal_users.yml && grep -qx 'grafana:' $tmp/internal_users.yml"
+check "grafana can only read" "awk '/^grafana:/{f=1} f' $tmp/internal_users.yml | grep -q '\"readall\"' && ! awk '/^grafana:/{f=1} f' $tmp/internal_users.yml | grep -q '\"admin\"'"
+check "alerts of level 10 and up go to Alertmanager" \
+  "grep -q '<name>custom-alertmanager</name>' $tmp/wazuh_manager.conf && grep -q '<hook_url>http://192.0.2.132:9093/api/v2/alerts</hook_url>' $tmp/wazuh_manager.conf && grep -q '<level>10</level>' $tmp/wazuh_manager.conf"
+check "no integration without a monitoring VM" "! grep -q custom-alertmanager $tmp/no-monitoring.conf"
+check "the integration's files reach the manager" "grep -q '/wazuh-config-mount/integrations/custom-alertmanager:ro' $c"
+check "a changed config or integration restarts the manager" "[ \"\$(grep -c 'notify: Restart the Wazuh manager' $r/tasks/main.yml)\" = 2 ]"
+
+# The integration itself, against a stand-in Alertmanager on this machine.
+cat >"$tmp/alert.json" <<'JSON'
+{"rule": {"level": 13, "id": "5712", "description": "sshd: brute force trying to get access"},
+ "agent": {"name": "ragnarok"}, "full_log": "Failed password for invalid user admin"}
+JSON
+python3 - "$tmp" <<'PY' >"$tmp/posted.json" 2>"$tmp/post.log" &
+import http.server, json, sys, threading
+tmp = sys.argv[1]
+class H(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers["Content-Length"]))
+        print(json.dumps({"path": self.path, "type": self.headers["Content-Type"], "body": json.loads(body)}))
+        sys.stdout.flush()
+        self.send_response(200); self.end_headers()
+        threading.Thread(target=self.server.shutdown).start()
+    def log_message(self, *a): pass
+s = http.server.HTTPServer(("127.0.0.1", 0), H)
+open(tmp + "/port", "w").write(str(s.server_port))
+s.serve_forever()
+PY
+for _ in $(seq 50); do [ -s "$tmp/port" ] && break; sleep 0.1; done
+python3 "$r/files/custom-alertmanager.py" "$tmp/alert.json" 12 "http://127.0.0.1:$(cat "$tmp/port")/api/v2/alerts" 2>>"$tmp/post.log"
+wait
+pj() { python3 -c "import json,sys; d=json.load(open('$tmp/posted.json')); $1"; }
+check "integration: posts to Alertmanager's alerts API as JSON" "pj 'assert d[\"path\"]==\"/api/v2/alerts\" and d[\"type\"]==\"application/json\"'"
+check "integration: WazuhAlert, the agent as host, the rule" \
+  "pj 'l=d[\"body\"][0][\"labels\"]; assert (l[\"alertname\"], l[\"host\"], l[\"rule_id\"], l[\"source\"])==(\"WazuhAlert\",\"ragnarok\",\"5712\",\"wazuh\")'"
+check "integration: level 13 is critical at 12" "pj 'assert d[\"body\"][0][\"labels\"][\"severity\"]==\"critical\"'"
+check "integration: it links to its fix and ends by itself" \
+  "pj 'a=d[\"body\"][0]; assert a[\"annotations\"][\"runbook\"].endswith(\"#wazuhalert\") and a[\"endsAt\"] > a[\"startsAt\"]'"
+check "integration: level 11 is a warning" \
+  "python3 -c 'import importlib.util,sys,datetime; s=importlib.util.spec_from_file_location(\"m\", sys.argv[1]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); assert m.to_alertmanager({\"rule\":{\"level\":11}}, 12, datetime.datetime.now(datetime.timezone.utc))[0][\"labels\"][\"severity\"]==\"warning\"' '$r/files/custom-alertmanager.py'"
 check "the files with passwords are root only" \
   "grep -A12 'name: The stack.s own files with the passwords' $r/tasks/main.yml | grep -q '\"0600\"' && grep -q 'compose_project_mode: \"0600\"' $r/tasks/main.yml"
 check "a failed Vault read stops the run, it is never taken for empty" \

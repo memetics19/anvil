@@ -302,6 +302,18 @@
     <disabled>yes</disabled>
   </cluster>
 
+{% if wazuh_server_alertmanager_url | length > 0 %}
+  <!-- anvil: alerts of level {{ wazuh_server_alertmanager_level }} and above to Alertmanager on the monitoring VM. -->
+  <integration>
+    <name>custom-alertmanager</name>
+    <hook_url>{{ wazuh_server_alertmanager_url }}</hook_url>
+    <level>{{ wazuh_server_alertmanager_level }}</level>
+    <alert_format>json</alert_format>
+    <!-- Wazuh hands api_key to the script: here, the level from which an alert is critical. -->
+    <api_key>{{ wazuh_server_alertmanager_critical_level }}</api_key>
+  </integration>
+{% endif %}
+
 </ossec_config>
 
 <ossec_config>

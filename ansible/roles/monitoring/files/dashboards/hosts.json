@@ -50,7 +50,8 @@
                   "uid": "victoriametrics"
                },
                "expr": "up{job=\"node\",host=~\"$host\"}",
-               "legendFormat": "{{host}}"
+               "legendFormat": "{{host}}",
+               "refId": "A"
             }
          ],
          "title": "Up",
@@ -91,7 +92,8 @@
                   "uid": "victoriametrics"
                },
                "expr": "time() - node_boot_time_seconds{host=~\"$host\"}",
-               "legendFormat": "{{host}}"
+               "legendFormat": "{{host}}",
+               "refId": "A"
             }
          ],
          "title": "Uptime",
@@ -138,7 +140,8 @@
                   "uid": "victoriametrics"
                },
                "expr": "100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode=\"idle\",host=~\"$host\"}[5m])))",
-               "legendFormat": "{{host}}"
+               "legendFormat": "{{host}}",
+               "refId": "A"
             }
          ],
          "title": "CPU busy",
@@ -185,7 +188,8 @@
                   "uid": "victoriametrics"
                },
                "expr": "100 * (1 - node_memory_MemAvailable_bytes{host=~\"$host\"} / node_memory_MemTotal_bytes{host=~\"$host\"})",
-               "legendFormat": "{{host}}"
+               "legendFormat": "{{host}}",
+               "refId": "A"
             }
          ],
          "title": "Memory used",
@@ -248,7 +252,8 @@
                   "uid": "victoriametrics"
                },
                "expr": "100 * (1 - node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay|squashfs|devtmpfs|efivarfs|ramfs\",host=~\"$host\"} / node_filesystem_size_bytes{fstype!~\"tmpfs|overlay|squashfs|devtmpfs|efivarfs|ramfs\",host=~\"$host\"})",
-               "legendFormat": "{{host}} {{mountpoint}}"
+               "legendFormat": "{{host}} {{mountpoint}}",
+               "refId": "A"
             }
          ],
          "title": "Disk space used",
@@ -293,7 +298,8 @@
                   "uid": "victoriametrics"
                },
                "expr": "node_load5{host=~\"$host\"} / count by (host) (node_cpu_seconds_total{mode=\"idle\",host=~\"$host\"})",
-               "legendFormat": "{{host}}"
+               "legendFormat": "{{host}}",
+               "refId": "A"
             }
          ],
          "title": "Load per core (5 min)",
@@ -338,7 +344,8 @@
                   "uid": "victoriametrics"
                },
                "expr": "sum by (host) (rate(node_network_receive_bytes_total{device!~\"lo|veth.*|docker.*|br-.*|fwbr.*|fwpr.*|fwln.*|tap.*|wt.*\",host=~\"$host\"}[5m]))",
-               "legendFormat": "{{host}}"
+               "legendFormat": "{{host}}",
+               "refId": "A"
             }
          ],
          "title": "Network in",
@@ -383,7 +390,8 @@
                   "uid": "victoriametrics"
                },
                "expr": "sum by (host) (rate(node_network_transmit_bytes_total{device!~\"lo|veth.*|docker.*|br-.*|fwbr.*|fwpr.*|fwln.*|tap.*|wt.*\",host=~\"$host\"}[5m]))",
-               "legendFormat": "{{host}}"
+               "legendFormat": "{{host}}",
+               "refId": "A"
             }
          ],
          "title": "Network out",
@@ -428,7 +436,8 @@
                   "uid": "victoriametrics"
                },
                "expr": "sum by (host) (rate(node_disk_read_bytes_total{host=~\"$host\"}[5m]))",
-               "legendFormat": "{{host}}"
+               "legendFormat": "{{host}}",
+               "refId": "A"
             }
          ],
          "title": "Disk reads",
@@ -473,7 +482,8 @@
                   "uid": "victoriametrics"
                },
                "expr": "sum by (host) (rate(node_disk_written_bytes_total{host=~\"$host\"}[5m]))",
-               "legendFormat": "{{host}}"
+               "legendFormat": "{{host}}",
+               "refId": "A"
             }
          ],
          "title": "Disk writes",

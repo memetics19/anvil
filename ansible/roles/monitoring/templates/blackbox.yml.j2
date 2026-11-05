@@ -1,0 +1,23 @@
+# Managed by anvil (role monitoring). How the blackbox exporter checks (docs/monitoring.md,
+# Internet). vmagent names the target and the module on every scrape.
+modules:
+  icmp:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: ip4
+  dns:
+    prober: dns
+    timeout: 5s
+    dns:
+      query_name: "{{ monitoring_dns_query }}"
+      query_type: A
+      preferred_ip_protocol: ip4
+      valid_rcodes: [NOERROR]
+  http:
+    prober: http
+    timeout: 10s
+    http:
+      preferred_ip_protocol: ip4
+      valid_status_codes: [200, 204]
+      follow_redirects: false
