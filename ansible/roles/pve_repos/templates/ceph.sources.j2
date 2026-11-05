@@ -1,0 +1,6 @@
+# Managed by anvil (role pve_repos). Ceph {{ pve_repos_ceph_release }} without a subscription.
+Types: deb
+URIs: {{ pve_repos_proxmox }}/ceph-{{ pve_repos_ceph_release }}
+Suites: {{ pve_repos_release }}
+Components: no-subscription
+Signed-By: {{ pve_repos_proxmox_keyring }}

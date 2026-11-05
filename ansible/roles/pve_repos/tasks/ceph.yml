@@ -1,0 +1,28 @@
+# Ceph's repository. Also run by role ceph_single before it installs Ceph.
+- name: Ceph repository (bookworm, the line pveceph install writes)
+  ansible.builtin.copy:
+    content: "deb {{ pve_repos_proxmox }}/ceph-{{ pve_repos_ceph_release }} bookworm no-subscription\n"
+    dest: /etc/apt/sources.list.d/ceph.list
+    owner: root
+    group: root
+    mode: "0644"
+  when: pve_repos_release == 'bookworm'
+  notify: Update apt cache
+
+- name: Ceph repository (deb822)
+  when: pve_repos_release != 'bookworm'
+  block:
+    - name: Ceph .sources
+      ansible.builtin.template:
+        src: ceph.sources.j2
+        dest: /etc/apt/sources.list.d/ceph.sources
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Update apt cache
+
+    - name: No Ceph .list besides it
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/ceph.list
+        state: absent
+      notify: Update apt cache
