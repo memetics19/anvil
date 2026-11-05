@@ -15,10 +15,12 @@ authentik_bind_ip: "{{ site.hosts[inventory_hostname].ip }}"
 authentik_gateway_host: apps
 authentik_trusted_proxies: ["{{ site.hosts[authentik_gateway_host].ip }}/32"]
 # Hard caps, swap included. Together 2 GB of the VM's 3 GB, which leaves room for the OS,
-# Docker, the Pulse agent and the LDAP outpost that comes later.
-authentik_server_mem_limit: 1024m
-authentik_worker_mem_limit: 768m
-authentik_postgres_mem_limit: 256m
+# Docker, the Pulse agent and the LDAP outpost that comes later. Postgres was killed at 256m
+# while a blueprint was applied (its memory cgroup ran out, then the apply failed with 137),
+# so it has 512m. The server and the worker gave it room: they used about half their caps.
+authentik_server_mem_limit: 896m
+authentik_worker_mem_limit: 640m
+authentik_postgres_mem_limit: 512m
 # The akadmin account's email, set on the first start only. A site value, never a real
 # address in the repo.
 authentik_bootstrap_email: "{{ site.email }}"
