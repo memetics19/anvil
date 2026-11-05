@@ -1,5 +1,6 @@
-# Managed by anvil (ansible/roles/smb_media): read-only media shares, guest access, only the
-# listed readers. Changes here are overwritten on the next run.
+# Managed by anvil (ansible/roles/smb_media): read-only media shares, guest access and one
+# read-only user ({{ smb_media_user }}), only the listed readers. Changes here are overwritten
+# on the next run.
 [global]
    workgroup = WORKGROUP
    server string = anvil media
@@ -24,4 +25,6 @@
    browseable = yes
    read only = yes
    guest ok = yes
+   # {{ smb_media_user }} reads as the library's owner too.
+   force user = {{ smb_media_guest_user }}
 {% endfor %}

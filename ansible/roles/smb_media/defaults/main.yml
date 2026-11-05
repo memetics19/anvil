@@ -29,4 +29,14 @@ smb_media_readers: >-
       + ([smb_media_home_subnet] if smb_media_home_ip | length > 0 else [])) | unique }}
 # Everyone reads as the library's owner (the VM's first user): read-only.
 smb_media_guest_user: ubuntu
+# A real login too, for clients that sign every request. VLC on Android does, and a guest
+# session has no signing key, so Samba drops it (smb2_signing_check_pdu). This user has a key.
+# It reads as the library's owner as well, read-only. A system account: no shell, no home.
+smb_media_user: media
+# Its password: Vault kv/<smb_media_vault_path>, key password. Generated there when missing.
+# A test passes smb_media_user_password instead.
+smb_media_vault_mount: kv
+smb_media_vault_path: "homelab/{{ inventory_hostname }}/smb"
+# sha256 of the password last set, so a rerun sets it again only when Vault's changed.
+smb_media_user_marker: /etc/anvil/smb-media-user.sha256
 smb_media_guard_file: /etc/anvil/smb-guard.nft
