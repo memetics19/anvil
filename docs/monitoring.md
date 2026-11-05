@@ -110,7 +110,8 @@ every topic already. A user who is not an admin also needs
 
 Then make its token from the Mac and pipe it into Vault, so it never shows or lands in a
 shell history. sudo on the VM takes its password from the Keychain on stdin, because a pipe
-has no terminal to ask on:
+has no terminal to ask on. The url is ntfy's lab address, not the public name, so an
+alert still gets out when the internet or the gateway is down:
 
 ```sh
 source scripts/env.sh
@@ -120,7 +121,7 @@ t=$(security find-generic-password -s homelab -a vm-sudo-password -w |
 if [ -n "$t" ]
 then
   printf '%s' "$t" |
-    vault kv put -mount=kv homelab/monitoring/ntfy url=https://ntfy.<domain> token=-
+    vault kv put -mount=kv homelab/monitoring/ntfy url=http://<netbird VM>:8081 token=-
 else
   echo "no token made, run the ssh line without awk to see why"
 fi
