@@ -82,6 +82,7 @@ func TestServicesComeFromThePlaybook(t *testing.T) {
 		"pihole": "apps", "homepage": "apps", "caddy": "apps", "vaultwarden": "vaultwarden",
 		"iptv": "ragnarok", "arr": "ragnarok", "frigate": "frigate", "netbird_server": "netbird",
 		"canary": "canary",
+		"wazuh": "wazuh",
 		"monitoring": "monitoring",
 	}
 	for name, host := range want {
@@ -100,7 +101,7 @@ func TestServicesComeFromThePlaybook(t *testing.T) {
 			t.Errorf("target alias %s -> %s: %v", alias, name, err)
 		}
 	}
-	if !reflect.DeepEqual(c.vms, []string{"apps", "canary", "frigate", "identity", "llm", "monitoring", "netbird", "ragnarok", "vault", "vaultwarden"}) {
+	if !reflect.DeepEqual(c.vms, []string{"apps", "canary", "frigate", "identity", "llm", "monitoring", "netbird", "ragnarok", "vault", "vaultwarden", "wazuh"}) {
 		t.Errorf("VMs = %v", c.vms)
 	}
 }

@@ -20,7 +20,7 @@
       tags: [base, enclave]
 
 - name: Guest base
-  hosts: guests:vault_servers:apps_servers:vaultwarden_servers:identity_servers:llm_servers:canary_servers:monitoring_servers
+  hosts: guests:vault_servers:apps_servers:vaultwarden_servers:identity_servers:llm_servers:canary_servers:wazuh_servers:monitoring_servers
   pre_tasks:
     - name: Resolve the site dict once for this run
       ansible.builtin.import_tasks: tasks/site.yml
@@ -31,27 +31,27 @@
 
 # Every VM, the enclave's too: no module a miner wants (msr).
 - name: Host hardening
-  hosts: guests:vault_servers:apps_servers:vaultwarden_servers:identity_servers:llm_servers:canary_servers:monitoring_servers
+  hosts: guests:vault_servers:apps_servers:vaultwarden_servers:identity_servers:llm_servers:canary_servers:wazuh_servers:monitoring_servers
   roles:
     - role: host_hardening
       tags: [host_hardening]
 
 # Every VM, the enclave's too: drop IPv4 TCP with IP options (CVE-2026-98432).
 - name: TCP options guard
-  hosts: guests:vault_servers:apps_servers:vaultwarden_servers:identity_servers:llm_servers:canary_servers:monitoring_servers
+  hosts: guests:vault_servers:apps_servers:vaultwarden_servers:identity_servers:llm_servers:canary_servers:wazuh_servers:monitoring_servers
   roles:
     - role: tcp_options_guard
       tags: [tcp_options_guard]
 
 # Every VM, the enclave's too: SSH by key only, no X11.
 - name: SSH hardening
-  hosts: guests:vault_servers:apps_servers:vaultwarden_servers:identity_servers:llm_servers:canary_servers:monitoring_servers
+  hosts: guests:vault_servers:apps_servers:vaultwarden_servers:identity_servers:llm_servers:canary_servers:wazuh_servers:monitoring_servers
   roles:
     - role: ssh_hardening
       tags: [ssh_hardening]
 
 - name: Docker
-  hosts: guests:identity_servers:llm_servers:monitoring_servers
+  hosts: guests:identity_servers:llm_servers:wazuh_servers:monitoring_servers
   roles:
     - role: docker
       tags: [docker]
@@ -256,6 +256,16 @@
   roles:
     - role: canary
       tags: [canary]
+
+# The security monitor (Wazuh) on its own VM: manager, indexer and dashboard. Only the gateway
+# reaches the dashboard (port_guard). docs/services.md, Wazuh.
+- name: Wazuh
+  hosts: wazuh_servers
+  roles:
+    - role: port_guard
+      tags: [port_guard, wazuh]
+    - role: wazuh_server
+      tags: [wazuh]
 
 # Wazuh agents (docs/services.md, Wazuh), after the Wazuh server. Not the secrets enclave:
 # nothing there may open a connection out.
