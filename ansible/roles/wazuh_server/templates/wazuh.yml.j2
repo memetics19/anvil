@@ -1,0 +1,8 @@
+# Managed by anvil (role wazuh_server). How the dashboard reaches the manager's API.
+hosts:
+  - default:
+      url: "https://wazuh.manager"
+      port: 55000
+      username: wazuh-wui
+      password: "{{ wazuh_server_secrets.api }}"
+      run_as: true

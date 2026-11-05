@@ -2,3 +2,5 @@ profile: production
 exclude_paths:
   - .github/
   - .terraform/
+  # Wazuh's own config files, copied from wazuh-docker as they are.
+  - roles/wazuh_server/files/

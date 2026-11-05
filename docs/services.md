@@ -1169,6 +1169,42 @@ One-time setup, before the first apply:
 Test it: `nc -vz <canary address> 21` from the Mac. A message arrives within seconds. The
 security audit's scans trip it too, which is the point.
 
+## Wazuh
+
+Wazuh is the security monitor. It runs on its own VM on the second node, `wazuh`
+(role `wazuh_server`, `terraform/vm_wazuh.tf`, 4 vCPU, 8 GB, 80 GB). It is wazuh-docker's
+single-node deployment (4.14.9): the manager, the indexer and the dashboard. Agents on every
+host report to it (role `wazuh_agent`, see Wazuh agents). It watches files for changes, looks for
+rootkits, reads logins and sudo, and lists the known CVEs of every installed package.
+
+What anvil changes from the upstream deployment:
+
+- Every image is pinned to a digest.
+- Every password comes from Vault, `kv/homelab/wazuh`: `indexer_admin` (the dashboard login,
+  user `admin`), `kibanaserver`, `api` and `enrollment`. A missing one is generated and
+  written there. None of the upstream default passwords is left. The files that hold them are
+  root only.
+- Agents enroll with the `enrollment` password. Upstream lets any host enroll.
+- The indexer keeps only the two users the stack needs. The demo users are gone.
+- Only the dashboard (443) and the agent ports (1514, 1515) are published, on the lab address.
+  The dashboard answers only the gateway, Pulse and the admin sources (`port_guard`).
+
+One-time setup:
+
+1. Add the VM to the site dict in Vault (`site.hosts.wazuh`, shaped like
+   `site/site.example.yml`) and a gateway entry in `site.services`:
+   `{name: wazuh, host: hosts.wazuh.ip, port: 443, scheme: https, insecure_upstream: true}`.
+   The dashboard's certificate is self-signed, inside the lab.
+2. `anvil apply tf`, then `anvil apply wazuh`. The first run makes the certificates and the
+   passwords, and pulls about 3 GB of images.
+3. `anvil apply apps --tags caddy` adds the gateway route. Open `https://wazuh.<domain>`,
+   user `admin`. Copy the password to the clipboard without showing it:
+   `vault kv get -mount=kv -field=indexer_admin homelab/wazuh | pbcopy`.
+
+The indexer reads its users' passwords on its first start only. To change one later, change
+it in Vault, apply, then load it into the running indexer:
+`docker exec -it wazuh-wazuh.indexer-1 bash /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh -cd /usr/share/wazuh-indexer/config/opensearch-security/ -nhnv -cacert /usr/share/wazuh-indexer/config/certs/root-ca.pem -cert /usr/share/wazuh-indexer/config/certs/admin.pem -key /usr/share/wazuh-indexer/config/certs/admin-key.pem -h localhost`.
+
 ## Host hardening
 
 Role `host_hardening` closes small doors on every VM and Proxmox node.
