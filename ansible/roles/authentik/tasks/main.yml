@@ -145,11 +145,19 @@
 # The worker would pick the file up by itself within a few minutes. Applying it here makes
 # the change take effect now, and a blueprint error fails the run instead of a log line.
 # Every run, not only on a change: a failed apply is retried by the next run.
+# A provider update makes the worker rebuild the outpost's permissions at the same time, and
+# Postgres can pick the apply as the loser of that deadlock. That one error is tried again
+# here. Any other error fails at once.
 - name: Apply the single sign-on blueprint
   ansible.builtin.command:
     argv: [docker, exec, authentik-worker, ak, apply_blueprint, anvil/anvil-sso.yaml]
   register: authentik_sso_apply
   changed_when: authentik_sso_blueprint is changed
+  retries: 3
+  delay: 20
+  until: >-
+    authentik_sso_apply.rc == 0
+    or 'DeadlockDetected' not in (authentik_sso_apply.stdout | default('')) ~ (authentik_sso_apply.stderr | default(''))
   when: not ansible_check_mode
 
 # --- backups ---------------------------------------------------------------------------------
