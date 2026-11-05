@@ -1,0 +1,983 @@
+{
+   "description": "The homelab on one page: hosts up, internet, alerts firing, cameras, security events, and the busiest and fullest hosts. Managed by anvil: change dashboards/lab.jsonnet.",
+   "editable": false,
+   "links": [
+      {
+         "asDropdown": true,
+         "includeVars": false,
+         "tags": [
+            "anvil"
+         ],
+         "title": "Dashboards",
+         "type": "dashboards"
+      }
+   ],
+   "panels": [
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 0,
+            "y": 0
+         },
+         "id": 1,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "count(up{job=\"node\"} == 1) or vector(0)",
+               "legendFormat": "Up",
+               "refId": "A"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "count(up{job=\"node\"})",
+               "legendFormat": "Of",
+               "refId": "B"
+            }
+         ],
+         "title": "Hosts up",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "mappings": [
+                  {
+                     "options": {
+                        "0": {
+                           "text": "Down"
+                        },
+                        "1": {
+                           "text": "Up"
+                        }
+                     },
+                     "type": "value"
+                  }
+               ],
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "green",
+                        "value": 1
+                     }
+                  ]
+               },
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 4,
+            "y": 0
+         },
+         "id": 2,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"ping\",scope=\"internet\"})",
+               "legendFormat": "Internet",
+               "refId": "A"
+            }
+         ],
+         "title": "Internet",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     },
+                     {
+                        "color": "red",
+                        "value": 1
+                     }
+                  ]
+               },
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 8,
+            "y": 0
+         },
+         "id": 3,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "count(ALERTS{alertstate=\"firing\",severity=\"critical\"}) or vector(0)",
+               "legendFormat": "Critical",
+               "refId": "A"
+            }
+         ],
+         "title": "Critical firing",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 1
+                     }
+                  ]
+               },
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 12,
+            "y": 0
+         },
+         "id": 4,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "count(ALERTS{alertstate=\"firing\",severity=\"warning\"}) or vector(0)",
+               "legendFormat": "Warnings",
+               "refId": "A"
+            }
+         ],
+         "title": "Warnings firing",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 16,
+            "y": 0
+         },
+         "id": 5,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "count(frigate_camera_fps > 0) or (count(frigate_camera_fps) * 0)",
+               "legendFormat": "Sending",
+               "refId": "A"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "count(frigate_camera_fps)",
+               "legendFormat": "Of",
+               "refId": "B"
+            }
+         ],
+         "title": "Cameras recording",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 1
+                     }
+                  ]
+               },
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 20,
+            "y": 0
+         },
+         "id": 6,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "sum"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "timestamp",
+                     "id": "2",
+                     "settings": {
+                        "interval": "auto",
+                        "min_doc_count": "0"
+                     },
+                     "type": "date_histogram"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "rule.level:>=10",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Security events, level 10 and up",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "overrides": [
+               {
+                  "matcher": {
+                     "id": "byName",
+                     "options": "Up"
+                  },
+                  "properties": [
+                     {
+                        "id": "unit",
+                        "value": "none"
+                     },
+                     {
+                        "id": "thresholds",
+                        "value": {
+                           "mode": "absolute",
+                           "steps": [
+                              {
+                                 "color": "red",
+                                 "value": null
+                              },
+                              {
+                                 "color": "green",
+                                 "value": 1
+                              }
+                           ]
+                        }
+                     },
+                     {
+                        "id": "custom.cellOptions",
+                        "value": {
+                           "type": "color-background"
+                        }
+                     },
+                     {
+                        "id": "mappings",
+                        "value": [
+                           {
+                              "options": {
+                                 "0": {
+                                    "text": "Down"
+                                 },
+                                 "1": {
+                                    "text": "Up"
+                                 }
+                              },
+                              "type": "value"
+                           }
+                        ]
+                     }
+                  ]
+               },
+               {
+                  "matcher": {
+                     "id": "byName",
+                     "options": "Uptime"
+                  },
+                  "properties": [
+                     {
+                        "id": "unit",
+                        "value": "s"
+                     }
+                  ]
+               },
+               {
+                  "matcher": {
+                     "id": "byName",
+                     "options": "CPU"
+                  },
+                  "properties": [
+                     {
+                        "id": "unit",
+                        "value": "percent"
+                     },
+                     {
+                        "id": "thresholds",
+                        "value": {
+                           "mode": "absolute",
+                           "steps": [
+                              {
+                                 "color": "green",
+                                 "value": null
+                              },
+                              {
+                                 "color": "orange",
+                                 "value": 80
+                              },
+                              {
+                                 "color": "red",
+                                 "value": 95
+                              }
+                           ]
+                        }
+                     },
+                     {
+                        "id": "custom.cellOptions",
+                        "value": {
+                           "type": "color-background"
+                        }
+                     }
+                  ]
+               },
+               {
+                  "matcher": {
+                     "id": "byName",
+                     "options": "Memory"
+                  },
+                  "properties": [
+                     {
+                        "id": "unit",
+                        "value": "percent"
+                     },
+                     {
+                        "id": "thresholds",
+                        "value": {
+                           "mode": "absolute",
+                           "steps": [
+                              {
+                                 "color": "green",
+                                 "value": null
+                              },
+                              {
+                                 "color": "orange",
+                                 "value": 80
+                              },
+                              {
+                                 "color": "red",
+                                 "value": 95
+                              }
+                           ]
+                        }
+                     },
+                     {
+                        "id": "custom.cellOptions",
+                        "value": {
+                           "type": "color-background"
+                        }
+                     }
+                  ]
+               },
+               {
+                  "matcher": {
+                     "id": "byName",
+                     "options": "Fullest disk"
+                  },
+                  "properties": [
+                     {
+                        "id": "unit",
+                        "value": "percent"
+                     },
+                     {
+                        "id": "thresholds",
+                        "value": {
+                           "mode": "absolute",
+                           "steps": [
+                              {
+                                 "color": "green",
+                                 "value": null
+                              },
+                              {
+                                 "color": "orange",
+                                 "value": 80
+                              },
+                              {
+                                 "color": "red",
+                                 "value": 95
+                              }
+                           ]
+                        }
+                     },
+                     {
+                        "id": "custom.cellOptions",
+                        "value": {
+                           "type": "color-background"
+                        }
+                     }
+                  ]
+               }
+            ]
+         },
+         "gridPos": {
+            "h": 10,
+            "w": 24,
+            "x": 0,
+            "y": 5
+         },
+         "id": 7,
+         "options": {
+            "sortBy": [
+               {
+                  "desc": false,
+                  "displayName": "Host"
+               }
+            ]
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "up{job=\"node\"}",
+               "format": "table",
+               "instant": true,
+               "legendFormat": "",
+               "refId": "A"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "time() - node_boot_time_seconds",
+               "format": "table",
+               "instant": true,
+               "legendFormat": "",
+               "refId": "B"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])))",
+               "format": "table",
+               "instant": true,
+               "legendFormat": "",
+               "refId": "C"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)",
+               "format": "table",
+               "instant": true,
+               "legendFormat": "",
+               "refId": "D"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max by (host) (100 * (1 - node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay|squashfs|devtmpfs|efivarfs|ramfs\"} / node_filesystem_size_bytes{fstype!~\"tmpfs|overlay|squashfs|devtmpfs|efivarfs|ramfs\"}))",
+               "format": "table",
+               "instant": true,
+               "legendFormat": "",
+               "refId": "E"
+            }
+         ],
+         "title": "Hosts",
+         "transformations": [
+            {
+               "id": "merge",
+               "options": { }
+            },
+            {
+               "id": "organize",
+               "options": {
+                  "excludeByName": {
+                     "Time": true,
+                     "__name__": true,
+                     "instance": true,
+                     "job": true
+                  },
+                  "indexByName": {
+                     "Value #A": 1,
+                     "Value #B": 2,
+                     "Value #C": 3,
+                     "Value #D": 4,
+                     "Value #E": 5,
+                     "host": 0
+                  },
+                  "renameByName": {
+                     "Value #A": "Up",
+                     "Value #B": "Uptime",
+                     "Value #C": "CPU",
+                     "Value #D": "Memory",
+                     "Value #E": "Fullest disk",
+                     "host": "Host"
+                  }
+               }
+            }
+         ],
+         "type": "table"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "noValue": "Nothing is firing"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 15
+         },
+         "id": 8,
+         "options": {
+            "sortBy": [
+               {
+                  "desc": false,
+                  "displayName": "Level"
+               }
+            ]
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "ALERTS{alertstate=\"firing\"}",
+               "format": "table",
+               "instant": true,
+               "legendFormat": "",
+               "refId": "A"
+            }
+         ],
+         "title": "Firing now",
+         "transformations": [
+            {
+               "id": "organize",
+               "options": {
+                  "excludeByName": {
+                     "Time": true,
+                     "Value": true,
+                     "__name__": true,
+                     "alertgroup": true,
+                     "alertstate": true,
+                     "job": true
+                  },
+                  "indexByName": {
+                     "alertname": 0,
+                     "host": 2,
+                     "severity": 1
+                  },
+                  "renameByName": {
+                     "alertname": "Alert",
+                     "host": "Host",
+                     "severity": "Level"
+                  }
+               }
+            }
+         ],
+         "type": "table"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 15
+         },
+         "id": 9,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "count by (alertname) (ALERTS{alertstate=\"firing\"})",
+               "legendFormat": "{{alertname}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Alerts firing over time",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "max": 100,
+               "min": 0,
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 23
+         },
+         "id": 10,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])))",
+               "legendFormat": "{{host}}",
+               "refId": "A"
+            }
+         ],
+         "title": "CPU busy",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "max": 100,
+               "min": 0,
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 23
+         },
+         "id": 11,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)",
+               "legendFormat": "{{host}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Memory used",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "Bps"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 31
+         },
+         "id": 12,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "sum by (host) (rate(node_network_receive_bytes_total{device!~\"lo|veth.*|docker.*|br-.*|fwbr.*|fwpr.*|fwln.*|tap.*|wt.*\"}[5m]) + rate(node_network_transmit_bytes_total{device!~\"lo|veth.*|docker.*|br-.*|fwbr.*|fwpr.*|fwln.*|tap.*|wt.*\"}[5m]))",
+               "legendFormat": "{{host}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Network traffic, in and out",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "s"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 31
+         },
+         "id": 13,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "probe_icmp_duration_seconds{phase=\"rtt\",scope=\"internet\"}",
+               "legendFormat": "{{probe}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Internet ping time",
+         "type": "timeseries"
+      }
+   ],
+   "refresh": "1m",
+   "schemaVersion": 39,
+   "tags": [
+      "anvil",
+      "lab",
+      "overview"
+   ],
+   "time": {
+      "from": "now-24h",
+      "to": "now"
+   },
+   "timezone": "browser",
+   "title": "Lab",
+   "uid": "anvil-lab"
+}

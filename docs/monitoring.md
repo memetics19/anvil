@@ -49,6 +49,10 @@ go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.6.0
 
 The dashboards:
 
+- **Lab**, Grafana's home page: the whole lab on one page. Hosts up, the internet, critical
+  alerts and warnings firing, cameras recording, security events, then one row per host (up,
+  uptime, CPU, memory, fullest disk), what is firing now and over time, CPU, memory, network
+  traffic and ping time. The Dashboards menu at the top goes on to the others.
 - **Hosts**: up and uptime, CPU, memory, disk space, load, network and disk traffic, per host.
 - **Internet**: the line up now, uptime over 24 hours, 7 and 30 days, an outage timeline
   (internet, router, DNS), ping time, packet loss, DNS lookups through Pi-hole, web pages.

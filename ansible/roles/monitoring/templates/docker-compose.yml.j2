@@ -39,6 +39,8 @@ services:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: "{{ monitoring_secrets.admin_password }}"
       GF_USERS_ALLOW_SIGN_UP: "false"
+      # The Lab dashboard (dashboards/lab.jsonnet) is the home page: the whole lab on one page.
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/lab.json
       # Log in through Authentik. Whoever Authentik lets into this app is an administrator:
       # its policy admits only the single sign-on group.
       GF_AUTH_GENERIC_OAUTH_ENABLED: "true"
