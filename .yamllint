@@ -8,6 +8,7 @@ ignore: |
   .ansible/
   ansible/.ansible/
   ansible/roles/wazuh_server/files/
+  dashboards/vendor/
 rules:
   line-length: disable
   truthy:

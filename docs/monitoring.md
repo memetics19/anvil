@@ -29,9 +29,25 @@ What runs on the VM (compose project `/opt/monitoring`, images pinned by digest)
   Pulse and the admin sources (`port_guard`). It sends no usage reports and checks for no
   updates.
 
-Dashboards are JSON files in `ansible/roles/monitoring/files/dashboards`, in the folder Lab.
-Grafana reads them every minute and cannot save changes to them: change the file. The first
-is **Hosts**: up and uptime, CPU, memory, disk space, load, network and disk traffic, per host.
+### Dashboards
+
+Every dashboard is Grafonnet: Jsonnet in `dashboards/` at the top of the repository, one
+`<name>.jsonnet` each, on the shared helpers in `lib/anvil.libsonnet` (the data source, panel
+defaults, the grid). `make dashboards` builds them into
+`ansible/roles/monitoring/files/dashboards/<name>.json`, which the role installs in the folder Lab. Commit both. CI rebuilds them and fails when the JSON
+differs from its Jsonnet, or when a JSON file has no Jsonnet source. Grafana reads them every
+minute and cannot save changes made in the UI: change the Jsonnet.
+
+Grafonnet is pinned to a commit in `jsonnetfile.json` and `jsonnetfile.lock.json`. The build
+fetches it into `vendor/`, which is not committed. The tools, once:
+
+```sh
+go install github.com/google/go-jsonnet/cmd/jsonnet@v0.22.0
+go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.6.0
+```
+
+The first dashboard is **Hosts**: up and uptime, CPU, memory, disk space, load, network and
+disk traffic, per host.
 
 ## Before it
 
@@ -54,7 +70,7 @@ What is missing:
 
 ## Goal
 
-- Grafana is the only dashboard for metrics. Every dashboard is a JSON file in this repo.
+- Grafana is the only dashboard for metrics. Every dashboard is Grafonnet in this repo.
 - An alert means a human should act. A quiet week has no alerts.
 - Everything is code. `anvil apply monitoring` builds it, the same as any other service.
 

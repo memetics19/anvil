@@ -70,6 +70,7 @@ check "dashboards cannot be changed in the UI" "grep -q 'allowUiUpdates: false' 
 
 for d in "$r"/files/dashboards/*.json; do
   n=$(basename "$d")
+  check "$n: built from Grafonnet ($(basename "$n" .json).jsonnet)" "[ -f 'dashboards/$(basename "$n" .json).jsonnet' ]"
   check "$n: valid JSON with a uid and a title" "python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d[\"uid\"] and d[\"title\"]' '$d'"
   check "$n: every panel queries the provisioned data source" \
     "python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert all(t[\"datasource\"][\"uid\"]==\"victoriametrics\" for p in d[\"panels\"] for t in p.get(\"targets\",[]))' '$d'"
