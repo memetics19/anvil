@@ -52,6 +52,15 @@ scrape_configs:
         action: labeldrop
 {% endif %}
 
+{% if monitoring_pihole_target | length > 0 %}
+  # Pi-hole (role pihole's exporter): queries, blocks, clients, upstreams, top domains. Labelled
+  # host apps, so a down apps VM (HostDown) holds back its Pi-hole alerts.
+  - job_name: pihole
+    static_configs:
+      - targets: ["{{ monitoring_pihole_target }}"]
+        labels: {host: apps}
+
+{% endif %}
   # The stack itself.
   - job_name: victoriametrics
     static_configs:

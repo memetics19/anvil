@@ -1,0 +1,33 @@
+# Managed by anvil (role monitoring). Alert rules for Pi-hole, the lab's DNS (role pihole on
+# the apps VM). Each one is something a person must act on, waits before it fires (for:) and
+# links to its fix (docs/monitoring.md, Alerts). They carry host apps, so a down apps VM fires
+# HostDown alone.
+groups:
+  - name: pihole
+    rules:
+      - alert: PiholeDnsDown
+        expr: probe_success{job="dns",probe="pihole"} == 0
+        for: 3m
+        labels: {severity: critical, host: apps}
+        annotations:
+          summary: "Pi-hole does not answer DNS"
+          description: "Pi-hole has not answered a DNS query for 3 minutes. Every device that uses it for DNS cannot open any name."
+          runbook: "https://memetics19.github.io/anvil/monitoring/#piholednsdown"
+
+      - alert: PiholeBlockingOff
+        expr: pihole_status == 0
+        for: 15m
+        labels: {severity: warning, host: apps}
+        annotations:
+          summary: "Pi-hole's blocking is off"
+          description: "Pi-hole has answered without its blocklists for 15 minutes. Ads and trackers get through."
+          runbook: "https://memetics19.github.io/anvil/monitoring/#piholeblockingoff"
+
+      - alert: PiholeStatsMissing
+        expr: up{job="pihole"} == 0
+        for: 15m
+        labels: {severity: warning, host: apps}
+        annotations:
+          summary: "Pi-hole's numbers are not arriving"
+          description: "Pi-hole's exporter has not answered for 15 minutes, so the Pi-hole dashboard is empty and PiholeBlockingOff cannot fire."
+          runbook: "https://memetics19.github.io/anvil/monitoring/#piholestatsmissing"

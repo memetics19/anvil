@@ -79,6 +79,11 @@ monitoring_node_targets: >-
 monitoring_frigate_port: 9711
 monitoring_frigate_target: "{{ (site.hosts.frigate.ip ~ ':' ~ monitoring_frigate_port) if site.hosts.frigate.ip is defined else '' }}"
 
+# Pi-hole's exporter (role pihole, pihole_exporter_port) on the apps VM's lab address. None
+# without an apps host.
+monitoring_pihole_port: 9617
+monitoring_pihole_target: "{{ (site.hosts.apps.ip ~ ':' ~ monitoring_pihole_port) if site.hosts.apps.ip is defined else '' }}"
+
 # Grafana's gateway name (site.services) and its login through Authentik (OpenID Connect).
 # Authentik's client is role authentik (client id grafana). Its secret is in Vault next to
 # Authentik's own, written by that role.

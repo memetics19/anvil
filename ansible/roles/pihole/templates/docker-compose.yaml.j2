@@ -58,6 +58,34 @@ services:
       start_period: 10s
     mem_limit: {{ pihole_unbound_mem_limit }}
     memswap_limit: {{ pihole_unbound_mem_limit }}
+{% if pihole_exporter_enabled | bool %}
+
+  # Pi-hole's numbers for the monitoring VM (defaults/main.yml, pihole_exporter_*). It reaches
+  # Pi-hole by name on this network and logs in with the web password from exporter.env.
+  exporter:
+    image: {{ pihole_exporter_image }}
+    container_name: pihole-exporter
+    restart: unless-stopped
+    depends_on:
+      - pihole
+    networks:
+      - dns
+    ports:
+      - "{{ site.hosts[inventory_hostname].ip }}:{{ pihole_exporter_port }}:9617/tcp"
+    environment:
+      PIHOLE_HOSTNAME: pihole
+      PIHOLE_PORT: "80"
+      PIHOLE_PROTOCOL: http
+      PORT: "9617"
+    # Not required: a dry run on a new host has not written it yet.
+    env_file:
+      - path: exporter.env
+        required: false
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    mem_limit: {{ pihole_exporter_mem_limit }}
+    memswap_limit: {{ pihole_exporter_mem_limit }}
+{% endif %}
 
 networks:
   dns:
