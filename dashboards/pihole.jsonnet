@@ -45,7 +45,8 @@ a.dashboard('anvil-pihole', 'Pi-hole',
   ],
   [
     a.ts('Queries per second', [a.q('sum(pihole_request_rate%s)' % P, 'Queries')], 'reqps', 0),
-    a.ts('DNS answer time', [a.q('probe_dns_lookup_time_seconds{probe="pihole"}', 'Pi-hole')], 's', 0),
+    // How long Pi-hole takes to answer a query (the DNS probe's request phase).
+    a.ts('DNS answer time', [a.q('probe_dns_duration_seconds{job="dns",probe="pihole",phase="request"}', 'Pi-hole')], 's', 0),
   ],
   [
     a.ts('Today so far', [

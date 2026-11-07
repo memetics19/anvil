@@ -392,7 +392,7 @@
                   "type": "prometheus",
                   "uid": "victoriametrics"
                },
-               "expr": "probe_dns_lookup_time_seconds{probe=\"pihole\"}",
+               "expr": "probe_dns_duration_seconds{job=\"dns\",probe=\"pihole\",phase=\"request\"}",
                "legendFormat": "Pi-hole",
                "refId": "A"
             }
