@@ -71,6 +71,9 @@ check "the Lab dashboard is the home page" \
 check "frigate is scraped on its metrics port, as host frigate" \
   "grep -A4 'job_name: frigate' \$s | grep -q 'metrics_path: /api/metrics' && grep -A6 'job_name: frigate' \$s | grep -q '192.0.2.114:9711' && grep -A7 'job_name: frigate' \$s | grep -q 'host: frigate'"
 check "frigate's command lines and pids are dropped" "grep -A20 'job_name: frigate' \$s | grep -B1 'action: labeldrop' | grep -q 'regex: cmdline|pid'"
+# Pi-hole: its exporter on the apps VM, as host apps.
+check "pihole is scraped on the apps VM's exporter, as host apps" \
+  "grep -A3 'job_name: pihole' \$s | grep -q '192.0.2.121:9617' && grep -A4 'job_name: pihole' \$s | grep -q 'host: apps'"
 check "every image is pinned to a digest" \
   "[ \"\$(grep -cE '^\s+image: ' $c)\" = 6 ] && ! grep -E '^\s+image: ' $c | grep -v '@sha256:'"
 check "only Grafana and Alertmanager's API are published, on the lab address" \

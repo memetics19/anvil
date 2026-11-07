@@ -18,6 +18,8 @@ host_firewall_rules:
   - {ip: "{{ _apps_ip }}", port: 443, proto: tcp}
   # node_exporter, for the monitoring VM. It listens on the lab address only.
   - {ip: "{{ _apps_ip }}", port: 9100, proto: tcp}
+  # Pi-hole's exporter (role pihole), for the monitoring VM. Lab address only.
+  - {ip: "{{ _apps_ip }}", port: 9617, proto: tcp}
   - {ip: "{{ _apps_home_ip }}", port: 22, proto: tcp}
   - {ip: "{{ _apps_home_ip }}", port: 53, proto: tcp}
   - {ip: "{{ _apps_home_ip }}", port: 53, proto: udp}

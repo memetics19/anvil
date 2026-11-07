@@ -53,6 +53,9 @@ The dashboards:
   alerts and warnings firing, cameras recording, security events, then one row per host (up,
   uptime, CPU, memory, fullest disk), what is firing now and over time, CPU, memory, network
   traffic and ping time. The Dashboards menu at the top goes on to the others.
+- **Pi-hole**: DNS answering and blocking on, queries, blocks, blocked share and clients today,
+  queries per second, DNS and upstream answer times, cache against upstream, and the top
+  domains, blocked domains, clients and query types.
 - **Hosts**: up and uptime, CPU, memory, disk space, load, network and disk traffic, per host.
 - **Internet**: the line up now, uptime over 24 hours, 7 and 30 days, an outage timeline
   (internet, router, DNS), ping time, packet loss, DNS lookups through Pi-hole, web pages.
@@ -61,6 +64,11 @@ The dashboards:
 - **Frigate**: Frigate up, cameras sending video, detector speed and recording space now, a
   camera timeline, frames per second per camera (received, processed, detected, skipped),
   detector speed, detections by camera and object, CPU and memory per camera, and disk space.
+
+Pi-hole's numbers come from `ekofr/pihole-exporter`, a container in the `pihole` compose
+project on the apps VM. It logs in to Pi-hole's API with the web password (`exporter.env`,
+mode 600) on the project's own network, and publishes its metrics on the VM's lab address
+only (port 9617).
 
 Frigate's metrics come from its own `/api/metrics`. Port 5000, Frigate's API with no login,
 stays on the Frigate VM's loopback. nginx on its lab address (port 9711) answers that one
@@ -221,6 +229,26 @@ what else runs on its Proxmox node.
 Warning. Less than 10% of the recording disk is free. Frigate deletes the oldest footage
 early to make room, so less history is kept. Shorten the retention in Frigate's config, or
 grow the disk (`anvil increase-disk frigate <GB>`).
+
+### PiholeDnsDown
+
+Critical. Pi-hole has not answered a DNS query for 3 minutes, so every device that uses it
+cannot open any name. On the apps VM: `sudo docker ps` and `sudo docker logs --tail 50 pihole`,
+then `sudo docker logs --tail 20 unbound`, its upstream. `anvil apply apps --tags pihole` puts
+the stack back. Until then, a device can use the router or a public resolver by hand.
+
+### PiholeBlockingOff
+
+Warning. Pi-hole has answered without its blocklists for 15 minutes, so ads and trackers get
+through. Someone turned blocking off in the web UI and it did not come back. Turn it on again
+under the admin page's blocking switch.
+
+### PiholeStatsMissing
+
+Warning. Pi-hole's exporter has not answered for 15 minutes. DNS may be fine, but the Pi-hole
+dashboard is empty and PiholeBlockingOff cannot fire. On the apps VM: `sudo docker logs --tail
+20 pihole-exporter`. A changed web password needs `anvil apply apps --tags pihole`, which
+rewrites the exporter's login.
 
 ### MonitoringBlind
 
