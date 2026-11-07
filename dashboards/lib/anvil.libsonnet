@@ -66,6 +66,43 @@ local g = import 'github.com/grafana/grafonnet/gen/grafonnet-v13.0.0/main.libson
     + (if steps != [] then st.standardOptions.thresholds.withMode('absolute')
        + st.standardOptions.thresholds.withSteps([{ color: s[0], value: s[1] } for s in steps]) else {}),
 
+  // A gauge: the last value on a dial from min to max, coloured by thresholds.
+  gauge(title, queries, unit, steps=[], min=0, max=100)::
+    local gg = g.panel.gauge;
+    gg.new(title)
+    + gg.queryOptions.withDatasource('prometheus', self.ds.metrics)
+    + gg.queryOptions.withTargets(self.refs(queries))
+    + gg.standardOptions.withUnit(unit)
+    + gg.standardOptions.withMin(min)
+    + gg.standardOptions.withMax(max)
+    + gg.options.reduceOptions.withCalcs(['lastNotNull'])
+    + (if steps != [] then gg.standardOptions.thresholds.withMode('absolute')
+       + gg.standardOptions.thresholds.withSteps([{ color: s[0], value: s[1] } for s in steps]) else {}),
+
+  // Bars, one per interval (a day, say): for totals like minutes of downtime per day.
+  bars(title, queries, unit, interval, steps=[])::
+    local ts = g.panel.timeSeries;
+    ts.new(title)
+    + ts.queryOptions.withDatasource('prometheus', self.ds.metrics)
+    + ts.queryOptions.withTargets(self.refs(queries))
+    + ts.queryOptions.withInterval(interval)
+    + ts.standardOptions.withUnit(unit)
+    + ts.standardOptions.withMin(0)
+    + ts.fieldConfig.defaults.custom.withDrawStyle('bars')
+    + ts.fieldConfig.defaults.custom.withFillOpacity(80)
+    + ts.fieldConfig.defaults.custom.withLineWidth(0)
+    + ts.options.legend.withShowLegend(false)
+    + (if steps != [] then ts.standardOptions.thresholds.withMode('absolute')
+       + ts.standardOptions.thresholds.withSteps([{ color: s[0], value: s[1] } for s in steps])
+       + ts.standardOptions.color.withMode('thresholds')
+       + ts.fieldConfig.defaults.custom.withThresholdsStyle({ mode: 'off' }) else {}),
+
+  // A short note in plain words (Markdown).
+  note(title, content)::
+    g.panel.text.new(title)
+    + g.panel.text.options.withMode('markdown')
+    + g.panel.text.options.withContent(content),
+
   // A table: a terms breakdown, biggest first.
   table(title, queries)::
     local tb = g.panel.table;

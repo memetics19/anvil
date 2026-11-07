@@ -1,7 +1,27 @@
 {
-   "description": "The ISP line: up now, uptime, outages, ping time, packet loss, DNS through Pi-hole and web pages. Managed by anvil: change dashboards/internet.jsonnet.",
+   "description": "The ISP line in plain terms: up now, ping, packet loss and DNS right now, outages and downtime today, the worst days, and the details. Managed by anvil: change dashboards/internet.jsonnet.",
    "editable": false,
    "panels": [
+      {
+         "datasource": {
+            "type": "datasource",
+            "uid": "-- Mixed --"
+         },
+         "gridPos": {
+            "h": 3,
+            "w": 24,
+            "x": 0,
+            "y": 0
+         },
+         "id": 1,
+         "options": {
+            "content": "**Up** means at least one public address (Cloudflare, Google, Quad9) answers a ping. **Ping** is the round trip in milliseconds: under 60 ms is good, over 150 ms feels slow. **Packet loss** above 1% makes calls and games stutter. **Jitter** is how much the ping wobbles. When the router is down too, the problem is at home, not at the ISP. While the lab itself has no power, nothing is measured, so that time is not counted as an outage.\n",
+            "mode": "markdown"
+         },
+         "pluginVersion": "v13.0.0",
+         "title": "How to read this",
+         "type": "text"
+      },
       {
          "datasource": {
             "type": "prometheus",
@@ -39,12 +59,12 @@
             }
          },
          "gridPos": {
-            "h": 5,
-            "w": 6,
+            "h": 6,
+            "w": 4,
             "x": 0,
-            "y": 0
+            "y": 3
          },
-         "id": 1,
+         "id": 2,
          "options": {
             "colorMode": "background",
             "graphMode": "none",
@@ -81,86 +101,27 @@
                   "mode": "absolute",
                   "steps": [
                      {
-                        "color": "red",
+                        "color": "green",
                         "value": null
                      },
                      {
                         "color": "orange",
-                        "value": 99
+                        "value": 0.059999999999999998
                      },
-                     {
-                        "color": "green",
-                        "value": 99.900000000000006
-                     }
-                  ]
-               },
-               "unit": "percent"
-            }
-         },
-         "gridPos": {
-            "h": 5,
-            "w": 6,
-            "x": 6,
-            "y": 0
-         },
-         "id": 2,
-         "options": {
-            "colorMode": "background",
-            "graphMode": "none",
-            "reduceOptions": {
-               "calcs": [
-                  "lastNotNull"
-               ]
-            },
-            "textMode": "value_and_name"
-         },
-         "pluginVersion": "v13.0.0",
-         "targets": [
-            {
-               "datasource": {
-                  "type": "prometheus",
-                  "uid": "victoriametrics"
-               },
-               "expr": "100 * avg_over_time(max(probe_success{job=\"ping\",scope=\"internet\"})[24h:1m])",
-               "legendFormat": "Uptime",
-               "refId": "A"
-            }
-         ],
-         "title": "Uptime, 24 hours",
-         "type": "stat"
-      },
-      {
-         "datasource": {
-            "type": "prometheus",
-            "uid": "victoriametrics"
-         },
-         "fieldConfig": {
-            "defaults": {
-               "thresholds": {
-                  "mode": "absolute",
-                  "steps": [
                      {
                         "color": "red",
-                        "value": null
-                     },
-                     {
-                        "color": "orange",
-                        "value": 99
-                     },
-                     {
-                        "color": "green",
-                        "value": 99.900000000000006
+                        "value": 0.14999999999999999
                      }
                   ]
                },
-               "unit": "percent"
+               "unit": "s"
             }
          },
          "gridPos": {
-            "h": 5,
-            "w": 6,
-            "x": 12,
-            "y": 0
+            "h": 6,
+            "w": 4,
+            "x": 4,
+            "y": 3
          },
          "id": 3,
          "options": {
@@ -180,12 +141,12 @@
                   "type": "prometheus",
                   "uid": "victoriametrics"
                },
-               "expr": "100 * avg_over_time(max(probe_success{job=\"ping\",scope=\"internet\"})[7d:5m])",
-               "legendFormat": "Uptime",
+               "expr": "avg(probe_icmp_duration_seconds{job=\"ping\",scope=\"internet\",phase=\"rtt\"})",
+               "legendFormat": "Ping",
                "refId": "A"
             }
          ],
-         "title": "Uptime, 7 days",
+         "title": "Ping now",
          "type": "stat"
       },
       {
@@ -195,6 +156,312 @@
          },
          "fieldConfig": {
             "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 1
+                     },
+                     {
+                        "color": "red",
+                        "value": 5
+                     }
+                  ]
+               },
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 8,
+            "y": 3
+         },
+         "id": 4,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * (1 - avg(avg_over_time(probe_success{job=\"ping\",scope=\"internet\"}[5m])))",
+               "legendFormat": "Loss",
+               "refId": "A"
+            }
+         ],
+         "title": "Packet loss, last 5 minutes",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 0.10000000000000001
+                     },
+                     {
+                        "color": "red",
+                        "value": 0.5
+                     }
+                  ]
+               },
+               "unit": "s"
+            }
+         },
+         "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 12,
+            "y": 3
+         },
+         "id": 5,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "avg(probe_dns_duration_seconds{job=\"dns\",phase=\"request\"})",
+               "legendFormat": "DNS",
+               "refId": "A"
+            }
+         ],
+         "title": "DNS answer now",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "mappings": [
+                  {
+                     "options": {
+                        "0": {
+                           "text": "Down"
+                        },
+                        "1": {
+                           "text": "Up"
+                        }
+                     },
+                     "type": "value"
+                  }
+               ],
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "green",
+                        "value": 1
+                     }
+                  ]
+               },
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 16,
+            "y": 3
+         },
+         "id": 6,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"ping\",probe=\"router\"})",
+               "legendFormat": "Router",
+               "refId": "A"
+            }
+         ],
+         "title": "Router now",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 1
+                     },
+                     {
+                        "color": "red",
+                        "value": 3
+                     }
+                  ]
+               },
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 0,
+            "y": 9
+         },
+         "id": 7,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "ceil(changes(max(probe_success{job=\"ping\",scope=\"internet\"})[24h:1m]) / 2)",
+               "legendFormat": "Outages",
+               "refId": "A"
+            }
+         ],
+         "title": "Outages, last 24 hours",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 1
+                     },
+                     {
+                        "color": "red",
+                        "value": 15
+                     }
+                  ]
+               },
+               "unit": "m"
+            }
+         },
+         "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 4,
+            "y": 9
+         },
+         "id": 8,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "60 * 24 * (1 - avg_over_time(max(probe_success{job=\"ping\",scope=\"internet\"})[24h:1m]))",
+               "legendFormat": "Down",
+               "refId": "A"
+            }
+         ],
+         "title": "Downtime, last 24 hours",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "max": 100,
+               "min": 95,
                "thresholds": {
                   "mode": "absolute",
                   "steps": [
@@ -216,21 +483,134 @@
             }
          },
          "gridPos": {
-            "h": 5,
-            "w": 6,
-            "x": 18,
-            "y": 0
+            "h": 6,
+            "w": 4,
+            "x": 8,
+            "y": 9
          },
-         "id": 4,
+         "id": 9,
          "options": {
-            "colorMode": "background",
-            "graphMode": "none",
             "reduceOptions": {
                "calcs": [
                   "lastNotNull"
                ]
-            },
-            "textMode": "value_and_name"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * avg_over_time(max(probe_success{job=\"ping\",scope=\"internet\"})[24h:1m])",
+               "legendFormat": "Uptime",
+               "refId": "A"
+            }
+         ],
+         "title": "Uptime, 24 hours",
+         "type": "gauge"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "max": 100,
+               "min": 95,
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 99
+                     },
+                     {
+                        "color": "green",
+                        "value": 99.900000000000006
+                     }
+                  ]
+               },
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 12,
+            "y": 9
+         },
+         "id": 10,
+         "options": {
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * avg_over_time(max(probe_success{job=\"ping\",scope=\"internet\"})[7d:5m])",
+               "legendFormat": "Uptime",
+               "refId": "A"
+            }
+         ],
+         "title": "Uptime, 7 days",
+         "type": "gauge"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "max": 100,
+               "min": 95,
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 99
+                     },
+                     {
+                        "color": "green",
+                        "value": 99.900000000000006
+                     }
+                  ]
+               },
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 16,
+            "y": 9
+         },
+         "id": 11,
+         "options": {
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            }
          },
          "pluginVersion": "v13.0.0",
          "targets": [
@@ -245,7 +625,7 @@
             }
          ],
          "title": "Uptime, 30 days",
-         "type": "stat"
+         "type": "gauge"
       },
       {
          "datasource": {
@@ -275,9 +655,9 @@
             "h": 6,
             "w": 24,
             "x": 0,
-            "y": 5
+            "y": 15
          },
-         "id": 5,
+         "id": 12,
          "options": {
             "showValue": "never"
          },
@@ -309,9 +689,18 @@
                "expr": "max(probe_success{job=\"dns\"})",
                "legendFormat": "DNS (Pi-hole)",
                "refId": "C"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"http\"})",
+               "legendFormat": "Web pages",
+               "refId": "D"
             }
          ],
-         "title": "Outages",
+         "title": "Up and down",
          "type": "state-timeline"
       },
       {
@@ -321,6 +710,74 @@
          },
          "fieldConfig": {
             "defaults": {
+               "color": {
+                  "mode": "thresholds"
+               },
+               "custom": {
+                  "drawStyle": "bars",
+                  "fillOpacity": 80,
+                  "lineWidth": 0,
+                  "thresholdsStyle": {
+                     "mode": "off"
+                  }
+               },
+               "min": 0,
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 1
+                     },
+                     {
+                        "color": "red",
+                        "value": 15
+                     }
+                  ]
+               },
+               "unit": "m"
+            }
+         },
+         "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 21
+         },
+         "id": 13,
+         "interval": "1d",
+         "options": {
+            "legend": {
+               "showLegend": false
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "60 * 24 * (1 - avg_over_time(max(probe_success{job=\"ping\",scope=\"internet\"})[1d:1m]))",
+               "legendFormat": "Down",
+               "refId": "A"
+            }
+         ],
+         "title": "Downtime per day, minutes",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
                "unit": "s"
             }
          },
@@ -328,9 +785,9 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 11
+            "y": 28
          },
-         "id": 6,
+         "id": 14,
          "options": {
             "legend": {
                "calcs": [
@@ -352,12 +809,59 @@
                   "type": "prometheus",
                   "uid": "victoriametrics"
                },
-               "expr": "probe_icmp_duration_seconds{phase=\"rtt\"}",
+               "expr": "probe_icmp_duration_seconds{job=\"ping\",scope=\"internet\",phase=\"rtt\"}",
                "legendFormat": "{{probe}}",
                "refId": "A"
             }
          ],
          "title": "Ping time",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "s"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 28
+         },
+         "id": 15,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "stddev_over_time(probe_icmp_duration_seconds{job=\"ping\",scope=\"internet\",phase=\"rtt\"}[5m])",
+               "legendFormat": "{{probe}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Jitter (how much the ping wobbles)",
          "type": "timeseries"
       },
       {
@@ -375,10 +879,10 @@
          "gridPos": {
             "h": 8,
             "w": 12,
-            "x": 12,
-            "y": 11
+            "x": 0,
+            "y": 36
          },
-         "id": 7,
+         "id": 16,
          "options": {
             "legend": {
                "calcs": [
@@ -415,52 +919,7 @@
          },
          "fieldConfig": {
             "defaults": {
-               "unit": "s"
-            }
-         },
-         "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 19
-         },
-         "id": 8,
-         "options": {
-            "legend": {
-               "calcs": [
-                  "lastNotNull",
-                  "max"
-               ],
-               "displayMode": "table",
-               "placement": "right"
-            },
-            "tooltip": {
-               "mode": "multi",
-               "sort": "desc"
-            }
-         },
-         "pluginVersion": "v13.0.0",
-         "targets": [
-            {
-               "datasource": {
-                  "type": "prometheus",
-                  "uid": "victoriametrics"
-               },
-               "expr": "probe_dns_lookup_time_seconds",
-               "legendFormat": "{{probe}}",
-               "refId": "A"
-            }
-         ],
-         "title": "DNS lookup through Pi-hole",
-         "type": "timeseries"
-      },
-      {
-         "datasource": {
-            "type": "prometheus",
-            "uid": "victoriametrics"
-         },
-         "fieldConfig": {
-            "defaults": {
+               "min": 0,
                "unit": "s"
             }
          },
@@ -468,9 +927,9 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 19
+            "y": 36
          },
-         "id": 9,
+         "id": 17,
          "options": {
             "legend": {
                "calcs": [
@@ -497,7 +956,101 @@
                "refId": "A"
             }
          ],
-         "title": "Web page time",
+         "title": "Web page load time",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "s"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 44
+         },
+         "id": 18,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "probe_dns_duration_seconds{job=\"dns\",phase=\"request\"}",
+               "legendFormat": "{{probe}}",
+               "refId": "A"
+            }
+         ],
+         "title": "DNS answer time through Pi-hole",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "s"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 44
+         },
+         "id": 19,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "probe_icmp_duration_seconds{job=\"ping\",probe=\"router\",phase=\"rtt\"}",
+               "legendFormat": "Router",
+               "refId": "A"
+            }
+         ],
+         "title": "Router ping time",
          "type": "timeseries"
       }
    ],
