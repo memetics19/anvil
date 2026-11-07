@@ -74,6 +74,11 @@ check "frigate's command lines and pids are dropped" "grep -A20 'job_name: friga
 # Pi-hole: its exporter on the apps VM, as host apps.
 check "pihole is scraped on the apps VM's exporter, as host apps" \
   "grep -A3 'job_name: pihole' \$s | grep -q '192.0.2.121:9617' && grep -A4 'job_name: pihole' \$s | grep -q 'host: apps'"
+# A config mounted as a single file stays the old file after a template replaces it, so a
+# reload reads stale config. Every config is a folder mount.
+check "vmagent and blackbox read their configs from mounted folders" \
+  "grep -q -- '- ./vmagent:/etc/vmagent:ro' \$c && grep -q -- '- ./blackbox:/etc/blackbox:ro' \$c"
+check "no config is mounted as a single file" "! grep -E -- '^ +- \\./[^:]*\\.ya?ml:' \$c"
 check "every image is pinned to a digest" \
   "[ \"\$(grep -cE '^\s+image: ' $c)\" = 6 ] && ! grep -E '^\s+image: ' $c | grep -v '@sha256:'"
 check "only Grafana and Alertmanager's API are published, on the lab address" \
