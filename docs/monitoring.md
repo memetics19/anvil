@@ -57,8 +57,11 @@ The dashboards:
   queries per second, DNS and upstream answer times, cache against upstream, and the top
   domains, blocked domains, clients and query types.
 - **Hosts**: up and uptime, CPU, memory, disk space, load, network and disk traffic, per host.
-- **Internet**: the line up now, uptime over 24 hours, 7 and 30 days, an outage timeline
-  (internet, router, DNS), ping time, packet loss, DNS lookups through Pi-hole, web pages.
+- **Internet**, in plain terms: a short note on how to read it, then right now (internet up,
+  ping, packet loss, DNS answer time, router up), then the last day (outages, minutes of
+  downtime, uptime gauges for 24 hours, 7 and 30 days), an up and down timeline (internet,
+  router, DNS, web pages), downtime minutes per day as bars, and the details: ping time,
+  jitter, packet loss, web page load time, DNS answer time and the router's ping.
 - **Security**: Wazuh's alerts (level 10 and up, critical 12 and up), hosts reporting, alerts by
   level over time, the top rules and hosts, failed logins, changed files and vulnerabilities.
 - **Frigate**: Frigate up, cameras sending video, detector speed and recording space now, a
