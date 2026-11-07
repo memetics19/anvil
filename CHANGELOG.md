@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.31.0](https://github.com/memetics19/anvil/compare/v0.30.0...v0.31.0) (2026-11-07)
+
+
+### Features
+
+* **monitoring:** an Internet dashboard in plain terms ([#229](https://github.com/memetics19/anvil/issues/229)) ([530dc85](https://github.com/memetics19/anvil/commit/530dc85429c0721508c57a586de78e89cf2882d6))
+* **pihole, monitoring:** Pi-hole dashboard and alerts ([#228](https://github.com/memetics19/anvil/issues/228)) ([38e251e](https://github.com/memetics19/anvil/commit/38e251ecf7046c399bb574842861deb6ad8fbf0f))
+
 ## [0.30.0](https://github.com/memetics19/anvil/compare/v0.29.4...v0.30.0) (2026-11-05)
 
 
