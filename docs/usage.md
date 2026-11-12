@@ -357,7 +357,7 @@ recreate.
 | IPTV tools | `iptv_streamlink_version`, `iptv_mpegts_version`, `iptv_threadfin_db_version` | `make vm HOST=ragnarok ARGS="--tags iptv"` |
 | node_exporter | `node_exporter_version` | |
 | Proxmox provider | `terraform/versions.tf` | `make tf-init ARGS=-upgrade`, then `make tf-plan` |
-| Ubuntu cloud image | `terraform/vm_vault.tf` | Don't edit it in place, or the provider replaces the download. Follow the comment at the top of the file. |
+| Ubuntu cloud image | `terraform/images.tf` | Don't edit it in place, or the provider replaces the download. Follow the comment at the top of the file. |
 | gitleaks | `.github/workflows/ci.yml`, `.pre-commit-config.yaml` | Keep both on the same version. |
 | Lint hooks | `.pre-commit-config.yaml` | `pre-commit autoupdate` |
 
