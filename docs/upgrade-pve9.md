@@ -45,7 +45,7 @@ The commands on a node name VMs by name. Define this once in each shell on a nod
 5. Run the checker on each node: `pve8to9 --full`. Fix every FAIL. Read every WARN.
 6. Back up: `anvil backup`, then the small VMs from the Proxmox web UI (Datacenter, Backup)
    or on pve `for v in apps netbird vault vaultwarden; do vzdump "$(vmid $v)" --mode snapshot --compress zstd --storage local; done`,
-   and on pve2 the same for identity and llm. Copy pve's
+   and on pve2 the same for identity, wazuh and monitoring. Copy pve's
    dumps to pve2 (`/var/lib/vz/dump`), so a broken pve does not take its own backups with it.
    ragnarok and frigate are rebuilt from code. Their media and recordings are not backed up.
 7. Check the consoles: a monitor and keyboard on pve, iDRAC on pve2. A new kernel can rename
@@ -58,7 +58,7 @@ Work in `tmux` on the node, so a dropped SSH session does not stop the upgrade.
 1. `pveversion` shows 8.4.1 or newer, `pve8to9 --full` shows no FAIL, `pvecm status` shows
    Quorate: Yes.
 2. A snapshot of the root to roll back to: `zfs snapshot rpool/ROOT/pve-1@pre-pve9`.
-3. Shut down its VMs: `qm shutdown "$(vmid identity)" && qm shutdown "$(vmid llm)"`.
+3. Shut down its VMs: `for v in identity wazuh monitoring; do qm shutdown "$(vmid $v)"; done`.
 4. Fewer kernel audit lines during the upgrade: `systemctl disable --now systemd-journald-audit.socket`.
 5. From the Mac, its repositories to trixie:
    `anvil apply host --tags repos --args "-e pve_repos_upgrade=pve2"`.

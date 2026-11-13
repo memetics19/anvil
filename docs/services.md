@@ -64,37 +64,6 @@ time server lookups stay allowed.
 - A device can skip DNS and connect to an address it already knows. For a hard wall, put the
   cameras on their own VLAN with no internet (role `pve_vlans`, `cameras_internet`).
 
-### Docmost (wiki)
-
-`make vm HOST=frigate ARGS="--tags docmost"` runs the `docmost` role. It manages the
-compose project `/opt/docmost`. Each container is pinned by tag and digest and has a
-memory cap:
-
-| Container | Memory cap |
-|---|---|
-| Docmost | 768 MB |
-| Postgres | 256 MB |
-| Redis | 96 MB |
-
-Docmost publishes port 3000 on the VM's lab address only. People reach it through the
-gateway at `wiki.<gateway-domain>`, on the LAN and the VPN. Nothing about it is public.
-
-- Secrets: `app_secret` and `db_password` in `kv/homelab/frigate/docmost`. The role
-  generates them the first time. Each container gets only its own, from a mode 600 env
-  file (`docmost.env`, `db.env`). A changed value recreates that container.
-- Uploads use Docmost's local storage driver, in the `storage` volume. The database is in
-  the `db` volume.
-- Docmost migrates its database itself when a new version starts. To upgrade, change
-  `docmost_image` and run the role.
-- No email is set up. Invite people with the invite link Docmost shows. Reset a password
-  from the admin settings.
-
-The first person to open `https://wiki.<gateway-domain>` creates the workspace and becomes
-its admin. Open it right after the first run, so that you are that person. The site entry
-in `site.services` is
-`{name: wiki, host: hosts.frigate.ip, port: 3000, scheme: http, websocket: true}`.
-Collaborative editing uses a WebSocket.
-
 ## ragnarok
 
 `make vm HOST=ragnarok` runs four compose projects. None of them may live inside the media
@@ -741,7 +710,7 @@ Only members of the Authentik group `lab-admins` get through (see
   (role `port_guard`) closes their web ports on ragnarok to everyone but the VM's own
   containers, the gateway VM and the Pulse VM. The torrent port stays open.
 - The other apps keep their own logins. Frigate is also public through the tunnel. Ceph,
-  iDRAC, the switch, Filestash, Docmost and Threadfin cannot trust a login made in front
+  iDRAC, the switch, Filestash and Threadfin cannot trust a login made in front
   of them. Threadfin's port also serves the TV playlist, so it is not guarded.
 - Homepage widgets, Pulse monitors and the apps talking to each other use the upstream
   addresses, not the gateway names, so the login check does not touch them.
@@ -991,31 +960,6 @@ created only when `site.hosts.identity` exists:
 It gets the base guest roles (guest base, Docker, Pulse agent). The LDAP directory comes
 next (planned in the README roadmap).
 
-### Local language model
-
-`https://llm.<gateway-domain>` is a local language model: [Ollama](https://ollama.com) (the
-runtime) and [Open WebUI](https://openwebui.com) (the chat interface), compose project
-`/opt/llm` on the `llm` VM (`terraform/vm_llm.tf`, role `llm`). It runs on **CPU only** —
-these hosts have no GPU — so answers come at a few tokens a second. It is on the second
-node, behind the gateway and single sign-on like the other apps.
-
-- The VM is created only when `site.services` (and `site.hosts.llm`) name it. Defaults: 4
-  cores, 16 GB, a 40 GB disk on `vmdata`.
-- The models in `llm_models` are pulled on the first run (`hermes3:8b` by default, about
-  5 GB). Add to the list and re-run to pull more; nothing is removed.
-- Ollama publishes no port. Only Open WebUI reaches it, and only Open WebUI's port 8080 is
-  published, on the VM's lab address.
-- Open WebUI keeps its own accounts (the first user becomes the admin), behind the
-  gateway's single sign-on as a second layer. Trusted-header SSO (one login, no second
-  account) is a later improvement.
-- The model cache and chat history live on the VM. Both are replaceable, so the VM is not
-  backed up and Terraform may destroy it.
-
-Honest limits: an 8B model on these CPUs is slow and far less capable than a hosted model.
-It suits a scripted assistant, not heavy work. Fine-tuning needs a GPU: train a LoRA on a
-rented GPU and copy the adapter here; a system prompt plus Open WebUI's document knowledge
-(RAG) is the cheaper first step.
-
 ### Authentik (single sign-on)
 
 `make vm HOST=identity ARGS="--tags authentik"` runs the `authentik` role. It manages the
@@ -1131,60 +1075,6 @@ age -d -i <(security find-generic-password -s homelab -a backup-age-identity -w)
     sudo docker start authentik-server authentik-worker'
 make vm HOST=identity ARGS="--tags authentik"   # checks /-/health/ready/
 ```
-
-## Tripwire (OpenCanary)
-
-A small VM on the second node, `canary`, runs OpenCanary (role `canary`,
-`terraform/vm_canary.tf`). It looks like a forgotten NAS: FTP, Telnet, a web login page, SSH
-on 2222, MySQL, SQL Server, RDP, VNC, Redis, TFTP and SNMP. Nothing legitimate ever talks to
-it. So any connection, login attempt or port scan sends an ntfy message at once, with the
-source address and what it tried. It catches what nightly checks miss: someone, or something,
-looking around the network right now.
-
-The real SSH stays on port 22 for the admin sources and the VPN routers only. Anyone else gets
-no answer there. A changed rule goes in with a timed rollback, so a mistake cannot lock you
-out for more than two minutes.
-
-One-time setup, before the first apply:
-
-1. Add the VM to the site dict in Vault, with an address nothing uses
-   (`site.hosts.canary`, shaped like `site/site.example.yml`), then `anvil apply tf`.
-2. Give it a write-only ntfy user and keep its token in Vault. On the netbird VM
-   (`ssh -t ubuntu@<netbird VM>`), where `ubuntu` runs docker through sudo:
-
-   ```sh
-   sudo docker exec -it ntfy ntfy user add canary
-   sudo docker exec ntfy ntfy access canary canary write-only
-   ```
-
-   Nothing logs in with its password, so any long random string will do. An ntfy admin reads
-   every topic already. A user who is not an admin also needs
-   `sudo docker exec ntfy ntfy access <your ntfy user> canary read-only`.
-
-   Then make its token from the Mac and pipe it into Vault, so it never shows or lands in a
-   shell history. sudo on the VM takes its password from the Keychain on stdin, because a pipe
-   has no terminal to ask on. The url is ntfy's lab address, not the public name, so an
-   alert still gets out when the internet or the gateway is down:
-
-   ```sh
-   source scripts/env.sh
-   t=$(security find-generic-password -s homelab -a vm-sudo-password -w |
-     ssh ubuntu@<netbird VM> "sudo -S -p '' docker exec ntfy ntfy token add canary 2>&1" |
-     awk '/^token tk_/{print $2}')
-   if [ -n "$t" ]
-   then
-     printf '%s' "$t" |
-       vault kv put -mount=kv homelab/canary/ntfy url=http://<netbird VM>:8081/canary token=-
-   else
-     echo "no token made, run the ssh line without awk to see why"
-   fi
-   unset t
-   ```
-
-3. `anvil apply canary`, and subscribe to the `canary` topic in the ntfy app.
-
-Test it: `nc -vz <canary address> 21` from the Mac. A message arrives within seconds. The
-security audit's scans trip it too, which is the point.
 
 ## Wazuh
 

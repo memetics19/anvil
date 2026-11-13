@@ -46,7 +46,7 @@ plays = yaml.safe_load(open(\"ansible/playbooks/vms.yml\"))
 p = [p for p in plays if any(isinstance(r, dict) and r.get(\"role\") == \"tcp_options_guard\" for r in p.get(\"roles\", []))]
 assert len(p) == 1
 groups = set(p[0][\"hosts\"].split(\":\"))
-assert {\"guests\", \"vault_servers\", \"apps_servers\", \"vaultwarden_servers\", \"identity_servers\", \"llm_servers\"} <= groups, groups
+assert {\"guests\", \"vault_servers\", \"apps_servers\", \"vaultwarden_servers\", \"identity_servers\"} <= groups, groups
 '"
 check "the Proxmox host and the other cluster members get it" "python3 -c '
 import yaml
