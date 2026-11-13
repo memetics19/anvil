@@ -2,7 +2,7 @@
 # outside it tries Vault's and Vaultwarden's ports, and every try must fail. Read-only: a
 # try only opens a TCP connection. Labels name the service and port, never the address.
 - name: The enclave is closed to the other VMs
-  hosts: guests:apps_servers:identity_servers:llm_servers
+  hosts: guests:apps_servers:identity_servers
   gather_facts: false
   pre_tasks:
     - name: Resolve the site dict once for this run

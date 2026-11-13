@@ -76,7 +76,7 @@ It is a work in progress. See the [Roadmap](#roadmap).
 | Host | Runs |
 |---|---|
 | `pve` | Proxmox VE 8.4, LAN gateway and NAT, NetBird, Ceph |
-| `frigate` | Frigate, Mosquitto, Gotify, nginx, Docmost, cloudflared |
+| `frigate` | Frigate, Mosquitto, Gotify, nginx, cloudflared |
 | `netbird` | NetBird routing peers (cloud and self-hosted), the self-hosted NetBird server, Redis, ntfy, Pulse, the apt repository, cloudflared |
 | `ragnarok` | ARR stack, IPTV and its guide server, Filestash, cloudflared |
 | `vault` | HashiCorp Vault, in the secrets enclave (no internet) |

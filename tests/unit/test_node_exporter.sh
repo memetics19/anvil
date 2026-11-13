@@ -44,7 +44,7 @@ def find(d):
             r=find(v)
             if r is not None: return r
     return None
-h=set(find(g)); assert {\"frigate\",\"ragnarok\",\"netbird\",\"apps\",\"identity\",\"llm\"} <= h, h
+h=set(find(g)); assert {\"frigate\",\"ragnarok\",\"netbird\",\"apps\",\"identity\"} <= h, h
 assert not ({\"vault\",\"vaultwarden\",\"pve\"} & h)'"
 check "the Proxmox host gets it from host.yml, tag node_exporter" \
   "python3 -c 'import yaml; p=yaml.safe_load(open(\"ansible/playbooks/host.yml\"))[0]

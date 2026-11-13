@@ -47,7 +47,6 @@ homepage_catalog:
   idrac: {title: iDRAC, group: Infrastructure, icon: idrac.png, description: Server management}
   switch: {title: Switch, group: Infrastructure, icon: cisco.png, description: Network switch}
   docs: {title: Docs, group: Infrastructure, icon: mdi-book-open-variant, description: Homelab documentation}
-  wiki: {title: Wiki, group: Home, icon: docmost.png, description: Docmost wiki}
   sonarr: {title: Sonarr, group: Media, icon: sonarr.png, description: TV series, widget: sonarr}
   radarr: {title: Radarr, group: Media, icon: radarr.png, description: Movies, widget: radarr}
   prowlarr: {title: Prowlarr, group: Media, icon: prowlarr.png, description: Indexers, widget: prowlarr}
@@ -65,7 +64,6 @@ homepage_catalog:
   pass: {title: Vaultwarden, group: Security, icon: vaultwarden.png, description: Passwords}
   # Homepage's Authentik widget needs an API token: none, rather than handing it one.
   auth: {title: Authentik, group: Security, icon: authentik.png, description: Single sign-on, widget: none}
-  llm: {title: LLM, group: Home, icon: ollama.png, description: Local language model, widget: none}
 
 # Read-only Proxmox API token (role pve_host, tag homepage: user with PVEAuditor, privilege-
 # separated token with PVEAuditor). Not secret; the token's secret is HOMEPAGE_VAR_PVE_TOKEN.
