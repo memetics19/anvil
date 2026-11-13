@@ -54,8 +54,13 @@ netbird_server_policies:
     sources: [operator]
     destinations: [routers]
 netbird_server_delete_policies: [Default]
-# The lab's /16 (masquerade on) and the apps VM's home address (masquerade off, so the
-# gateway's Caddy allowlist sees the peer's own address).
+# The lab's /16 (masquerade on), the apps VM's home address (masquerade off, so the
+# gateway's Caddy allowlist sees the peer's own address) and the Proxmox host's home address
+# (masquerade off): the IPTV playlist and its stream redirects point there (role iptv,
+# iptv_public_ip), and the host forwards those ports to the IPTV VM from any source. With the
+# peer's own address the IPTV VM answers through the host, which undoes its forward and sends
+# the reply back to the routing peer (pve_network_netbird_return_route). Masqueraded to the
+# routing peer's lab address, the IPTV VM would answer it directly and the reply would be lost.
 netbird_server_lab_route: "{{ (site.lan_cidr.split('/')[0].split('.')[:2] + ['0', '0']) | join('.') }}/16"
 netbird_server_networks:
   - name: lab
@@ -68,6 +73,12 @@ netbird_server_networks:
     description: The service gateway's home address
     resources:
       - {name: apps-home, address: "{{ site.hosts.apps.home_ip | default('') }}/32", groups: [routers]}
+    routers:
+      - {peer_groups: [routers], masquerade: false, metric: 9999}
+  - name: home-tv
+    description: The Proxmox host's home address, for live TV away from home
+    resources:
+      - {name: pve-home, address: "{{ site.pve.uplink_ip | default('') }}/32", groups: [routers]}
     routers:
       - {peer_groups: [routers], masquerade: false, metric: 9999}
 # Pi-hole answers the gateway names (<name>.<gateway domain>) for the operator's devices.
