@@ -36,10 +36,19 @@
 {% endif %}
 {% if s.sso %}
 		# Single sign-on: Authentik's outpost answers its own paths and decides on every other
-		# request. Without a valid login the browser goes to the sign-in page.
+		# request. Without a valid login the browser goes to the sign-in page. The identity
+		# headers come from Authentik only: whatever a client sent is dropped first.
+{% for h in caddy_sso_identity_headers %}
+		request_header -{{ h }}
+{% endfor %}
 		reverse_proxy /outpost.goauthentik.io/* {{ caddy_sso_upstream }}
-		forward_auth {{ caddy_sso_upstream }} {
+{% if s.sso_open_paths %}
+		# Clients that cannot sign in reach these paths without it.
+		@{{ s.name }}_signin not path {{ s.sso_open_paths | join(' ') }}
+{% endif %}
+		forward_auth {{ ('@' ~ s.name ~ '_signin ') if s.sso_open_paths else '' }}{{ caddy_sso_upstream }} {
 			uri /outpost.goauthentik.io/auth/caddy
+			copy_headers {{ caddy_sso_identity_headers | join(' ') }}
 		}
 {% endif %}
 {% if s.home is defined %}

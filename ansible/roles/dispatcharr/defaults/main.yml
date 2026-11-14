@@ -1,8 +1,9 @@
 # Dispatcharr (IPTV playlists, guides and stream proxy) on the dispatcharr VM: compose
 # project "dispatcharr" in /opt/dispatcharr, the all-in-one image (Django, Celery, Redis and
 # PostgreSQL in one container, data in ./data). The gateway serves it as
-# https://dispatcharr.<gateway domain>, outside single sign-on, as players cannot sign in
-# (role caddy, caddy_sso_exempt). Its own login stays on: user admin, password in Vault.
+# https://dispatcharr.<gateway domain> behind single sign-on, except the paths players fetch
+# (role caddy, caddy_sso_open_paths). Its own login stays as the fallback: user admin,
+# password in Vault.
 dispatcharr_dir: /opt/dispatcharr
 # v0.33.0 (2026-10-24), multi-arch index digest.
 dispatcharr_image: ghcr.io/dispatcharr/dispatcharr:0.33.0@sha256:96bc548978c68e684677da7895692eeeefb7f0b2edfa38311dac2b702c61d236
@@ -27,6 +28,11 @@ dispatcharr_timezone: Asia/Kolkata
 dispatcharr_m3u_epg_extra_cidrs: [100.64.0.0/10]
 
 dispatcharr_admin_user: admin
+# Single sign-on: Dispatcharr signs in the user whose email the gateway passes in this header
+# (Authentik's, role caddy), only from the trusted proxy above. The admin gets the site
+# email, which the operator's Authentik accounts carry.
+dispatcharr_proxy_auth_header: X-Authentik-Email
+dispatcharr_admin_email: "{{ site.email }}"
 dispatcharr_vault_mount: kv
 dispatcharr_vault_path: "homelab/{{ inventory_hostname }}/dispatcharr"
 dispatcharr_repo_scripts: "{{ playbook_dir }}/../../scripts"

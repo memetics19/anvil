@@ -130,6 +130,40 @@
   no_log: true
   when: not ansible_check_mode
 
+# The admin gets the site email when it has none, so the Authentik sign-in finds it.
+- name: Single sign-on through the gateway
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -e
+      - ANVIL_HEADER={{ dispatcharr_proxy_auth_header }}
+      - -e
+      - ANVIL_ADMIN_USER={{ dispatcharr_admin_user }}
+      - -e
+      - ANVIL_ADMIN_EMAIL
+      - dispatcharr
+      - bash
+      - -c
+      - >-
+        . /etc/profile.d/dispatcharr.sh && cd /app && python manage.py shell -c
+        "import os; from core.models import CoreSettings as c; from django.contrib.auth import get_user_model as m;
+        want = {'enabled': True, 'header': os.environ['ANVIL_HEADER']};
+        have = c.get_reverse_proxy_auth_settings(); done = [];
+        (c._update_group('reverse_proxy_auth', 'Reverse Proxy Auth', want), done.append('auth'))
+        if {k: have.get(k) for k in want} != want else None;
+        u = m().objects.filter(username=os.environ['ANVIL_ADMIN_USER']).first();
+        (setattr(u, 'email', os.environ['ANVIL_ADMIN_EMAIL']), u.save(update_fields=['email']), done.append('email'))
+        if u is not None and not u.email else None;
+        print('set ' + ' '.join(done) if done else 'present')"
+  environment:
+    ANVIL_ADMIN_EMAIL: "{{ dispatcharr_admin_email }}"
+  register: dispatcharr_sso
+  changed_when: dispatcharr_sso.stdout_lines | select('match', '^set ') | list | length > 0
+  failed_when: dispatcharr_sso.rc != 0 or not (dispatcharr_sso.stdout_lines | select('match', '^(set |present$)') | list)
+  no_log: true
+  when: not ansible_check_mode
+
 - name: Players on the VPN may fetch playlists and guides (once)
   ansible.builtin.command:
     argv:

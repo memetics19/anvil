@@ -31,7 +31,8 @@
       {%- set out = [] -%}
       {%- for r in caddy_routes -%}
       {%- set _ = out.append(r | combine({'sso': caddy_sso_auth is defined and r.name != caddy_sso_route
-            and (r.sso | default(r.name not in caddy_sso_exempt)) is sameas true})) -%}
+            and (r.sso | default(r.name not in caddy_sso_exempt)) is sameas true,
+            'sso_open_paths': r.sso_open_paths | default(caddy_sso_open_paths[r.name] | default([]))})) -%}
       {%- endfor -%}
       {{ out }}
   vars:
@@ -75,6 +76,8 @@
       - caddy_routes | selectattr('rewrite_location', 'defined') | map(attribute='rewrite_location') | reject('boolean') | list | length == 0
       - caddy_routes | selectattr('strip_cookies', 'defined') | map(attribute='strip_cookies') | reject('boolean') | list | length == 0
       - caddy_services | selectattr('sso', 'defined') | map(attribute='sso') | reject('boolean') | list | length == 0
+      # Open paths: absolute, plain characters and * only (they go into the Caddyfile as is).
+      - caddy_routes | map(attribute='sso_open_paths') | flatten | reject('match', '^/[A-Za-z0-9/_.*-]*$') | list | length == 0
       # Authentik cannot sit behind itself.
       - >-
         caddy_services | selectattr('name', 'equalto', caddy_sso_route) | selectattr('sso', 'defined')
