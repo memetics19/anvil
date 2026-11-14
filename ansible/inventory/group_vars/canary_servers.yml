@@ -1,6 +1,0 @@
-ansible_user: ubuntu
-ansible_become: true
-ansible_become_password: "{{ lookup('env', 'ANSIBLE_BECOME_PASSWORD') }}"
-# One NIC, addressed by cloud-init (terraform/vm_canary.tf). guest_base leaves the netplan
-# alone, as on the identity VM.
-guest_base_manage_netplan: false

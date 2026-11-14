@@ -1,7 +1,0 @@
-- name: Restart opencanary
-  ansible.builtin.systemd:
-    name: opencanary
-    state: restarted
-    daemon_reload: true
-  # In check mode on a new VM the unit is not there yet.
-  when: not ansible_check_mode
