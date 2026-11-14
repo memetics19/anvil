@@ -73,6 +73,8 @@
       wazuh: [docker-proxy/443, docker-proxy/1514, docker-proxy/1515, docker-proxy/9200]
       # Grafana (role monitoring).
       monitoring: [docker-proxy/3000, docker-proxy/9093]
+      # Dispatcharr's web, playlists and streams (role dispatcharr).
+      dispatcharr: [docker-proxy/9191]
     smoke_privileged_ok: []
     smoke_is_node: "{{ inventory_hostname in groups['proxmox'] + groups['cluster_members'] | default([]) }}"
     smoke_keys: >-
@@ -96,7 +98,7 @@
       check_mode: false
 
 - name: Security, VMs
-  hosts: guests:apps_servers:identity_servers:enclave:wazuh_servers:monitoring_servers
+  hosts: guests:apps_servers:identity_servers:enclave:wazuh_servers:monitoring_servers:dispatcharr_servers
   gather_facts: false
   become: true
   vars: *smoke_vars

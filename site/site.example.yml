@@ -55,6 +55,9 @@ site:
     # Metrics, dashboards and alerts (terraform/vm_monitoring.tf), one lab NIC. Optional.
     # cores/memory_mb/disk_gb default to 2/4096/60.
     monitoring: {node: pve2, vmid: 9012, ip: 192.0.2.132, mac: "02:00:00:00:00:12"}
+    # IPTV playlists, guides and stream proxy (terraform/vm_dispatcharr.tf), one lab NIC.
+    # Optional.
+    dispatcharr: {node: pve2, vmid: 9013, ip: 192.0.2.133, mac: "02:00:00:00:00:13"}
     # In the secrets enclave: ip is its enclave address, enclave_mac its enclave NIC. While it
     # keeps its first NIC on the lab network: lab_ip and mac (that NIC); lab_nic_retired: true
     # takes it out (docs/services.md, Vault on the enclave).
@@ -181,6 +184,7 @@ site:
     - {name: pve2, host: network.pve2_ip, port: 8006, scheme: https, insecure_upstream: true, websocket: true}
     - {name: vault, host: hosts.vault.ip, port: 8200, scheme: https, upstream_ca: vault}
     - {name: tv, host: hosts.ragnarok.ip, port: 34401, scheme: http, stream: true, description: Live TV}
+    - {name: dispatcharr, host: hosts.dispatcharr.ip, port: 9191, scheme: http, stream: true, websocket: true}
     - {name: qbit, host: hosts.ragnarok.ip, port: 8080, scheme: http, host_header: upstream}
     - {name: dns, container: pihole, port: 80, scheme: http, home: /admin/}
     - {name: home, container: homepage, port: 3000, scheme: http}

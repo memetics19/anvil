@@ -1,0 +1,30 @@
+# Managed by anvil (ansible/roles/dispatcharr); changes here are overwritten on the next run.
+services:
+  dispatcharr:
+    image: {{ dispatcharr_image }}
+    container_name: dispatcharr
+    restart: unless-stopped
+    ports:
+      - "{{ dispatcharr_bind_ip }}:{{ dispatcharr_port }}:{{ dispatcharr_port }}"
+    environment:
+      DISPATCHARR_ENV: aio
+      DISPATCHARR_PORT: "{{ dispatcharr_port }}"
+      REDIS_HOST: localhost
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      DISPATCHARR_LOG_LEVEL: info
+      DISPATCHARR_TRUSTED_PROXIES: "{{ dispatcharr_trusted_proxy }}"
+      UWSGI_WORKERS: "{{ dispatcharr_uwsgi_workers }}"
+      CELERY_MAX_WORKERS: "{{ dispatcharr_celery_max_workers }}"
+      TZ: {{ dispatcharr_timezone }}
+    # The database password (Vault): read by the entrypoint at the first start, when it
+    # creates the database. The file is root's only.
+    env_file:
+      - path: ./dispatcharr.env
+        required: false
+    # It starts as root (it creates its users, PostgreSQL and Redis), then drops to them.
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./data:/data
+    mem_limit: {{ dispatcharr_mem_limit }}
+    memswap_limit: {{ dispatcharr_mem_limit }}
