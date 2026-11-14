@@ -1,0 +1,17 @@
+# Pinchflat (YouTube channels and playlists, downloaded as they publish) on ragnarok: compose
+# project "pinchflat" in /opt/pinchflat. Videos go into the media library's youtube folder,
+# so Jellyfin and the NFS and SMB shares see them. Its own login is off: the gateway's single
+# sign-on stands in front (https://youtube.<gateway domain>), and the port guard keeps the
+# LAN out (inventory host_vars/ragnarok.yml). `anvil youtube` talks to it directly from the
+# operator's devices.
+pinchflat_dir: /opt/pinchflat
+# The release v2025.9.26 is published only as latest (2025-09-27): pinned by its digest.
+pinchflat_image: ghcr.io/kieraneglin/pinchflat:latest@sha256:01b4f98aabaf3f5fe394213f7a32578c9e84e42080f52e2f8334021a4473b202
+pinchflat_port: 8945
+pinchflat_bind_ip: "{{ site.hosts[inventory_hostname].ip }}"
+# The media library's owner (the VM's first user), so the files it writes belong to the
+# library like the ARR stack's.
+pinchflat_uid: 1000
+pinchflat_timezone: Asia/Kolkata
+# yt-dlp and ffmpeg while it downloads and merges; idle it needs a fraction.
+pinchflat_mem_limit: 1g

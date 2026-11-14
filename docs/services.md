@@ -249,6 +249,25 @@ Fire TV:
 - Fire OS with sideloading: add the playlist URL in TiviMate (Add playlist, Enter URL) or
   in VLC for Fire (Browse, New favorite). VLC shows no guide.
 
+### Pinchflat (YouTube)
+
+Pinchflat follows YouTube channels and playlists and downloads their videos as they publish
+(role `pinchflat`, compose project in `/opt/pinchflat`, image pinned to a digest). The videos
+go to the media library's `youtube` folder, so Jellyfin and the NFS and SMB shares see them.
+Add and list channels with `anvil youtube` ([cli.md](cli.md#anvil-youtube)), or in its web page
+at `https://youtube.<domain>` behind single sign-on.
+
+- It runs as the library's user (uid 1000), with no capabilities and no new privileges,
+  capped at 1 GB. It updates its own yt-dlp daily, which YouTube's changes need.
+- Its own login is off. Its port (8945) answers only the gateway, Pulse and the operator's
+  devices (`port_guard`).
+- One-time setup: the library's `youtube` folder, owned by the library's user. The role never
+  writes inside the media library: `sudo install -d -o 1000 -g 1000 -m 0755 <media library>/youtube`
+  on ragnarok, then `anvil apply ragnarok --tags pinchflat`, a gateway entry in `site.services`
+  (`{name: youtube, host: hosts.ragnarok.ip, port: 8945, scheme: http, websocket: true}`) and
+  `anvil apply apps --tags caddy,pihole,homepage`.
+- In Jellyfin, add `<media library>/youtube/shows` as a TV Shows library.
+
 ### Media over NFS (Jellyfin in another home)
 
 `make vm HOST=ragnarok ARGS="--tags nfs_media"` does two things:
