@@ -527,6 +527,9 @@ anvil media get "the expanse" --tv --season 1   # just season 1, no prompt
 anvil media get dune --pick 1 --quality Ultra-HD
 anvil media status                       # downloads in progress, what is still searched for,
 anvil media status --watch               # the free space, refreshed every 10 seconds
+anvil media delete dune                  # asks which one, then asks before it deletes
+anvil media delete "the expanse" --tv --yes
+anvil media delete dune --keep-files     # out of Radarr, the files stay on disk
 ```
 
 `get` details:
@@ -555,6 +558,16 @@ anvil media status --watch               # the free space, refreshed every 10 se
   disc images, 720p and SD), it is moved to that profile first, and `get` says so. Other
   items are never moved.
 - Under 15 GB of free space it asks first. `--yes` skips the question.
+
+`delete` details:
+
+- It looks only in the library, not at the indexers. A match holds every word of the title.
+  It lists the matches with their size on disk and asks which one, unless `--pick N`.
+- It always asks before it deletes, and names what goes and how much space it frees.
+  `--yes` skips the question.
+- Its downloads in progress are removed from qBittorrent first, with their data.
+- Then it is removed from Radarr or Sonarr with its files. `--keep-files` keeps the files
+  on disk. No import exclusion is added, so `get` can add it again later.
 
 The addresses are the gateway names (`radarr.<gateway-domain>`, `sonarr.<gateway-domain>`),
 so it works at home and over the VPN alike. The API keys come from `kv/homelab/<vm>/arr`

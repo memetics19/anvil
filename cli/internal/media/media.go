@@ -1,5 +1,5 @@
 // Package media is anvil media: find a movie or a series, add it so Radarr or Sonarr
-// downloads it, and follow the downloads. The addresses and API keys come from
+// downloads it, follow the downloads, and delete it again. The addresses and API keys come from
 // scripts/media-env.sh (site dict and Vault) through a pipe. They are never printed.
 package media
 
@@ -23,7 +23,7 @@ import (
 )
 
 func init() {
-	app.Register(app.Command{Name: "media", Summary: "search, download and follow movies and series (Radarr, Sonarr)", Usage: mediaUsage, Run: cmdMedia, Order: 50})
+	app.Register(app.Command{Name: "media", Summary: "search, download, follow and delete movies and series (Radarr, Sonarr)", Usage: mediaUsage, Run: cmdMedia, Order: 50})
 }
 
 const mediaUsage = `usage: anvil media <command> [flags]
@@ -45,6 +45,12 @@ the download to qBittorrent. The addresses and API keys come from Vault
       --quality NAME          quality profile (default 1080p+, the one role arr_stack keeps:
                               1080p and 4K, never 720p. Else HD-1080p, else the first)
       --yes                   do not ask before adding when the disk is nearly full
+  delete <title> [--tv]       remove it from the library with its files, and stop its
+                              downloads. Asks which one when several match, then asks
+                              before it deletes.
+      --pick N                take match N of the list without asking
+      --keep-files            remove it from Radarr or Sonarr only, the files stay
+      --yes                   do not ask before deleting
   status [--watch]            downloads in progress, what is still searched for, and the
                               free space. --watch refreshes every 10 seconds.
 `
@@ -199,7 +205,8 @@ func (c arr) lookup(term string) ([]item, error) {
 }
 
 func (it item) label() string {
-	if it.Year > 0 {
+	// Sonarr names some series with their year already: "The Body (2026)".
+	if it.Year > 0 && !strings.HasSuffix(it.Title, fmt.Sprintf("(%d)", it.Year)) {
 		return fmt.Sprintf("%s (%d)", it.Title, it.Year)
 	}
 	return it.Title
@@ -222,6 +229,7 @@ func (c arr) state(it item) string {
 
 type mediaOpts struct {
 	tv, yes, watch bool
+	keepFiles      bool
 	pick           int
 	season         int
 	quality        string
@@ -245,6 +253,11 @@ func cmdMedia(a *app.App, args []string) int {
 		fs.IntVar(&o.pick, "pick", 0, "")
 		fs.IntVar(&o.season, "season", 0, "")
 		fs.StringVar(&o.quality, "quality", "", "")
+	case "delete":
+		fs.BoolVar(&o.tv, "tv", false, "")
+		fs.BoolVar(&o.yes, "yes", false, "")
+		fs.IntVar(&o.pick, "pick", 0, "")
+		fs.BoolVar(&o.keepFiles, "keep-files", false, "")
 	case "status":
 		fs.BoolVar(&o.watch, "watch", false, "")
 	case "help", "-h", "--help":
@@ -290,6 +303,8 @@ func cmdMedia(a *app.App, args []string) int {
 		return mediaSearch(a, c, term)
 	case "get":
 		return mediaGet(a, c, term, o)
+	case "delete":
+		return mediaDelete(a, c, term, o)
 	default:
 		return mediaStatus(a, radarr, sonarr, o.watch)
 	}

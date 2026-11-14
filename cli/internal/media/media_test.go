@@ -37,6 +37,8 @@ type fakeArr struct {
 	noGrab      bool     // a taken push is never grabbed (Sonarr could not start it)
 	itemProfile string   // the qualityProfileId GET movie/<id> or series/<id> answers; empty: 1
 	queued      []string // the names of grabbed pushes, for history/series
+	library     string   // JSON array for GET movie or series (the whole library)
+	deletes     []string // each DELETE as path?query
 }
 
 func (f *fakeArr) server(t *testing.T) *httptest.Server {
@@ -49,6 +51,12 @@ func (f *fakeArr) server(t *testing.T) *httptest.Server {
 			return
 		}
 		p := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		if r.Method == http.MethodDelete {
+			f.mu.Lock()
+			f.deletes = append(f.deletes, p+"?"+r.URL.RawQuery)
+			f.mu.Unlock()
+			return
+		}
 		if r.Method == http.MethodPost || r.Method == http.MethodPut {
 			var body map[string]any
 			b, _ := io.ReadAll(r.Body)
@@ -94,6 +102,8 @@ func (f *fakeArr) server(t *testing.T) *httptest.Server {
 			return
 		}
 		switch {
+		case p == "movie" || p == "series":
+			_, _ = io.WriteString(w, or(f.library, `[]`))
 		case (strings.HasPrefix(p, "movie/") || strings.HasPrefix(p, "series/")) && !strings.HasSuffix(p, "/lookup"):
 			// One library item: on profile 1 (Any) unless the test says otherwise.
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": 9, "title": "x", "qualityProfileId": json.RawMessage(or(f.itemProfile, "1"))})
@@ -505,6 +515,7 @@ func TestMediaUsageErrors(t *testing.T) {
 	}{
 		{[]string{"media"}, "usage: anvil media"},
 		{[]string{"media", "search"}, "needs a title"},
+		{[]string{"media", "delete"}, "needs a title"},
 		{[]string{"media", "status", "dune"}, "takes no title"},
 		{[]string{"media", "fly"}, `unknown command "fly"`},
 	} {
