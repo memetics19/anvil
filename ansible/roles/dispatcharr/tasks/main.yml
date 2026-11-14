@@ -1,0 +1,152 @@
+# Dispatcharr on its own VM (defaults/main.yml). Secrets first, then the project, then the
+# admin user once the app answers.
+
+# --- secrets ---------------------------------------------------------------------------------
+- name: Key digests stored in Vault
+  ansible.builtin.command:
+    argv: ["{{ dispatcharr_repo_scripts }}/vault-kv-digests.sh", "{{ dispatcharr_vault_path }}", "{{ dispatcharr_vault_mount }}"]
+  delegate_to: localhost
+  become: false
+  register: dispatcharr_vault_digests
+  changed_when: false
+  check_mode: false
+
+- name: Keys already in Vault
+  ansible.builtin.set_fact:
+    dispatcharr_vault_keys: "{{ dispatcharr_vault_digests.stdout_lines | map('split', ' ') | map('first') | list }}"
+
+# Each value goes from openssl straight into Vault; it is never displayed or logged. One
+# key per run, so the second sees the first and patches.
+- name: Generate the admin and database passwords into Vault
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      openssl rand -hex 24 | tr -d '\n' |
+      vault kv {{ 'patch' if (dispatcharr_vault_keys | length > 0 or index > 0) else 'put' }}
+      -mount={{ dispatcharr_vault_mount }} {{ dispatcharr_vault_path }} {{ item }}=- >/dev/null
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  loop: "{{ ['admin_password', 'db_password'] | difference(dispatcharr_vault_keys) }}"
+  loop_control:
+    index_var: index
+
+# In check mode a password that would be generated above does not exist yet.
+- name: The passwords are readable
+  ansible.builtin.set_fact:
+    dispatcharr_have_secrets: >-
+      {{ not (ansible_check_mode and (['admin_password', 'db_password'] | difference(dispatcharr_vault_keys))) }}
+
+- name: Read the passwords from Vault
+  ansible.builtin.set_fact:
+    dispatcharr_secrets: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', dispatcharr_vault_path,
+                engine_mount_point=dispatcharr_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
+  no_log: true
+  when: dispatcharr_have_secrets | bool
+
+- name: The passwords are present
+  ansible.builtin.assert:
+    that:
+      - dispatcharr_secrets.admin_password | default('') | length >= 32
+      - dispatcharr_secrets.db_password | default('') | length >= 32
+    fail_msg: "kv/{{ dispatcharr_vault_path }}: admin_password or db_password is missing or empty"
+    quiet: true
+  no_log: true
+  when: dispatcharr_have_secrets | bool
+
+# --- project ---------------------------------------------------------------------------------
+- name: Project directory
+  ansible.builtin.file:
+    path: "{{ dispatcharr_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The entrypoint owns ./data (it creates it and sets its users' ownership), so the role
+# never touches what is inside.
+- name: Database password for the entrypoint (root only)
+  ansible.builtin.copy:
+    dest: "{{ dispatcharr_dir }}/dispatcharr.env"
+    content: "POSTGRES_PASSWORD={{ dispatcharr_secrets.db_password }}\n"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  when: dispatcharr_have_secrets | bool
+
+- name: Dispatcharr compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ dispatcharr_dir }}"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+    # The file holds the VM's and the gateway's addresses: keep it out of --diff output.
+    compose_project_diff: false
+
+# --- admin -----------------------------------------------------------------------------------
+# The first start runs the migrations, which takes a minute or two.
+- name: Dispatcharr answers
+  ansible.builtin.uri:
+    url: "http://{{ dispatcharr_bind_ip }}:{{ dispatcharr_port }}/"
+    status_code: [200, 301, 302]
+  register: dispatcharr_up
+  until: dispatcharr_up.status in [200, 301, 302]
+  retries: 30
+  delay: 10
+  when: not ansible_check_mode
+
+# Only when there is no admin yet: a password changed in the web page stays. The password
+# reaches the container as an environment variable named on the command line, never as a
+# value on it.
+- name: Admin user (once)
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -e
+      - ANVIL_ADMIN_PASSWORD
+      - -e
+      - ANVIL_ADMIN_USER={{ dispatcharr_admin_user }}
+      - dispatcharr
+      - bash
+      - -c
+      - >-
+        . /etc/profile.d/dispatcharr.sh && cd /app && python manage.py shell -c
+        "import os; from django.contrib.auth import get_user_model as m; u = m();
+        print('present') if u.objects.filter(is_superuser=True).exists() else
+        (u.objects.create_superuser(os.environ['ANVIL_ADMIN_USER'], None,
+        os.environ['ANVIL_ADMIN_PASSWORD']), print('created'))"
+  environment:
+    ANVIL_ADMIN_PASSWORD: "{{ dispatcharr_secrets.admin_password }}"
+  register: dispatcharr_admin
+  changed_when: "'created' in dispatcharr_admin.stdout"
+  failed_when: dispatcharr_admin.rc != 0 or not (dispatcharr_admin.stdout is search('created|present'))
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Players on the VPN may fetch playlists and guides (once)
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -e
+      - ANVIL_CIDRS={{ dispatcharr_m3u_epg_extra_cidrs | join(',') }}
+      - dispatcharr
+      - bash
+      - -c
+      - >-
+        . /etc/profile.d/dispatcharr.sh && cd /app && python manage.py shell -c
+        "import os; from core.models import CoreSettings as c, NETWORK_ACCESS_KEY as k;
+        from dispatcharr.utils import LOCAL_NETWORK_CIDRS as local;
+        print('present') if 'M3U_EPG' in c.get_network_access_settings() else
+        (c._update_group(k, 'Network Access', {'M3U_EPG': ','.join(local + os.environ['ANVIL_CIDRS'].split(','))}), print('set'))"
+  register: dispatcharr_access
+  changed_when: "'set' in dispatcharr_access.stdout_lines"
+  failed_when: dispatcharr_access.rc != 0 or not (dispatcharr_access.stdout_lines | intersect(['set', 'present']))
+  when: not ansible_check_mode

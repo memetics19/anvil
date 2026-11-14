@@ -9,7 +9,7 @@
 locals {
   # The VMs made from the image that may run on another node (site.hosts.<name>.node). The
   # others (vault, apps, vaultwarden) run on var.node_name.
-  image_vms = ["identity", "wazuh", "monitoring"]
+  image_vms = ["identity", "wazuh", "monitoring", "dispatcharr"]
   # Node names are not secret (every plan shows them as node_name), but the site dict is
   # sensitive as a whole, so the set is marked plain for for_each.
   image_nodes = nonsensitive(toset(concat([var.node_name], [
