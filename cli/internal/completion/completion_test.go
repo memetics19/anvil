@@ -141,7 +141,7 @@ c anvil apply --y
 	if err != nil {
 		t.Fatalf("bash: %v\n%s", err, out)
 	}
-	want := "== doctor\n== pi-hole pihole\n== vault-init vault-unseal vault-policies\n== --yes\n"
+	want := "== doctor\n== pi-hole pihole pinchflat\n== vault-init vault-unseal vault-policies\n== --yes\n"
 	if string(out) != want {
 		t.Errorf("bash completions:\n%s\nwant:\n%s", out, want)
 	}

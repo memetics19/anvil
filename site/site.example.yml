@@ -184,6 +184,7 @@ site:
     - {name: vault, host: hosts.vault.ip, port: 8200, scheme: https, upstream_ca: vault}
     - {name: tv, host: hosts.ragnarok.ip, port: 34401, scheme: http, stream: true, description: Live TV}
     - {name: qbit, host: hosts.ragnarok.ip, port: 8080, scheme: http, host_header: upstream}
+    - {name: youtube, host: hosts.ragnarok.ip, port: 8945, scheme: http, websocket: true}
     - {name: dns, container: pihole, port: 80, scheme: http, home: /admin/}
     - {name: home, container: homepage, port: 3000, scheme: http}
     - {name: wiki, host: hosts.frigate.ip, port: 3000, scheme: http, websocket: true}

@@ -67,7 +67,7 @@
                  nmbd/137, nmbd/138, cloudflared/*, docker-proxy/6767, docker-proxy/6881,
                  docker-proxy/7878, docker-proxy/8080, docker-proxy/8334, docker-proxy/8899,
                  docker-proxy/8989, docker-proxy/9117, docker-proxy/9696, docker-proxy/34400,
-                 docker-proxy/34401]
+                 docker-proxy/34401, docker-proxy/8945]
       vault: [vault/8200, vault/8201]
       vaultwarden: [docker-proxy/8080]
       # OpenCanary's fake services (role canary), every port it chooses to open.

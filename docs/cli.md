@@ -561,6 +561,35 @@ so it works at home and over the VPN alike. The API keys come from `kv/homelab/<
 through `scripts/media-env.sh`. anvil reads them from a pipe and never prints them. The
 script refuses to write the keys to a terminal.
 
+## anvil youtube
+
+Follows YouTube channels and playlists with Pinchflat on the media VM. It downloads their
+videos into the media library's youtube folder as they publish, and Jellyfin shows them as TV
+shows.
+
+```sh
+anvil youtube add https://www.youtube.com/@channel              # follow a channel
+anvil youtube add "https://www.youtube.com/playlist?list=..." --name "Cooking"
+anvil youtube list                                                # downloaded and pending per channel
+anvil youtube refresh cooking                                     # look for new videos now
+```
+
+`add` details:
+
+- It takes YouTube addresses only (youtube.com, youtu.be, music.youtube.com).
+- The media profile is TV Shows unless `--profile` names another. The first `add` creates it,
+  from Pinchflat's own TV Shows preset: 1080p, one folder per channel under `shows/` with a
+  season per year, English subtitles, artwork and NFO files for Jellyfin, no shorts and no
+  livestreams.
+- Pinchflat checks the address with yt-dlp. A channel it cannot read is refused with its
+  reason.
+- It indexes the channel at once, then daily, and downloads every new video.
+
+Pinchflat has no API, so anvil fills in its web forms. It reaches it at its direct lab address
+from `scripts/youtube-env.sh` (the site.services entry `youtube`). The gateway's single
+sign-on guards the web page, and the port guard on the media VM lets the operator's own
+devices in (site.admin_sources, site.admin_vpn_sources).
+
 ## Shell completion
 
 ```sh
