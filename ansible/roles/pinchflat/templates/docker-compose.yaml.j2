@@ -1,0 +1,23 @@
+# Managed by anvil (ansible/roles/pinchflat); changes here are overwritten on the next run.
+services:
+  pinchflat:
+    image: {{ pinchflat_image }}
+    container_name: pinchflat
+    restart: unless-stopped
+    user: "{{ pinchflat_uid }}:{{ pinchflat_uid }}"
+    ports:
+      - "{{ pinchflat_bind_ip }}:{{ pinchflat_port }}:8945"
+    environment:
+      TZ: {{ pinchflat_timezone }}
+      LOG_LEVEL: info
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Its database and settings, and the library's youtube folder (made by hand once,
+    # owned by the library's user: docs/services.md, Pinchflat).
+    volumes:
+      - ./config:/config
+      - /home/ubuntu/media/youtube:/downloads
+    mem_limit: {{ pinchflat_mem_limit }}
+    memswap_limit: {{ pinchflat_mem_limit }}

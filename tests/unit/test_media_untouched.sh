@@ -2,8 +2,8 @@
 # The media library on ragnarok must survive every run. Static checks over ansible/ and
 # scripts/ (check_tree), run on the real tree (must pass) and on fixtures that each add one
 # violation (each must fail, with the expected rule):
-#   media-path   the media path appears only as bind-mount sources in the ARR compose
-#                template, as the protected path in compose_project's defaults, and as plain
+#   media-path   the media path appears only as bind-mount sources in the ARR and Pinchflat
+#                compose templates, as the protected path in compose_project's defaults, and as plain
 #                list entries (the read-only NFS exports) in nfs_media's defaults, and as
 #                share entries ({name, path}, read-only SMB) in smb_media's defaults
 #   home-dir     the VM user's home directory (the media library's parent) appears, and
@@ -21,6 +21,7 @@ cd "$(dirname "$0")/../.." || exit 1
 home="/home/""ubuntu"
 media="$home/media"
 template="ansible/roles/arr_stack/templates/docker-compose.yaml.j2"
+pinchflat_template="ansible/roles/pinchflat/templates/docker-compose.yaml.j2"
 protected="ansible/roles/compose_project/defaults/main.yml"
 nfs_defaults="ansible/roles/nfs_media/defaults/main.yml"
 smb_defaults="ansible/roles/smb_media/defaults/main.yml"
@@ -77,9 +78,9 @@ check_tree() {
   # media-path
   while IFS= read -r f; do
     case $f in
-      "$root/$template")
+      "$root/$template" | "$root/$pinchflat_template")
         hits=$(grep -nF -- "$media" "$f" | grep -vE "^[0-9]+:      - ${media}(/[A-Za-z0-9._-]+)*:/[^:]+$")
-        [ -z "$hits" ] || { echo "FAIL media-path: $template, not a bind-mount source: $hits"; rc=1; } ;;
+        [ -z "$hits" ] || { echo "FAIL media-path: ${f#"$root"/}, not a bind-mount source: $hits"; rc=1; } ;;
       "$root/$protected")
         hits=$(grep -nF -- "$media" "$f" | grep -vE "^[0-9]+:  - ${media}$")
         [ -z "$hits" ] || { echo "FAIL media-path: $protected, not the protected-path entry: $hits"; rc=1; } ;;

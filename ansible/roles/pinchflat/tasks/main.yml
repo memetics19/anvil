@@ -1,0 +1,36 @@
+# Pinchflat on ragnarok (defaults/main.yml). The media library is never touched here: the
+# compose file only mounts its youtube folder (tests/unit/test_media_untouched.sh).
+- name: Project directory
+  ansible.builtin.file:
+    path: "{{ pinchflat_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Pinchflat's config directory (its uid only)
+  ansible.builtin.file:
+    path: "{{ pinchflat_dir }}/config"
+    state: directory
+    owner: "{{ pinchflat_uid }}"
+    group: "{{ pinchflat_uid }}"
+    mode: "0750"
+
+- name: Pinchflat compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ pinchflat_dir }}"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+    # The file holds the VM's address: keep it out of --diff output.
+    compose_project_diff: false
+
+# Its first start runs the database migrations.
+- name: Pinchflat answers
+  ansible.builtin.uri:
+    url: "http://{{ pinchflat_bind_ip }}:{{ pinchflat_port }}/healthcheck"
+  register: pinchflat_up
+  until: pinchflat_up.status == 200
+  retries: 30
+  delay: 5
+  when: not ansible_check_mode
