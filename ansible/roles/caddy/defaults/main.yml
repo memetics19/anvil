@@ -92,7 +92,9 @@ caddy_sso_route: auth
 #   pulse         its API is called with a key (role pulse_agent registers VMs through it)
 #   ntfy, gotify  phone apps use tokens, not a browser login
 #   tv            the TV app on the Fire TV has no browser login
-caddy_sso_exempt: [auth, pass, vault, pulse, ntfy, gotify, tv]
+#   dispatcharr   IPTV players fetch its playlists and streams with no browser login (its
+#                 own login guards its web page)
+caddy_sso_exempt: [auth, pass, vault, pulse, ntfy, gotify, tv, dispatcharr]
 
 # CA certificates (public) for upstreams with `upstream_ca`, copied from the controller.
 # Vault's own CA (fetched by the vault_server role), not $VAULT_CACERT: that one may point

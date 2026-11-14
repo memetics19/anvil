@@ -1,0 +1,4 @@
+# The Dispatcharr VM. Its web page, playlists and streams (9191) answer only the gateway,
+# Pulse and the admin sources (role port_guard). Players reach it through the gateway.
+port_guard_ports: [9191]
+port_guard_extra_sources: "{{ (site.admin_sources | default([])) + (site.admin_vpn_sources | default([])) }}"
