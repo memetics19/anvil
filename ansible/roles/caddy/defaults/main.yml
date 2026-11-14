@@ -108,8 +108,9 @@ caddy_sso_exempt: [auth, pass, vault, pulse, ntfy, gotify, tv]
 #   pass, vault   the secrets enclave: the Bitwarden extension and desktop app say they are
 #                 browsers but cannot solve a challenge
 #   tv            the TV players on the Fire TV
+#   dispatcharr   IPTV players fetch its playlists, guides and streams
 caddy_anubis_enabled: true
-caddy_anubis_exempt: [auth, pass, vault, tv]
+caddy_anubis_exempt: [auth, pass, vault, tv, dispatcharr]
 caddy_anubis_image: ghcr.io/techarohq/anubis:v1.28.2@sha256:5fcbce70ee6168be5b226d19bec90111d0acd0daf13028fa06b044cf3ebbbd5f
 caddy_anubis_upstream: http://anubis:8923
 caddy_anubis_backend_port: 8090
