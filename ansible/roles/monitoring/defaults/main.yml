@@ -84,6 +84,16 @@ monitoring_frigate_target: "{{ (site.hosts.frigate.ip ~ ':' ~ monitoring_frigate
 monitoring_pihole_port: 9617
 monitoring_pihole_target: "{{ (site.hosts.apps.ip ~ ':' ~ monitoring_pihole_port) if site.hosts.apps.ip is defined else '' }}"
 
+# Disk health (role smartctl_exporter): the main Proxmox host on its lab address and each other
+# cluster member on its static address (the exporters answer only this VM).
+monitoring_smart_port: 9633
+monitoring_smart_targets: >-
+  {%- set out = [{'name': site.pve.hostname | default('pve'), 'address': site.pve.ip ~ ':' ~ monitoring_smart_port}] -%}
+  {%- for m in site.cluster.members | default([]) if site.provision.machines[m].network.cidr is defined -%}
+  {%- set _ = out.append({'name': m, 'address': (site.provision.machines[m].network.cidr | split('/') | first) ~ ':' ~ monitoring_smart_port}) -%}
+  {%- endfor -%}
+  {{ out }}
+
 # Grafana's gateway name (site.services) and its login through Authentik (OpenID Connect).
 # Authentik's client is role authentik (client id grafana). Its secret is in Vault next to
 # Authentik's own, written by that role.

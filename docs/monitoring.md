@@ -57,6 +57,14 @@ The dashboards:
   queries per second, DNS and upstream answer times, cache against upstream, and the top
   domains, blocked domains, clients and query types.
 - **Hosts**: up and uptime, CPU, memory, disk space, load, network and disk traffic, per host.
+- **Disks**: SMART health of every disk on the Proxmox nodes (role `smartctl_exporter`). Disks
+  reporting, failing, with remapped or unreadable sectors, the hottest and the oldest. Then
+  every disk in one table (node, model, size, health, age, temperature, remapped and
+  unreadable sectors, uncorrected errors), remapped sectors and temperature over time, and a
+  note on how disks wear out. A hard disk does not wear out by writing like an SSD: it fails
+  mechanically, and remapped sectors that keep rising are the sign. Disks behind the main
+  host's RAID controller report health, age and temperature, but a SAS disk there has no
+  remapped count (the exporter reads those only from disks it reaches directly).
 - **Internet**, in plain terms: a short note on how to read it, then right now (internet up,
   ping, packet loss, DNS answer time, router up), then the last day (outages, minutes of
   downtime, uptime gauges for 24 hours, 7 and 30 days), an up and down timeline (internet,
@@ -252,6 +260,47 @@ Warning. Pi-hole's exporter has not answered for 15 minutes. DNS may be fine, bu
 dashboard is empty and PiholeBlockingOff cannot fire. On the apps VM: `sudo docker logs --tail
 20 pihole-exporter`. A changed web password needs `anvil apply apps --tags pihole`, which
 rewrites the exporter's login.
+
+### DiskSmartFailing
+
+Critical. The disk itself reports that it is failing its SMART health check. Replace it. In
+a ZFS mirror (`zpool status` on the node) or the RAID, the other disk carries the data until
+then. See the Disks dashboard for which disk it is (node, device, model).
+
+### DiskSectorsGrowing
+
+Warning. The disk remapped more bad sectors in the last day: the grown defect list on SAS,
+Reallocated_Sector_Ct on SATA. A few over a disk's life is normal. A line that keeps rising on
+the Disks dashboard means the surface is going: plan a replacement, and run a scrub
+(`zpool scrub <pool>`) to see whether data was hit.
+
+### DiskPendingSectors
+
+Warning. The disk has sectors it failed to read, waiting to be remapped on the next write.
+Data on them may be lost. Run a scrub on its pool (`zpool scrub <pool>`), which rewrites them
+from the other copy, then watch whether the count drops or more come.
+
+### DiskUncorrectedErrors
+
+Warning. Reads or writes failed in the last hour even after the disk's own error correction.
+Check `zpool status` on the node for errors on that disk, and plan a replacement if it
+repeats.
+
+### DiskHot
+
+Warning. The disk has run above 55 C for 30 minutes. Heat shortens a disk's life. Check the
+node's fans and airflow, and the iDRAC's fan and temperature readings.
+
+### SsdWornOut
+
+Warning. An SSD or NVMe disk has used more than 80% of its rated writes. Flash wears out by
+writing. It may run well past 100%, but plan a replacement.
+
+### SmartDataMissing
+
+Warning. A node's smartctl exporter has not answered for 15 minutes, so its disks are missing
+from the Disks dashboard and no disk alert can fire for it. On the node:
+`systemctl status smartctl_exporter`, then `anvil apply host --tags smartctl_exporter`.
 
 ### MonitoringBlind
 

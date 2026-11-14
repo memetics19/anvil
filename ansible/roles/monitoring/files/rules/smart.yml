@@ -1,0 +1,76 @@
+# Managed by anvil (role monitoring). Alert rules for disk health (SMART, role
+# smartctl_exporter on the Proxmox nodes). Each one is something a person must act on, waits
+# before it fires (for:) and links to its fix (docs/monitoring.md, Disks). A hard disk does
+# not wear out by writing like an SSD: it fails mechanically, and remapped and pending
+# sectors are the early signs, so these watch them grow rather than a fixed number.
+groups:
+  - name: smart
+    rules:
+      - alert: DiskSmartFailing
+        expr: smartctl_device_smart_status{job="smart"} == 0
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: "Disk {{ $labels.device }} on {{ $labels.host }} fails its SMART health check"
+          description: "The disk itself reports that it is failing. Replace it. If it is in a mirror or RAID, the other disk carries the data until then."
+          runbook: "https://memetics19.github.io/anvil/monitoring/#disksmartfailing"
+
+      - alert: DiskSectorsGrowing
+        expr: >-
+          increase(smartctl_scsi_grown_defect_list{job="smart"}[1d]) > 0
+          or increase(smartctl_device_attribute{job="smart",attribute_name="Reallocated_Sector_Ct",attribute_value_type="raw"}[1d]) > 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Disk {{ $labels.device }} on {{ $labels.host }} remapped more bad sectors today"
+          description: >-
+            The disk replaced more failing sectors in the last day. A few over years is normal.
+            A count that keeps growing means the surface is going: plan a replacement.
+          runbook: "https://memetics19.github.io/anvil/monitoring/#disksectorsgrowing"
+
+      - alert: DiskPendingSectors
+        expr: smartctl_device_attribute{job="smart",attribute_name=~"Current_Pending_Sector|Offline_Uncorrectable",attribute_value_type="raw"} > 0
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: "Disk {{ $labels.device }} on {{ $labels.host }} has sectors it cannot read"
+          description: "{{ $value }} sectors failed to read and wait to be remapped. Data on them may be lost. Check the pool or RAID and plan a replacement."
+          runbook: "https://memetics19.github.io/anvil/monitoring/#diskpendingsectors"
+
+      - alert: DiskUncorrectedErrors
+        expr: >-
+          increase(smartctl_read_total_uncorrected_errors{job="smart"}[1h]) > 0
+          or increase(smartctl_write_total_uncorrected_errors{job="smart"}[1h]) > 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Disk {{ $labels.device }} on {{ $labels.host }} had errors it could not correct"
+          description: "Reads or writes failed even after the disk's own error correction in the last hour."
+          runbook: "https://memetics19.github.io/anvil/monitoring/#diskuncorrectederrors"
+
+      - alert: DiskHot
+        expr: smartctl_device_temperature{job="smart",temperature_type="current"} > 55
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "Disk {{ $labels.device }} on {{ $labels.host }} runs at {{ $value }} C"
+          description: "Above 55 C for 30 minutes. Heat shortens a disk's life: check the fans and the airflow."
+          runbook: "https://memetics19.github.io/anvil/monitoring/#diskhot"
+
+      - alert: SsdWornOut
+        expr: smartctl_device_percentage_used{job="smart"} > 80
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: "SSD {{ $labels.device }} on {{ $labels.host }} has used {{ $value }}% of its rated writes"
+          description: "Flash wears out by writing. Past 100% it may still work, but plan a replacement."
+          runbook: "https://memetics19.github.io/anvil/monitoring/#ssdwornout"
+
+      - alert: SmartDataMissing
+        expr: up{job="smart"} == 0
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "Disk health from {{ $labels.host }} is not arriving"
+          description: "Its smartctl exporter has not answered for 15 minutes, so the Disks dashboard is empty for it and none of the disk alerts can fire."
+          runbook: "https://memetics19.github.io/anvil/monitoring/#smartdatamissing"

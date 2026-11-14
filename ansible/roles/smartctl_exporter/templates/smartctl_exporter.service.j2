@@ -1,0 +1,41 @@
+# Managed by Ansible (role smartctl_exporter).
+[Unit]
+Description=smartctl exporter (disk health)
+Documentation=https://github.com/prometheus-community/smartctl_exporter
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+Restart=on-failure
+ExecStart={{ smartctl_exporter_binary }} \
+  --web.listen-address={{ smartctl_exporter_listen_ip }}:{{ smartctl_exporter_port }} \
+  --smartctl.path=/usr/sbin/smartctl \
+  --smartctl.interval={{ smartctl_exporter_interval }}{% if smartctl_exporter_device_exclude %} \
+  --smartctl.device-exclude={{ smartctl_exporter_device_exclude }}{% endif %}{% for d in smartctl_exporter_devices %} \
+  --smartctl.device={{ d }}{% endfor %}
+
+# Root, as smartctl needs to open the disks, with only the capabilities for raw disk and
+# controller commands, and nothing written anywhere.
+CapabilityBoundingSet=CAP_SYS_RAWIO CAP_SYS_ADMIN CAP_DAC_OVERRIDE
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Only these clients reach it, and the node itself (its checks connect from its own address).
+IPAddressDeny=any
+IPAddressAllow=localhost {{ smartctl_exporter_listen_ip }} {{ smartctl_exporter_allow | join(' ') }}
+
+[Install]
+WantedBy=multi-user.target

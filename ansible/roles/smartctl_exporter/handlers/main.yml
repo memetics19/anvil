@@ -1,0 +1,11 @@
+# Handlers run in this order.
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart smartctl_exporter
+  ansible.builtin.systemd_service:
+    name: smartctl_exporter
+    state: restarted
+  # In check mode on a new host the unit is not there yet.
+  when: not (ansible_check_mode and smartctl_exporter_installed.rc != 0)
