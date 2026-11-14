@@ -68,6 +68,8 @@ caddy_listen_ips:
 #   enabled            false: keep the slot, but no route and no DNS record
 #   sso                true|false: put the route behind single sign-on, or leave it out
 #                      (default: in, unless its name is in caddy_sso_exempt)
+#   sso_open_paths     paths that skip single sign-on on a route that has it, for clients
+#                      that cannot sign in (default: caddy_sso_open_paths for its name)
 caddy_services: "{{ site.services | default([]) }}"
 caddy_domain: "{{ gateway_domain }}"
 caddy_email: "{{ site.email }}"
@@ -92,9 +94,20 @@ caddy_sso_route: auth
 #   pulse         its API is called with a key (role pulse_agent registers VMs through it)
 #   ntfy, gotify  phone apps use tokens, not a browser login
 #   tv            the TV app on the Fire TV has no browser login
-#   dispatcharr   IPTV players fetch its playlists and streams with no browser login (its
-#                 own login guards its web page)
-caddy_sso_exempt: [auth, pass, vault, pulse, ntfy, gotify, tv, dispatcharr]
+caddy_sso_exempt: [auth, pass, vault, pulse, ntfy, gotify, tv]
+
+# Paths that skip single sign-on, by route name (an entry's own sso_open_paths wins).
+#   dispatcharr   what IPTV players fetch: playlists and guides (output, the XC API),
+#                 streams (proxy, live, movie, series, timeshift), HDHomeRun and channel
+#                 logos. Its web page and API stay behind sign-in, and Dispatcharr signs the
+#                 Authentik user in from the email header (role dispatcharr).
+caddy_sso_open_paths:
+  dispatcharr: [/output, /output/*, /proxy, /proxy/*, /hdhr, /hdhr/*, /player_api.php, /panel_api.php,
+                /get.php, /xmltv.php, /live/*, /movie/*, /series/*, /timeshift/*, /streaming/*,
+                /api/channels/logos/*, /logos/*]
+# The identity headers Authentik's outpost answers with. Caddy drops any a client sends and
+# passes on Authentik's, on every route behind single sign-on.
+caddy_sso_identity_headers: [X-Authentik-Username, X-Authentik-Email, X-Authentik-Groups, X-Authentik-Name, X-Authentik-Uid]
 
 # CA certificates (public) for upstreams with `upstream_ca`, copied from the controller.
 # Vault's own CA (fetched by the vault_server role), not $VAULT_CACERT: that one may point

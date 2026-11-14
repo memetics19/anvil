@@ -1139,9 +1139,14 @@ What anvil sets:
   unset: a change in its Network Access settings stays.
 - Published on the lab address only (9191). It answers only the gateway, Pulse and the admin
   sources (`port_guard`).
-- The gateway serves it as `https://dispatcharr.<domain>`, outside single sign-on, because
-  IPTV players cannot sign in. Its own login guards the web page. It trusts the gateway's
-  forwarded headers, so the playlist and stream links it hands out use the gateway name.
+- The gateway serves it as `https://dispatcharr.<domain>`. The web page is behind single
+  sign-on: Authentik passes the signed-in user's email, and Dispatcharr signs in its user with
+  that email (the admin gets the site email). The paths players fetch skip sign-in, because
+  players cannot sign in: playlists and guides, streams, HDHomeRun, the XC API and channel
+  logos (`caddy_sso_open_paths`). The gateway drops identity headers a client sends, so none
+  can be faked. Its own password login stays as the fallback.
+- It trusts the gateway's forwarded headers, so the playlist and stream links it hands out
+  use the gateway name.
 
 One-time setup:
 
@@ -1152,8 +1157,9 @@ One-time setup:
 2. `anvil apply tf`, then `anvil apply dispatcharr`. The first run pulls about 1 GB and runs the
    database migrations, which takes a few minutes.
 3. `anvil apply apps --tags caddy,pihole,homepage` adds the gateway route, the DNS name and
-   the Homepage tile. Open `https://dispatcharr.<domain>`, user `admin`. Copy the password to
-   the clipboard without showing it:
+   the Homepage tile. Open `https://dispatcharr.<domain>` and sign in with Authentik. The
+   password login (user `admin`) is the fallback. Copy that password to the clipboard without
+   showing it:
    `vault kv get -mount=kv -field=admin_password homelab/dispatcharr/dispatcharr | pbcopy`.
 
 In Dispatcharr, add M3U accounts and EPG sources, pick the channels, and give players its

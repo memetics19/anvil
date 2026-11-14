@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Dispatcharr (role dispatcharr) and its VM: the image pinned, published only on the lab
 # address, the gateway trusted as its proxy, no password in the compose file or on a
-# command line, its route outside single sign-on, its port guarded, and the VM wired into
+# command line, its web page behind single sign-on, its port guarded, and the VM wired into
 # Terraform, the inventory and the playbook. Needs no lab.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
@@ -59,7 +59,8 @@ check "the admin is created only when there is none" "grep -q 'filter(is_superus
 check "players on the VPN may fetch playlists, set once" "grep -qx 'dispatcharr_m3u_epg_extra_cidrs: \\[100.64.0.0/10\\]' '$r/defaults/main.yml' && grep -q 'LOCAL_NETWORK_CIDRS as local' '$t' && grep -q \"'M3U_EPG' in c.get_network_access_settings()\" '$t'"
 
 # wiring
-check "outside single sign-on" "grep -qE '^caddy_sso_exempt: \\[.*\\bdispatcharr\\b' ansible/roles/caddy/defaults/main.yml"
+check "behind single sign-on, players' paths open" "! grep -qE '^caddy_sso_exempt: \\[.*\\bdispatcharr\\b' ansible/roles/caddy/defaults/main.yml && grep -qE '^  dispatcharr: \\[/output, /output/\\*, /proxy' ansible/roles/caddy/defaults/main.yml"
+check "Dispatcharr signs in the Authentik user by email" "grep -qx 'dispatcharr_proxy_auth_header: X-Authentik-Email' '$r/defaults/main.yml' && grep -q \"'header': os.environ\\['ANVIL_HEADER'\\]\" '$t'"
 check "port guarded" "grep -qx 'port_guard_ports: \\[9191\\]' ansible/inventory/host_vars/dispatcharr.yml"
 check "VM in Terraform with the module" "grep -q 'source = \"./modules/ubuntu_vm\"' terraform/vm_dispatcharr.tf && grep -q '\"dispatcharr\"' terraform/images.tf"
 check "inventory group and node_exporter" "grep -q '^    dispatcharr_servers:' ansible/inventory/hosts.yml && awk '/^    node_exporter:/{p=1} p&&/^    [a-z_]+:\$/&&!/node_exporter/{exit} p' ansible/inventory/hosts.yml | grep -q '^        dispatcharr:'"
