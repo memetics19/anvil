@@ -47,7 +47,7 @@ func subWords() map[string][]string {
 		"help":       cmds,
 		"completion": {"bash", "zsh", "fish", "names"},
 		"restore":    {"tfstate", "drill", "vault", "vaultwarden"},
-		"media":      {"search", "get", "status"},
+		"media":      {"search", "get", "status", "delete"},
 		"test":       {"unit", "integration", "smoke", "all"},
 	}
 }
