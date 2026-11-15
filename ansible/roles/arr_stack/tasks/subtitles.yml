@@ -45,7 +45,8 @@
                             'url': 'http://' ~ arr_stack_api_host ~ ':' ~ arr_stack_api.radarr.port,
                             'config_xml': arr_stack_config_xml_files.radarr},
                  'languages': arr_stack_subtitle_languages,
-                 'profile': arr_stack_subtitle_profile} | to_json] }}
+                 'profile': arr_stack_subtitle_profile,
+                 'sync': arr_stack_subtitle_sync} | to_json] }}
         stdin: "{{ arr_stack_bazarr_account | to_json }}"
       register: arr_stack_bazarr_run
       changed_when: "arr_stack_bazarr_run.stdout_lines | select('search', ': (would|do:) ') | list | length > 0"

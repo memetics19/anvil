@@ -89,6 +89,10 @@ arr_stack_app_indexers_off:
 # front of it, as for the other apps.
 arr_stack_subtitle_languages: [en]
 arr_stack_subtitle_profile: English
+# Bazarr times each subtitle it downloads to the file's own audio (ffsubsync), so one cut for
+# another release of the same show does not run early or late. Always against the audio,
+# never an embedded subtitle track, which can be off itself. About a minute of CPU each.
+arr_stack_subtitle_sync: true
 arr_stack_bazarr_vault_path: "homelab/{{ inventory_hostname }}/bazarr"
 arr_stack_bazarr_port: 6767
 arr_stack_bazarr_config: "{{ arr_stack_dir }}/bazarr/config/config/config.yaml"
