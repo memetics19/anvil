@@ -14,109 +14,34 @@ locals {
   identity_node = try(local.site.hosts.identity.node, var.node_name)
 }
 
-resource "proxmox_virtual_environment_vm" "identity" {
-  count         = local.identity == null ? 0 : 1
-  node_name     = local.identity_node
-  vm_id         = nonsensitive(local.identity.vmid)
+module "identity" {
+  source = "./modules/ubuntu_vm"
+  count  = local.identity == null ? 0 : 1
+
   name          = "identity"
-  on_boot       = true
-  scsi_hardware = "virtio-scsi-single"
-  # Never let the provider reboot or power off a VM to apply a change.
-  reboot_after_update = false
+  node          = local.identity_node
+  vm_id         = nonsensitive(local.identity.vmid)
+  cores         = nonsensitive(try(local.identity.cores, 2))
+  cpu_type      = "host"
+  memory_mb     = nonsensitive(try(local.identity.memory_mb, 3072))
+  datastore     = nonsensitive(try(local.identity.datastore, "vmdata"))
+  disk_gb       = nonsensitive(try(local.identity.disk_gb, 32))
+  image_id      = proxmox_virtual_environment_download_file.noble_cloudimg[local.identity_node].id
+  startup_order = 1
 
-  agent {
-    enabled = true
-    wait_for_ip {
-      disabled = true
-    }
-  }
+  nics = [
+    # net0: lab network, default route.
+    { mac = nonsensitive(local.identity.mac), address = "${local.identity.ip}/${split("/", local.site.lan_cidr)[1]}", gateway = local.site.pve.gateway_alias_ip },
+    # net1: home network, no gateway.
+    { mac = nonsensitive(local.identity.home_mac), address = "${local.identity.home_ip}/${local.site.pve.uplink_prefix}" },
+  ]
 
-  cpu {
-    sockets = 1
-    cores   = nonsensitive(try(local.identity.cores, 2))
-    type    = "host"
-  }
+  ssh_public_key = trimspace(file(pathexpand(var.ssh_public_key_path)))
+  dns_domain     = local.site.domain
+  dns_servers    = local.site.guest_dns
+}
 
-  # Authentik (server and worker), its Postgres and Redis.
-  memory {
-    dedicated = nonsensitive(try(local.identity.memory_mb, 3072))
-    floating  = nonsensitive(try(local.identity.memory_mb, 3072))
-  }
-
-  disk {
-    datastore_id = nonsensitive(try(local.identity.datastore, "vmdata"))
-    interface    = "scsi0"
-    import_from  = proxmox_virtual_environment_download_file.noble_cloudimg[local.identity_node].id
-    size         = nonsensitive(try(local.identity.disk_gb, 32))
-    iothread     = true
-    discard      = "on"
-  }
-
-  # net0: lab network.
-  network_device {
-    bridge      = "vmbr0"
-    model       = "virtio"
-    mac_address = nonsensitive(local.identity.mac)
-    firewall    = true
-  }
-
-  # net1: home network (same bridge, the home /24 shares the L2 segment).
-  network_device {
-    bridge      = "vmbr0"
-    model       = "virtio"
-    mac_address = nonsensitive(local.identity.home_mac)
-    firewall    = true
-  }
-
-  operating_system {
-    type = "l26"
-  }
-
-  initialization {
-    datastore_id = nonsensitive(try(local.identity.datastore, "vmdata"))
-
-    user_account {
-      username = "ubuntu"
-      keys     = [trimspace(file(pathexpand(var.ssh_public_key_path)))]
-    }
-
-    dns {
-      # Set here, not taken from the host's resolv.conf, which changes at boot (NetBird
-      # rewrites it). Any change to this config makes cloud-init treat the VM as new.
-      domain  = local.site.domain
-      servers = local.site.guest_dns
-    }
-
-    # ipconfig0 -> net0 (lab, default route).
-    ip_config {
-      ipv4 {
-        address = "${local.identity.ip}/${split("/", local.site.lan_cidr)[1]}"
-        gateway = local.site.pve.gateway_alias_ip
-      }
-    }
-
-    # ipconfig1 -> net1 (home, no gateway).
-    ip_config {
-      ipv4 {
-        address = "${local.identity.home_ip}/${local.site.pve.uplink_prefix}"
-      }
-    }
-  }
-
-  startup {
-    order    = 1
-    up_delay = 15
-  }
-
-  lifecycle {
-    prevent_destroy = true
-    # Two NICs with one MAC: cloud-init refuses to configure either ("duplicate mac found"),
-    # and the VM boots with no network at all.
-    precondition {
-      condition     = lower(local.identity.mac) != lower(local.identity.home_mac)
-      error_message = "The VM's two NICs need different MACs (mac and home_mac in the site dict)."
-    }
-    # import_from only matters when the disk is created (see vm_vault.tf).
-    ignore_changes = [disk[0].import_from]
-  }
+moved {
+  from = proxmox_virtual_environment_vm.identity[0]
+  to   = module.identity[0].proxmox_virtual_environment_vm.this
 }
