@@ -1,0 +1,27 @@
+# Tetragon (cilium/tetragon): runtime security in the kernel (eBPF) on a host. Its policies
+# watch for what attacks do (a program run from a temp folder, a kernel module loaded, a write
+# to the password or SSH files, one process tracing another) and report it, or with
+# enforcement kill the process before it runs. Its events go to a JSON log the Wazuh agent
+# ships to the manager, where rules turn them into alerts (role wazuh_server). docs/services.md,
+# Tetragon.
+tetragon_version: 1.7.1
+# sha256 of tetragon-v<version>-amd64.tar.gz (the release's .sha256sum).
+tetragon_tarball_sha256: 2f36a7bbb2b3d77a011383a01c8f804fe7761d934a76ff2fdf99ebad6f3e89ae
+tetragon_conf_dir: /etc/tetragon/tetragon.conf.d
+tetragon_policy_dir: /etc/tetragon/tetragon.tp.d
+tetragon_log: /var/log/tetragon/tetragon.log
+
+# Only the policies' events: not every process start and exit, which would flood Wazuh.
+tetragon_export_events: [PROCESS_KPROBE, PROCESS_TRACEPOINT, PROCESS_LSM]
+tetragon_export_max_size_mb: 20
+tetragon_export_max_backups: 5
+
+# The policies (templates/policies/<name>.yaml.j2). Each reports (audit) unless its name is in
+# tetragon_enforce, where it kills the offending process. Enforce only after a quiet audit.
+tetragon_policies: [exec-tmp, kernel-module, sensitive-files, ptrace]
+tetragon_enforce: []
+# Policies that only ever report: enforcing them would stop apt, useradd or Ansible.
+tetragon_audit_only: [sensitive-files]
+
+# The Wazuh agent's settings file, where the log is added as a JSON source.
+tetragon_wazuh_agent_conf: /var/ossec/etc/ossec.conf

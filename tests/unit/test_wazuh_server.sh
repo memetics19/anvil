@@ -59,7 +59,7 @@ check "alerts of level 10 and up go to Alertmanager" \
   "grep -q '<name>custom-alertmanager</name>' $tmp/wazuh_manager.conf && grep -q '<hook_url>http://192.0.2.132:9093/api/v2/alerts</hook_url>' $tmp/wazuh_manager.conf && grep -q '<level>10</level>' $tmp/wazuh_manager.conf"
 check "no integration without a monitoring VM" "! grep -q custom-alertmanager $tmp/no-monitoring.conf"
 check "the integration's files reach the manager" "grep -q '/wazuh-config-mount/integrations/custom-alertmanager:ro' $c"
-check "a changed config or integration restarts the manager" "[ \"\$(grep -c 'notify: Restart the Wazuh manager' $r/tasks/main.yml)\" = 2 ]"
+check "a changed config, integration or rules file restarts the manager" "[ \"\$(grep -c 'notify: Restart the Wazuh manager' $r/tasks/main.yml)\" = 3 ]"
 
 # The integration itself, against a stand-in Alertmanager on this machine.
 cat >"$tmp/alert.json" <<'JSON'

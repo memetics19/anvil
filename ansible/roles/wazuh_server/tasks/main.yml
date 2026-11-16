@@ -157,6 +157,24 @@
   loop: [custom-alertmanager, custom-alertmanager.py]
   notify: Restart the Wazuh manager
 
+# Rules for the hosts' Tetragon events (role tetragon). No secret in them.
+- name: Folder for anvil's rules
+  ansible.builtin.file:
+    path: "{{ wazuh_server_dir }}/config/rules"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Tetragon's rules
+  ansible.builtin.copy:
+    src: anvil_tetragon_rules.xml
+    dest: "{{ wazuh_server_dir }}/config/rules/anvil_tetragon_rules.xml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart the Wazuh manager
+
 - name: The enrollment password
   ansible.builtin.copy:
     content: "{{ wazuh_server_secrets.enrollment }}\n"

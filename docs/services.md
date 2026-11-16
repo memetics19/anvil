@@ -1337,6 +1337,39 @@ logins and sudo, and its installed packages, which the server matches against kn
 Apply after the server: `anvil apply vms --tags wazuh_agent` and `anvil apply host --tags wazuh_agent`.
 Each run waits until the agent reports connected.
 
+## Tetragon
+
+Tetragon (cilium/tetragon) watches what programs do, inside the kernel (eBPF), on the VMs in
+the inventory group `tetragon` (ragnarok, apps and frigate first). Role `tetragon`: release
+1.7.1, pinned by checksum, as a systemd service. Its policies:
+
+| Policy | Catches | Can enforce |
+|---|---|---|
+| `anvil-exec-tmp` | a program run from `/tmp`, `/var/tmp`, `/dev/shm` or memory, where malware drops itself | yes |
+| `anvil-kernel-module` | a kernel module loaded after boot, how rootkits hide | yes |
+| `anvil-ptrace` | one process attaching to another or writing into its memory (code injection) | yes |
+| `anvil-sensitive-files` | a write to shadow, sudoers, the SSH server settings, cron or root's SSH keys | no, apt, useradd and Ansible write them |
+
+Every policy only reports (audit) until its name is in `tetragon_enforce` (group or host
+vars). Then Tetragon kills the offending process before it runs. Enforce one only after it has
+run quietly in audit, and on the Proxmox hosts last.
+
+Tetragon writes only these policy events, as JSON, to `/var/log/tetragon/tetragon.log`, not
+every program start. The Wazuh agent ships the log, and the manager's rules
+(`anvil_tetragon_rules.xml`, role `wazuh_server`) turn each event into an alert with its MITRE
+ATT&CK technique. Audit events are level 8 (5 for sensitive files): they show in the Wazuh
+dashboard and Grafana but do not page. A process killed under enforcement is level 12 and
+pages.
+
+On a host:
+
+- `sudo tetra --server-address unix:///var/run/tetragon/tetragon.sock tracingpolicy list`
+  shows each policy, its state and how many events it has posted.
+- `sudo tail -f /var/log/tetragon/tetragon.log` follows the events.
+
+A selector in a policy may match at most 4 values. With one more, Tetragon refuses to start
+(`tests/unit/test_tetragon.sh` checks it).
+
 ## Secrets enclave
 
 Vault and Vaultwarden live on their own network: the SDN vnet `secrets`, in the simple

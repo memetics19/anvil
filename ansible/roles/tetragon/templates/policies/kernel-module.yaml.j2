@@ -1,0 +1,23 @@
+# Managed by Ansible (role tetragon). A kernel module loaded after boot: how rootkits hide.
+# {{ 'Enforced: the loading process is killed.' if 'kernel-module' in tetragon_enforce else 'Audit: reported only.' }}
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: anvil-kernel-module
+spec:
+  kprobes:
+    - call: security_kernel_read_file
+      syscall: false
+      args:
+        - index: 0
+          type: file
+        - index: 1
+          type: int
+      selectors:
+        # 2 is READING_MODULE: a module file read to be loaded.
+        - matchArgs:
+            - index: 1
+              operator: Equal
+              values: ["2"]
+          matchActions:
+            - action: {{ 'Sigkill' if 'kernel-module' in tetragon_enforce else 'Post' }}
