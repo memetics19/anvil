@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.32.0](https://github.com/memetics19/anvil/compare/v0.31.0...v0.32.0) (2026-11-16)
+
+
+### Features
+
+* **arr_stack:** Bazarr times every subtitle to the audio ([#239](https://github.com/memetics19/anvil/issues/239)) ([47e2305](https://github.com/memetics19/anvil/commit/47e23052b665c7b89631faafc2ae733400653a7d))
+* **caddy:** Anubis in front of the gateway's routes ([#227](https://github.com/memetics19/anvil/issues/227)) ([47debe3](https://github.com/memetics19/anvil/commit/47debe35d887d8ee4637d79f5c64a50a01be1dca))
+* **cli:** anvil media delete ([#235](https://github.com/memetics19/anvil/issues/235)) ([9868912](https://github.com/memetics19/anvil/commit/9868912cc2e77b81fd78c3de690787b57a68dcde))
+* **dispatcharr:** Dispatcharr on its own VM on pve2 ([#236](https://github.com/memetics19/anvil/issues/236)) ([8c6473e](https://github.com/memetics19/anvil/commit/8c6473e0f748231a6144bf04053b6b2a6b441c16))
+* **monitoring:** SMART disk health dashboard and alerts ([#237](https://github.com/memetics19/anvil/issues/237)) ([f2ccb1a](https://github.com/memetics19/anvil/commit/f2ccb1a28e0869ded46602817c07f26bf014b029))
+* **netbird_server, pve_network:** live TV away from home over NetBird ([#232](https://github.com/memetics19/anvil/issues/232)) ([bef4aac](https://github.com/memetics19/anvil/commit/bef4aac7ec099c9ccb1defef87acffba4d0e1b23))
+* Pinchflat on ragnarok and anvil youtube ([#238](https://github.com/memetics19/anvil/issues/238)) ([e72194d](https://github.com/memetics19/anvil/commit/e72194db20910610782af22c3edd3eee4dc12757))
+
+
+### Bug Fixes
+
+* **iptv:** one playlist Android TV players can play ([#234](https://github.com/memetics19/anvil/issues/234)) ([ff307d2](https://github.com/memetics19/anvil/commit/ff307d28e3d08298092cfb95a7fa6daa5f8c1d6d))
+* **monitoring:** vmagent and blackbox read their configs from mounted folders ([#231](https://github.com/memetics19/anvil/issues/231)) ([c885058](https://github.com/memetics19/anvil/commit/c885058932315784677f7c0ca1c90d1b256b87ad))
+
 ## [0.31.0](https://github.com/memetics19/anvil/compare/v0.30.0...v0.31.0) (2026-11-07)
 
 
