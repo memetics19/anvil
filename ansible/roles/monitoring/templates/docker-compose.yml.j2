@@ -21,7 +21,7 @@ services:
       - -remoteWrite.url=http://victoriametrics:8428/api/v1/write
       - -remoteWrite.tmpDataPath=/vmagent-data
     volumes:
-      - ./scrape.yml:/etc/vmagent/scrape.yml:ro
+      - ./vmagent:/etc/vmagent:ro
       - vmagent-data:/vmagent-data
     depends_on: [victoriametrics]
     mem_limit: {{ monitoring_vmagent_mem_limit }}
@@ -112,7 +112,7 @@ services:
     command:
       - --config.file=/etc/blackbox/blackbox.yml
     volumes:
-      - ./blackbox.yml:/etc/blackbox/blackbox.yml:ro
+      - ./blackbox:/etc/blackbox:ro
     # Ping without raw sockets: unprivileged ICMP for every group in the container.
     sysctls:
       net.ipv4.ping_group_range: "0 2147483647"

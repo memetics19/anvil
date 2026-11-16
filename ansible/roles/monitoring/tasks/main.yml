@@ -114,12 +114,15 @@
     group: root
     mode: "0755"
   loop: ["", grafana, grafana/provisioning, grafana/provisioning/datasources,
-         grafana/provisioning/dashboards, grafana/dashboards, rules, alertmanager]
+         grafana/provisioning/dashboards, grafana/dashboards, rules, alertmanager, vmagent, blackbox]
 
+# Each config sits in a folder that is mounted whole, never as a single file. A template
+# replaces its file with a new one, and a container with the old file mounted would keep
+# reading the old one, reload or not.
 - name: What vmagent scrapes
   ansible.builtin.template:
     src: scrape.yml.j2
-    dest: "{{ monitoring_dir }}/scrape.yml"
+    dest: "{{ monitoring_dir }}/vmagent/scrape.yml"
     owner: root
     group: root
     mode: "0644"
@@ -139,7 +142,7 @@
 - name: How the blackbox exporter checks
   ansible.builtin.template:
     src: blackbox.yml.j2
-    dest: "{{ monitoring_dir }}/blackbox.yml"
+    dest: "{{ monitoring_dir }}/blackbox/blackbox.yml"
     owner: root
     group: root
     mode: "0644"
@@ -209,6 +212,16 @@
 
 - name: Flush a reload or restart now
   ansible.builtin.meta: flush_handlers
+
+# Before the configs moved into folders they were single files here. Gone only after the
+# compose project above recreated vmagent and blackbox with the folder mounts: a container
+# restarted with a missing single-file source would get an empty directory in its place.
+- name: The old single-file configs are gone
+  ansible.builtin.file:
+    path: "{{ monitoring_dir }}/{{ item }}"
+    state: absent
+  loop: [scrape.yml, blackbox.yml]
+  when: not ansible_check_mode
 
 - name: VictoriaMetrics answers
   ansible.builtin.command:
