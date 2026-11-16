@@ -1,0 +1,28 @@
+# Disk health (SMART) for the monitoring stack (docs/monitoring.md, Disks): smartctl_exporter
+# on the Proxmox nodes. A release binary, pinned by version and checksum. smartctl needs root
+# to open a disk, so it runs as root under a sandboxed systemd unit that keeps only the raw
+# I/O capabilities and answers only the addresses below.
+# 0.14.0 (2025-04-22), not 0.15.0: 0.15.0 collects SAS verify-error counters it never
+# registers, so every scrape of a node with SAS disks fails with HTTP 500 (upstream issues
+# 397 and 406, open).
+smartctl_exporter_version: 0.14.0
+smartctl_exporter_arch: amd64
+# sha256 of smartctl_exporter-<version>.linux-<arch>.tar.gz (from the release's sha256sums.txt)
+smartctl_exporter_tarball_sha256: 875983cd27affc5a682401930e5a8eea3f06c325fe6d6a7228c5547d882685b3
+smartctl_exporter_binary: /usr/local/bin/smartctl_exporter
+smartctl_exporter_unit_path: /etc/systemd/system/smartctl_exporter.service
+# The address the node is reached at (its lab address on the main host, its static address
+# on the other members).
+smartctl_exporter_listen_ip: "{{ ansible_host }}"
+smartctl_exporter_port: 9633
+# Disks to read: empty scans every disk smartctl finds. Disks behind a RAID controller need
+# their type, as '/dev/bus/0;megaraid,1' (inventory group_vars/proxmox.yml).
+smartctl_exporter_devices: []
+# When scanning: devices to leave out, a regex on the label (sda, bus_0_megaraid_1). Empty: none.
+smartctl_exporter_device_exclude: ""
+# How often it polls the disks. SMART reads are cheap, but some disks log each one.
+smartctl_exporter_interval: 5m
+# Who may connect (systemd IPAddressAllow; everything else is dropped in the kernel): the
+# monitoring VM. Lab traffic to the home network leaves the main host with its home address
+# (SNAT), so on the other members that address too.
+smartctl_exporter_allow: []

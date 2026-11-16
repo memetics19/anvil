@@ -61,6 +61,15 @@ scrape_configs:
         labels: {host: apps}
 
 {% endif %}
+  # Disk health on the Proxmox nodes (role smartctl_exporter). It reads the disks every 5
+  # minutes and answers from that, so a scrape a minute costs the disks nothing.
+  - job_name: smart
+    static_configs:
+{% for t in monitoring_smart_targets %}
+      - targets: ["{{ t.address }}"]
+        labels: {host: "{{ t.name }}"}
+{% endfor %}
+
   # The stack itself.
   - job_name: victoriametrics
     static_configs:

@@ -24,6 +24,9 @@
     # Host metrics for the monitoring stack (docs/monitoring.md), on the host's lab address.
     - role: node_exporter
       tags: [node_exporter]
+    # Disk health (SMART) for the monitoring stack (docs/monitoring.md, Disks).
+    - role: smartctl_exporter
+      tags: [smartctl_exporter]
 
 # The other cluster members (site.cluster.members, provisioned machines reached at their
 # static address as root, as in cluster.yml) get the TCP options guard too. Not pve_host:
@@ -59,6 +62,21 @@
       tags: [tcp_options_guard]
     - role: ssh_hardening
       tags: [ssh_hardening]
+
+# Disk health on the other members. The monitoring VM's scrapes reach them from the main
+# host's home address (lab traffic to the home network is SNATed there). Their controller
+# passes the disks through, so a scan finds each disk twice: as /dev/sdX and as
+# /dev/bus/N;megaraid,M (labelled bus_N_megaraid_M). Only the first is kept.
+- name: Cluster members' disk health
+  hosts: cluster_members
+  vars:
+    smartctl_exporter_device_exclude: "^bus_"
+    smartctl_exporter_allow:
+      - "{{ hostvars[groups['proxmox'][0]].site.hosts.monitoring.ip }}"
+      - "{{ hostvars[groups['proxmox'][0]].site.pve.uplink_ip }}"
+  roles:
+    - role: smartctl_exporter
+      tags: [smartctl_exporter]
 
 # Wazuh agents on the nodes (docs/services.md, Wazuh). The cluster members have no site dict
 # of their own: the manager's address comes from the main host's.
