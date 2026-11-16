@@ -5,15 +5,15 @@
 class Anvil < Formula
   desc "One command over the make targets of the anvil homelab repo"
   homepage "https://github.com/memetics19/anvil"
-  version "0.31.0"
+  version "0.32.0"
   license "MIT"
 
   depends_on "git"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/memetics19/anvil/releases/download/v0.31.0/anvil_0.31.0_darwin_amd64.tar.gz"
-      sha256 "23fcc5ce84e6d2c4c8a17489a90f88c35934d4c008e3ed7dbe7e8fb3a89971d4"
+      url "https://github.com/memetics19/anvil/releases/download/v0.32.0/anvil_0.32.0_darwin_amd64.tar.gz"
+      sha256 "8da738062fbe1ac798721c2da11e9584182ab324da95e23e33708c4f6afe3a74"
 
       define_method(:install) do
         bin.install "anvil"
@@ -23,8 +23,8 @@ class Anvil < Formula
       end
     end
     if Hardware::CPU.arm?
-      url "https://github.com/memetics19/anvil/releases/download/v0.31.0/anvil_0.31.0_darwin_arm64.tar.gz"
-      sha256 "85f7c5426f4cca310528acddce249407ed6b8a641875b5a3040fff761693fa30"
+      url "https://github.com/memetics19/anvil/releases/download/v0.32.0/anvil_0.32.0_darwin_arm64.tar.gz"
+      sha256 "246c30dbddcd6f59a06d5afd577e9ef54a275ab26d36d96e2ed77cb59d7a38e1"
 
       define_method(:install) do
         bin.install "anvil"
@@ -37,8 +37,8 @@ class Anvil < Formula
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://github.com/memetics19/anvil/releases/download/v0.31.0/anvil_0.31.0_linux_amd64.tar.gz"
-      sha256 "74a036a95ee79df4e8167c08cb4b736e94a78ffd6e01105ee48e5accd95fe6b6"
+      url "https://github.com/memetics19/anvil/releases/download/v0.32.0/anvil_0.32.0_linux_amd64.tar.gz"
+      sha256 "d2506c0ee6a89f7bf926af6244793ed6c89f6cec0f1fa2357f54dcb1d5b20c2b"
       define_method(:install) do
         bin.install "anvil"
         bash_completion.install "completions/anvil.bash" => "anvil"
@@ -47,8 +47,8 @@ class Anvil < Formula
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/memetics19/anvil/releases/download/v0.31.0/anvil_0.31.0_linux_arm64.tar.gz"
-      sha256 "af223922efd60f3003e08580454fa1f46f22d1c026e494ba4ab8fd4a0d59c8ad"
+      url "https://github.com/memetics19/anvil/releases/download/v0.32.0/anvil_0.32.0_linux_arm64.tar.gz"
+      sha256 "cc49df7afcf99666beb542a401625e1b7cfc289054e1c946b30c5e7275fe017c"
       define_method(:install) do
         bin.install "anvil"
         bash_completion.install "completions/anvil.bash" => "anvil"
