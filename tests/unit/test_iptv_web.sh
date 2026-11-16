@@ -6,6 +6,10 @@
 #             helper's own files, other names under /static/
 #   guide     /guide.json is JSON with every lineup channel in order and the right now/next,
 #             follows a guide replaced by rename, and still lists the channels without one
+#   playlist  /playlist.m3u lists the lineup in order, each linked back to the helper at the
+#             address the client used (the bound address when Host is odd)
+#   threadfin with a fixture Threadfin playlist: its channels are linked to the helper
+#             (never to the HTTPS source), and the lineup ids still answer
 #   vendor    the vendored mpegts.js matches iptv_mpegts_sha256, and the web directory
 #             holds exactly iptv_web_files (role defaults)
 #   slots     with a fake streamlink (one chunk every 5 s) and one slot: a channel that
@@ -23,7 +27,11 @@ bad() { echo "FAIL $*"; fail=1; }
 
 work=$(mktemp -d)
 pid=
-cleanup() { [ -n "$pid" ] && { kill "$pid"; wait "$pid"; } 2>/dev/null; rm -rf "$work"; }
+tfpid=
+cleanup() {
+  for p in $pid $tfpid; do { kill "$p"; wait "$p"; } 2>/dev/null; done
+  rm -rf "$work"
+}
 trap cleanup EXIT
 
 # --- vendor -------------------------------------------------------------------------------
@@ -136,6 +144,20 @@ printf 'not xml' >"$guide"
 check_guide - false && pass "guide: unparseable guide, channels still listed" || bad "guide: unparseable guide"
 kill -0 "$pid" 2>/dev/null && pass "server still running" || bad "server died"
 
+# playlist
+want=$(printf '%s\n' '#EXTM3U' \
+  '#EXTINF:-1 tvg-id="publictv" tvg-name="Public TV" tvg-chno="1" group-title="Kannada",Public TV' \
+  "$base/publictv" \
+  '#EXTINF:-1 tvg-id="tv9kannada" tvg-name="TV9 Kannada" tvg-chno="2" group-title="Kannada",TV9 Kannada' \
+  "$base/tv9kannada")
+[ "$(curl -s "$base/playlist.m3u")" = "$want" ] && pass "playlist: lineup in order, linked to the helper" \
+  || bad "playlist: $(curl -s "$base/playlist.m3u" | tr '\n' '|')"
+c=$(code -I "$base/playlist.m3u"); [ "$c" = 200 ] && pass "playlist: HEAD 200" || bad "playlist: HEAD answered $c"
+if curl -s -H 'Host: tv.example.invalid:8080' "$base/playlist.m3u" | grep -qx 'http://tv.example.invalid:8080/publictv'
+then pass "playlist: links follow Host"; else bad "playlist: links ignore Host"; fi
+if curl -s -H 'Host: x"/><evil' "$base/playlist.m3u" | grep -qx "$base/publictv"
+then pass "playlist: odd Host falls back to the bound address"; else bad "playlist: odd Host leaked into links"; fi
+
 # slots
 c=$(code --max-time 10 "$base/gone"); [ "$c" = 504 ] && pass "slots: not live -> 504" || bad "slots: offline channel answered $c"
 curl -s -o /dev/null --max-time 2 "$base/publictv" &
@@ -144,6 +166,40 @@ c=$(code --max-time 3 "$base/tv9kannada"); [ "$c" = 503 ] && pass "slots: second
 wait $!
 sleep 0.5 # well before the first stream's next chunk (5 s)
 c=$(code --max-time 1 "$base/tv9kannada"); [ "$c" = 200 ] && pass "slots: a disconnect frees the slot at once" || bad "slots: after a disconnect answered $c"
+
+# threadfin
+kill "$pid"; wait "$pid" 2>/dev/null; pid=
+mkdir -p "$work/tf/m3u"
+cat >"$work/tf/m3u/threadfin.m3u" <<'EOF'
+#EXTM3U
+#EXTINF:0 tvg-chno="2" tvg-name="TV9 Kannada" tvg-id="2" group-title="Kannada",TV9 Kannada
+http://threadfin.example.invalid:34400/stream/aaaa
+#EXTINF:0 tvg-chno="7" tvg-name="Other HD" tvg-id="7" tvg-logo="https://logo.example.invalid/o.png" group-title="Kannada",Other HD
+http://threadfin.example.invalid:34400/stream/bbbb
+EOF
+tfport=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
+python3 -m http.server -b 127.0.0.1 -d "$work/tf" "$tfport" >/dev/null 2>&1 &
+tfpid=$!
+for _ in $(seq 50); do curl -fs "http://127.0.0.1:$tfport/m3u/threadfin.m3u" >/dev/null 2>&1 && break; sleep 0.1; done
+PATH="$work/bin:$PATH" \
+IPTV_CHANNELS='{"tv9kannada": "https://www.youtube.com/channel/UCyyyyyyyyyyyyyyyyyyyyyy/live"}' \
+IPTV_LINEUP='[{"id": "tv9kannada", "name": "TV9 Kannada", "number": 2}]' \
+IPTV_THREADFIN_M3U_URL="http://127.0.0.1:$tfport/m3u/threadfin.m3u" \
+IPTV_THREADFIN_PUBLIC_ORIGIN="http://tv.example.invalid:34400" \
+IPTV_GUIDE="$guide" IPTV_WEB_DIR="$web" IPTV_PORT="$port" \
+  python3 "$role/files/streams/server.py" 2>>"$work/server.log" &
+pid=$!
+for _ in $(seq 50); do curl -fs "$base/health" >/dev/null 2>&1 && break; sleep 0.1; done
+for p in /tv9kannada /2 /7; do
+  c=$(code -I "$base$p"); [ "$c" = 200 ] && pass "threadfin: HEAD $p 200" || bad "threadfin: HEAD $p answered $c"
+done
+m3u=$(curl -s "$base/playlist.m3u")
+[ "$(grep -c '^http' <<<"$m3u")" = 2 ] && ! grep -q 'threadfin.example.invalid' <<<"$m3u" \
+  && grep -qx "$base/7" <<<"$m3u" && pass "threadfin: every channel linked to the helper" \
+  || bad "threadfin: playlist $(tr '\n' '|' <<<"$m3u")"
+grep -q '^#EXTM3U url-tvg="http://tv.example.invalid:34400/xmltv/threadfin.xml"' <<<"$m3u" \
+  && grep -q 'tvg-logo="https://logo.example.invalid/o.png"' <<<"$m3u" \
+  && pass "threadfin: guide link and logos" || bad "threadfin: no guide link or logo"
 
 if [ "$fail" != 0 ]; then echo "--- server log"; cat "$work/server.log"; echo "FAIL: IPTV web checks"; exit 1; fi
 echo "PASS: IPTV web checks"

@@ -5,6 +5,9 @@ GET / is the web TV page; its assets are under /static/ (a fixed list, read into
 at start; no request reaches the filesystem). GET /guide.json gives now/next for every
 lineup channel (IPTV_LINEUP) from the XMLTV guide at IPTV_GUIDE, parsed again only when
 that file changes. Page, guide and streams share one origin, so the page needs no CORS.
+GET /playlist.m3u lists every channel with a link back to this helper, so a player gets
+plain HTTP MPEG-TS for each one. Android players built on ExoPlayer refuse the HTTP to
+HTTPS redirect Threadfin answers for HTTPS sources, and skip to the next channel.
 
 GET /<id> (or /<id>.ts) relays MPEG-TS until either side ends. HLS sources are muxed with
 FFmpeg so separate audio renditions reach the client; other sources use Streamlink.
@@ -22,6 +25,7 @@ import gzip
 import hashlib
 import json
 import os
+import re
 import select
 import signal
 import subprocess
@@ -30,7 +34,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
+from urllib.parse import quote, unquote, urljoin, urlsplit, urlunsplit
 import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -110,7 +114,6 @@ def xmltv_time(stamp):
 
 
 def _m3u_attributes(line):
-    import re
     return {key: (quoted if quoted is not None else bare)
             for key, quoted, bare in re.findall(r'([\w-]+)=(?:"([^"]*)"|([^\s,]+))', line)}
 
@@ -186,7 +189,9 @@ def refresh_threadfin_playlist(force=False):
             entries = parse_threadfin_m3u(content.decode("utf-8-sig"))
             if not entries:
                 raise ValueError("playlist contains no playable channels")
-            CHANNELS = {entry["id"]: entry["source"] for entry in entries}
+            # The lineup channels stay reachable by their own ids: Threadfin's source playlist
+            # links them as /<id>, while its own playlist numbers them.
+            CHANNELS = {**MANAGED_CHANNELS, **{entry["id"]: entry["source"] for entry in entries}}
             LINEUP = [{key: entry[key] for key in ("id", "name", "number", "logo", "group")}
                       for entry in entries]
         except (OSError, UnicodeError, ValueError, urllib.error.URLError) as exc:
@@ -276,6 +281,29 @@ class Guide:
         return {"time": now, "guide": present, "channels": channels}
 
 
+def _m3u_value(text):
+    return " ".join(str(text).replace('"', "'").split())
+
+
+def playlist(origin):
+    """M3U of the lineup in channel order, each channel linked to origin/<id>."""
+    head = "#EXTM3U"
+    if THREADFIN_PUBLIC_ORIGIN:
+        guide_url = THREADFIN_PUBLIC_ORIGIN.rstrip("/") + "/xmltv/threadfin.xml"
+        head += f' url-tvg="{guide_url}" x-tvg-url="{guide_url}"'
+    lines = [head]
+    for c in sorted(LINEUP, key=lambda c: int(c["number"])):
+        name = _m3u_value(c["name"])
+        attrs = [f'tvg-id="{_m3u_value(c["id"])}"', f'tvg-name="{name}"',
+                 f'tvg-chno="{int(c["number"])}"']
+        if c.get("logo"):
+            attrs.append(f'tvg-logo="{_m3u_value(c["logo"])}"')
+        attrs.append(f'group-title="{_m3u_value(c.get("group") or "Kannada")}"')
+        lines.append(f'#EXTINF:-1 {" ".join(attrs)},{name}')
+        lines.append(f"{origin}/{quote(c['id'], safe='')}")
+    return ("\n".join(lines) + "\n").encode()
+
+
 WEB = {}
 guide = Guide(GUIDE)
 
@@ -296,6 +324,13 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         if body:
             self.wfile.write(data)
+
+    def _origin(self):
+        """http://<the address the client used>; the bound port when Host is missing or odd."""
+        host = (self.headers.get("Host") or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9.-]+(:[0-9]{1,5})?|\[[0-9A-Fa-f:.]+\](:[0-9]{1,5})?", host):
+            host = f"{self.connection.getsockname()[0]}:{PORT}"
+        return "http://" + host
 
     def _channel(self):
         cid = unquote(self.path.split("?", 1)[0].strip("/"))
@@ -318,6 +353,11 @@ class Handler(BaseHTTPRequestHandler):
             refresh_threadfin_playlist()
             data = json.dumps(guide.now_next(), separators=(",", ":")).encode()
             self._send(200, "application/json", data, body, {"Cache-Control": "no-cache"})
+            return True
+        if path == "/playlist.m3u":
+            refresh_threadfin_playlist()
+            self._send(200, "audio/x-mpegurl; charset=utf-8", playlist(self._origin()), body,
+                       {"Cache-Control": "no-cache"})
             return True
         asset = WEB.get(path)
         if asset is None:
