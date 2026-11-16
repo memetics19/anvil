@@ -1,0 +1,38 @@
+# Dispatcharr (IPTV playlists, guides and stream proxy) on the dispatcharr VM: compose
+# project "dispatcharr" in /opt/dispatcharr, the all-in-one image (Django, Celery, Redis and
+# PostgreSQL in one container, data in ./data). The gateway serves it as
+# https://dispatcharr.<gateway domain> behind single sign-on, except the paths players fetch
+# (role caddy, caddy_sso_open_paths). Its own login stays as the fallback: user admin,
+# password in Vault.
+dispatcharr_dir: /opt/dispatcharr
+# v0.33.0 (2026-10-24), multi-arch index digest.
+dispatcharr_image: ghcr.io/dispatcharr/dispatcharr:0.33.0@sha256:96bc548978c68e684677da7895692eeeefb7f0b2edfa38311dac2b702c61d236
+dispatcharr_port: 9191
+# Published on the VM's lab address only. The gateway, Pulse and the admin sources reach it
+# (port_guard, inventory host_vars/dispatcharr.yml).
+dispatcharr_bind_ip: "{{ site.hosts[inventory_hostname].ip }}"
+# The gateway's lab address: Dispatcharr trusts its X-Forwarded-* headers, so the playlist
+# links it hands out are https://dispatcharr.<gateway domain>/...
+dispatcharr_trusted_proxy: "{{ site.hosts[groups['apps_servers'] | first].ip }}"
+# Hard cap, swap included. The VM has 3 GB (terraform/vm_dispatcharr.tf).
+dispatcharr_mem_limit: 2g
+# Fewer workers than the defaults (4 and 6): a household, not a hotel.
+dispatcharr_uwsgi_workers: 2
+dispatcharr_celery_max_workers: 2
+dispatcharr_timezone: Asia/Kolkata
+
+# Who may fetch its playlists and guides (Dispatcharr's Network Access, M3U_EPG): its own
+# default (the private and loopback ranges) plus these. The default leaves out players on
+# the VPN: NetBird hands out addresses in 100.64.0.0/10. Set once, when unset: a change in
+# the web page stays.
+dispatcharr_m3u_epg_extra_cidrs: [100.64.0.0/10]
+
+dispatcharr_admin_user: admin
+# Single sign-on: Dispatcharr signs in the user whose email the gateway passes in this header
+# (Authentik's, role caddy), only from the trusted proxy above. The admin gets the site
+# email, which the operator's Authentik accounts carry.
+dispatcharr_proxy_auth_header: X-Authentik-Email
+dispatcharr_admin_email: "{{ site.email }}"
+dispatcharr_vault_mount: kv
+dispatcharr_vault_path: "homelab/{{ inventory_hostname }}/dispatcharr"
+dispatcharr_repo_scripts: "{{ playbook_dir }}/../../scripts"

@@ -282,7 +282,8 @@ sso='[
   {name: vault, host: hosts.vault.ip, port: 8200, scheme: https, upstream_ca: vault},
   {name: tv, host: hosts.ragnarok.ip, port: 34401, scheme: http, stream: true},
   {name: ntfy, host: hosts.ragnarok.ip, port: 8081, scheme: http, sso: true},
-  {name: files, host: hosts.ragnarok.ip, port: 8334, scheme: http, sso: false}]'
+  {name: files, host: hosts.ragnarok.ip, port: 8334, scheme: http, sso: false},
+  {name: dispatcharr, host: hosts.ragnarok.ip, port: 9191, scheme: http, stream: true}]'
 run "$sso"
 for n in pve sonarr dns docs ntfy; do
   if block "$n" | grep -q 'forward_auth http://192.0.2.125:9000 {' && block "$n" | grep -q 'uri /outpost.goauthentik.io/auth/caddy' \
@@ -292,6 +293,19 @@ done
 for n in auth vault tv files; do
   if block "$n" | grep -q 'forward_auth\|goauthentik'; then bad_ "sso: $n is left out"; else ok "sso: $n is left out"; fi
 done
+# Identity headers: a client's are dropped before the login check, Authentik's passed on.
+for n in pve sonarr dns docs ntfy dispatcharr; do
+  strip=$(block "$n" | grep -n -m1 'request_header -X-Authentik-Email$' | cut -d: -f1)
+  auth=$(block "$n" | grep -n -m1 'forward_auth ' | cut -d: -f1)
+  if [ -n "$strip" ] && [ -n "$auth" ] && [ "$strip" -lt "$auth" ] \
+     && block "$n" | grep -q 'copy_headers X-Authentik-Username X-Authentik-Email X-Authentik-Groups X-Authentik-Name X-Authentik-Uid$'
+  then ok "sso: $n takes identity headers from Authentik only"; else bad_ "sso: $n identity headers"; fi
+done
+# Open paths: Dispatcharr's player paths skip the login check, the rest asks Authentik.
+if block dispatcharr | grep -q '@dispatcharr_signin not path /output /output/\* /proxy /proxy/\* /hdhr /hdhr/\* .*/api/channels/logos/\* /logos/\*$' \
+   && block dispatcharr | grep -q 'forward_auth @dispatcharr_signin http://192.0.2.125:9000 {'
+then ok "sso: dispatcharr players skip sign-in, its web page asks Authentik"; else bad_ "sso: dispatcharr open paths"; fi
+if block sonarr | grep -q '_signin'; then bad_ "sso: no open paths where none are set"; else ok "sso: no open paths where none are set"; fi
 # pve: 403 for other clients, then the login check, then redirects and the app.
 first() { block pve | grep -n -m1 -- "$1" | cut -d: -f1; }
 if [ "$(first 'route {')" -lt "$(first 'respond @pve_denied 403')" ] && [ "$(first 'respond @pve_denied 403')" -lt "$(first 'forward_auth')" ] \
@@ -304,6 +318,8 @@ then ok "sso: docs checks the login before its files"; else bad_ "sso: docs orde
 run "$(printf '%s' "$sso" | sed '/name: auth,/d')"
 if grep -q 'forward_auth\|goauthentik' "$tmp/Caddyfile"; then bad_ "sso: no auth route, no login check"; else ok "sso: no auth route, no login check"; fi
 reject "sso not a boolean" '[{name: a, host: pve.ip, port: 1, scheme: http, sso: "yes"}]'
+reject "an open path with a space" '[{name: auth, host: hosts.identity.ip, port: 9000, scheme: http}, {name: a, host: pve.ip, port: 1, scheme: http, sso_open_paths: ["/x y"]}]'
+reject "an open path that is not absolute" '[{name: auth, host: hosts.identity.ip, port: 9000, scheme: http}, {name: a, host: pve.ip, port: 1, scheme: http, sso_open_paths: ["x"]}]'
 reject "auth behind itself" '[{name: auth, host: hosts.identity.ip, port: 9000, scheme: http, sso: true}]'
 
 [ "$fail" -eq 0 ] && echo "PASS: gateway routes and records"

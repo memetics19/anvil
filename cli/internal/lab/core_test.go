@@ -83,6 +83,7 @@ func TestServicesComeFromThePlaybook(t *testing.T) {
 		"iptv": "ragnarok", "arr": "ragnarok", "frigate": "frigate", "netbird_server": "netbird",
 		"wazuh": "wazuh",
 		"monitoring": "monitoring",
+		"dispatcharr": "dispatcharr",
 	}
 	for name, host := range want {
 		s, ok := c.service(name)
@@ -100,7 +101,7 @@ func TestServicesComeFromThePlaybook(t *testing.T) {
 			t.Errorf("target alias %s -> %s: %v", alias, name, err)
 		}
 	}
-	if !reflect.DeepEqual(c.vms, []string{"apps", "frigate", "identity", "monitoring", "netbird", "ragnarok", "vault", "vaultwarden", "wazuh"}) {
+	if !reflect.DeepEqual(c.vms, []string{"apps", "dispatcharr", "frigate", "identity", "monitoring", "netbird", "ragnarok", "vault", "vaultwarden", "wazuh"}) {
 		t.Errorf("VMs = %v", c.vms)
 	}
 }

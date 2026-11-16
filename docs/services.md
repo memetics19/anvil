@@ -1117,6 +1117,55 @@ The indexer reads its users' passwords on its first start only. To change one la
 it in Vault, apply, then load it into the running indexer:
 `docker exec -it wazuh-wazuh.indexer-1 bash /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh -cd /usr/share/wazuh-indexer/config/opensearch-security/ -nhnv -cacert /usr/share/wazuh-indexer/config/certs/root-ca.pem -cert /usr/share/wazuh-indexer/config/certs/admin.pem -key /usr/share/wazuh-indexer/config/certs/admin-key.pem -h localhost`.
 
+## Dispatcharr
+
+Dispatcharr manages IPTV playlists and guides and proxies the streams. It runs on its own VM
+on the second node, `dispatcharr` (role `dispatcharr`, `terraform/vm_dispatcharr.tf`, 2 vCPU,
+3 GB, 40 GB). It is the all-in-one image (0.33.0): the app, its workers, Redis and
+PostgreSQL in one container, with everything it keeps in `/opt/dispatcharr/data`. Threadfin
+and the stream helper on ragnarok stay as they are.
+
+What anvil sets:
+
+- The image is pinned to a digest. The container is capped at 2 GB, swap included.
+- Two passwords in Vault, `kv/homelab/dispatcharr/dispatcharr`, generated when missing:
+  `admin_password` (the web login, user `admin`) and `db_password` (its database). The
+  database password reaches the container through a root-only env file, never the compose
+  file.
+- The admin user is created once, when there is none. A password you change in the web page
+  stays.
+- Its playlists and guides answer the private ranges and NetBird's 100.64.0.0/10, so players
+  on the VPN get them too (Dispatcharr's own default leaves the VPN out). Set once, when
+  unset: a change in its Network Access settings stays.
+- Published on the lab address only (9191). It answers only the gateway, Pulse and the admin
+  sources (`port_guard`).
+- The gateway serves it as `https://dispatcharr.<domain>`. The web page is behind single
+  sign-on: Authentik passes the signed-in user's email, and Dispatcharr signs in its user with
+  that email (the admin gets the site email). The paths players fetch skip sign-in, because
+  players cannot sign in: playlists and guides, streams, HDHomeRun, the XC API and channel
+  logos (`caddy_sso_open_paths`). The gateway drops identity headers a client sends, so none
+  can be faked. Its own password login stays as the fallback.
+- It trusts the gateway's forwarded headers, so the playlist and stream links it hands out
+  use the gateway name.
+
+One-time setup:
+
+1. Add the VM to the site dict in Vault (`site.hosts.dispatcharr`, shaped like
+   `site/site.example.yml`, with a free VMID, lab address and MAC) and a gateway entry in
+   `site.services`:
+   `{name: dispatcharr, host: hosts.dispatcharr.ip, port: 9191, scheme: http, stream: true, websocket: true}`.
+2. `anvil apply tf`, then `anvil apply dispatcharr`. The first run pulls about 1 GB and runs the
+   database migrations, which takes a few minutes.
+3. `anvil apply apps --tags caddy,pihole,homepage` adds the gateway route, the DNS name and
+   the Homepage tile. Open `https://dispatcharr.<domain>` and sign in with Authentik. The
+   password login (user `admin`) is the fallback. Copy that password to the clipboard without
+   showing it:
+   `vault kv get -mount=kv -field=admin_password homelab/dispatcharr/dispatcharr | pbcopy`.
+
+In Dispatcharr, add M3U accounts and EPG sources, pick the channels, and give players its
+output playlist and guide from the web page. Streams from a player go through the gateway,
+so they work at home and over the VPN alike.
+
 ## Host hardening
 
 Role `host_hardening` closes small doors on every VM and Proxmox node.

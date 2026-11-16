@@ -56,6 +56,7 @@ homepage_catalog:
   files: {title: Files, group: Media, icon: filestash.png, description: File browser}
   tv: {title: TV, group: Media, icon: mdi-television-classic, description: Live TV}
   threadfin: {title: Threadfin, group: Media, icon: threadfin.png, description: IPTV playlist and guide}
+  dispatcharr: {title: Dispatcharr, group: Media, icon: mdi-playlist-play, description: IPTV playlists, guide and streams}
   frigate: {title: Frigate, group: Home, icon: frigate.png, description: Cameras, widget: frigate}
   gotify: {title: Gotify, group: Home, icon: gotify.png, description: Notifications}
   ntfy: {title: ntfy, group: Home, icon: ntfy.png, description: Notifications}
