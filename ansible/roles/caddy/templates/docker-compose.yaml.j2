@@ -31,8 +31,39 @@ services:
 {% for n in caddy_networks_joined | default(caddy_container_networks | list) %}
       {{ n }}: {}
 {% endfor %}
+{% if caddy_anubis_routes | length > 0 %}
+      anubis: {}
+{% endif %}
     mem_limit: {{ caddy_mem_limit }}
     memswap_limit: {{ caddy_mem_limit }}
+{% if caddy_anubis_routes | length > 0 %}
+
+  # Anubis (defaults/main.yml, caddy_anubis_*): only on its own network, never on Caddy's
+  # gateway network (the one the secrets enclave admits). It reaches Caddy's internal listener
+  # and nothing else: the network has no route out.
+  anubis:
+    image: {{ caddy_anubis_image }}
+    container_name: anubis
+    restart: unless-stopped
+    environment:
+      BIND: ":8923"
+      TARGET: "http://caddy:{{ caddy_anubis_backend_port }}"
+      # One pass for every name under the domain.
+      COOKIE_DOMAIN: {{ caddy_domain | to_json }}
+      SERVE_ROBOTS_TXT: "true"
+    # The signing key (Vault), so a pass survives a restart. Not required: a dry run on a new
+    # VM has not written it yet.
+    env_file:
+      - path: anubis.env
+        required: false
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    networks:
+      anubis: {}
+    mem_limit: {{ caddy_anubis_mem_limit }}
+    memswap_limit: {{ caddy_anubis_mem_limit }}
+{% endif %}
 
 networks:
 {% if caddy_gateway_subnet | length > 0 %}
@@ -50,3 +81,7 @@ networks:
   {{ n }}:
     external: true
 {% endfor %}
+{% if caddy_anubis_routes | length > 0 %}
+  anubis:
+    internal: true
+{% endif %}
