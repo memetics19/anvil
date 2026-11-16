@@ -25,7 +25,7 @@ printf '<Config><ApiKey>%s</ApiKey></Config>\n' "$rkey" >"$tmp/radarr.xml"
 python3 tests/fixtures/fake_bazarr.py "$tmp" "$tmp/port" & pid=$!
 for _ in $(seq 50); do [ -s "$tmp/port" ] && break; sleep 0.1; done
 url="http://127.0.0.1:$(cat "$tmp/port")"
-policy=$(printf '{"url": "%s", "config_yaml": "%s", "sonarr": {"host": "sonarr", "port": 8989, "url": "%s", "config_xml": "%s"}, "radarr": {"host": "radarr", "port": 7878, "url": "%s", "config_xml": "%s"}, "languages": ["en"], "profile": "English"}' \
+policy=$(printf '{"url": "%s", "config_yaml": "%s", "sonarr": {"host": "sonarr", "port": 8989, "url": "%s", "config_xml": "%s"}, "radarr": {"host": "radarr", "port": 7878, "url": "%s", "config_xml": "%s"}, "languages": ["en"], "profile": "English", "sync": true}' \
   "$url" "$tmp/config.yaml" "$url" "$tmp/sonarr.xml" "$url" "$tmp/radarr.xml")
 script=ansible/roles/arr_stack/files/arr-bazarr.py
 osuser="viewer-$(hex | cut -c1-6)"; ospass="pw-$(hex)"
@@ -50,6 +50,8 @@ check "English switched on, an English profile next to the existing one" \
   "settings 'p=json.loads(s[\"languages-profiles\"][0]); assert s[\"languages-enabled\"]==[\"en\"]; assert [x[\"name\"] for x in p]==[\"Kannada\",\"English\"]; e=p[1]; assert e[\"profileId\"]==2 and [i[\"language\"] for i in e[\"items\"]]==[\"en\"]'"
 check "new series and movies get the English profile" \
   "settings 'assert s[\"settings-general-serie_default_enabled\"]==[\"true\"] and s[\"settings-general-serie_default_profile\"]==[\"2\"] and s[\"settings-general-movie_default_profile\"]==[\"2\"]'"
+check "every downloaded subtitle is timed to the file's audio" \
+  "settings 'assert s[\"settings-subsync-use_subsync\"]==[\"true\"] and s[\"settings-subsync-force_audio\"]==[\"true\"]'"
 check "the account and OpenSubtitles.com are set, a provider added by hand is kept" \
   "settings 'assert s[\"settings-opensubtitlescom-username\"]==[\"$osuser\"] and s[\"settings-opensubtitlescom-password\"]==[\"$ospass\"] and sorted(s[\"settings-general-enabled_providers\"])==[\"opensubtitlescom\",\"podnapisi\"]'"
 check "series and movies without a profile get English, one with a profile keeps it" "python3 -c '

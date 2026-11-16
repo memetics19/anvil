@@ -6,7 +6,7 @@ Usage: arr-bazarr.py [--check] <policy as JSON> < <account as JSON>
 The policy: {"url": "http://...:6767", "config_yaml": "<path>",
              "sonarr": {"host": "sonarr", "port": 8989, "url": "http://...", "config_xml": "<path>"},
              "radarr": {...same...},
-             "languages": ["en"], "profile": "English"}
+             "languages": ["en"], "profile": "English", "sync": true}
 The account, on stdin (never on the command line): {"opensubtitles_username": "...",
 "opensubtitles_password": "..."}, or {} for none.
 
@@ -16,6 +16,9 @@ Bazarr:
     policy with those languages (created when missing, corrected when it differs)
   - gives that profile to new series and movies, and to every one that has none
   - counts subtitles already inside a file (use_embedded_subs)
+  - with "sync": true, times every subtitle it downloads to the file's own audio
+    (subsync.use_subsync and force_audio, ffsubsync): subtitles cut for another release, or
+    an embedded track cut for another edit, run early or late
   - downloads from OpenSubtitles.com with the account, when there is one. Other providers
     switched on in the web UI are kept.
 Sonarr and Radarr import the .srt files a release ships with (importExtraFiles, srt).
@@ -149,6 +152,11 @@ def main(argv):
         want(app, "base_url", "/")
         want(app, "apikey", xml_key(a["config_xml"]), f"{app}.apikey")
     want("general", "use_embedded_subs", True)
+    if "sync" in policy:
+        want("subsync", "use_subsync", bool(policy["sync"]))
+        # Against the audio, never an embedded subtitle track: that track is often the very
+        # one that is off (a subtitle extracted from it then compares with itself).
+        want("subsync", "force_audio", bool(policy["sync"]))
     if user and secret:
         want("opensubtitlescom", "username", user, "opensubtitlescom.username")
         want("opensubtitlescom", "password", secret, "opensubtitlescom.password")
