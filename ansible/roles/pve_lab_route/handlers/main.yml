@@ -1,0 +1,6 @@
+- name: Apply the lab route
+  ansible.builtin.systemd_service:
+    name: anvil-lab-route
+    daemon_reload: true
+    state: restarted
+  when: not ansible_check_mode

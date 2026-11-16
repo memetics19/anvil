@@ -1,0 +1,42 @@
+- name: The lab network and the main host's address are set
+  ansible.builtin.assert:
+    that:
+      - pve_lab_route_cidr is match('^([0-9]{1,3}[.]){3}[0-9]{1,3}/[0-9]{1,2}$')
+      - pve_lab_route_via is match('^([0-9]{1,3}[.]){3}[0-9]{1,3}$')
+    fail_msg: the site dict needs lan_cidr and pve.uplink_ip
+    quiet: true
+
+- name: Unit that adds the lab route at boot
+  ansible.builtin.template:
+    src: anvil-lab-route.service.j2
+    dest: "{{ pve_lab_route_unit }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply the lab route
+
+- name: Lab route unit enabled
+  ansible.builtin.systemd_service:
+    name: anvil-lab-route
+    enabled: true
+    daemon_reload: true
+  when: not ansible_check_mode
+
+- name: Apply a changed route now
+  ansible.builtin.meta: flush_handlers
+
+- name: Lab route active
+  ansible.builtin.systemd_service:
+    name: anvil-lab-route
+    state: started
+  when: not ansible_check_mode
+
+# The default route (the internet) is left as it is: the lab route is more specific.
+- name: The lab is reached via the main host
+  ansible.builtin.command:
+    argv: [ip, route, get, "{{ pve_lab_route_cidr | regex_replace('[.][0-9]+/[0-9]+$', '.1') }}"]
+  register: pve_lab_route_get
+  changed_when: false
+  check_mode: false
+  failed_when: ("via " ~ pve_lab_route_via) not in pve_lab_route_get.stdout
+  when: not ansible_check_mode

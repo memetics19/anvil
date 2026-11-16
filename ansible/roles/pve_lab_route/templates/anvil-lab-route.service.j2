@@ -1,0 +1,14 @@
+# Managed by Ansible (role pve_lab_route): the lab network via the main Proxmox host.
+[Unit]
+Description=Route to the lab network via the main Proxmox host
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart=/usr/sbin/ip route replace {{ pve_lab_route_cidr }} via {{ pve_lab_route_via }} dev {{ pve_lab_route_dev }}
+ExecStop=/usr/sbin/ip route del {{ pve_lab_route_cidr }} via {{ pve_lab_route_via }} dev {{ pve_lab_route_dev }}
+
+[Install]
+WantedBy=multi-user.target
