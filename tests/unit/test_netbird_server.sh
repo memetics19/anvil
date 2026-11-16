@@ -168,6 +168,12 @@ j=$tmp/desired.json
   && ok "gateway route: the apps home address" || bad "gateway route: the apps home address"
 [ "$(jq -r '.networks[] | select(.name == "home-gateway") | .routers[0].masquerade' "$j")" = false ] \
   && ok "gateway route: masquerade off" || bad "gateway route: masquerade off"
+# Live TV away from home: the IPTV playlist points at the host's home address. Masquerade off,
+# so the IPTV VM answers through the host (the return route), not straight to the routing peer.
+[ "$(jq -r '.networks[] | select(.name == "home-tv") | .resources[0].address' "$j")" = "198.51.100.250/32" ] \
+  && ok "tv route: the host's home address" || bad "tv route: the host's home address"
+[ "$(jq -r '.networks[] | select(.name == "home-tv") | .routers[0].masquerade' "$j")" = false ] \
+  && ok "tv route: masquerade off" || bad "tv route: masquerade off"
 [ "$(jq -c '.nameservers[0] | [.nameservers[0].ip, .domains[0], .groups[0]]' "$j")" = '["198.51.100.249","internal.example.com","operator"]' ] \
   && ok "DNS: Pi-hole for the gateway domain, operator only" || bad "DNS: Pi-hole for the gateway domain"
 [ "$(jq -c '[.policies[] | [.sources, .destinations]]' "$j")" = '[[["operator"],["routers"]]]' ] \

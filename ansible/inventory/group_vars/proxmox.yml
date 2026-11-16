@@ -1,4 +1,8 @@
 ansible_user: root
+# Replies to NetBird peers (site.netbird_server.network_range) go to the netbird VM, the routing
+# peer (role pve_network). The return path of the NetBird routes that keep the peer's own
+# address: the gateway's home address and live TV away from home (role netbird_server).
+pve_network_netbird_return_route: true
 # node_exporter on the host listens on its lab address.
 node_exporter_listen_ip: "{{ site.pve.ip }}"
 # Routed segments behind the host (role pve_segments): one firewall table for all of them,
