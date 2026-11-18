@@ -36,13 +36,21 @@ cat >"$tmp/play.yml" <<PLAY
   vars:
     gateway_domain: lab.example.com
     site:
-      pve: {ip: 192.0.2.10, hostname: pve, uplink_gw: 198.51.100.1}
+      pve: {ip: 192.0.2.10, hostname: pve, uplink_gw: 198.51.100.1, idrac_ip: 198.51.100.20}
       hosts:
         frigate: {ip: 192.0.2.114}
         apps: {ip: 192.0.2.121}
         monitoring: {ip: 192.0.2.132}
         wazuh: {ip: 192.0.2.131}
         vault: {ip: 203.0.113.20}
+      services:
+        - {name: grafana, host: hosts.monitoring.ip, port: 3000, scheme: http}
+        - {name: pve, host: pve.ip, port: 8006, scheme: https, insecure_upstream: true}
+        - {name: vault, host: hosts.vault.ip, port: 8200, scheme: https, upstream_ca: vault}
+        - {name: dns, container: pihole, port: 80, scheme: http, home: /admin/}
+        - {name: docs, static: docs}
+        - {name: old, host: hosts.frigate.ip, port: 1, scheme: http, enabled: false}
+        - {name: idrac, host: pve.idrac_ip, port: 443, scheme: https, insecure_upstream: true}
     monitoring_secrets: {admin_password: "$secret"}
     monitoring_oidc_secret: "$secret"
     monitoring_ntfy: {url: "https://ntfy.example.com/", token: "$secret"}
@@ -79,6 +87,23 @@ check "pihole is scraped on the apps VM's exporter, as host apps" \
 check "vmagent and blackbox read their configs from mounted folders" \
   "grep -q -- '- ./vmagent:/etc/vmagent:ro' \$c && grep -q -- '- ./blackbox:/etc/blackbox:ro' \$c"
 check "no config is mounted as a single file" "! grep -E -- '^ +- \\./[^:]*\\.ya?ml:' \$c"
+# SLA: every enabled gateway service checked, directly or through the gateway.
+check "a service with its own address is checked there (the app, not a sign-in page)" \
+  "grep -q 'targets: \\[\"http://192.0.2.132:3000/\"\\]' \$s && grep -q 'labels: {service: \"grafana\", host: \"monitoring\", via: \"direct\"}' \$s"
+check "a self-signed upstream uses the insecure module, under the same job" \
+  "awk '/job_name: service_insecure/{p=1} p&&/job_name: (victoriametrics|vmagent)/{exit} p' \$s | grep -q 'https://192.0.2.10:8006/' && grep -q 'replacement: service\$' \$s"
+check "the enclave, a container and a static site are checked through the gateway" \
+  "for n in vault dns docs; do grep -q \"https://\$n.lab.example.com/\" \$s || exit 1; grep -q \"labels: {service: \\\"\$n\\\", host: \\\"apps\\\", via: \\\"gateway\\\"}\" \$s || exit 1; done"
+check "a service whose TLS Go cannot speak gets a TCP connect, under the same job" \
+  "awk '/job_name: service_tcp/{p=1} p&&/job_name: /&&!/service_tcp/{exit} p' \$s | grep -q 'targets: \\[\"198.51.100.20:443\"\\]' && grep -c 'replacement: service\$' \$s | grep -qx 3"
+check "a disabled service is not checked" "! grep -q 'service: \"old\"' \$s"
+check "the gateway's names point at the gateway inside the blackbox container" \
+  "for n in vault dns docs; do grep -q \"\$n.lab.example.com:192.0.2.121\" \$c || exit 1; done && ! grep -q 'grafana.lab.example.com:' \$c"
+check "any answer below 500 is up, redirects are not followed" \
+  "grep -A6 '^  service:' \$tmp/blackbox.yml | grep -q 'valid_status_codes: \\[200, 201, 204, 301, 302, 303, 307, 308, 400, 401, 403, 404, 405\\]' && grep -A6 '^  service:' \$tmp/blackbox.yml | grep -q 'follow_redirects: false'"
+check "the SLO is the same in the rule and the dashboard, the check interval matches the scrape interval" \
+  "grep -q '< 0.995' \$r/files/rules/services.yml && grep -q 'local SLO = 0.995;' dashboards/sla.jsonnet && grep -qx 'monitoring_scrape_interval: 30s' \$r/defaults/main.yml && grep -q 'local CHECK_MINUTES = 0.5;' dashboards/sla.jsonnet"
+check "the port guards admit the monitoring VM, for the checks" "grep -q 'port_guard_metrics_host: monitoring' ansible/roles/port_guard/defaults/main.yml"
 check "every image is pinned to a digest" \
   "[ \"\$(grep -cE '^\s+image: ' $c)\" = 7 ] && ! grep -E '^\s+image: ' $c | grep -v '@sha256:'"
 check "the speed test runs once an hour, is never published, and its metrics get a speedtest_ prefix" \
@@ -101,7 +126,7 @@ check "one data source, VictoriaMetrics, uid victoriametrics" "grep -q 'uid: vic
 check "the internet: ping to the router and public resolvers" \
   "grep -q '\"198.51.100.1\"' $s && grep -q 'probe: \"router\", scope: \"local\"' $s && grep -q '\"1.1.1.1\"' $s && grep -q 'scope: \"internet\"' $s"
 check "a lookup through Pi-hole" "awk '/job_name: dns/{f=1} f&&/targets/{print; exit}' $s | grep -q '\"192.0.2.121\"'"
-check "every probe goes through the blackbox exporter" "[ \"\$(grep -c 'replacement: blackbox:9115' $s)\" = 3 ]"
+check "every probe goes through the blackbox exporter (ping, dns, http, and the three service modules)" "[ \"\$(grep -c 'replacement: blackbox:9115' $s)\" = 6 ]"
 check "ping needs no raw socket" "grep -q 'net.ipv4.ping_group_range' $c"
 check "the OpenSearch plugin at a pinned version" "grep -qE 'GF_PLUGINS_PREINSTALL_SYNC: \"grafana-opensearch-datasource@[0-9]+\.[0-9]+\.[0-9]+\"' $c"
 check "no Wazuh data source without a Wazuh VM" "! grep -q 'uid: wazuh' $tmp/datasources.yml"

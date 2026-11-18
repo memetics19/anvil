@@ -113,6 +113,15 @@ services:
       - --config.file=/etc/blackbox/blackbox.yml
     volumes:
       - ./blackbox:/etc/blackbox:ro
+{% set via_gateway = monitoring_service_targets | selectattr('via', 'equalto', 'gateway') | list %}
+{% if via_gateway | length > 0 %}
+    # The gateway's names point at the gateway: they exist only in Pi-hole, and this VM asks a
+    # public resolver.
+    extra_hosts:
+{% for t in via_gateway %}
+      - "{{ t.service }}.{{ gateway_domain }}:{{ monitoring_gateway_ip }}"
+{% endfor %}
+{% endif %}
     # Ping without raw sockets: unprivileged ICMP for every group in the container.
     sysctls:
       net.ipv4.ping_group_range: "0 2147483647"

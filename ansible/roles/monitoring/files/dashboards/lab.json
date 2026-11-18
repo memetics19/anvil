@@ -373,6 +373,264 @@
             "uid": "victoriametrics"
          },
          "fieldConfig": {
+            "defaults": {
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 8,
+            "x": 0,
+            "y": 5
+         },
+         "id": 7,
+         "links": [
+            {
+               "title": "SLA dashboard",
+               "url": "/d/anvil-sla"
+            }
+         ],
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "sum(max by (service) (probe_success{job=\"service\"}))",
+               "legendFormat": "Up",
+               "refId": "A"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "count(max by (service) (probe_success{job=\"service\"}))",
+               "legendFormat": "Of",
+               "refId": "B"
+            }
+         ],
+         "title": "Services answering",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "decimals": 3,
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 99
+                     },
+                     {
+                        "color": "green",
+                        "value": 99.5
+                     }
+                  ]
+               },
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 8,
+            "x": 8,
+            "y": 5
+         },
+         "id": 8,
+         "links": [
+            {
+               "title": "SLA dashboard",
+               "url": "/d/anvil-sla"
+            }
+         ],
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * avg(max by (service) (avg_over_time(probe_success{job=\"service\"}[30d])))",
+               "legendFormat": "All",
+               "refId": "A"
+            }
+         ],
+         "title": "Services, 30 days",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     },
+                     {
+                        "color": "red",
+                        "value": 1
+                     }
+                  ]
+               },
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 8,
+            "x": 16,
+            "y": 5
+         },
+         "id": 9,
+         "links": [
+            {
+               "title": "SLA dashboard",
+               "url": "/d/anvil-sla"
+            }
+         ],
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "count(max by (service) (avg_over_time(probe_success{job=\"service\"}[30d])) < 0.995) or vector(0)",
+               "legendFormat": "Below",
+               "refId": "A"
+            }
+         ],
+         "title": "Below the 99.5% SLA, 30 days",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "mappings": [
+                  {
+                     "options": {
+                        "0": {
+                           "text": "DOWN"
+                        },
+                        "1": {
+                           "text": "UP"
+                        }
+                     },
+                     "type": "value"
+                  }
+               ],
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "green",
+                        "value": 1
+                     }
+                  ]
+               },
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 6,
+            "w": 24,
+            "x": 0,
+            "y": 10
+         },
+         "id": 10,
+         "links": [
+            {
+               "title": "SLA dashboard",
+               "url": "/d/anvil-sla"
+            }
+         ],
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max by (service) (probe_success{job=\"service\"})",
+               "legendFormat": "{{service}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Services now",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
             "overrides": [
                {
                   "matcher": {
@@ -556,9 +814,9 @@
             "h": 10,
             "w": 24,
             "x": 0,
-            "y": 5
+            "y": 16
          },
-         "id": 7,
+         "id": 11,
          "options": {
             "sortBy": [
                {
@@ -675,9 +933,9 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 15
+            "y": 26
          },
-         "id": 8,
+         "id": 12,
          "options": {
             "sortBy": [
                {
@@ -743,9 +1001,9 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 15
+            "y": 26
          },
-         "id": 9,
+         "id": 13,
          "options": {
             "legend": {
                "calcs": [
@@ -791,9 +1049,9 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 23
+            "y": 34
          },
-         "id": 10,
+         "id": 14,
          "options": {
             "legend": {
                "calcs": [
@@ -839,9 +1097,9 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 23
+            "y": 34
          },
-         "id": 11,
+         "id": 15,
          "options": {
             "legend": {
                "calcs": [
@@ -886,9 +1144,9 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 31
+            "y": 42
          },
-         "id": 12,
+         "id": 16,
          "options": {
             "legend": {
                "calcs": [
@@ -933,9 +1191,9 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 31
+            "y": 42
          },
-         "id": 13,
+         "id": 17,
          "options": {
             "legend": {
                "calcs": [

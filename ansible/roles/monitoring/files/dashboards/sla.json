@@ -1,0 +1,1101 @@
+{
+   "description": "Every gateway service: answering now, availability over 24 hours, 7 and 30 days against the 99.5% SLO, error budget, downtime, response time and certificate, and the hosts behind them. Managed by anvil: change dashboards/sla.jsonnet.",
+   "editable": false,
+   "panels": [
+      {
+         "datasource": {
+            "type": "datasource",
+            "uid": "-- Mixed --"
+         },
+         "gridPos": {
+            "h": 4,
+            "w": 24,
+            "x": 0,
+            "y": 0
+         },
+         "id": 1,
+         "options": {
+            "content": "Each service is checked every 30 seconds where it runs (its own address and port), or **through the gateway** when it has none of its own (Pi-hole's web page, Homepage, the docs) or sits in the secrets enclave (Vault, Vaultwarden). **Up** means it answers, whatever the page says: a sign-in page or an error below 500 still counts. The **SLO is 99.5%** over 30 days, about **3.6 hours** of downtime allowed: the **error budget** is how much of that is left. The history starts when the checks did, so early on the 30-day figures cover less than 30 days.\n",
+            "mode": "markdown"
+         },
+         "pluginVersion": "v13.0.0",
+         "title": "How to read this",
+         "type": "text"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     }
+                  ]
+               },
+               "unit": "short"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 0,
+            "y": 4
+         },
+         "id": 2,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "sum(max by (service) (probe_success{job=\"service\"}))",
+               "legendFormat": "Up",
+               "refId": "A"
+            }
+         ],
+         "title": "Answering now",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     },
+                     {
+                        "color": "red",
+                        "value": 1
+                     }
+                  ]
+               },
+               "unit": "short"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 4,
+            "y": 4
+         },
+         "id": 3,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "count(max by (service) (probe_success{job=\"service\"}) == 0) or vector(0)",
+               "legendFormat": "Down",
+               "refId": "A"
+            }
+         ],
+         "title": "Not answering now",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "decimals": 3,
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 99
+                     },
+                     {
+                        "color": "green",
+                        "value": 99.5
+                     }
+                  ]
+               },
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 8,
+            "y": 4
+         },
+         "id": 4,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "avg(100 * max by (service) (avg_over_time(probe_success{job=\"service\"}[30d])))",
+               "legendFormat": "All",
+               "refId": "A"
+            }
+         ],
+         "title": "All services, 30 days",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     },
+                     {
+                        "color": "red",
+                        "value": 1
+                     }
+                  ]
+               },
+               "unit": "short"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 12,
+            "y": 4
+         },
+         "id": 5,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "count(max by (service) (avg_over_time(probe_success{job=\"service\"}[30d])) < 0.995) or vector(0)",
+               "legendFormat": "Below",
+               "refId": "A"
+            }
+         ],
+         "title": "Below the SLA, 30 days",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "decimals": 3,
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 99
+                     },
+                     {
+                        "color": "green",
+                        "value": 99.5
+                     }
+                  ]
+               },
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 16,
+            "y": 4
+         },
+         "id": 6,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "min(100 * max by (service) (avg_over_time(probe_success{job=\"service\"}[30d])))",
+               "legendFormat": "Worst",
+               "refId": "A"
+            }
+         ],
+         "title": "Worst service, 30 days",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "decimals": 3,
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 99
+                     },
+                     {
+                        "color": "green",
+                        "value": 99.5
+                     }
+                  ]
+               },
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 20,
+            "y": 4
+         },
+         "id": 7,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * avg_over_time(max(probe_success{job=\"ping\",scope=\"internet\"})[30d:1m])",
+               "legendFormat": "Internet",
+               "refId": "A"
+            }
+         ],
+         "title": "Internet, 30 days",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "noValue": "-"
+            },
+            "overrides": [
+               {
+                  "matcher": {
+                     "id": "byName",
+                     "options": "Now"
+                  },
+                  "properties": [
+                     {
+                        "id": "mappings",
+                        "value": [
+                           {
+                              "options": {
+                                 "0": {
+                                    "color": "red",
+                                    "text": "DOWN"
+                                 },
+                                 "1": {
+                                    "color": "green",
+                                    "text": "UP"
+                                 }
+                              },
+                              "type": "value"
+                           }
+                        ]
+                     },
+                     {
+                        "id": "custom.cellOptions",
+                        "value": {
+                           "type": "color-background"
+                        }
+                     }
+                  ]
+               },
+               {
+                  "matcher": {
+                     "id": "byName",
+                     "options": "24 hours"
+                  },
+                  "properties": [
+                     {
+                        "id": "unit",
+                        "value": "percent"
+                     },
+                     {
+                        "id": "decimals",
+                        "value": 2
+                     },
+                     {
+                        "id": "thresholds",
+                        "value": {
+                           "mode": "absolute",
+                           "steps": [
+                              {
+                                 "color": "red",
+                                 "value": null
+                              },
+                              {
+                                 "color": "orange",
+                                 "value": 99
+                              },
+                              {
+                                 "color": "green",
+                                 "value": 99.5
+                              }
+                           ]
+                        }
+                     },
+                     {
+                        "id": "custom.cellOptions",
+                        "value": {
+                           "type": "color-background"
+                        }
+                     }
+                  ]
+               },
+               {
+                  "matcher": {
+                     "id": "byName",
+                     "options": "7 days"
+                  },
+                  "properties": [
+                     {
+                        "id": "unit",
+                        "value": "percent"
+                     },
+                     {
+                        "id": "decimals",
+                        "value": 2
+                     },
+                     {
+                        "id": "thresholds",
+                        "value": {
+                           "mode": "absolute",
+                           "steps": [
+                              {
+                                 "color": "red",
+                                 "value": null
+                              },
+                              {
+                                 "color": "orange",
+                                 "value": 99
+                              },
+                              {
+                                 "color": "green",
+                                 "value": 99.5
+                              }
+                           ]
+                        }
+                     },
+                     {
+                        "id": "custom.cellOptions",
+                        "value": {
+                           "type": "color-background"
+                        }
+                     }
+                  ]
+               },
+               {
+                  "matcher": {
+                     "id": "byName",
+                     "options": "30 days"
+                  },
+                  "properties": [
+                     {
+                        "id": "unit",
+                        "value": "percent"
+                     },
+                     {
+                        "id": "decimals",
+                        "value": 3
+                     },
+                     {
+                        "id": "thresholds",
+                        "value": {
+                           "mode": "absolute",
+                           "steps": [
+                              {
+                                 "color": "red",
+                                 "value": null
+                              },
+                              {
+                                 "color": "orange",
+                                 "value": 99
+                              },
+                              {
+                                 "color": "green",
+                                 "value": 99.5
+                              }
+                           ]
+                        }
+                     },
+                     {
+                        "id": "custom.cellOptions",
+                        "value": {
+                           "type": "color-background"
+                        }
+                     }
+                  ]
+               },
+               {
+                  "matcher": {
+                     "id": "byName",
+                     "options": "Error budget left"
+                  },
+                  "properties": [
+                     {
+                        "id": "unit",
+                        "value": "percent"
+                     },
+                     {
+                        "id": "decimals",
+                        "value": 0
+                     },
+                     {
+                        "id": "min",
+                        "value": 0
+                     },
+                     {
+                        "id": "max",
+                        "value": 100
+                     },
+                     {
+                        "id": "thresholds",
+                        "value": {
+                           "mode": "absolute",
+                           "steps": [
+                              {
+                                 "color": "red",
+                                 "value": null
+                              },
+                              {
+                                 "color": "orange",
+                                 "value": 25
+                              },
+                              {
+                                 "color": "green",
+                                 "value": 50
+                              }
+                           ]
+                        }
+                     },
+                     {
+                        "id": "custom.cellOptions",
+                        "value": {
+                           "mode": "basic",
+                           "type": "gauge"
+                        }
+                     }
+                  ]
+               },
+               {
+                  "matcher": {
+                     "id": "byName",
+                     "options": "Down, 30 days"
+                  },
+                  "properties": [
+                     {
+                        "id": "unit",
+                        "value": "m"
+                     },
+                     {
+                        "id": "decimals",
+                        "value": 1
+                     }
+                  ]
+               },
+               {
+                  "matcher": {
+                     "id": "byName",
+                     "options": "Response"
+                  },
+                  "properties": [
+                     {
+                        "id": "unit",
+                        "value": "s"
+                     },
+                     {
+                        "id": "thresholds",
+                        "value": {
+                           "mode": "absolute",
+                           "steps": [
+                              {
+                                 "color": "green",
+                                 "value": null
+                              },
+                              {
+                                 "color": "orange",
+                                 "value": 1
+                              },
+                              {
+                                 "color": "red",
+                                 "value": 3
+                              }
+                           ]
+                        }
+                     },
+                     {
+                        "id": "custom.cellOptions",
+                        "value": {
+                           "type": "color-background"
+                        }
+                     }
+                  ]
+               },
+               {
+                  "matcher": {
+                     "id": "byName",
+                     "options": "Certificate"
+                  },
+                  "properties": [
+                     {
+                        "id": "unit",
+                        "value": "suffix: days"
+                     },
+                     {
+                        "id": "decimals",
+                        "value": 0
+                     },
+                     {
+                        "id": "thresholds",
+                        "value": {
+                           "mode": "absolute",
+                           "steps": [
+                              {
+                                 "color": "red",
+                                 "value": null
+                              },
+                              {
+                                 "color": "orange",
+                                 "value": 14
+                              },
+                              {
+                                 "color": "green",
+                                 "value": 30
+                              }
+                           ]
+                        }
+                     },
+                     {
+                        "id": "custom.cellOptions",
+                        "value": {
+                           "type": "color-background"
+                        }
+                     }
+                  ]
+               }
+            ]
+         },
+         "gridPos": {
+            "h": 14,
+            "w": 24,
+            "x": 0,
+            "y": 9
+         },
+         "id": 8,
+         "options": {
+            "sortBy": [
+               {
+                  "desc": false,
+                  "displayName": "30 days"
+               }
+            ]
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max by (service, host, via) (probe_success{job=\"service\"})",
+               "format": "table",
+               "instant": true,
+               "legendFormat": "",
+               "refId": "A"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * max by (service) (avg_over_time(probe_success{job=\"service\"}[24h]))",
+               "format": "table",
+               "instant": true,
+               "legendFormat": "",
+               "refId": "B"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * max by (service) (avg_over_time(probe_success{job=\"service\"}[7d]))",
+               "format": "table",
+               "instant": true,
+               "legendFormat": "",
+               "refId": "C"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * max by (service) (avg_over_time(probe_success{job=\"service\"}[30d]))",
+               "format": "table",
+               "instant": true,
+               "legendFormat": "",
+               "refId": "D"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * (1 - max by (service) (1 - avg_over_time(probe_success{job=\"service\"}[30d])) / 0.0050000000000000044)",
+               "format": "table",
+               "instant": true,
+               "legendFormat": "",
+               "refId": "E"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max by (service) (count_eq_over_time(probe_success{job=\"service\"}[30d], 0)) * 0.5",
+               "format": "table",
+               "instant": true,
+               "legendFormat": "",
+               "refId": "F"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max by (service) (avg_over_time(probe_duration_seconds{job=\"service\"}[1h]))",
+               "format": "table",
+               "instant": true,
+               "legendFormat": "",
+               "refId": "G"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max by (service) ((probe_ssl_earliest_cert_expiry{job=\"service\"} - time()) / 86400)",
+               "format": "table",
+               "instant": true,
+               "legendFormat": "",
+               "refId": "H"
+            }
+         ],
+         "title": "Every service",
+         "transformations": [
+            {
+               "id": "merge",
+               "options": { }
+            },
+            {
+               "id": "organize",
+               "options": {
+                  "excludeByName": {
+                     "Time": true
+                  },
+                  "indexByName": {
+                     "Value #A": 1,
+                     "Value #B": 2,
+                     "Value #C": 3,
+                     "Value #D": 4,
+                     "Value #E": 5,
+                     "Value #F": 6,
+                     "Value #G": 7,
+                     "Value #H": 8,
+                     "host": 9,
+                     "service": 0,
+                     "via": 10
+                  },
+                  "renameByName": {
+                     "Value #A": "Now",
+                     "Value #B": "24 hours",
+                     "Value #C": "7 days",
+                     "Value #D": "30 days",
+                     "Value #E": "Error budget left",
+                     "Value #F": "Down, 30 days",
+                     "Value #G": "Response",
+                     "Value #H": "Certificate",
+                     "host": "Host",
+                     "service": "Service",
+                     "via": "Checked"
+                  }
+               }
+            }
+         ],
+         "type": "table"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "mappings": [
+                  {
+                     "options": {
+                        "0": {
+                           "color": "red",
+                           "text": "Down"
+                        },
+                        "1": {
+                           "color": "green",
+                           "text": "Up"
+                        }
+                     },
+                     "type": "value"
+                  }
+               ]
+            }
+         },
+         "gridPos": {
+            "h": 12,
+            "w": 24,
+            "x": 0,
+            "y": 23
+         },
+         "id": 9,
+         "options": {
+            "showValue": "never"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max by (service) (probe_success{job=\"service\"})",
+               "legendFormat": "{{service}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Up and down, every service",
+         "type": "state-timeline"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "max": 100,
+               "min": 0,
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 35
+         },
+         "id": 10,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * (1 - max by (service) (1 - avg_over_time(probe_success{job=\"service\"}[30d])) / 0.0050000000000000044)",
+               "legendFormat": "{{service}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Error budget left (30-day window)",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "s"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 35
+         },
+         "id": 11,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max by (service) (probe_duration_seconds{job=\"service\"})",
+               "legendFormat": "{{service}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Response time",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "mappings": [
+                  {
+                     "options": {
+                        "0": {
+                           "color": "red",
+                           "text": "Down"
+                        },
+                        "1": {
+                           "color": "green",
+                           "text": "Up"
+                        }
+                     },
+                     "type": "value"
+                  }
+               ]
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 43
+         },
+         "id": 12,
+         "options": {
+            "showValue": "never"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max by (host) (up{job=\"node\"})",
+               "legendFormat": "{{host}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Hosts up",
+         "type": "state-timeline"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "decimals": 3,
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 99
+                     },
+                     {
+                        "color": "green",
+                        "value": 99.5
+                     }
+                  ]
+               },
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 43
+         },
+         "id": 13,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * avg(avg_over_time(up{job=\"node\"}[30d]))",
+               "legendFormat": "Hosts",
+               "refId": "A"
+            }
+         ],
+         "title": "Hosts, 30 days",
+         "type": "stat"
+      }
+   ],
+   "refresh": "1m",
+   "schemaVersion": 39,
+   "tags": [
+      "anvil",
+      "sla",
+      "services",
+      "availability"
+   ],
+   "time": {
+      "from": "now-24h",
+      "to": "now"
+   },
+   "timezone": "browser",
+   "title": "SLA",
+   "uid": "anvil-sla"
+}
