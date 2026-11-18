@@ -8,14 +8,14 @@
             "uid": "-- Mixed --"
          },
          "gridPos": {
-            "h": 3,
+            "h": 4,
             "w": 24,
             "x": 0,
             "y": 0
          },
          "id": 1,
          "options": {
-            "content": "**Up** means at least one public address (Cloudflare, Google, Quad9) answers a ping. **Ping** is the round trip in milliseconds: under 60 ms is good, over 150 ms feels slow. **Packet loss** above 1% makes calls and games stutter. **Jitter** is how much the ping wobbles. When the router is down too, the problem is at home, not at the ISP. While the lab itself has no power, nothing is measured, so that time is not counted as an outage.\n",
+            "content": "**Up** means at least one public address (Cloudflare, Google, Quad9) answers a ping. **Ping** is the round trip in milliseconds: under 60 ms is good, over 150 ms feels slow. **Packet loss** above 1% makes calls and games stutter. **Jitter** is how much the ping wobbles. **Speed** is a full speed test once an hour, against speedtest.net servers, in megabits per second: it shows what the line delivers now against its usual (the 7-day median). When the router is down too, the problem is at home, not at the ISP. While the lab itself has no power, nothing is measured, so that time is not counted as an outage.\n",
             "mode": "markdown"
          },
          "pluginVersion": "v13.0.0",
@@ -62,7 +62,7 @@
             "h": 6,
             "w": 4,
             "x": 0,
-            "y": 3
+            "y": 4
          },
          "id": 2,
          "options": {
@@ -121,7 +121,7 @@
             "h": 6,
             "w": 4,
             "x": 4,
-            "y": 3
+            "y": 4
          },
          "id": 3,
          "options": {
@@ -180,7 +180,7 @@
             "h": 6,
             "w": 4,
             "x": 8,
-            "y": 3
+            "y": 4
          },
          "id": 4,
          "options": {
@@ -239,7 +239,7 @@
             "h": 6,
             "w": 4,
             "x": 12,
-            "y": 3
+            "y": 4
          },
          "id": 5,
          "options": {
@@ -307,7 +307,7 @@
             "h": 6,
             "w": 4,
             "x": 16,
-            "y": 3
+            "y": 4
          },
          "id": 6,
          "options": {
@@ -366,7 +366,7 @@
             "h": 6,
             "w": 4,
             "x": 0,
-            "y": 9
+            "y": 10
          },
          "id": 7,
          "options": {
@@ -425,7 +425,7 @@
             "h": 6,
             "w": 4,
             "x": 4,
-            "y": 9
+            "y": 10
          },
          "id": 8,
          "options": {
@@ -486,7 +486,7 @@
             "h": 6,
             "w": 4,
             "x": 8,
-            "y": 9
+            "y": 10
          },
          "id": 9,
          "options": {
@@ -544,7 +544,7 @@
             "h": 6,
             "w": 4,
             "x": 12,
-            "y": 9
+            "y": 10
          },
          "id": 10,
          "options": {
@@ -602,7 +602,7 @@
             "h": 6,
             "w": 4,
             "x": 16,
-            "y": 9
+            "y": 10
          },
          "id": 11,
          "options": {
@@ -634,6 +634,340 @@
          },
          "fieldConfig": {
             "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 50000000
+                     },
+                     {
+                        "color": "green",
+                        "value": 200000000
+                     }
+                  ]
+               },
+               "unit": "bps"
+            }
+         },
+         "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 0,
+            "y": 16
+         },
+         "id": 12,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "last_over_time(speedtest_download_speed_bps[2h])",
+               "legendFormat": "Download",
+               "refId": "A"
+            }
+         ],
+         "title": "Download, last test",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 20000000
+                     },
+                     {
+                        "color": "green",
+                        "value": 100000000
+                     }
+                  ]
+               },
+               "unit": "bps"
+            }
+         },
+         "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 4,
+            "y": 16
+         },
+         "id": 13,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "last_over_time(speedtest_upload_speed_bps[2h])",
+               "legendFormat": "Upload",
+               "refId": "A"
+            }
+         ],
+         "title": "Upload, last test",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "unit": "bps"
+            }
+         },
+         "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 8,
+            "y": 16
+         },
+         "id": 14,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "quantile_over_time(0.5, speedtest_download_speed_bps[7d])",
+               "legendFormat": "Usual",
+               "refId": "A"
+            }
+         ],
+         "title": "Usual download, 7 days",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 40
+                     },
+                     {
+                        "color": "green",
+                        "value": 70
+                     }
+                  ]
+               },
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 12,
+            "y": 16
+         },
+         "id": 15,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * last_over_time(speedtest_download_speed_bps[2h]) / quantile_over_time(0.5, speedtest_download_speed_bps[7d])",
+               "legendFormat": "Share",
+               "refId": "A"
+            }
+         ],
+         "title": "Download against usual",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 0.059999999999999998
+                     },
+                     {
+                        "color": "red",
+                        "value": 0.14999999999999999
+                     }
+                  ]
+               },
+               "unit": "s"
+            }
+         },
+         "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 16,
+            "y": 16
+         },
+         "id": 16,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "last_over_time(speedtest_ping_ms[2h]) / 1000",
+               "legendFormat": "Ping",
+               "refId": "A"
+            }
+         ],
+         "title": "Speed test ping",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "bps"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 22
+         },
+         "id": 17,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "speedtest_download_speed_bps",
+               "legendFormat": "Download",
+               "refId": "A"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "speedtest_upload_speed_bps",
+               "legendFormat": "Upload",
+               "refId": "B"
+            }
+         ],
+         "title": "Speed (one test an hour)",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
                "mappings": [
                   {
                      "options": {
@@ -655,9 +989,9 @@
             "h": 6,
             "w": 24,
             "x": 0,
-            "y": 15
+            "y": 30
          },
-         "id": 12,
+         "id": 18,
          "options": {
             "showValue": "never"
          },
@@ -746,9 +1080,9 @@
             "h": 7,
             "w": 24,
             "x": 0,
-            "y": 21
+            "y": 36
          },
-         "id": 13,
+         "id": 19,
          "interval": "1d",
          "options": {
             "legend": {
@@ -785,9 +1119,9 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 28
+            "y": 43
          },
-         "id": 14,
+         "id": 20,
          "options": {
             "legend": {
                "calcs": [
@@ -832,9 +1166,9 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 28
+            "y": 43
          },
-         "id": 15,
+         "id": 21,
          "options": {
             "legend": {
                "calcs": [
@@ -880,9 +1214,9 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 36
+            "y": 51
          },
-         "id": 16,
+         "id": 22,
          "options": {
             "legend": {
                "calcs": [
@@ -927,9 +1261,9 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 36
+            "y": 51
          },
-         "id": 17,
+         "id": 23,
          "options": {
             "legend": {
                "calcs": [
@@ -974,9 +1308,9 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 44
+            "y": 59
          },
-         "id": 18,
+         "id": 24,
          "options": {
             "legend": {
                "calcs": [
@@ -1021,9 +1355,9 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 44
+            "y": 59
          },
-         "id": 19,
+         "id": 25,
          "options": {
             "legend": {
                "calcs": [

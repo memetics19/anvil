@@ -118,6 +118,21 @@ services:
       net.ipv4.ping_group_range: "0 2147483647"
     mem_limit: {{ monitoring_blackbox_mem_limit }}
 
+  # Internet speed: a full test each time vmagent scrapes /probe (monitoring_speedtest_interval).
+  # Not published: only vmagent, on this project's network, reaches it.
+  speedtest:
+    image: {{ monitoring_speedtest_image }}
+    container_name: speedtest
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: {{ monitoring_speedtest_mem_limit }}
+
 volumes:
   victoriametrics-data:
   alertmanager-data:

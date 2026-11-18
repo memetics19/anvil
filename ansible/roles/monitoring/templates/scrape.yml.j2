@@ -70,6 +70,20 @@ scrape_configs:
         labels: {host: "{{ t.name }}"}
 {% endfor %}
 
+  # Internet speed (prometheus_speedtest): a full speed test per scrape, so a long interval. Its
+  # metric names are generic, so they get a speedtest_ prefix.
+  - job_name: speedtest
+    scrape_interval: {{ monitoring_speedtest_interval }}
+    scrape_timeout: 2m
+    metrics_path: /probe
+    static_configs:
+      - targets: ["speedtest:9516"]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: (download_speed_bps|upload_speed_bps|ping_ms|bytes_received|bytes_sent)
+        target_label: __name__
+        replacement: speedtest_$1
+
   # The stack itself.
   - job_name: victoriametrics
     static_configs:

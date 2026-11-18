@@ -7,6 +7,9 @@ monitoring_grafana_image: grafana/grafana:13.2.5@sha256:9f7aa1e1e3246aade5792d35
 monitoring_vmalert_image: victoriametrics/vmalert:v1.155.0@sha256:3256cba5ddaca5974eae6141105cec4ce37871f1c213f0a5c267ec0111bc68e1
 monitoring_alertmanager_image: prom/alertmanager:v0.34.2@sha256:39d8bb3966c694a124428a3a88fbcffd40bd069129ecd47c059f8a3f17c55f3b
 monitoring_blackbox_image: prom/blackbox-exporter:v0.29.1@sha256:ea1c7aa3ef3f307cd03e85f34abb604478ccb90b567fc690da0cd9776da76b13
+# Internet speed (jeanralphaviles/prometheus_speedtest v0.9.18, 2026-10-22): one full speed test
+# (speedtest.net servers) per scrape of /probe.
+monitoring_speedtest_image: jraviles/prometheus_speedtest:v0.9.18@sha256:baa8f8f8df4426e08d11ebe8f0f4d3ba87e8966000d6e4f70b5612de10cb18f5
 # Grafana's plugins, installed at start at these versions: the OpenSearch data source reads
 # Wazuh's alerts. Signed by Grafana Labs.
 monitoring_grafana_plugins: [grafana-opensearch-datasource@2.34.6]
@@ -27,6 +30,11 @@ monitoring_grafana_mem_limit: 512m
 monitoring_vmalert_mem_limit: 128m
 monitoring_alertmanager_mem_limit: 128m
 monitoring_blackbox_mem_limit: 64m
+# The Python speed test holds its test data in memory: 128m was killed mid-test.
+monitoring_speedtest_mem_limit: 512m
+# How often the speed test runs. Each test moves a few hundred MB at full line speed, so once an
+# hour is about 10 to 20 GB a day on a fast line: longer intervals use less.
+monitoring_speedtest_interval: 1h
 
 # --- Wazuh in Grafana (docs/monitoring.md, Security) --------------------------------------------
 # Grafana reads Wazuh's alerts from its indexer, as the read-only user grafana (role
