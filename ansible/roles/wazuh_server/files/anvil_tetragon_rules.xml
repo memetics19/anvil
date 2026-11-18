@@ -1,0 +1,47 @@
+<!-- Managed by anvil (role wazuh_server). Tetragon's policy events (role tetragon on the hosts),
+     shipped as JSON by the Wazuh agent. Audit events stay in the dashboard and Grafana (level 8
+     and below); a process Tetragon killed under enforcement pages (level 12). -->
+<group name="tetragon,">
+
+  <rule id="100700" level="0">
+    <decoded_as>json</decoded_as>
+    <field name="process_kprobe.policy_name">^anvil-</field>
+    <description>Tetragon policy event</description>
+  </rule>
+
+  <rule id="100701" level="8">
+    <if_sid>100700</if_sid>
+    <field name="process_kprobe.policy_name">^anvil-exec-tmp$</field>
+    <description>Tetragon: a program ran from a temp folder or memory (from $(process_kprobe.process.binary))</description>
+    <mitre><id>T1059</id></mitre>
+  </rule>
+
+  <rule id="100702" level="8">
+    <if_sid>100700</if_sid>
+    <field name="process_kprobe.policy_name">^anvil-kernel-module$</field>
+    <description>Tetragon: a kernel module was loaded by $(process_kprobe.process.binary)</description>
+    <mitre><id>T1547.006</id></mitre>
+  </rule>
+
+  <rule id="100703" level="8">
+    <if_sid>100700</if_sid>
+    <field name="process_kprobe.policy_name">^anvil-ptrace$</field>
+    <description>Tetragon: $(process_kprobe.process.binary) attached to or wrote into another process</description>
+    <mitre><id>T1055.008</id></mitre>
+  </rule>
+
+  <rule id="100704" level="5">
+    <if_sid>100700</if_sid>
+    <field name="process_kprobe.policy_name">^anvil-sensitive-files$</field>
+    <description>Tetragon: $(process_kprobe.process.binary) wrote to a login, privilege or cron file</description>
+    <mitre><id>T1098</id><id>T1053</id></mitre>
+  </rule>
+
+  <!-- Under enforcement: Tetragon killed the process. Pages, whatever the policy. -->
+  <rule id="100710" level="12">
+    <if_sid>100701,100702,100703</if_sid>
+    <field name="process_kprobe.action">^KPROBE_ACTION_SIGKILL$</field>
+    <description>Tetragon blocked: $(process_kprobe.policy_name), process $(process_kprobe.process.binary) killed</description>
+  </rule>
+
+</group>

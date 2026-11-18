@@ -1,0 +1,193 @@
+# Tetragon on a host (defaults/main.yml): the release, its settings, the policies, and the
+# log as a source of the Wazuh agent.
+- name: Policy names are known, and audit-only ones are never enforced
+  ansible.builtin.assert:
+    that:
+      - tetragon_enforce | difference(tetragon_policies) | length == 0
+      - tetragon_enforce | intersect(tetragon_audit_only) | length == 0
+    fail_msg: tetragon_enforce names a policy that is not in tetragon_policies, or one that is audit only
+    quiet: true
+
+- name: The kernel has BTF (eBPF type information), which Tetragon needs
+  ansible.builtin.stat:
+    path: /sys/kernel/btf/vmlinux
+  register: tetragon_btf
+
+- name: BTF present
+  ansible.builtin.assert:
+    that: tetragon_btf.stat.exists
+    fail_msg: /sys/kernel/btf/vmlinux is missing; this kernel cannot run Tetragon
+    quiet: true
+
+# --- The release -------------------------------------------------------------------------------
+- name: Installed Tetragon version
+  ansible.builtin.command: /usr/local/bin/tetra version
+  register: tetragon_installed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Install Tetragon {{ tetragon_version }}
+  when: tetragon_version not in (tetragon_installed.stdout | default('') ~ tetragon_installed.stderr | default(''))
+  vars:
+    tetragon_dist: "tetragon-v{{ tetragon_version }}-amd64"
+  block:
+    - name: Download the release
+      ansible.builtin.get_url:
+        url: "https://github.com/cilium/tetragon/releases/download/v{{ tetragon_version }}/{{ tetragon_dist }}.tar.gz"
+        dest: "/tmp/{{ tetragon_dist }}.tar.gz"
+        checksum: "sha256:{{ tetragon_tarball_sha256 }}"
+        mode: "0644"
+
+    - name: Would install Tetragon
+      ansible.builtin.debug:
+        msg: "would install Tetragon {{ tetragon_version }}"
+      changed_when: true
+      when: ansible_check_mode
+
+    - name: Unpack it
+      ansible.builtin.unarchive:
+        src: "/tmp/{{ tetragon_dist }}.tar.gz"
+        dest: /tmp
+        remote_src: true
+      when: not ansible_check_mode
+
+    # The binaries, the BPF programs and their helpers, as the release's install.sh does.
+    - name: Binaries and BPF programs into /usr/local
+      ansible.builtin.copy:
+        src: "/tmp/{{ tetragon_dist }}/usr/local/"
+        dest: /usr/local/
+        remote_src: true
+        owner: root
+        group: root
+        mode: preserve
+      notify: Restart tetragon
+      when: not ansible_check_mode
+
+    - name: The release's systemd unit
+      ansible.builtin.copy:
+        src: "/tmp/{{ tetragon_dist }}/usr/lib/systemd/system/tetragon.service"
+        dest: /usr/lib/systemd/system/tetragon.service
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Reload systemd for tetragon
+        - Restart tetragon
+      when: not ansible_check_mode
+
+# The download is not left behind: an executable in /tmp is what the security smoke test, and
+# the exec-tmp policy, look for.
+- name: No download left in /tmp
+  ansible.builtin.file:
+    path: "/tmp/tetragon-v{{ tetragon_version }}-amd64{{ item }}"
+    state: absent
+  loop: ["", .tar.gz]
+
+# --- Settings: one value per file, as Tetragon reads them --------------------------------------
+- name: Settings and policy folders
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: ["{{ tetragon_conf_dir }}", "{{ tetragon_policy_dir }}", "{{ tetragon_log | dirname }}"]
+
+- name: Settings
+  ansible.builtin.copy:
+    dest: "{{ tetragon_conf_dir }}/{{ item.key }}"
+    content: "{{ item.value }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ settings | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  vars:
+    settings:
+      bpf-lib: /usr/local/lib/tetragon/bpf/
+      export-filename: "{{ tetragon_log }}"
+      export-file-compress: "true"
+      export-file-max-size-mb: "{{ tetragon_export_max_size_mb }}"
+      export-file-max-backups: "{{ tetragon_export_max_backups }}"
+      export-allowlist: '{{ {"event_set": tetragon_export_events} | to_json }}'
+      server-address: unix:///var/run/tetragon/tetragon.sock
+      log-format: text
+      log-level: info
+  notify: Restart tetragon
+
+# --- Policies ----------------------------------------------------------------------------------
+- name: Policies
+  ansible.builtin.template:
+    src: "policies/{{ item }}.yaml.j2"
+    dest: "{{ tetragon_policy_dir }}/anvil-{{ item }}.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ tetragon_policies }}"
+  notify: Restart tetragon
+
+- name: Policy files on the host
+  ansible.builtin.find:
+    paths: "{{ tetragon_policy_dir }}"
+    patterns: "anvil-*.yaml"
+  register: tetragon_policy_files
+
+# A policy taken out of tetragon_policies stops being loaded.
+- name: No policy file that is not in the list
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ tetragon_policy_files.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: (item.path | basename | regex_replace('^anvil-|[.]yaml$', '')) not in tetragon_policies
+  notify: Restart tetragon
+
+# --- The service -------------------------------------------------------------------------------
+- name: Apply settings before starting
+  ansible.builtin.meta: flush_handlers
+
+- name: Tetragon running and on at boot
+  ansible.builtin.systemd_service:
+    name: tetragon
+    enabled: true
+    state: started
+  when: not (ansible_check_mode and tetragon_installed.rc != 0)
+
+- name: Every policy is loaded and enabled
+  ansible.builtin.command:
+    argv: [/usr/local/bin/tetra, --server-address, unix:///var/run/tetragon/tetragon.sock, tracingpolicy, list, --output, json]
+  register: tetragon_loaded
+  changed_when: false
+  retries: 15
+  delay: 4
+  until: >-
+    tetragon_loaded.rc == 0
+    and (tetragon_loaded.stdout | from_json).policies | default([])
+        | selectattr('state', 'equalto', 'TP_STATE_ENABLED') | map(attribute='name')
+        | select('match', '^anvil-') | list | length == tetragon_policies | length
+  when: not ansible_check_mode
+
+# --- Its log into Wazuh ------------------------------------------------------------------------
+- name: Is the Wazuh agent here
+  ansible.builtin.stat:
+    path: "{{ tetragon_wazuh_agent_conf }}"
+  register: tetragon_wazuh
+
+- name: The Wazuh agent ships Tetragon's log (JSON)
+  ansible.builtin.blockinfile:
+    path: "{{ tetragon_wazuh_agent_conf }}"
+    marker: "<!-- {mark} anvil tetragon -->"
+    insertafter: EOF
+    block: |
+      <ossec_config>
+        <localfile>
+          <log_format>json</log_format>
+          <location>{{ tetragon_log }}</location>
+        </localfile>
+      </ossec_config>
+  notify: Restart wazuh-agent for tetragon
+  when: tetragon_wazuh.stat.exists

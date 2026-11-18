@@ -1,0 +1,20 @@
+# Managed by Ansible (role tetragon). A program run from a folder anyone can write to, or from
+# memory: where malware drops and starts itself. {{ 'Enforced: the process is killed before it runs.' if 'exec-tmp' in tetragon_enforce else 'Audit: reported only.' }}
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: anvil-exec-tmp
+spec:
+  kprobes:
+    - call: security_bprm_check
+      syscall: false
+      args:
+        - index: 0
+          type: linux_binprm
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: Prefix
+              values: [/tmp/, /var/tmp/, /dev/shm/, /run/shm/, /memfd]
+          matchActions:
+            - action: {{ 'Sigkill' if 'exec-tmp' in tetragon_enforce else 'Post' }}

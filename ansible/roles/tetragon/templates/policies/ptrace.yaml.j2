@@ -1,0 +1,34 @@
+# Managed by Ansible (role tetragon). One process attaching to another, or writing into its
+# memory (ptrace): how code is injected into a running program. Debuggers do it too. Only the
+# system call itself: the kernel's ptrace access check also runs for every read of another
+# process's /proc entries (ps, monitoring agents), which would flood the log.
+# {{ 'Enforced: the attaching process is killed.' if 'ptrace' in tetragon_enforce else 'Audit: reported only.' }}
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: anvil-ptrace
+spec:
+  kprobes:
+    - call: sys_ptrace
+      syscall: true
+      args:
+        - index: 0
+          type: int64
+        - index: 1
+          type: int
+      # A selector matches at most 4 values (Tetragon refuses to start otherwise): two of them.
+      selectors:
+        # PTRACE_POKETEXT 4, PTRACE_POKEDATA 5, PTRACE_POKEUSER 6: writing into its memory.
+        - matchArgs:
+            - index: 0
+              operator: Equal
+              values: ["4", "5", "6"]
+          matchActions:
+            - action: {{ 'Sigkill' if 'ptrace' in tetragon_enforce else 'Post' }}
+        # PTRACE_ATTACH 16, PTRACE_SEIZE 0x4206: attaching to it.
+        - matchArgs:
+            - index: 0
+              operator: Equal
+              values: ["16", "16902"]
+          matchActions:
+            - action: {{ 'Sigkill' if 'ptrace' in tetragon_enforce else 'Post' }}
