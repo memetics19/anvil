@@ -28,6 +28,10 @@ check "on the VMs" "[ -n '$vms_hosts' ]"
 check "not on the secrets enclave" "! grep -qE 'enclave|vault_servers|vaultwarden_servers' <<<'$vms_hosts'"
 check "on the Proxmox host and the other cluster members" \
   "grep -q '^- name: Wazuh agent, Proxmox host' ansible/playbooks/host.yml && grep -q '^- name: Wazuh agent, cluster members' ansible/playbooks/host.yml"
+check "a check run on a host without the repository says what it would install, and does not fail" \
+  "grep -q 'register: wazuh_agent_repo' \$r/tasks/main.yml && grep -q \"not (ansible_check_mode and wazuh_agent_repo is changed)\" \$r/tasks/main.yml"
+check "the other cluster members reach the lab (the manager) via the main host first" \
+  "awk '/^- name: Cluster members. route to the lab/{a=NR} /^- name: Wazuh agent, cluster members/{b=NR} END{exit !(a && b && a < b)}' ansible/playbooks/host.yml"
 
 [ "$fail" = 0 ] && echo "PASS: wazuh agent"
 exit "$fail"

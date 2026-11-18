@@ -1,0 +1,9 @@
+# The lab network's route on the other cluster members. They sit on the home network, whose
+# router does not know the lab network, so without this they cannot reach any lab VM, not
+# even one running on themselves (the Wazuh VM on pve2, for its agent). The main host is the
+# lab's router: lab traffic goes to its home address. A systemd unit adds the route at boot,
+# so the node's own network configuration is never edited.
+pve_lab_route_cidr: "{{ hostvars[groups['proxmox'][0]].site.lan_cidr }}"
+pve_lab_route_via: "{{ hostvars[groups['proxmox'][0]].site.pve.uplink_ip }}"
+pve_lab_route_dev: vmbr0
+pve_lab_route_unit: /etc/systemd/system/anvil-lab-route.service

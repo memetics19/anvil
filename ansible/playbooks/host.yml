@@ -63,6 +63,15 @@
     - role: ssh_hardening
       tags: [ssh_hardening]
 
+# The lab network's route on the other members: they sit on the home network, whose router
+# does not know it, so they reach the lab VMs (the Wazuh manager for their agent) via the main
+# host. Before the plays that need it.
+- name: Cluster members' route to the lab
+  hosts: cluster_members
+  roles:
+    - role: pve_lab_route
+      tags: [pve_lab_route, wazuh_agent]
+
 # Disk health on the other members. The monitoring VM's scrapes reach them from the main
 # host's home address (lab traffic to the home network is SNATed there). Their controller
 # passes the disks through, so a scan finds each disk twice: as /dev/sdX and as
