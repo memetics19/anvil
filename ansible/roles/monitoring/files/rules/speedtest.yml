@@ -11,7 +11,9 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "The internet speed test has failed for 3 hours"
-          description: "The hourly speed test has not completed for 3 hours, so the speed panels are empty and InternetSlow cannot fire. The internet itself may be fine."
+          description: >-
+            The hourly speed test has not completed for 3 hours, so the speed panels are empty and
+            InternetSlow cannot fire. The internet itself may be fine.
           runbook: "https://memetics19.github.io/anvil/monitoring/#speedtestfailing"
 
       - alert: InternetSlow
@@ -23,5 +25,7 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "The internet is much slower than usual"
-          description: "Download speed over the last 3 hours is under 40% of the line's usual speed (its 7-day median). Check the router and other heavy downloads, then the ISP."
+          description: >-
+            Download speed over the last 3 hours is under 40% of the line's usual speed (its 7-day
+            median). Check the router and other heavy downloads, then the ISP.
           runbook: "https://memetics19.github.io/anvil/monitoring/#internetslow"
