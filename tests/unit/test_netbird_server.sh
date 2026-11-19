@@ -78,6 +78,8 @@ cat >"$tmp/play.yml" <<PLAY
         iptv_streams_port: 34401
         pve_network_trunk_vids: []
         pve_network_netbird_return_route: true
+        pve_network_netbird_forward: true
+        pve_network_netbird_https_port: 8443
     - name: The Proxmox host's interfaces without the return route switch
       ansible.builtin.template:
         src: $PWD/ansible/roles/pve_network/templates/interfaces.j2
@@ -168,7 +170,20 @@ i=$tmp/interfaces
 has "pve: the network range routed to the netbird VM" "$(printf '\tpost-up ip route replace 100.64.0.0/16 via 192.0.2.115 dev vmbr0')" "$i"
 has "pve: and removed on down" "$(printf '\tpost-down ip route del 100.64.0.0/16 via 192.0.2.115 dev vmbr0 2>/dev/null || true')" "$i"
 hasnt "pve: no return route while the switch is off" "ip route replace" "$tmp/interfaces.off"
+has "pve: TCP 443 on the uplink address to Caddy on the netbird VM" "iptables -t nat -A PREROUTING -d 198.51.100.250/32 -p tcp --dport 443 -j DNAT --to-destination 192.0.2.115:8443" "$tmp/interfaces"
+has "pve: the forward accepted only for the DNATed connection" "iptables -A FORWARD -i vmbr0 -d 192.0.2.115/32 -p tcp --dport 8443 -m conntrack --ctstate DNAT -j ACCEPT" "$tmp/interfaces"
+hasnt "pve: no masquerade for it, the client's address stays" "MASQUERADE" "$tmp/interfaces"
+[ "$(grep -o 'dport 443 -j DNAT' "$tmp/interfaces" | wc -l | tr -d ' ')" = 4 ] && ok "pve: each 443 rule checked before it is added, and every copy removed" || bad "pve: 443 rule lines"
+hasnt "pve: no forward while the switch is off" "dport 443" "$tmp/interfaces.off"
+grep -qx 'pve_network_netbird_https_port: 8443' ansible/roles/pve_network/defaults/main.yml && grep -qx 'netbird_server_https_port: 8443' ansible/roles/netbird_server/defaults/main.yml && ok "pve forwards to the port Caddy listens on" || bad "pve forward port and Caddy's port differ"
 
+n=ansible/roles/netbird_server/templates/netbird-reply.nft.j2
+u=ansible/roles/netbird_server/templates/anvil-netbird-reply.service.j2
+has "netbird VM: forwarded Caddy connections marked" "tcp dport {{ netbird_server_https_port }} ct state new ct mark set {{ netbird_server_reply_mark }}" "$n"
+has "netbird VM: their replies carry the mark" "ct mark {{ netbird_server_reply_mark }} meta mark set {{ netbird_server_reply_mark }}" "$n"
+has "netbird VM: the marked replies use the main table" "fwmark {{ netbird_server_reply_mark }} lookup main" "$u"
+grep -qx 'netbird_server_reply_rule_priority: 100' ansible/roles/netbird_server/defaults/main.yml && ok "netbird VM: the reply rule comes before NetBird's rules (105, 110)" || bad "reply rule priority"
+hasnt "netbird VM: the mark is not NetBird's own" "0x1bd00" ansible/roles/netbird_server/defaults/main.yml
 # --- desired state --------------------------------------------------------------------------------
 j=$tmp/desired.json
 [ "$(jq -r '.networks[] | select(.name == "lab") | .resources[0].address' "$j")" = "192.0.0.0/16" ] \

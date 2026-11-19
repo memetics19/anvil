@@ -1,0 +1,42 @@
+# Replies to clients the Proxmox host forwards here go back through it (main table), not
+# into a NetBird client's tunnel (templates/netbird-reply.nft.j2).
+- name: Reply route rules
+  ansible.builtin.template:
+    src: netbird-reply.nft.j2
+    dest: "{{ netbird_server_reply_nft }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply the NetBird reply route
+
+- name: Reply route unit
+  ansible.builtin.template:
+    src: anvil-netbird-reply.service.j2
+    dest: /etc/systemd/system/anvil-netbird-reply.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply the NetBird reply route
+
+- name: Reply route unit enabled
+  ansible.builtin.systemd_service:
+    name: anvil-netbird-reply
+    enabled: true
+    daemon_reload: true
+  when: not ansible_check_mode
+
+- name: Apply a changed reply route now
+  ansible.builtin.meta: flush_handlers
+
+- name: Reply route active
+  ansible.builtin.systemd_service:
+    name: anvil-netbird-reply
+    state: started
+  when: not ansible_check_mode
+
+- name: The reply rule is in place, ahead of the NetBird clients' rules
+  ansible.builtin.command: ip rule show priority {{ netbird_server_reply_rule_priority }}
+  register: netbird_server_reply_rule
+  changed_when: false
+  failed_when: netbird_server_reply_mark ~ ' lookup main' not in netbird_server_reply_rule.stdout
+  when: not ansible_check_mode

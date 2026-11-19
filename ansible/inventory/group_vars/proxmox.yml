@@ -3,6 +3,9 @@ ansible_user: root
 # peer (role pve_network). The return path of the NetBird routes that keep the peer's own
 # address: the gateway's home address and live TV away from home (role netbird_server).
 pve_network_netbird_return_route: true
+# TCP 443 from the router to Caddy on the netbird VM, the self-hosted NetBird server
+# (docs/setup.md, Self-hosted NetBird). Approved 2026-11-20.
+pve_network_netbird_forward: true
 # node_exporter on the host listens on its lab address.
 node_exporter_listen_ip: "{{ site.pve.ip }}"
 # Disk health on the lab address too, for the monitoring VM. The host's disks sit behind its

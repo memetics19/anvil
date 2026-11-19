@@ -1,0 +1,16 @@
+# Managed by anvil (role netbird_server): replies of the forwarded Caddy connections go
+# through the main table, ahead of the NetBird clients' rules (netbird-reply.nft).
+[Unit]
+Description=Replies to the self-hosted NetBird server's clients through the main table
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart=/usr/sbin/nft -f {{ netbird_server_reply_nft }}
+ExecStart=/bin/sh -c 'while /usr/sbin/ip rule del priority {{ netbird_server_reply_rule_priority }} fwmark {{ netbird_server_reply_mark }} lookup main 2>/dev/null; do :; done; /usr/sbin/ip rule add priority {{ netbird_server_reply_rule_priority }} fwmark {{ netbird_server_reply_mark }} lookup main'
+ExecStop=/bin/sh -c 'while /usr/sbin/ip rule del priority {{ netbird_server_reply_rule_priority }} fwmark {{ netbird_server_reply_mark }} lookup main 2>/dev/null; do :; done; /usr/sbin/nft delete table inet anvil_netbird_reply 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target

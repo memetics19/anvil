@@ -14,6 +14,10 @@
   ansible.builtin.include_tasks: server.yml
   when: netbird_server_enabled | bool
 
+- name: Replies to forwarded clients through the Proxmox host
+  ansible.builtin.include_tasks: reply_route.yml
+  when: netbird_server_enabled | bool
+
 - name: Groups, policies, networks and DNS through the management API
   ansible.builtin.include_tasks: api.yml
   when: netbird_server_enabled | bool
