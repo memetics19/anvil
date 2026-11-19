@@ -19,11 +19,13 @@ netbird_server_https_port: 8443
 # Who may open the dashboard, the REST API and the browser client's WebSocket proxy: the
 # operator's devices, the same list as the gateway's infrastructure pages. Everyone else
 # gets only what a NetBird client needs (gRPC, the relay, the login pages).
-# Connections forwarded to Caddy are marked, and their replies use the main table (rule
-# priority below NetBird's 105 and 110), so a reply to a home address does not follow the
-# NetBird cloud client's route for the home network (tasks/reply_route.yml).
+# Connections forwarded to Caddy are marked, and their replies go to the Proxmox host
+# through a table of their own (rule priority below NetBird's 105 and 110), so a reply to a
+# home address or a NetBird peer does not follow a NetBird client's route into its tunnel
+# (tasks/reply_route.yml). NetBird's own table is 7120.
 netbird_server_reply_mark: "0x2a1"
 netbird_server_reply_rule_priority: 100
+netbird_server_reply_table: 2601
 netbird_server_reply_nft: /etc/anvil-netbird-reply.nft
 netbird_server_admin_sources: "{{ (site.admin_sources | default([])) + (site.admin_vpn_sources | default([])) }}"
 # The server's plain HTTP port, on the VM's loopback only: the role's API calls.

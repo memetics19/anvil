@@ -1,5 +1,5 @@
-# Replies to clients the Proxmox host forwards here go back through it (main table), not
-# into a NetBird client's tunnel (templates/netbird-reply.nft.j2).
+# Replies to clients the Proxmox host forwards here go back through it (a table of their
+# own), not into a NetBird client's tunnel (templates/netbird-reply.nft.j2).
 - name: Reply route rules
   ansible.builtin.template:
     src: netbird-reply.nft.j2
@@ -38,5 +38,6 @@
   ansible.builtin.command: ip rule show priority {{ netbird_server_reply_rule_priority }}
   register: netbird_server_reply_rule
   changed_when: false
-  failed_when: netbird_server_reply_mark ~ ' lookup main' not in netbird_server_reply_rule.stdout
+  failed_when: >-
+    (netbird_server_reply_mark ~ ' lookup ' ~ netbird_server_reply_table) not in netbird_server_reply_rule.stdout
   when: not ansible_check_mode
