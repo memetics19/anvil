@@ -131,16 +131,20 @@ def rule_ids(rule, key):
 def ensure_policies(api, policies, delete_names, groups):
     have = by_name(api.get("/policies"))
     for p in policies:
+        # protocol all (no ports), or tcp/udp with a list of ports
+        ports = sorted(str(x) for x in p.get("ports", []))
         rule = {
             "name": p["name"],
             "description": p.get("description", ""),
             "enabled": True,
             "action": "accept",
             "bidirectional": False,
-            "protocol": "all",
+            "protocol": p.get("protocol", "all"),
             "sources": group_ids(api, p["sources"], groups),
             "destinations": group_ids(api, p["destinations"], groups),
         }
+        if ports:
+            rule["ports"] = ports
         body = {"name": p["name"], "description": p.get("description", ""), "enabled": True,
                 "rules": [rule], "source_posture_checks": []}
         cur = have.get(p["name"])
@@ -150,10 +154,11 @@ def ensure_policies(api, policies, delete_names, groups):
         rules = cur.get("rules") or []
         same = (cur.get("enabled") and len(rules) == 1
                 and rules[0].get("enabled") and rules[0].get("action") == "accept"
-                and not rules[0].get("bidirectional") and rules[0].get("protocol") == "all"
+                and not rules[0].get("bidirectional") and rules[0].get("protocol") == rule["protocol"]
                 and rule_ids(rules[0], "sources") == rule["sources"]
                 and rule_ids(rules[0], "destinations") == rule["destinations"]
-                and not rules[0].get("ports") and not rules[0].get("port_ranges")
+                and sorted(str(x) for x in rules[0].get("ports") or []) == ports
+                and not rules[0].get("port_ranges")
                 and not rules[0].get("sourceResource") and not rules[0].get("destinationResource")
                 and (cur.get("description") or "") == body["description"])
         if not same:

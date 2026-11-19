@@ -27,6 +27,7 @@ cat >"$tmp/play.yml" <<PLAY
   gather_facts: false
   vars_files:
     - $PWD/ansible/inventory/group_vars/all/gateway.yml
+    - $PWD/ansible/inventory/group_vars/all/iptv.yml
     - $PWD/ansible/roles/netbird_server/defaults/main.yml
     - $PWD/ansible/roles/netbird_peer/defaults/main.yml
   vars:
@@ -38,6 +39,8 @@ cat >"$tmp/play.yml" <<PLAY
       lan_cidr: 192.0.2.0/24
       gateway: {subdomain: internal}
       netbird_domain: sync.example.com
+      admin_sources: [192.0.2.31/32]
+      admin_vpn_sources: [100.64.7.9/32]
       netbird_server: {network_range: 100.64.0.0/16}
       pve: {ip: 192.0.2.10, gateway_alias_ip: 192.0.2.1, uplink_ip: 198.51.100.250, uplink_prefix: 24, uplink_gw: 198.51.100.1}
       hosts:
@@ -110,10 +113,18 @@ has "secret from the secrets dict" 'authSecret: "fake-relay-secret"' "$c"
 has "plain HTTP behind Caddy" 'listenAddress: ":80"' "$c"
 
 f=$tmp/Caddyfile
-has "Caddy: gRPC over h2c" "reverse_proxy @grpc h2c://netbird-server:80" "$f"
-has "Caddy: relay, API and IdP paths" "@backend path /relay* /ws-proxy/* /api/* /oauth2/*" "$f"
+has "Caddy: gRPC over h2c from anywhere" "reverse_proxy h2c://netbird-server:80" "$f"
+has "Caddy: relay and login pages from anywhere" "@open path /relay* /oauth2/*" "$f"
+has "Caddy: the operator's devices only, from site.admin_sources and admin_vpn_sources" "@operator remote_ip 192.0.2.31/32 100.64.7.9/32" "$f"
+has "Caddy: API and WebSocket proxy for the operator" "@backend path /ws-proxy/* /api/*" "$f"
 has "Caddy: the rest to the dashboard" "reverse_proxy dashboard:80" "$f"
-has "Caddy: own TLS for the tunnel origin" "tls internal" "$f"
+has "Caddy: everyone else gets 404" "respond 404" "$f"
+awk '/handle @operator/{p=1} p' "$f" | grep -q "reverse_proxy dashboard:80" && ok "Caddy: the dashboard only inside the operator block" || bad "Caddy: the dashboard only inside the operator block"
+[ "$(grep -c "reverse_proxy dashboard:80" "$f")" = 1 ] && ok "Caddy: one dashboard route" || bad "Caddy: one dashboard route"
+has "Caddy: Let's Encrypt over TLS-ALPN" "disable_http_challenge" "$f"
+has "Caddy: its own CA until the name points here" "issuer internal" "$f"
+hasnt "Caddy: no DNS token on this VM" "dns cloudflare" "$f"
+has "Caddy: access log with client addresses" "format json" "$f"
 has "Caddy: no Server header" "header -Server" "$f"
 has "Caddy: first party CSP for the dashboard" "header_down Content-Security-Policy \"default-src 'none'; connect-src 'self' https://sync.example.com " "$f"
 hasnt "Caddy: no vendor domain in the CSP" "netbird.io" "$f"
@@ -175,9 +186,12 @@ j=$tmp/desired.json
 [ "$(jq -r '.networks[] | select(.name == "home-tv") | .routers[0].masquerade' "$j")" = false ] \
   && ok "tv route: masquerade off" || bad "tv route: masquerade off"
 [ "$(jq -c '.nameservers[0] | [.nameservers[0].ip, .domains[0], .groups[0]]' "$j")" = '["198.51.100.249","internal.example.com","operator"]' ] \
-  && ok "DNS: Pi-hole for the gateway domain, operator only" || bad "DNS: Pi-hole for the gateway domain"
-[ "$(jq -c '[.policies[] | [.sources, .destinations]]' "$j")" = '[[["operator"],["routers"]]]' ] \
-  && ok "one policy: operator to routers" || bad "one policy: operator to routers"
+  && ok "DNS: Pi-hole for the gateway domain" || bad "DNS: Pi-hole for the gateway domain"
+[ "$(jq -c '[.policies[] | [.name, .sources, .destinations, (.protocol // "all"), (.ports // [])]]' "$j")" = '[["operator-to-routers",["operator"],["routers","lab","gateway","live-tv"],"all",[]],["operator-to-operator",["operator"],["operator"],"all",[]],["tv-to-gateway",["tv"],["gateway"],"tcp",[443]],["tv-to-live-tv",["tv"],["live-tv"],"tcp",[34400,34401]]]' ] \
+  && ok "policies: the operator everywhere, televisions to HTTPS on the gateway and the live TV ports only" || { bad "policies"; jq -c '.policies' "$j"; }
+[ "$(jq -c '[.networks[].resources[].groups]' "$j")" = '[["lab"],["gateway"],["live-tv"]]' ] \
+  && ok "each routed network in its own resource group" || bad "each routed network in its own resource group"
+[ "$(jq -c '.nameservers[0].groups' "$j")" = '["operator","tv"]' ] && ok "Pi-hole for the operator and televisions" || bad "Pi-hole groups"
 [ "$(jq -c '.delete_policies' "$j")" = '["Default"]' ] && ok "the All to All Default policy goes" || bad "Default policy deleted"
 [ "$(jq -r '.settings.network_range' "$j")" = "100.64.0.0/16" ] && ok "network range from the site" || bad "network range"
 

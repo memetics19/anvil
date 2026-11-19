@@ -5,9 +5,14 @@
       - site.netbird_domain is match('^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$')
       - site.hosts.apps.home_ip | default('') | length > 0
       - site.email | default('') | length > 0
+      - netbird_server_admin_sources | length > 0
+      - netbird_server_admin_sources | select('match', '^' ~ (site.pve.ip | regex_escape) ~ '(/32)?$') | list | length == 0
+      - netbird_server_admin_sources | select('match', '^' ~ (site.pve.uplink_ip | default('none') | regex_escape) ~ '(/32)?$') | list | length == 0
     fail_msg: >-
-      site.netbird_domain must be a lower-case host name (for example sync.<domain>), and
-      site.hosts.apps.home_ip and site.email must be set
+      site.netbird_domain must be a lower-case host name (for example sync.<domain>),
+      site.hosts.apps.home_ip and site.email must be set, and site.admin_sources or
+      admin_vpn_sources must list the operator's devices, never the Proxmox host's own
+      addresses (everything it forwards or masquerades would pass as the operator)
     quiet: true
 
 # --- secrets -----------------------------------------------------------------------------------
@@ -182,9 +187,9 @@
   until: netbird_server_instance.status == 200
   when: not ansible_check_mode
 
-- name: Caddy answers on the VM's lab address (the tunnel's origin)
+- name: Caddy answers the login pages on the VM's lab address (open to every client)
   ansible.builtin.uri:
-    url: "https://{{ site.hosts[inventory_hostname].ip }}:{{ netbird_server_https_port }}/api/instance"
+    url: "https://{{ site.hosts[inventory_hostname].ip }}:{{ netbird_server_https_port }}/oauth2/.well-known/openid-configuration"
     headers:
       Host: "{{ site.netbird_domain }}"
     validate_certs: false
@@ -192,4 +197,14 @@
   retries: 20
   delay: 3
   until: netbird_server_origin.status == 200
+  when: not ansible_check_mode
+
+# This VM is not one of the operator's devices, so it sees what a stranger sees.
+- name: Caddy refuses the REST API to a source that is not the operator's
+  ansible.builtin.uri:
+    url: "https://{{ site.hosts[inventory_hostname].ip }}:{{ netbird_server_https_port }}/api/instance"
+    headers:
+      Host: "{{ site.netbird_domain }}"
+    validate_certs: false
+    status_code: 404
   when: not ansible_check_mode
