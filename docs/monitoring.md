@@ -83,6 +83,12 @@ The dashboards:
   error budgets and response times over time, and the hosts behind them.
 - **Security**: Wazuh's alerts (level 10 and up, critical 12 and up), hosts reporting, alerts by
   level over time, the top rules and hosts, failed logins, changed files and vulnerabilities.
+- **Attack map**: who reaches the lab's one public port (TCP 443, the self-hosted NetBird
+  server) and from where. Requests from the internet, refused ones, scan alerts, countries
+  and addresses, a world map of every request (Caddy's own GeoIP: DB-IP City Lite, "IP
+  Geolocation by DB-IP"), the countries, cities, addresses and refused paths, the answers
+  over time, and a second map of every Wazuh alert with an internet source (Wazuh's
+  GeoLite2). From Wazuh: rules 100800 to 100802 (role wazuh_server).
 - **Frigate**: Frigate up, cameras sending video, detector speed and recording space now, a
   camera timeline, frames per second per camera (received, processed, detected, skipped),
   detector speed, detections by camera and object, CPU and memory per camera, and disk space.

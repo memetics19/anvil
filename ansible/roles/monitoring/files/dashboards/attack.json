@@ -1,0 +1,939 @@
+{
+   "description": "Who reaches the public NetBird port, from where, and what they ask for, with every security alert that has an internet source. Managed by anvil: change dashboards/attack.jsonnet.",
+   "editable": false,
+   "panels": [
+      {
+         "datasource": {
+            "type": "datasource",
+            "uid": "-- Mixed --"
+         },
+         "gridPos": {
+            "h": 3,
+            "w": 24,
+            "x": 0,
+            "y": 0
+         },
+         "id": 1,
+         "options": {
+            "content": "The lab has one public port: **TCP 443**, the self-hosted NetBird server. Every request to it is logged by Caddy with the client's **country, city and coordinates** (DB-IP City Lite, \"IP Geolocation by DB-IP\"). Most requests are your own devices and NetBird clients. **Refused** requests (400 to 405) are usually scanners looking for things that are not there. **50 refusals from one address in 2 minutes** raises a level 10 alert, which pages through Alertmanager. The bottom map shows every Wazuh alert with an internet source address, located by Wazuh (GeoLite2).\n",
+            "mode": "markdown"
+         },
+         "pluginVersion": "v13.0.0",
+         "title": "How to read this",
+         "type": "text"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 0,
+            "y": 3
+         },
+         "id": 2,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "sum"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "timestamp",
+                     "id": "2",
+                     "settings": {
+                        "interval": "auto",
+                        "min_doc_count": "0"
+                     },
+                     "type": "date_histogram"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "rule.groups:netbird_public AND _exists_:data.geo_country",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Requests from the internet",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 1
+                     },
+                     {
+                        "color": "red",
+                        "value": 100
+                     }
+                  ]
+               },
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 4,
+            "y": 3
+         },
+         "id": 3,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "sum"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "timestamp",
+                     "id": "2",
+                     "settings": {
+                        "interval": "auto",
+                        "min_doc_count": "0"
+                     },
+                     "type": "date_histogram"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "rule.id:100801 AND _exists_:data.geo_country",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Refused requests",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     },
+                     {
+                        "color": "red",
+                        "value": 1
+                     }
+                  ]
+               },
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 8,
+            "y": 3
+         },
+         "id": 4,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "sum"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "timestamp",
+                     "id": "2",
+                     "settings": {
+                        "interval": "auto",
+                        "min_doc_count": "0"
+                     },
+                     "type": "date_histogram"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "rule.id:100802",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Scan alerts (level 10)",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 12,
+            "y": 3
+         },
+         "id": 5,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [ ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "field": "data.geo_country",
+                     "id": "1",
+                     "type": "cardinality"
+                  }
+               ],
+               "query": "rule.groups:netbird_public AND _exists_:data.geo_country",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Countries",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 16,
+            "y": 3
+         },
+         "id": 6,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [ ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "field": "data.srcip",
+                     "id": "1",
+                     "type": "cardinality"
+                  }
+               ],
+               "query": "rule.groups:netbird_public AND _exists_:data.geo_country",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Addresses",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "color": {
+                  "mode": "continuous-YlRd"
+               }
+            },
+            "overrides": [ ]
+         },
+         "gridPos": {
+            "h": 14,
+            "w": 12,
+            "x": 0,
+            "y": 8
+         },
+         "id": 7,
+         "options": {
+            "basemap": {
+               "name": "Basemap",
+               "type": "default"
+            },
+            "controls": {
+               "mouseWheelZoom": true,
+               "showAttribution": true,
+               "showZoom": true
+            },
+            "layers": [
+               {
+                  "config": {
+                     "showLegend": true,
+                     "style": {
+                        "color": {
+                           "fixed": "dark-red"
+                        },
+                        "opacity": 0.59999999999999998,
+                        "size": {
+                           "fixed": 6,
+                           "max": 12,
+                           "min": 4
+                        },
+                        "symbol": {
+                           "fixed": "img/icons/marker/circle.svg",
+                           "mode": "fixed"
+                        }
+                     }
+                  },
+                  "location": {
+                     "latitude": "data.geo_lat",
+                     "longitude": "data.geo_lon",
+                     "mode": "coords"
+                  },
+                  "name": "Requests",
+                  "tooltip": true,
+                  "type": "markers"
+               }
+            ],
+            "tooltip": {
+               "mode": "details"
+            },
+            "view": {
+               "id": "zero",
+               "lat": 20,
+               "lon": 10,
+               "zoom": 1
+            }
+         },
+         "targets": [
+            {
+               "bucketAggs": [ ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "RawData",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "settings": {
+                        "order": "desc",
+                        "size": "500",
+                        "useTimeRange": true
+                     },
+                     "type": "raw_data"
+                  }
+               ],
+               "query": "rule.groups:netbird_public AND _exists_:data.geo_country",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Requests to the public port (Caddy GeoIP), each request a dot",
+         "transformations": [
+            {
+               "id": "convertFieldType",
+               "options": {
+                  "conversions": [
+                     {
+                        "destinationType": "number",
+                        "targetField": "data.geo_lat"
+                     },
+                     {
+                        "destinationType": "number",
+                        "targetField": "data.geo_lon"
+                     }
+                  ]
+               }
+            }
+         ],
+         "type": "geomap"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "gridPos": {
+            "h": 14,
+            "w": 12,
+            "x": 12,
+            "y": 8
+         },
+         "id": 8,
+         "options": {
+            "showHeader": true,
+            "sortBy": [
+               {
+                  "desc": true,
+                  "displayName": "Count"
+               }
+            ]
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "data.geo_country_name",
+                     "id": "3",
+                     "settings": {
+                        "min_doc_count": "1",
+                        "order": "desc",
+                        "orderBy": "_count",
+                        "size": "20"
+                     },
+                     "type": "terms"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "rule.groups:netbird_public AND _exists_:data.geo_country",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Countries",
+         "type": "table"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 22
+         },
+         "id": 9,
+         "options": {
+            "showHeader": true,
+            "sortBy": [
+               {
+                  "desc": true,
+                  "displayName": "Count"
+               }
+            ]
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "data.geo_city",
+                     "id": "3",
+                     "settings": {
+                        "min_doc_count": "1",
+                        "order": "desc",
+                        "orderBy": "_count",
+                        "size": "15"
+                     },
+                     "type": "terms"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "rule.groups:netbird_public AND _exists_:data.geo_country",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Cities",
+         "type": "table"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 22
+         },
+         "id": 10,
+         "options": {
+            "showHeader": true,
+            "sortBy": [
+               {
+                  "desc": true,
+                  "displayName": "Count"
+               }
+            ]
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "data.srcip",
+                     "id": "3",
+                     "settings": {
+                        "min_doc_count": "1",
+                        "order": "desc",
+                        "orderBy": "_count",
+                        "size": "15"
+                     },
+                     "type": "terms"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "rule.groups:netbird_public AND _exists_:data.geo_country",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Addresses",
+         "type": "table"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 22
+         },
+         "id": 11,
+         "options": {
+            "showHeader": true,
+            "sortBy": [
+               {
+                  "desc": true,
+                  "displayName": "Count"
+               }
+            ]
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "data.request.uri",
+                     "id": "3",
+                     "settings": {
+                        "min_doc_count": "1",
+                        "order": "desc",
+                        "orderBy": "_count",
+                        "size": "15"
+                     },
+                     "type": "terms"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "rule.id:100801 AND _exists_:data.geo_country",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Refused paths (what scanners look for)",
+         "type": "table"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 30
+         },
+         "id": 12,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "data.status",
+                     "id": "3",
+                     "settings": {
+                        "min_doc_count": "1",
+                        "order": "desc",
+                        "orderBy": "_count",
+                        "size": "10"
+                     },
+                     "type": "terms"
+                  },
+                  {
+                     "field": "timestamp",
+                     "id": "2",
+                     "settings": {
+                        "interval": "auto",
+                        "min_doc_count": "0"
+                     },
+                     "type": "date_histogram"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "rule.groups:netbird_public AND _exists_:data.geo_country",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Requests from the internet by answer",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "color": {
+                  "mode": "continuous-YlRd"
+               }
+            },
+            "overrides": [ ]
+         },
+         "gridPos": {
+            "h": 12,
+            "w": 12,
+            "x": 0,
+            "y": 38
+         },
+         "id": 13,
+         "options": {
+            "basemap": {
+               "name": "Basemap",
+               "type": "default"
+            },
+            "controls": {
+               "mouseWheelZoom": true,
+               "showAttribution": true,
+               "showZoom": true
+            },
+            "layers": [
+               {
+                  "config": {
+                     "showLegend": true,
+                     "style": {
+                        "color": {
+                           "field": "Count",
+                           "fixed": "dark-red"
+                        },
+                        "opacity": 0.59999999999999998,
+                        "size": {
+                           "field": "Count",
+                           "fixed": 6,
+                           "max": 30,
+                           "min": 4
+                        },
+                        "symbol": {
+                           "fixed": "img/icons/marker/circle.svg",
+                           "mode": "fixed"
+                        }
+                     }
+                  },
+                  "location": {
+                     "geohash": "GeoLocation.location",
+                     "mode": "geohash"
+                  },
+                  "name": "Requests",
+                  "tooltip": true,
+                  "type": "markers"
+               }
+            ],
+            "tooltip": {
+               "mode": "details"
+            },
+            "view": {
+               "id": "zero",
+               "lat": 20,
+               "lon": 10,
+               "zoom": 1
+            }
+         },
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "GeoLocation.location",
+                     "id": "2",
+                     "settings": {
+                        "precision": "3"
+                     },
+                     "type": "geohash_grid"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "_exists_:GeoLocation.location",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Every security alert with an internet source (Wazuh GeoLite2)",
+         "transformations": [ ],
+         "type": "geomap"
+      },
+      {
+         "datasource": {
+            "type": "grafana-opensearch-datasource",
+            "uid": "wazuh"
+         },
+         "gridPos": {
+            "h": 12,
+            "w": 12,
+            "x": 12,
+            "y": 38
+         },
+         "id": 14,
+         "options": {
+            "showHeader": true,
+            "sortBy": [
+               {
+                  "desc": true,
+                  "displayName": "Count"
+               }
+            ]
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "bucketAggs": [
+                  {
+                     "field": "rule.description",
+                     "id": "3",
+                     "settings": {
+                        "min_doc_count": "1",
+                        "order": "desc",
+                        "orderBy": "_count",
+                        "size": "15"
+                     },
+                     "type": "terms"
+                  }
+               ],
+               "datasource": {
+                  "type": "grafana-opensearch-datasource",
+                  "uid": "wazuh"
+               },
+               "luceneQueryType": "Metric",
+               "metrics": [
+                  {
+                     "id": "1",
+                     "type": "count"
+                  }
+               ],
+               "query": "_exists_:GeoLocation.location",
+               "queryType": "lucene",
+               "refId": "A",
+               "timeField": "timestamp"
+            }
+         ],
+         "title": "Rules behind them",
+         "type": "table"
+      }
+   ],
+   "refresh": "1m",
+   "schemaVersion": 39,
+   "tags": [
+      "anvil",
+      "security",
+      "wazuh",
+      "geoip",
+      "netbird"
+   ],
+   "time": {
+      "from": "now-7d",
+      "to": "now"
+   },
+   "timezone": "browser",
+   "title": "Attack map",
+   "uid": "anvil-attack"
+}
