@@ -25,8 +25,8 @@ caddy_xcaddy_version: v0.4.7
 caddy_x_net_version: v0.62.0
 caddy_go_jose_version: v4.1.6
 caddy_chi_version: v5.4.0
-caddy_builder_image: golang:1.26.10-alpine@sha256:27f2d3b83cfc5803c8078f8e730af0f7c431bf067afaec8f60a36fb763187cba
-caddy_go_version: go1.26.10
+caddy_builder_image: golang:1.26.11-alpine@sha256:ecb67f987aa1a57794c91d19ade7ae0209f2f0f5496aaef9e6ae85ddf92d02ab
+caddy_go_version: go1.26.11
 caddy_base_image: caddy:2.11.7-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
 caddy_dockerfile: "{{ lookup('ansible.builtin.template', 'Dockerfile.j2') }}"
 caddy_image: >-
