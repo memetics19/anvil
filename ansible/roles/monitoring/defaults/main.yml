@@ -126,6 +126,10 @@ monitoring_pihole_target: "{{ (site.hosts.apps.ip ~ ':' ~ monitoring_pihole_port
 # Disk health (role smartctl_exporter): the main Proxmox host on its lab address and each other
 # cluster member on its static address (the exporters answer only this VM).
 monitoring_smart_port: 9633
+# The self-hosted NetBird server's metrics (role netbird_server, netbird_server_metrics_port):
+# only when site.netbird_domain is set.
+monitoring_netbird_server_target: >-
+  {{ (site.hosts.netbird.ip ~ ':9095') if site.netbird_domain | default('', true) | length > 0 else '' }}
 monitoring_smart_targets: >-
   {%- set out = [{'name': site.pve.hostname | default('pve'), 'address': site.pve.ip ~ ':' ~ monitoring_smart_port}] -%}
   {%- for m in site.cluster.members | default([]) if site.provision.machines[m].network.cidr is defined -%}

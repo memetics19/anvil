@@ -86,6 +86,12 @@ The dashboards:
 - **Frigate**: Frigate up, cameras sending video, detector speed and recording space now, a
   camera timeline, frames per second per camera (received, processed, detected, skipped),
   detector speed, detections by camera and object, CPU and memory per camera, and disk space.
+- **NetBird**: the self-hosted NetBird server (job `netbird_server`, its own metrics on the
+  netbird VM, port 9095, which only the monitoring VM and the gateway may open). Up or down,
+  peers connected to management, signal and the relay, logins in the last 24 hours, API
+  errors, peers over time, connects and disconnects, logins and syncs, relay traffic, answer
+  times (p95) of logins, syncs, the network map and the database, signal latency, API
+  answers by code, and the VM's CPU and memory.
 
 Pi-hole's numbers come from `ekofr/pihole-exporter`, a container in the `pihole` compose
 project on the apps VM. It logs in to Pi-hole's API with the web password (`exporter.env`,
@@ -219,6 +225,21 @@ Wazuh raised an alert of level 10 or more on a host (level 12 and up is critical
 names the host and the rule. Open the Security dashboard, or Wazuh's own for the full event,
 and act on what the rule says: a login from somewhere new, a changed system file, a known
 vulnerability. A rule that fires and needs no action is tuned in Wazuh, not silenced forever.
+
+### NetBirdServerDown
+
+Warning. The self-hosted NetBird server's metrics have not answered for 5 minutes. Peers
+keep their tunnels for a while, but none can log in, join or pick up a change. On `netbird`:
+`sudo docker ps --filter name=netbird` and `sudo docker logs --tail 50 netbird-server`, then
+`make vm HOST=netbird ARGS="--tags netbird_server"` to put the stack back. If only the
+metrics are gone, check the port guard (`sudo nft list table inet anvil_port_guard`).
+
+### NetBirdServerErrors
+
+Warning. The management API has answered with 5xx errors for 15 minutes. The NetBird
+dashboard's API answers panel shows when it started. `sudo docker logs --tail 100
+netbird-server` on `netbird` names the failing call. A full disk or a locked database file
+are the usual causes.
 
 ### FrigateDown
 

@@ -1,0 +1,29 @@
+# Managed by anvil (role monitoring). Alert rules for the self-hosted NetBird server (job
+# netbird_server, the NetBird dashboard). Each waits before it fires and links to its fix
+# (docs/monitoring.md, Alerts).
+groups:
+  - name: netbird
+    rules:
+      - alert: NetBirdServerDown
+        expr: up{job="netbird_server"} == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "The self-hosted NetBird server does not answer"
+          description: >-
+            The NetBird server's metrics on the netbird VM have not answered for 5 minutes.
+            Peers keep their tunnels for a while, but none can join or change.
+          runbook: "https://memetics19.github.io/anvil/monitoring/#netbirdserverdown"
+
+      - alert: NetBirdServerErrors
+        expr: >-
+          sum(rate(management_http_response_counter_code_total{job="netbird_server",code=~"5.."}[10m]))
+          > 0.05
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "The self-hosted NetBird server answers with errors"
+          description: >-
+            The management API has answered with 5xx errors for 15 minutes
+            ({{ $value | humanize }} a second).
+          runbook: "https://memetics19.github.io/anvil/monitoring/#netbirdservererrors"

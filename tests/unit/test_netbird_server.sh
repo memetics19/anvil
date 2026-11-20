@@ -130,7 +130,12 @@ has "compose: Caddy is the patched build, not upstream's binary" 'image: anvil/c
 has "server API on loopback only" '"127.0.0.1:8089:80"' "$d"
 has "Caddy on the lab address only" '"192.0.2.115:8443:443"' "$d"
 check_ports=$(grep -cE '^\s+- "[0-9.]+:[0-9]+:[0-9]+' "$d")
-[ "$check_ports" = 3 ] && ok "three published ports" || bad "three published ports (got $check_ports)"
+[ "$check_ports" = 4 ] && ok "four published ports" || bad "four published ports (got $check_ports)"
+has "metrics on the lab address, for the monitoring VM" '"192.0.2.115:9095:9090"' "$d"
+python3 -c 'import yaml; h=yaml.safe_load(open("ansible/inventory/host_vars/netbird.yml")); assert h["port_guard_ports"] == [9095], h["port_guard_ports"]' \
+  && ok "the port guard covers the metrics port only (not Caddy's)" || bad "the port guard covers the metrics port only"
+grep -qx 'netbird_server_metrics_port: 9095' ansible/roles/netbird_server/defaults/main.yml && grep -q "site.hosts.netbird.ip ~ ':9095'" ansible/roles/monitoring/defaults/main.yml \
+  && ok "monitoring scrapes the port the server publishes" || bad "metrics port and scrape target differ"
 has "Caddy on the loopback too, for this VM's own client" '"127.0.0.1:443:443"' "$d"
 grep -q '127.0.0.1 {{ site.netbird_domain }} # anvil: netbird_server' ansible/roles/netbird_server/tasks/server.yml && ok "the public name is the loopback on this VM" || bad "hosts entry"
 hasnt "no UDP port" "/udp" "$d"
