@@ -70,6 +70,30 @@ scrape_configs:
         labels: {host: "{{ t.name }}"}
 {% endfor %}
 
+  # Every gateway service (blackbox, the SLA dashboard): at its own address, or through the gateway.
+{% for module in ['service', 'service_insecure', 'service_tcp'] %}
+{% set targets = monitoring_service_targets | selectattr('module', 'equalto', module) | list %}
+{% if targets | length > 0 %}
+  - job_name: {{ module }}
+    metrics_path: /probe
+    params:
+      module: [{{ module }}]
+    static_configs:
+{% for t in targets %}
+      - targets: ["{{ t.url }}"]
+        labels: {service: "{{ t.service }}", host: "{{ t.host }}", via: "{{ t.via }}"}
+{% endfor %}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: __address__
+        replacement: blackbox:9115
+      # One job name for both modules, so every query reads job="service".
+      - target_label: job
+        replacement: service
+{% endif %}
+{% endfor %}
+
   # Internet speed (prometheus_speedtest): a full speed test per scrape, so a long interval. Its
   # metric names are generic, so they get a speedtest_ prefix.
   - job_name: speedtest

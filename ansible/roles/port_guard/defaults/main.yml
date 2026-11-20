@@ -11,9 +11,12 @@ port_guard_ports: []
 # and port_guard_extra_sources (a.b.c.d or a.b.c.d/n).
 port_guard_gateway_host: apps
 port_guard_monitor_host: netbird
+# The monitoring VM: its service checks for the SLA dashboard reach each app at its own port.
+port_guard_metrics_host: monitoring
 port_guard_extra_sources: []
 port_guard_sources: >-
   {{ [site.hosts[port_guard_gateway_host].ip, site.hosts[port_guard_monitor_host].ip]
+     + ([site.hosts[port_guard_metrics_host].ip] if site.hosts[port_guard_metrics_host] is defined else [])
      + port_guard_extra_sources }}
 port_guard_address: "{{ site.hosts[inventory_hostname].ip }}"
 port_guard_file: /etc/anvil/port-guard.nft

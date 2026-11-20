@@ -19,6 +19,10 @@ local unit(name, u, steps=[]) = {
                  ] else []),
 };
 local busy = [['green', null], ['orange', 80], ['red', 95]];
+// The gateway's services (blackbox job service), as on the SLA dashboard, which each panel links to.
+local SVC = 'max by (service) (probe_success{job="service"})';
+local sla = { links: [{ title: 'SLA dashboard', url: '/d/anvil-sla' }] };
+local slaSteps = [['red', null], ['orange', 99], ['green', 99.5]];
 
 local hosts =
   tb.new('Hosts')
@@ -89,6 +93,27 @@ a.dashboard('anvil-lab', 'Lab',
     ], 'none') + { gridPos: { h: 5 } },
     a.on(a.stat('Security events, level 10 and up', [a.wazuh('rule.level:>=10')], 'none', [['green', null], ['orange', 1]]), a.ds.wazuh, W)
     + g.panel.stat.options.reduceOptions.withCalcs(['sum']) + { gridPos: { h: 5 } },
+  ],
+  [
+    a.stat('Services answering', [
+      a.q('sum(%s)' % SVC, 'Up'),
+      a.q('count(%s)' % SVC, 'Of'),
+    ], 'none') + sla + { gridPos: { h: 5 } },
+    a.stat('Services, 30 days', [a.q('100 * avg(max by (service) (avg_over_time(probe_success{job="service"}[30d])))', 'All')], 'percent', slaSteps)
+    + g.panel.stat.standardOptions.withDecimals(3) + sla + { gridPos: { h: 5 } },
+    a.stat('Below the 99.5% SLA, 30 days', [
+      a.q('count(max by (service) (avg_over_time(probe_success{job="service"}[30d])) < 0.995) or vector(0)', 'Below'),
+    ], 'none', [['green', null], ['red', 1]]) + sla + { gridPos: { h: 5 } },
+  ],
+  [
+    a.stat('Services now', [a.q(SVC, '{{service}}')], 'none', [['red', null], ['green', 1]])
+    + g.panel.stat.standardOptions.withMappings([
+      { type: 'value', options: { '0': { text: 'DOWN' }, '1': { text: 'UP' } } },
+    ])
+    + g.panel.stat.options.withTextMode('value_and_name')
+    + g.panel.stat.options.withColorMode('background')
+    + g.panel.stat.options.withGraphMode('none')
+    + sla + { gridPos: { h: 6 } },
   ],
   [hosts + { gridPos: { h: 10 } }],
   [

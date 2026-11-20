@@ -59,6 +59,37 @@ monitoring_http_targets:
   - {name: google, url: "https://www.google.com/generate_204"}
   - {name: cloudflare, url: "https://www.cloudflare.com/cdn-cgi/trace"}
 
+# Every service of the gateway (site.services), checked every minute for the SLA dashboard: at its
+# own address and port (the app itself, not a sign-in page in front of it), or through the
+# gateway where it has none of its own (a container, a static site) or sits in the secrets
+# enclave, which nothing outside may reach. Up means it answers HTTP, whatever the status below
+# 500. Each target is labelled service, and host (the VM) so a down host holds back its alerts.
+# Services whose TLS the prober (Go) cannot speak are checked by a TCP connect on their port
+# instead: the old iDRAC offers only DHE-RSA ciphers, which Go has never implemented.
+monitoring_service_tcp: [idrac]
+monitoring_service_targets: >-
+  {%- set out = [] -%}
+  {%- for s in site.services | default([]) if s.enabled | default(true) | bool -%}
+  {%- set path = (s.host | default('')) | string -%}
+  {%- set vm = path.split('.')[1] if path.startswith('hosts.') else '' -%}
+  {%- if s.static is defined or s.container is defined or vm in groups['enclave'] | default([]) -%}
+  {%- set _ = out.append({'service': s.name, 'host': groups['apps_servers'] | first, 'via': 'gateway',
+        'url': 'https://' ~ s.name ~ '.' ~ gateway_domain ~ '/', 'module': 'service'}) -%}
+  {%- else -%}
+  {%- set ns = namespace(v=site) -%}
+  {%- for k in path.split('.') -%}{%- set ns.v = ns.v[k] | default('') if ns.v is mapping else '' -%}{%- endfor -%}
+  {%- if ns.v | string | length > 0 and s.name in monitoring_service_tcp -%}
+  {%- set _ = out.append({'service': s.name, 'host': vm or s.name, 'via': 'tcp',
+        'url': ns.v ~ ':' ~ s.port, 'module': 'service_tcp'}) -%}
+  {%- elif ns.v | string | length > 0 -%}
+  {%- set _ = out.append({'service': s.name, 'host': vm or s.name, 'via': 'direct',
+        'url': (s.scheme | default('http')) ~ '://' ~ ns.v ~ ':' ~ s.port ~ '/',
+        'module': 'service_insecure' if (s.scheme | default('http')) == 'https' else 'service'}) -%}
+  {%- endif -%}
+  {%- endif -%}
+  {%- endfor -%}
+  {{ out }}
+
 # --- Alerts (docs/monitoring.md, Alerts) ------------------------------------------------------
 # vmalert evaluates the rules in files/rules every minute. Alertmanager groups them and sends
 # them to ntfy: critical at once on its own topic, warnings once a morning on another.

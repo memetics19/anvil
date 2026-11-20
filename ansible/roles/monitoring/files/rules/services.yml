@@ -1,0 +1,31 @@
+# Managed by anvil (role monitoring). Alert rules for the gateway's services (blackbox job service,
+# the SLA dashboard). Each waits before it fires and links to its fix (docs/monitoring.md,
+# Alerts). They carry the service's host, so a down VM fires HostDown alone. The SLO, 99.5%
+# availability over 30 days (about 3.6 hours down), is the same here and in dashboards/sla.jsonnet
+# (tests/unit/test_monitoring.sh keeps them equal).
+groups:
+  - name: services
+    rules:
+      - alert: ServiceDown
+        expr: probe_success{job="service"} == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.service }} does not answer"
+          description: >-
+            {{ $labels.service }} on {{ $labels.host }} has not answered its check
+            ({{ $labels.via }}) for 5 minutes.
+          runbook: "https://memetics19.github.io/anvil/monitoring/#servicedown"
+
+      - alert: ServiceBelowSlo
+        expr: >-
+          avg_over_time(probe_success{job="service"}[30d]) < 0.995
+          and count_over_time(probe_success{job="service"}[30d]) > 1440
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.service }} is below its 99.5% SLA over 30 days"
+          description: >-
+            {{ $labels.service }} answered {{ $value | humanizePercentage }} of its checks in the
+            last 30 days, under the 99.5% target: its error budget is spent.
+          runbook: "https://memetics19.github.io/anvil/monitoring/#servicebelowslo"

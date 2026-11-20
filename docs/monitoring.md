@@ -50,7 +50,9 @@ go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.6.0
 The dashboards:
 
 - **Lab**, Grafana's home page: the whole lab on one page. Hosts up, the internet, critical
-  alerts and warnings firing, cameras recording, security events, then one row per host (up,
+  alerts and warnings firing, cameras recording, security events, the services' SLA (answering
+  now, 30-day availability, how many are below the 99.5% SLO, and an up or down tile per service,
+  each linking to the SLA dashboard), then one row per host (up,
   uptime, CPU, memory, fullest disk), what is firing now and over time, CPU, memory, network
   traffic and ping time. The Dashboards menu at the top goes on to the others.
 - **Pi-hole**: DNS answering and blocking on, queries, blocks, blocked share and clients today,
@@ -72,6 +74,13 @@ The dashboards:
   download and upload over time), an up and down timeline (internet,
   router, DNS, web pages), downtime minutes per day as bars, and the details: ping time,
   jitter, packet loss, web page load time, DNS answer time and the router's ping.
+- **SLA**: every gateway service (`site.services`), checked every 30 seconds where it runs, or
+  through the gateway when it has no address of its own or sits in the secrets enclave. Up means
+  it answers (any status below 500). The old iDRAC only offers TLS ciphers the prober cannot
+  speak, so it gets a TCP connect on its port instead (`monitoring_service_tcp`). Answering now, all services and the worst one over 30 days,
+  how many are below the 99.5% SLO, then a table per service (now, 24 hours, 7 and 30 days,
+  error budget left, minutes down, response time, certificate days), an up and down timeline,
+  error budgets and response times over time, and the hosts behind them.
 - **Security**: Wazuh's alerts (level 10 and up, critical 12 and up), hosts reporting, alerts by
   level over time, the top rules and hosts, failed logins, changed files and vulnerabilities.
 - **Frigate**: Frigate up, cameras sending video, detector speed and recording space now, a
@@ -303,6 +312,19 @@ writing. It may run well past 100%, but plan a replacement.
 Warning. A node's smartctl exporter has not answered for 15 minutes, so its disks are missing
 from the Disks dashboard and no disk alert can fire for it. On the node:
 `systemctl status smartctl_exporter`, then `anvil apply host --tags smartctl_exporter`.
+
+### ServiceDown
+
+Warning. A gateway service has not answered its check for 5 minutes. The SLA dashboard shows
+which, how it is checked (direct or through the gateway) and since when. On its host:
+`sudo docker ps` and the app's logs, or `anvil apply <host>` to put its stack back. A service
+checked through the gateway that is down while its host is up points at the gateway or Pi-hole.
+
+### ServiceBelowSlo
+
+Warning. A service answered under 99.5% of its checks in the last 30 days: its error budget
+(about 3.6 hours a month) is spent. Its row on the SLA dashboard shows when the downtime
+happened. Fix what keeps taking it down: the alert clears once the 30-day window recovers.
 
 ### SpeedtestFailing
 

@@ -21,3 +21,27 @@ modules:
       preferred_ip_protocol: ip4
       valid_status_codes: [200, 204]
       follow_redirects: false
+  # A gateway service answers: any status below 500 (a 401 or a redirect is a running app).
+  service:
+    prober: http
+    timeout: 10s
+    http:
+      preferred_ip_protocol: ip4
+      follow_redirects: false
+      valid_status_codes: [200, 201, 204, 301, 302, 303, 307, 308, 400, 401, 403, 404, 405]
+  # The same, for an upstream with its own self-signed certificate (Proxmox, Wazuh, Vault).
+  service_insecure:
+    prober: http
+    timeout: 10s
+    http:
+      preferred_ip_protocol: ip4
+      follow_redirects: false
+      valid_status_codes: [200, 201, 204, 301, 302, 303, 307, 308, 400, 401, 403, 404, 405]
+      tls_config:
+        insecure_skip_verify: true
+  # A service whose TLS Go cannot speak (monitoring_service_tcp): its port accepts a connection.
+  service_tcp:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: ip4
