@@ -346,7 +346,7 @@ The compose project `/opt/netbird-server` has three containers, each with a memo
 |---|---|
 | `netbird-server` | NetBird's combined server: management, signal, relay and the built in identity provider. Pinned by tag and digest. Its plain HTTP port is on the VM's loopback only, for the role's API calls. |
 | `netbird-dashboard` | The web dashboard |
-| `netbird-caddy` | Let's Encrypt over TLS-ALPN on port 443, on the VM's lab address port 8443 (the Proxmox host forwards TCP 443 from the router there) and on the loopback (for `netbird-home`). gRPC, the relay and the login pages for everyone, the dashboard and the API for the operator's addresses only, 404 for the rest. A JSON access log with client addresses. |
+| `netbird-caddy` | Let's Encrypt over TLS-ALPN on port 443, on the VM's lab address port 8443 (the Proxmox host forwards TCP 443 from the router there) and on the loopback (for `netbird-home`). gRPC, the relay, the login pages, the dashboard and the API, the last two behind NetBird's login. A JSON access log with client addresses. |
 
 The public name is neutral. Caddy drops the `Server` and `Via` headers. It replaces the
 dashboard's Content-Security-Policy, which lists the vendor's domains and trackers, with

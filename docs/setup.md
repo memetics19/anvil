@@ -455,20 +455,15 @@ cuts idle gRPC streams after 100 seconds, so NetBird clients cannot use either. 
 Caddy gets a Let's Encrypt certificate over port 443 by itself (TLS-ALPN, no DNS token on
 that VM). Until the name points at the home it serves its own certificate.
 
-Who sees what:
-
-| Path | From |
-|---|---|
-| gRPC, `/relay`, `/oauth2` (what a client needs) | anywhere |
-| The dashboard, `/api`, `/ws-proxy` | `site.admin_sources` and `admin_vpn_sources` only |
-| Anything else | 404 for everyone |
-
-The client's own address reaches Caddy, as the forwards do not masquerade. The `netbird` VM
+Everything on the name answers from anywhere, as in NetBird's own setup. The dashboard
+and `/api` sit behind NetBird's login (the owner's password in `kv/homelab/netbird-srv`, 32
+random characters). Caddy logs every request with the client's own address, as the forwards
+do not masquerade. The `netbird` VM
 sends the replies back through the Proxmox host (`anvil-netbird-reply`), not through a
 NetBird client's routes. Pi-hole answers `sync.<domain>` with the Proxmox host's home
-address, so devices at home skip the router. For the dashboard over the cloud network,
-add `sync.<domain>` to the match domains of its Pi-hole nameserver. On the `netbird` VM the
-name is Caddy on the loopback, for `netbird-home`.
+address, so devices at home skip the router. On the `netbird` VM the name is Caddy on the
+loopback, for `netbird-home`. The self-hosted network does not send the name to Pi-hole:
+a client would then reach its own server through its own tunnel.
 
 Then run `make vm HOST=netbird ARGS="--tags netbird_home"`. It enrolls `netbird-home`, the
 routing peer. The run checks for the `grpc-status` trailer first. Without it, the run skips

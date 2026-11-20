@@ -2,8 +2,8 @@
 # {{ site.netbird_domain }} from the internet: the router forwards TCP 443 to the Proxmox
 # host, which forwards it here (docs/setup.md, Self-hosted NetBird). No Cloudflare in the
 # path: its proxy drops gRPC trailers and cuts idle streams after 100 seconds. The routes
-# are NetBird's documented Caddy example, split into what a client needs from anywhere and
-# what only the operator's devices may use.
+# are NetBird's documented Caddy example. The dashboard and the REST API are open too,
+# behind NetBird's own login (the owner's password in Vault, 32 random characters).
 {
 	admin off
 	auto_https disable_redirects
@@ -30,32 +30,15 @@
 		format json
 	}
 
-	# From anywhere: management and signal gRPC (HTTP/2 cleartext to the server), the relay,
-	# and the identity provider's login pages.
+	# Management and signal gRPC (HTTP/2 cleartext to the server)
 	@grpc header Content-Type application/grpc*
-	handle @grpc {
-		reverse_proxy h2c://netbird-server:80
-	}
-	@open path /relay* /oauth2/*
-	handle @open {
-		reverse_proxy netbird-server:80
-	}
-
-	# The operator's devices only (site.admin_sources and admin_vpn_sources): the REST API,
-	# the browser client's WebSocket proxy and the dashboard.
-	@operator remote_ip {{ netbird_server_admin_sources | join(' ') }}
-	handle @operator {
-		@backend path /ws-proxy/* /api/*
-		reverse_proxy @backend netbird-server:80
-		# Its own CSP lists the vendor's domains and trackers: replaced with a first party
-		# one (same rules, this host only).
-		reverse_proxy dashboard:80 {
-			header_down Content-Security-Policy "{{ netbird_server_dashboard_csp }}"
-		}
-	}
-
-	# Everyone else: nothing here.
-	handle {
-		respond 404
+	reverse_proxy @grpc h2c://netbird-server:80
+	# The relay, the browser client's WebSocket proxy, the REST API and the identity provider
+	@backend path /relay* /ws-proxy/* /api/* /oauth2/*
+	reverse_proxy @backend netbird-server:80
+	# Everything else: the dashboard. Its own CSP lists the vendor's domains and trackers:
+	# replaced with a first party one (same rules, this host only).
+	reverse_proxy dashboard:80 {
+		header_down Content-Security-Policy "{{ netbird_server_dashboard_csp }}"
 	}
 }

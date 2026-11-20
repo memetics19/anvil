@@ -331,9 +331,10 @@ A client of the self-hosted network does not connect. Check the route in
 home's public address, not a Cloudflare one. `docker logs netbird-caddy` on `netbird` shows
 each request with the client's address. Until it works, use the `cloud` profile.
 
-The dashboard answers 404: the request does not come from one of the operator's addresses
-(`site.admin_sources`, `admin_vpn_sources`). At home, use Pi-hole's answer for the name.
-Away, use the cloud network with `sync.<domain>` in its Pi-hole nameserver's match domains.
+Gateway names do not resolve on the self-hosted network (`netbird status -d` shows the
+Pi-hole nameserver as Unavailable): `ip rule show priority 101` on `netbird` must show the
+`iif wt1 lookup main` rule of `netbird-home`. Test names with `ping` or a browser. On a Mac
+`dig` ignores NetBird's per-domain DNS.
 
 Status of the routing peer on the VM:
 `sudo netbird status -d --daemon-addr unix:///var/run/netbird-home.sock`.
