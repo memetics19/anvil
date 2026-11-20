@@ -33,3 +33,7 @@ wazuh_server_alertmanager_level: 10
 wazuh_server_alertmanager_critical_level: 12
 wazuh_server_alertmanager_url: >-
   {{ ('http://' ~ site.hosts.monitoring.ip ~ ':9093/api/v2/alerts') if site.hosts.monitoring is defined else '' }}
+# anvil's own rule files (files/), checked by the running manager before they are installed.
+wazuh_server_anvil_rules:
+  - anvil_tetragon_rules.xml
+  - anvil_netbird_caddy_rules.xml

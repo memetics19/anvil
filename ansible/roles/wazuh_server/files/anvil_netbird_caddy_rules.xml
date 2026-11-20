@@ -1,0 +1,34 @@
+<!--
+  Managed by anvil (role wazuh_server). Requests to the self-hosted NetBird server's public
+  port: Caddy's access log on the netbird VM (role netbird_server, one JSON object a line,
+  read by Wazuh's own JSON decoder). Caddy adds srcip and its GeoIP fields (geo_country,
+  geo_country_name, geo_city, geo_lat, geo_lon) to each line. Every request is an alert at
+  level 3 (the attack map), a refused one at level 5, and many refusals from one address at
+  level 10, which goes to Alertmanager (custom-alertmanager, level 10 and up).
+-->
+<group name="anvil,netbird_public,web,">
+  <rule id="100800" level="3">
+    <decoded_as>json</decoded_as>
+    <location>netbird-caddy/access.log$</location>
+    <field name="logger">^http.log.access</field>
+    <description>NetBird server: $(request.method) $(request.uri) from $(srcip) $(geo_country), status $(status)</description>
+  </rule>
+
+  <rule id="100801" level="5">
+    <if_sid>100800</if_sid>
+    <!-- status is one of Wazuh's static fields: its own option, not <field>. -->
+    <status>^400$|^401$|^403$|^404$|^405$</status>
+    <description>NetBird server: refused $(request.method) $(request.uri) from $(srcip) $(geo_country) ($(status))</description>
+    <group>attack,</group>
+  </rule>
+
+  <rule id="100802" level="10" frequency="50" timeframe="120">
+    <if_matched_sid>100801</if_matched_sid>
+    <same_srcip />
+    <description>NetBird server: $(srcip) made 50 refused requests in 2 minutes (scan or brute force)</description>
+    <mitre>
+      <id>T1595</id>
+    </mitre>
+    <group>attack,</group>
+  </rule>
+</group>

@@ -43,6 +43,7 @@ services:
       - ./config/integrations/custom-alertmanager:/wazuh-config-mount/integrations/custom-alertmanager:ro
       - ./config/integrations/custom-alertmanager.py:/wazuh-config-mount/integrations/custom-alertmanager.py:ro
       - ./config/rules/anvil_tetragon_rules.xml:/wazuh-config-mount/etc/rules/anvil_tetragon_rules.xml:ro
+      - ./config/rules/anvil_netbird_caddy_rules.xml:/wazuh-config-mount/etc/rules/anvil_netbird_caddy_rules.xml:ro
 
   wazuh.indexer:
     image: {{ wazuh_server_indexer_image }}

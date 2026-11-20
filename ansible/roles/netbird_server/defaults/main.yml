@@ -30,6 +30,17 @@ netbird_server_api_port: 8089
 # monitoring VM's scrape (job netbird_server, the NetBird dashboard). port_guard lets only
 # the monitoring VM and the gateway connect (inventory/host_vars/netbird.yml).
 netbird_server_metrics_port: 9095
+# Caddy's access log on the host (JSON, rotated by Caddy), shipped by the Wazuh agent when
+# it runs here: decoder and rules in role wazuh_server (anvil_netbird_caddy_*.xml).
+netbird_server_access_log_dir: /var/log/netbird-caddy
+netbird_server_wazuh_agent_conf: /var/ossec/etc/ossec.conf
+# GeoIP for Caddy's access log: DB-IP's free City Lite database (MaxMind format, CC BY 4.0,
+# "IP Geolocation by DB-IP", https://db-ip.com). A new one each month: bump the edition and
+# the checksum together. No account, and no automatic update.
+netbird_server_geoip_edition: dbip-city-lite-2026-11
+netbird_server_geoip_sha256: b69c625515f636ac92112b71df26bb92a5748f648c79bad124ecd9ba1c97bf4a
+netbird_server_geoip_url: "https://download.db-ip.com/free/{{ netbird_server_geoip_edition }}.mmdb.gz"
+netbird_server_geoip_dir: "{{ netbird_server_dir }}/geoip"
 # The dashboard's Content-Security-Policy as Caddy sends it: the image's own rules with only
 # this host as a source (no vendor or tracker domains). The script hash is the dashboard's
 # inline script (from its image, /usr/local/init_react_envs.sh). Check it after a bump.

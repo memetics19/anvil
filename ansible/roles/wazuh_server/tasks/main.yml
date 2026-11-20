@@ -166,10 +166,61 @@
     group: root
     mode: "0755"
 
+# anvil's rules go past the running manager before they are installed: a rule it rejects
+# would stop every manager service at the restart (it did, 2026-11-20). The new files go
+# into the running container, wazuh-analysisd -t reads them, and on a rejection the old ones
+# are put back and the run stops before anything is installed or restarted.
+- name: Stage anvil's rules for a check
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ wazuh_server_dir }}/config/rules-check/"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ wazuh_server_anvil_rules }}"
+  check_mode: false
+
+- name: The running manager accepts anvil's rules
+  ansible.builtin.shell: |
+    set -uo pipefail
+    c=$(docker ps -q --filter "name=wazuh.manager" | head -1)
+    [ -n "$c" ] || { echo "no running manager: nothing to check against"; exit 0; }
+    for f in {{ wazuh_server_anvil_rules | join(' ') }}; do
+      docker cp "{{ wazuh_server_dir }}/config/rules-check/$f" "$c:/var/ossec/etc/rules/$f"
+    done
+    docker exec "$c" chown wazuh:wazuh {% for f in wazuh_server_anvil_rules %}/var/ossec/etc/rules/{{ f }} {% endfor %}
+
+    if docker exec "$c" /var/ossec/bin/wazuh-analysisd -t > /tmp/anvil-rules-check.out 2>&1; then
+      echo "rules accepted"
+    else
+      grep -iE "error|critical" /tmp/anvil-rules-check.out
+      for f in {{ wazuh_server_anvil_rules | join(' ') }}; do
+        [ -f "{{ wazuh_server_dir }}/config/rules/$f" ] && docker cp "{{ wazuh_server_dir }}/config/rules/$f" "$c:/var/ossec/etc/rules/$f"
+      done
+      exit 1
+    fi
+  args:
+    executable: /bin/bash
+  register: wazuh_server_rules_check
+  changed_when: false
+  failed_when: wazuh_server_rules_check.rc != 0
+  when: not ansible_check_mode
+
 - name: Tetragon's rules
   ansible.builtin.copy:
     src: anvil_tetragon_rules.xml
     dest: "{{ wazuh_server_dir }}/config/rules/anvil_tetragon_rules.xml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart the Wazuh manager
+
+# The self-hosted NetBird server's public port (role netbird_server ships Caddy's access log):
+# Wazuh's own JSON decoder reads it. These rules are for the attack map and the scan alert.
+- name: NetBird server access log rules
+  ansible.builtin.copy:
+    src: anvil_netbird_caddy_rules.xml
+    dest: "{{ wazuh_server_dir }}/config/rules/anvil_netbird_caddy_rules.xml"
     owner: root
     group: root
     mode: "0644"

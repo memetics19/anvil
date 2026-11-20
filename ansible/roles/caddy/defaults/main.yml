@@ -17,6 +17,9 @@ caddy_dir: /opt/caddy
 # uses 1.27. Caddy 2.11.7 needs Go >= 1.26.0.
 caddy_version: 2.11.7
 caddy_cloudflare_version: v0.2.4
+# GeoIP lookups (github.com/zhangjiayin/caddy-geoip2): the self-hosted NetBird server's Caddy
+# adds the client's country and city to its access log (role netbird_server).
+caddy_geoip2_version: v1.3.1
 caddy_xcaddy_version: v0.4.7
 # Modules xcaddy replaces with a fixed version, as Caddy 2.11.7's go.mod brings an
 # older one: golang.org/x/net 0.59 or 0.60 (CVE-2026-78669, CVE-2026-78661 and

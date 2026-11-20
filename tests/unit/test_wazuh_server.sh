@@ -59,7 +59,12 @@ check "alerts of level 10 and up go to Alertmanager" \
   "grep -q '<name>custom-alertmanager</name>' $tmp/wazuh_manager.conf && grep -q '<hook_url>http://192.0.2.132:9093/api/v2/alerts</hook_url>' $tmp/wazuh_manager.conf && grep -q '<level>10</level>' $tmp/wazuh_manager.conf"
 check "no integration without a monitoring VM" "! grep -q custom-alertmanager $tmp/no-monitoring.conf"
 check "the integration's files reach the manager" "grep -q '/wazuh-config-mount/integrations/custom-alertmanager:ro' $c"
-check "a changed config, integration or rules file restarts the manager" "[ \"\$(grep -c 'notify: Restart the Wazuh manager' $r/tasks/main.yml)\" = 3 ]"
+check "a changed config, integration or rules file restarts the manager" "[ \"\$(grep -c 'notify: Restart the Wazuh manager' $r/tasks/main.yml)\" = 4 ]"
+check "the NetBird server's rules are mounted in the manager" "grep -q 'anvil_netbird_caddy_rules.xml:/wazuh-config-mount/etc/rules/' $r/templates/docker-compose.yml.j2"
+check "the running manager checks anvil's rules before they are installed" "grep -q 'wazuh-analysisd -t' $r/tasks/main.yml && python3 -c 'import yaml; t=yaml.safe_load(open(\"$r/tasks/main.yml\")); n=[x[\"name\"] for x in t]; assert n.index(\"The running manager accepts anvil\x27s rules\") < n.index(\"Tetragon\x27s rules\")'"
+check "every anvil rule file is in the checked list" "for f in $r/files/anvil_*_rules.xml; do grep -q \"\$(basename \$f)\" $r/defaults/main.yml || exit 1; done"
+check "rule 100801 matches the static status field with its own option" "grep -q '<status>' $r/files/anvil_netbird_caddy_rules.xml && ! grep -q 'field name=\"status\"' $r/files/anvil_netbird_caddy_rules.xml"
+check "the scan alert reaches Alertmanager (level 10 and up)" "grep -q 'rule id=\"100802\" level=\"10\"' $r/files/anvil_netbird_caddy_rules.xml"
 
 # The integration itself, against a stand-in Alertmanager on this machine.
 cat >"$tmp/alert.json" <<'JSON'

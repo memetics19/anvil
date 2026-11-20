@@ -4,3 +4,9 @@
     state: restarted
     daemon_reload: true
   when: not ansible_check_mode
+
+- name: Restart wazuh-agent for netbird
+  ansible.builtin.systemd_service:
+    name: wazuh-agent
+    state: restarted
+  when: not ansible_check_mode
