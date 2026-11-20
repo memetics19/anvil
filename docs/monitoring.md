@@ -81,6 +81,9 @@ The dashboards:
   how many are below the 99.5% SLO, then a table per service (now, 24 hours, 7 and 30 days,
   error budget left, minutes down, response time, certificate days), an up and down timeline,
   error budgets and response times over time, and the hosts behind them.
+- **Uptime calendar**: the last 90 days, one square per day, coloured by availability (green
+  99.9% and up, yellow from 99%, orange from 95%, red below): every gateway service, every
+  host, the internet and the router, then the minutes down per day.
 - **Security**: Wazuh's alerts (level 10 and up, critical 12 and up), hosts reporting, alerts by
   level over time, the top rules and hosts, failed logins, changed files and vulnerabilities.
 - **Frigate**: Frigate up, cameras sending video, detector speed and recording space now, a

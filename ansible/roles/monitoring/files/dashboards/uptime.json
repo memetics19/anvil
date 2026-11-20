@@ -1,0 +1,324 @@
+{
+   "description": "The last 90 days, one square per day: every gateway service, every host and the internet, coloured by availability, and the minutes down per day. Managed by anvil: change dashboards/uptime.jsonnet.",
+   "editable": false,
+   "panels": [
+      {
+         "datasource": {
+            "type": "datasource",
+            "uid": "-- Mixed --"
+         },
+         "gridPos": {
+            "h": 3,
+            "w": 24,
+            "x": 0,
+            "y": 0
+         },
+         "id": 1,
+         "options": {
+            "content": "Each square is one day, the newest on the right. **Green** is 99.9% or more, **yellow** 99% to 99.9% (up to about 15 minutes down), **orange** 95% to 99%, **red** under 95% (more than about an hour). Point at a square for the exact figure. A blank square means nothing was measured that day: the service checks started on 2026-11-18. The full picture for one day is on the **SLA** dashboard.\n",
+            "mode": "markdown"
+         },
+         "pluginVersion": "v13.0.0",
+         "title": "How to read this",
+         "type": "text"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "color": {
+                  "mode": "thresholds"
+               },
+               "decimals": 2,
+               "max": 100,
+               "min": 0,
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 95
+                     },
+                     {
+                        "color": "#EAB839",
+                        "value": 99
+                     },
+                     {
+                        "color": "green",
+                        "value": 99.900000000000006
+                     }
+                  ]
+               },
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 20,
+            "w": 24,
+            "x": 0,
+            "y": 3
+         },
+         "id": 2,
+         "interval": "1d",
+         "maxDataPoints": 100,
+         "options": {
+            "colWidth": 0.90000000000000002,
+            "legend": {
+               "showLegend": false
+            },
+            "rowHeight": 0.84999999999999998,
+            "showValue": "never"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * avg_over_time(max by (service) (probe_success{job=\"service\"})[1d:5m])",
+               "legendFormat": "{{service}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Services",
+         "type": "status-history"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "color": {
+                  "mode": "thresholds"
+               },
+               "decimals": 2,
+               "max": 100,
+               "min": 0,
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 95
+                     },
+                     {
+                        "color": "#EAB839",
+                        "value": 99
+                     },
+                     {
+                        "color": "green",
+                        "value": 99.900000000000006
+                     }
+                  ]
+               },
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 23
+         },
+         "id": 3,
+         "interval": "1d",
+         "maxDataPoints": 100,
+         "options": {
+            "colWidth": 0.90000000000000002,
+            "legend": {
+               "showLegend": false
+            },
+            "rowHeight": 0.84999999999999998,
+            "showValue": "never"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * avg_over_time(max by (host) (up{job=\"node\"})[1d:5m])",
+               "legendFormat": "{{host}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Hosts",
+         "type": "status-history"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "color": {
+                  "mode": "thresholds"
+               },
+               "decimals": 2,
+               "max": 100,
+               "min": 0,
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 95
+                     },
+                     {
+                        "color": "#EAB839",
+                        "value": 99
+                     },
+                     {
+                        "color": "green",
+                        "value": 99.900000000000006
+                     }
+                  ]
+               },
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 4,
+            "w": 24,
+            "x": 0,
+            "y": 32
+         },
+         "id": 4,
+         "interval": "1d",
+         "maxDataPoints": 100,
+         "options": {
+            "colWidth": 0.90000000000000002,
+            "legend": {
+               "showLegend": false
+            },
+            "rowHeight": 0.84999999999999998,
+            "showValue": "never"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "label_replace(100 * avg_over_time(max(probe_success{job=\"ping\",scope=\"internet\"})[1d:1m]), \"probe\", \"internet\", \"\", \"\")\nor 100 * avg_over_time(max by (probe) (probe_success{job=\"ping\",probe=\"router\"})[1d:1m])\n",
+               "legendFormat": "{{probe}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Internet and router",
+         "type": "status-history"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "color": {
+                  "mode": "thresholds"
+               },
+               "custom": {
+                  "drawStyle": "bars",
+                  "fillOpacity": 80,
+                  "lineWidth": 0,
+                  "thresholdsStyle": {
+                     "mode": "off"
+                  }
+               },
+               "min": 0,
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "green",
+                        "value": null
+                     },
+                     {
+                        "color": "orange",
+                        "value": 15
+                     },
+                     {
+                        "color": "red",
+                        "value": 60
+                     }
+                  ]
+               },
+               "unit": "m"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 36
+         },
+         "id": 5,
+         "interval": "1d",
+         "options": {
+            "legend": {
+               "showLegend": false
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "sum(1440 * (1 - avg_over_time(max by (service) (probe_success{job=\"service\"})[1d:5m])))",
+               "legendFormat": "Services",
+               "refId": "A"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "sum(1440 * (1 - avg_over_time(max by (host) (up{job=\"node\"})[1d:5m])))",
+               "legendFormat": "Hosts",
+               "refId": "B"
+            }
+         ],
+         "title": "Minutes down per day, all services together",
+         "type": "timeseries"
+      }
+   ],
+   "refresh": "1h",
+   "schemaVersion": 39,
+   "tags": [
+      "anvil",
+      "sla",
+      "uptime",
+      "availability"
+   ],
+   "time": {
+      "from": "now-90d",
+      "to": "now"
+   },
+   "timezone": "browser",
+   "title": "Uptime calendar",
+   "uid": "anvil-uptime"
+}
