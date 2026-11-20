@@ -80,7 +80,9 @@ check "vmagent and blackbox read their configs from mounted folders" \
   "grep -q -- '- ./vmagent:/etc/vmagent:ro' \$c && grep -q -- '- ./blackbox:/etc/blackbox:ro' \$c"
 check "no config is mounted as a single file" "! grep -E -- '^ +- \\./[^:]*\\.ya?ml:' \$c"
 check "every image is pinned to a digest" \
-  "[ \"\$(grep -cE '^\s+image: ' $c)\" = 6 ] && ! grep -E '^\s+image: ' $c | grep -v '@sha256:'"
+  "[ \"\$(grep -cE '^\s+image: ' $c)\" = 7 ] && ! grep -E '^\s+image: ' $c | grep -v '@sha256:'"
+check "the speed test runs once an hour, is never published, and its metrics get a speedtest_ prefix" \
+  "awk '/job_name: speedtest/{p=1} p&&/job_name: victoriametrics/{exit} p' \$s | grep -q 'scrape_interval: 1h' && awk '/job_name: speedtest/{p=1} p&&/job_name: victoriametrics/{exit} p' \$s | grep -q 'replacement: speedtest_\$1' && ! awk '/^  speedtest:/{p=1} p&&/^  [a-z]+:\$/&&!/speedtest/{exit} p' \$c | grep -q 'ports:'"
 check "only Grafana and Alertmanager's API are published, on the lab address" \
   "[ \"\$(grep -cE '^\s+- \"[0-9.]+:[0-9]+:[0-9]+\"' $c)\" = 2 ] && grep -q '\"192.0.2.132:3000:3000\"' $c && grep -q '\"192.0.2.132:9093:9093\"' $c"
 check "metrics kept 90 days" "grep -q -- '-retentionPeriod=90d' $c"

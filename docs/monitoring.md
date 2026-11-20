@@ -67,7 +67,9 @@ The dashboards:
   remapped count (the exporter reads those only from disks it reaches directly).
 - **Internet**, in plain terms: a short note on how to read it, then right now (internet up,
   ping, packet loss, DNS answer time, router up), then the last day (outages, minutes of
-  downtime, uptime gauges for 24 hours, 7 and 30 days), an up and down timeline (internet,
+  downtime, uptime gauges for 24 hours, 7 and 30 days), the speed (the last hourly speed test's
+  download, upload and ping, the usual download over 7 days, the last result against it, and
+  download and upload over time), an up and down timeline (internet,
   router, DNS, web pages), downtime minutes per day as bars, and the details: ping time,
   jitter, packet loss, web page load time, DNS answer time and the router's ping.
 - **Security**: Wazuh's alerts (level 10 and up, critical 12 and up), hosts reporting, alerts by
@@ -301,6 +303,19 @@ writing. It may run well past 100%, but plan a replacement.
 Warning. A node's smartctl exporter has not answered for 15 minutes, so its disks are missing
 from the Disks dashboard and no disk alert can fire for it. On the node:
 `systemctl status smartctl_exporter`, then `anvil apply host --tags smartctl_exporter`.
+
+### SpeedtestFailing
+
+Warning. The hourly internet speed test has not completed for 3 hours, so the speed panels are
+empty and InternetSlow cannot fire. The internet itself may be fine: the test needs
+speedtest.net's servers. On the monitoring VM: `docker logs --tail 20 speedtest`.
+
+### InternetSlow
+
+Warning. Download speed over the last 3 hours is under 40% of the line's usual speed, its 7-day
+median, so a plan change needs no edit. Check the Internet dashboard's speed row: a big download
+at home or a busy evening can explain it. If it persists with nothing else running, power-cycle
+the router, then report it to the ISP with the dashboard's numbers.
 
 ### MonitoringBlind
 

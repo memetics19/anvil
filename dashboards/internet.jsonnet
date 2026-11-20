@@ -17,6 +17,10 @@ local DNS = 'probe_dns_duration_seconds{job="dns",phase="request"}';
 local ping = [['green', null], ['orange', 0.06], ['red', 0.15]];
 local loss = [['green', null], ['orange', 1], ['red', 5]];
 local uptime = [['red', null], ['orange', 99], ['green', 99.9]];
+// The speed test runs once an hour: the last result, whenever it came.
+local DOWN = 'last_over_time(speedtest_download_speed_bps[2h])';
+local UPL = 'last_over_time(speedtest_upload_speed_bps[2h])';
+local USUAL = 'quantile_over_time(0.5, speedtest_download_speed_bps[7d])';
 
 a.dashboard('anvil-internet', 'Internet',
             'The ISP line in plain terms: up now, ping, packet loss and DNS right now, outages and downtime today, the worst days, and the details. Managed by anvil: change dashboards/internet.jsonnet.',
@@ -24,8 +28,8 @@ a.dashboard('anvil-internet', 'Internet',
 + g.dashboard.withPanels(a.rows([
   [
     a.note('How to read this', |||
-      **Up** means at least one public address (Cloudflare, Google, Quad9) answers a ping. **Ping** is the round trip in milliseconds: under 60 ms is good, over 150 ms feels slow. **Packet loss** above 1% makes calls and games stutter. **Jitter** is how much the ping wobbles. When the router is down too, the problem is at home, not at the ISP. While the lab itself has no power, nothing is measured, so that time is not counted as an outage.
-    |||) + { gridPos: { h: 3 } },
+      **Up** means at least one public address (Cloudflare, Google, Quad9) answers a ping. **Ping** is the round trip in milliseconds: under 60 ms is good, over 150 ms feels slow. **Packet loss** above 1% makes calls and games stutter. **Jitter** is how much the ping wobbles. **Speed** is a full speed test once an hour, against speedtest.net servers, in megabits per second: it shows what the line delivers now against its usual (the 7-day median). When the router is down too, the problem is at home, not at the ISP. While the lab itself has no power, nothing is measured, so that time is not counted as an outage.
+    |||) + { gridPos: { h: 4 } },
   ],
   [
     a.stat('Internet now', [a.q(UP, 'Internet')], 'none', [['red', null], ['green', 1]]) + updown + { gridPos: { h: 6 } },
@@ -46,6 +50,20 @@ a.dashboard('anvil-internet', 'Internet',
     a.gauge('Uptime, 24 hours', [pct('24h', '1m')], 'percent', uptime, 95, 100) + { gridPos: { h: 6 } },
     a.gauge('Uptime, 7 days', [pct('7d', '5m')], 'percent', uptime, 95, 100) + { gridPos: { h: 6 } },
     a.gauge('Uptime, 30 days', [pct('30d', '10m')], 'percent', uptime, 95, 100) + { gridPos: { h: 6 } },
+  ],
+  [
+    a.stat('Download, last test', [a.q(DOWN, 'Download')], 'bps', [['red', null], ['orange', 50000000], ['green', 200000000]]) + { gridPos: { h: 6 } },
+    a.stat('Upload, last test', [a.q(UPL, 'Upload')], 'bps', [['red', null], ['orange', 20000000], ['green', 100000000]]) + { gridPos: { h: 6 } },
+    a.stat('Usual download, 7 days', [a.q(USUAL, 'Usual')], 'bps') + { gridPos: { h: 6 } },
+    a.stat('Download against usual', [a.q('100 * %s / %s' % [DOWN, USUAL], 'Share')], 'percent',
+           [['red', null], ['orange', 40], ['green', 70]]) + { gridPos: { h: 6 } },
+    a.stat('Speed test ping', [a.q('last_over_time(speedtest_ping_ms[2h]) / 1000', 'Ping')], 's', ping) + { gridPos: { h: 6 } },
+  ],
+  [
+    a.ts('Speed (one test an hour)', [
+      a.q('speedtest_download_speed_bps', 'Download'),
+      a.q('speedtest_upload_speed_bps', 'Upload'),
+    ], 'bps', 0) + { gridPos: { h: 8 } },
   ],
   [
     a.timeline('Up and down', [
