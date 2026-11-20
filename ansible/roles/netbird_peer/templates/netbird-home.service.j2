@@ -2,7 +2,9 @@
 # The self-hosted network's client, next to the cloud client (netbird.service). Kept apart
 # from it: its own state directory, socket, log, interface and WireGuard port; its own
 # nftables table; no custom routing rules or eBPF proxy (both are host wide and owned by
-# the cloud client). It starts after Docker and the cloud client, and only once the ip
+# the cloud client). One rule of its own: traffic from its peers uses the main table. The
+# cloud client's table holds routes for the same home addresses this client routes (the
+# gateway, live TV), and its rule would send that traffic into the cloud tunnel. It starts after Docker and the cloud client, and only once the ip
 # filter table exists: with that table NetBird picks its nftables backend, so this client
 # never touches the cloud client's iptables chains.
 [Unit]
@@ -19,6 +21,8 @@ Environment=NB_DISABLE_EBPF_WG_PROXY=true
 Environment=SYSTEMD_UNIT={{ netbird_peer_home_service }}
 ExecStartPre=/bin/sh -c '/usr/sbin/nft list table ip filter >/dev/null'
 ExecStart=/usr/bin/netbird service run --log-level info --daemon-addr {{ netbird_peer_home_daemon_addr }} --log-file {{ netbird_peer_home_log_dir }}/client.log
+ExecStartPost=/bin/sh -c 'while /usr/sbin/ip rule del priority {{ netbird_peer_home_rule_priority }} iif {{ netbird_peer_home_interface }} 2>/dev/null; do :; done; /usr/sbin/ip rule add priority {{ netbird_peer_home_rule_priority }} iif {{ netbird_peer_home_interface }} lookup main'
+ExecStopPost=/bin/sh -c 'while /usr/sbin/ip rule del priority {{ netbird_peer_home_rule_priority }} iif {{ netbird_peer_home_interface }} 2>/dev/null; do :; done'
 StandardOutput=append:{{ netbird_peer_home_log_dir }}/netbird.out
 StandardError=append:{{ netbird_peer_home_log_dir }}/netbird.err
 Restart=always

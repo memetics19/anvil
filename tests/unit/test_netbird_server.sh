@@ -161,6 +161,8 @@ u=$tmp/netbird-home.service
 has "home: own state directory" "Environment=NB_STATE_DIR=/var/lib/netbird-home" "$u"
 has "home: own nftables table" "Environment=NB_NFTABLES_TABLE=netbird_home" "$u"
 has "home: no custom routing rules" "Environment=NB_DISABLE_CUSTOM_ROUTING=true" "$u"
+has "home: its peers' traffic uses the main table, not the cloud client's" "ip rule add priority 101 iif wt1 lookup main" "$u"
+has "home: the rule goes when it stops" "ExecStopPost=/bin/sh -c 'while /usr/sbin/ip rule del priority 101 iif wt1" "$u"
 has "home: no eBPF proxy" "Environment=NB_DISABLE_EBPF_WG_PROXY=true" "$u"
 has "home: own socket, not under /var/run/netbird/" "--daemon-addr unix:///var/run/netbird-home.sock" "$u"
 has "home: after Docker and the cloud client" "After=network-online.target docker.service netbird.service" "$u"

@@ -26,6 +26,9 @@ netbird_peer_home_state_dir: /var/lib/netbird-home
 netbird_peer_home_log_dir: /var/log/netbird-home
 netbird_peer_home_daemon_addr: unix:///var/run/netbird-home.sock
 netbird_peer_home_interface: wt1
+# Its peers' traffic uses the main table, ahead of the cloud client's rules (105, 110) and
+# after the netbird_server reply rule (100). See templates/netbird-home.service.j2.
+netbird_peer_home_rule_priority: 101
 netbird_peer_home_wg_port: 51821
 netbird_peer_home_nftables_table: netbird_home
 netbird_peer_home_memory_max: 256M
