@@ -1,0 +1,2812 @@
+{
+   "description": "The whole lab as a diagram: the internet, the router, both Proxmox nodes with live traffic, every VM and the services on it, green when it answers and red when it does not. Managed by anvil: change dashboards/labmap.jsonnet.",
+   "editable": false,
+   "panels": [
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "color": {
+                  "mode": "thresholds"
+               },
+               "mappings": [
+                  {
+                     "options": {
+                        "0": {
+                           "color": "red",
+                           "text": "DOWN"
+                        },
+                        "1": {
+                           "color": "green",
+                           "text": "UP"
+                        }
+                     },
+                     "type": "value"
+                  }
+               ],
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "green",
+                        "value": 1
+                     }
+                  ]
+               }
+            },
+            "overrides": [
+               {
+                  "matcher": {
+                     "id": "byRegexp",
+                     "options": "^traffic:.*"
+                  },
+                  "properties": [
+                     {
+                        "id": "unit",
+                        "value": "bps"
+                     },
+                     {
+                        "id": "decimals",
+                        "value": 1
+                     },
+                     {
+                        "id": "mappings",
+                        "value": [ ]
+                     },
+                     {
+                        "id": "color",
+                        "value": {
+                           "fixedColor": "text",
+                           "mode": "fixed"
+                        }
+                     }
+                  ]
+               }
+            ]
+         },
+         "gridPos": {
+            "h": 27,
+            "w": 24,
+            "x": 0,
+            "y": 0
+         },
+         "id": 1,
+         "options": {
+            "infinitePan": false,
+            "inlineEditing": false,
+            "panZoom": true,
+            "root": {
+               "background": {
+                  "color": {
+                     "fixed": "transparent"
+                  }
+               },
+               "border": {
+                  "color": {
+                     "fixed": "transparent"
+                  }
+               },
+               "constraint": {
+                  "horizontal": "left",
+                  "vertical": "top"
+               },
+               "elements": [
+                  {
+                     "background": {
+                        "color": {
+                           "field": "net:internet",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 16,
+                        "text": {
+                           "fixed": "internet",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [
+                        {
+                           "color": {
+                              "field": "net:router",
+                              "fixed": "#8e8e8e"
+                           },
+                           "path": "straight",
+                           "size": {
+                              "fixed": 2,
+                              "max": 10,
+                              "min": 1
+                           },
+                           "source": {
+                              "x": 0,
+                              "y": -1
+                           },
+                           "target": {
+                              "x": 0,
+                              "y": 1
+                           },
+                           "targetName": "router"
+                        }
+                     ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "internet",
+                     "placement": {
+                        "height": 44,
+                        "left": 726,
+                        "top": 8,
+                        "width": 180
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "fixed": "transparent"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#ccccdc"
+                        },
+                        "size": 12,
+                        "text": {
+                           "field": "traffic:speed test",
+                           "fixed": "",
+                           "mode": "field"
+                        },
+                        "valign": "middle"
+                     },
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "speed",
+                     "placement": {
+                        "height": 18,
+                        "left": 916,
+                        "top": 22,
+                        "width": 200
+                     },
+                     "type": "metric-value"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "net:router",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 16,
+                        "text": {
+                           "fixed": "router",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [
+                        {
+                           "color": {
+                              "field": "node:pve",
+                              "fixed": "#8e8e8e"
+                           },
+                           "path": "straight",
+                           "size": {
+                              "fixed": 2,
+                              "max": 10,
+                              "min": 1
+                           },
+                           "source": {
+                              "x": 0,
+                              "y": -1
+                           },
+                           "target": {
+                              "x": 0,
+                              "y": 1
+                           },
+                           "targetName": "node pve"
+                        },
+                        {
+                           "color": {
+                              "field": "svc:pve2",
+                              "fixed": "#8e8e8e"
+                           },
+                           "path": "straight",
+                           "size": {
+                              "fixed": 2,
+                              "max": 10,
+                              "min": 1
+                           },
+                           "source": {
+                              "x": 0,
+                              "y": -1
+                           },
+                           "target": {
+                              "x": 0,
+                              "y": 1
+                           },
+                           "targetName": "node pve2"
+                        },
+                        {
+                           "color": {
+                              "field": "svc:switch",
+                              "fixed": "#8e8e8e"
+                           },
+                           "path": "straight",
+                           "size": {
+                              "fixed": 2,
+                              "max": 10,
+                              "min": 1
+                           },
+                           "source": {
+                              "x": 0,
+                              "y": -1
+                           },
+                           "target": {
+                              "x": 0,
+                              "y": 1
+                           },
+                           "targetName": "switch"
+                        }
+                     ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "router",
+                     "placement": {
+                        "height": 44,
+                        "left": 726,
+                        "top": 92,
+                        "width": 180
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:switch",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 13,
+                        "text": {
+                           "fixed": "switch",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "switch",
+                     "placement": {
+                        "height": 32,
+                        "left": 976,
+                        "top": 98,
+                        "width": 120
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "node:pve",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 18,
+                        "text": {
+                           "fixed": "pve",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [
+                        {
+                           "color": {
+                              "field": "node:apps",
+                              "fixed": "#8e8e8e"
+                           },
+                           "path": "straight",
+                           "size": {
+                              "fixed": 2,
+                              "max": 10,
+                              "min": 1
+                           },
+                           "source": {
+                              "x": 0,
+                              "y": -1
+                           },
+                           "target": {
+                              "x": 0,
+                              "y": 1
+                           },
+                           "targetName": "vm apps"
+                        },
+                        {
+                           "color": {
+                              "field": "node:frigate",
+                              "fixed": "#8e8e8e"
+                           },
+                           "path": "straight",
+                           "size": {
+                              "fixed": 2,
+                              "max": 10,
+                              "min": 1
+                           },
+                           "source": {
+                              "x": 0,
+                              "y": -1
+                           },
+                           "target": {
+                              "x": 0,
+                              "y": 1
+                           },
+                           "targetName": "vm frigate"
+                        },
+                        {
+                           "color": {
+                              "field": "node:netbird",
+                              "fixed": "#8e8e8e"
+                           },
+                           "path": "straight",
+                           "size": {
+                              "fixed": 2,
+                              "max": 10,
+                              "min": 1
+                           },
+                           "source": {
+                              "x": 0,
+                              "y": -1
+                           },
+                           "target": {
+                              "x": 0,
+                              "y": 1
+                           },
+                           "targetName": "vm netbird"
+                        },
+                        {
+                           "color": {
+                              "field": "node:ragnarok",
+                              "fixed": "#8e8e8e"
+                           },
+                           "path": "straight",
+                           "size": {
+                              "fixed": 2,
+                              "max": 10,
+                              "min": 1
+                           },
+                           "source": {
+                              "x": 0,
+                              "y": -1
+                           },
+                           "target": {
+                              "x": 0,
+                              "y": 1
+                           },
+                           "targetName": "vm ragnarok"
+                        },
+                        {
+                           "color": {
+                              "field": "svc:vault",
+                              "fixed": "#8e8e8e"
+                           },
+                           "path": "straight",
+                           "size": {
+                              "fixed": 2,
+                              "max": 10,
+                              "min": 1
+                           },
+                           "source": {
+                              "x": 0,
+                              "y": -1
+                           },
+                           "target": {
+                              "x": 0,
+                              "y": 1
+                           },
+                           "targetName": "vm vault"
+                        },
+                        {
+                           "color": {
+                              "field": "svc:pass",
+                              "fixed": "#8e8e8e"
+                           },
+                           "path": "straight",
+                           "size": {
+                              "fixed": 2,
+                              "max": 10,
+                              "min": 1
+                           },
+                           "source": {
+                              "x": 0,
+                              "y": -1
+                           },
+                           "target": {
+                              "x": 0,
+                              "y": 1
+                           },
+                           "targetName": "vm vaultwarden"
+                        }
+                     ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "node pve",
+                     "placement": {
+                        "height": 50,
+                        "left": 379,
+                        "top": 180,
+                        "width": 220
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "fixed": "transparent"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#ccccdc"
+                        },
+                        "size": 12,
+                        "text": {
+                           "field": "traffic:pve in",
+                           "fixed": "",
+                           "mode": "field"
+                        },
+                        "valign": "middle"
+                     },
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "pve in",
+                     "placement": {
+                        "height": 18,
+                        "left": 379,
+                        "top": 232,
+                        "width": 110
+                     },
+                     "type": "metric-value"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "fixed": "transparent"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#ccccdc"
+                        },
+                        "size": 12,
+                        "text": {
+                           "field": "traffic:pve out",
+                           "fixed": "",
+                           "mode": "field"
+                        },
+                        "valign": "middle"
+                     },
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "pve out",
+                     "placement": {
+                        "height": 18,
+                        "left": 489,
+                        "top": 232,
+                        "width": 110
+                     },
+                     "type": "metric-value"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:pve2",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 18,
+                        "text": {
+                           "fixed": "pve2",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [
+                        {
+                           "color": {
+                              "field": "node:dispatcharr",
+                              "fixed": "#8e8e8e"
+                           },
+                           "path": "straight",
+                           "size": {
+                              "fixed": 2,
+                              "max": 10,
+                              "min": 1
+                           },
+                           "source": {
+                              "x": 0,
+                              "y": -1
+                           },
+                           "target": {
+                              "x": 0,
+                              "y": 1
+                           },
+                           "targetName": "vm dispatcharr"
+                        },
+                        {
+                           "color": {
+                              "field": "node:identity",
+                              "fixed": "#8e8e8e"
+                           },
+                           "path": "straight",
+                           "size": {
+                              "fixed": 2,
+                              "max": 10,
+                              "min": 1
+                           },
+                           "source": {
+                              "x": 0,
+                              "y": -1
+                           },
+                           "target": {
+                              "x": 0,
+                              "y": 1
+                           },
+                           "targetName": "vm identity"
+                        },
+                        {
+                           "color": {
+                              "field": "node:monitoring",
+                              "fixed": "#8e8e8e"
+                           },
+                           "path": "straight",
+                           "size": {
+                              "fixed": 2,
+                              "max": 10,
+                              "min": 1
+                           },
+                           "source": {
+                              "x": 0,
+                              "y": -1
+                           },
+                           "target": {
+                              "x": 0,
+                              "y": 1
+                           },
+                           "targetName": "vm monitoring"
+                        },
+                        {
+                           "color": {
+                              "field": "svc:wazuh",
+                              "fixed": "#8e8e8e"
+                           },
+                           "path": "straight",
+                           "size": {
+                              "fixed": 2,
+                              "max": 10,
+                              "min": 1
+                           },
+                           "source": {
+                              "x": 0,
+                              "y": -1
+                           },
+                           "target": {
+                              "x": 0,
+                              "y": 1
+                           },
+                           "targetName": "vm wazuh"
+                        }
+                     ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "node pve2",
+                     "placement": {
+                        "height": 50,
+                        "left": 1179,
+                        "top": 180,
+                        "width": 220
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:pve",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 11,
+                        "text": {
+                           "fixed": "pve",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "page pve",
+                     "placement": {
+                        "height": 28,
+                        "left": 609,
+                        "top": 190,
+                        "width": 72
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:ceph",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 11,
+                        "text": {
+                           "fixed": "ceph",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "page ceph",
+                     "placement": {
+                        "height": 28,
+                        "left": 687,
+                        "top": 190,
+                        "width": 72
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:idrac",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 11,
+                        "text": {
+                           "fixed": "idrac",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "page idrac",
+                     "placement": {
+                        "height": 28,
+                        "left": 765,
+                        "top": 190,
+                        "width": 72
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:pve2",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 11,
+                        "text": {
+                           "fixed": "pve2 ui",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "page pve2",
+                     "placement": {
+                        "height": 28,
+                        "left": 1409,
+                        "top": 190,
+                        "width": 72
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "fixed": "transparent"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#8e8e8e"
+                        },
+                        "size": 11,
+                        "text": {
+                           "fixed": "numbers under pve: its traffic in and out",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "legend in",
+                     "placement": {
+                        "height": 16,
+                        "left": 16,
+                        "top": 8,
+                        "width": 300
+                     },
+                     "type": "text"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "fixed": "transparent"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#8e8e8e"
+                        },
+                        "size": 11,
+                        "text": {
+                           "fixed": "last speed test, download",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "legend speed",
+                     "placement": {
+                        "height": 16,
+                        "left": 916,
+                        "top": 6,
+                        "width": 200
+                     },
+                     "type": "text"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "node:apps",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 15,
+                        "text": {
+                           "fixed": "apps",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "vm apps",
+                     "placement": {
+                        "height": 44,
+                        "left": 16,
+                        "top": 300,
+                        "width": 146
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:dns",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "dns",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc apps dns",
+                     "placement": {
+                        "height": 28,
+                        "left": 24,
+                        "top": 362,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:home",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "home",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc apps home",
+                     "placement": {
+                        "height": 28,
+                        "left": 24,
+                        "top": 396,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:docs",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "docs",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc apps docs",
+                     "placement": {
+                        "height": 28,
+                        "left": 24,
+                        "top": 430,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "node:frigate",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 15,
+                        "text": {
+                           "fixed": "frigate",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "vm frigate",
+                     "placement": {
+                        "height": 44,
+                        "left": 176,
+                        "top": 300,
+                        "width": 146
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:frigate",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "frigate",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc frigate frigate",
+                     "placement": {
+                        "height": 28,
+                        "left": 184,
+                        "top": 362,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:gotify",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "gotify",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc frigate gotify",
+                     "placement": {
+                        "height": 28,
+                        "left": 184,
+                        "top": 396,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "node:netbird",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 15,
+                        "text": {
+                           "fixed": "netbird",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "vm netbird",
+                     "placement": {
+                        "height": 44,
+                        "left": 336,
+                        "top": 300,
+                        "width": 146
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:ntfy",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "ntfy",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc netbird ntfy",
+                     "placement": {
+                        "height": 28,
+                        "left": 344,
+                        "top": 362,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:pulse",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "pulse",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc netbird pulse",
+                     "placement": {
+                        "height": 28,
+                        "left": 344,
+                        "top": 396,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "nb:server",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "netbird server",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc netbird netbird server",
+                     "placement": {
+                        "height": 28,
+                        "left": 344,
+                        "top": 430,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "node:ragnarok",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 15,
+                        "text": {
+                           "fixed": "ragnarok",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "vm ragnarok",
+                     "placement": {
+                        "height": 44,
+                        "left": 496,
+                        "top": 300,
+                        "width": 146
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:sonarr",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "sonarr",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc ragnarok sonarr",
+                     "placement": {
+                        "height": 28,
+                        "left": 504,
+                        "top": 362,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:radarr",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "radarr",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc ragnarok radarr",
+                     "placement": {
+                        "height": 28,
+                        "left": 504,
+                        "top": 396,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:prowlarr",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "prowlarr",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc ragnarok prowlarr",
+                     "placement": {
+                        "height": 28,
+                        "left": 504,
+                        "top": 430,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:jackett",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "jackett",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc ragnarok jackett",
+                     "placement": {
+                        "height": 28,
+                        "left": 504,
+                        "top": 464,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:bazarr",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "bazarr",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc ragnarok bazarr",
+                     "placement": {
+                        "height": 28,
+                        "left": 504,
+                        "top": 498,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:qbit",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "qbit",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc ragnarok qbit",
+                     "placement": {
+                        "height": 28,
+                        "left": 504,
+                        "top": 532,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:files",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "files",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc ragnarok files",
+                     "placement": {
+                        "height": 28,
+                        "left": 504,
+                        "top": 566,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:youtube",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "youtube",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc ragnarok youtube",
+                     "placement": {
+                        "height": 28,
+                        "left": 504,
+                        "top": 600,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:threadfin",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "threadfin",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc ragnarok threadfin",
+                     "placement": {
+                        "height": 28,
+                        "left": 504,
+                        "top": 634,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:tv",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "tv",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc ragnarok tv",
+                     "placement": {
+                        "height": 28,
+                        "left": 504,
+                        "top": 668,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:vault",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 15,
+                        "text": {
+                           "fixed": "vault",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "vm vault",
+                     "placement": {
+                        "height": 44,
+                        "left": 656,
+                        "top": 300,
+                        "width": 146
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:vault",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "vault",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc vault vault",
+                     "placement": {
+                        "height": 28,
+                        "left": 664,
+                        "top": 362,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:pass",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 15,
+                        "text": {
+                           "fixed": "vaultwarden",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "vm vaultwarden",
+                     "placement": {
+                        "height": 44,
+                        "left": 816,
+                        "top": 300,
+                        "width": 146
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:pass",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "pass",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc vaultwarden pass",
+                     "placement": {
+                        "height": 28,
+                        "left": 824,
+                        "top": 362,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "node:dispatcharr",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 15,
+                        "text": {
+                           "fixed": "dispatcharr",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "vm dispatcharr",
+                     "placement": {
+                        "height": 44,
+                        "left": 976,
+                        "top": 300,
+                        "width": 146
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:dispatcharr",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "dispatcharr",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc dispatcharr dispatcharr",
+                     "placement": {
+                        "height": 28,
+                        "left": 984,
+                        "top": 362,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "node:identity",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 15,
+                        "text": {
+                           "fixed": "identity",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "vm identity",
+                     "placement": {
+                        "height": 44,
+                        "left": 1136,
+                        "top": 300,
+                        "width": 146
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:auth",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "auth",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc identity auth",
+                     "placement": {
+                        "height": 28,
+                        "left": 1144,
+                        "top": 362,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "node:monitoring",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 15,
+                        "text": {
+                           "fixed": "monitoring",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "vm monitoring",
+                     "placement": {
+                        "height": 44,
+                        "left": 1296,
+                        "top": 300,
+                        "width": 146
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:grafana",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "grafana",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc monitoring grafana",
+                     "placement": {
+                        "height": 28,
+                        "left": 1304,
+                        "top": 362,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:wazuh",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 15,
+                        "text": {
+                           "fixed": "wazuh",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "vm wazuh",
+                     "placement": {
+                        "height": 44,
+                        "left": 1456,
+                        "top": 300,
+                        "width": 146
+                     },
+                     "type": "rectangle"
+                  },
+                  {
+                     "background": {
+                        "color": {
+                           "field": "svc:wazuh",
+                           "fixed": "#8e8e8e"
+                        }
+                     },
+                     "border": {
+                        "color": {
+                           "fixed": "transparent"
+                        },
+                        "radius": 6,
+                        "width": 0
+                     },
+                     "config": {
+                        "align": "center",
+                        "color": {
+                           "fixed": "#0b0c0e"
+                        },
+                        "size": 12,
+                        "text": {
+                           "fixed": "wazuh",
+                           "mode": "fixed"
+                        },
+                        "valign": "middle"
+                     },
+                     "connections": [ ],
+                     "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                     },
+                     "name": "svc wazuh wazuh",
+                     "placement": {
+                        "height": 28,
+                        "left": 1464,
+                        "top": 362,
+                        "width": 130
+                     },
+                     "type": "rectangle"
+                  }
+               ],
+               "name": "Element root",
+               "type": "frame"
+            },
+            "showAdvancedTypes": true
+         },
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"ping\",scope=\"internet\"})",
+               "instant": true,
+               "legendFormat": "net:internet",
+               "refId": "A"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"ping\",probe=\"router\"})",
+               "instant": true,
+               "legendFormat": "net:router",
+               "refId": "B"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(up{job=\"netbird_server\"})",
+               "instant": true,
+               "legendFormat": "nb:server",
+               "refId": "C"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "8 * sum(rate(node_network_receive_bytes_total{host=\"pve\",device=\"vmbr0\"}[5m]))",
+               "instant": true,
+               "legendFormat": "traffic:pve in",
+               "refId": "D"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "8 * sum(rate(node_network_transmit_bytes_total{host=\"pve\",device=\"vmbr0\"}[5m]))",
+               "instant": true,
+               "legendFormat": "traffic:pve out",
+               "refId": "E"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(last_over_time(speedtest_download_speed_bps[2h]))",
+               "instant": true,
+               "legendFormat": "traffic:speed test",
+               "refId": "F"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(up{job=\"node\",host=\"pve\"})",
+               "instant": true,
+               "legendFormat": "node:pve",
+               "refId": "G"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(up{job=\"node\",host=\"apps\"})",
+               "instant": true,
+               "legendFormat": "node:apps",
+               "refId": "H"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(up{job=\"node\",host=\"frigate\"})",
+               "instant": true,
+               "legendFormat": "node:frigate",
+               "refId": "I"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(up{job=\"node\",host=\"netbird\"})",
+               "instant": true,
+               "legendFormat": "node:netbird",
+               "refId": "J"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(up{job=\"node\",host=\"ragnarok\"})",
+               "instant": true,
+               "legendFormat": "node:ragnarok",
+               "refId": "K"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(up{job=\"node\",host=\"dispatcharr\"})",
+               "instant": true,
+               "legendFormat": "node:dispatcharr",
+               "refId": "L"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(up{job=\"node\",host=\"identity\"})",
+               "instant": true,
+               "legendFormat": "node:identity",
+               "refId": "M"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(up{job=\"node\",host=\"monitoring\"})",
+               "instant": true,
+               "legendFormat": "node:monitoring",
+               "refId": "N"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"auth\"})",
+               "instant": true,
+               "legendFormat": "svc:auth",
+               "refId": "O"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"bazarr\"})",
+               "instant": true,
+               "legendFormat": "svc:bazarr",
+               "refId": "P"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"ceph\"})",
+               "instant": true,
+               "legendFormat": "svc:ceph",
+               "refId": "Q"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"dispatcharr\"})",
+               "instant": true,
+               "legendFormat": "svc:dispatcharr",
+               "refId": "R"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"dns\"})",
+               "instant": true,
+               "legendFormat": "svc:dns",
+               "refId": "S"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"docs\"})",
+               "instant": true,
+               "legendFormat": "svc:docs",
+               "refId": "T"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"files\"})",
+               "instant": true,
+               "legendFormat": "svc:files",
+               "refId": "U"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"frigate\"})",
+               "instant": true,
+               "legendFormat": "svc:frigate",
+               "refId": "V"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"gotify\"})",
+               "instant": true,
+               "legendFormat": "svc:gotify",
+               "refId": "W"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"grafana\"})",
+               "instant": true,
+               "legendFormat": "svc:grafana",
+               "refId": "X"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"home\"})",
+               "instant": true,
+               "legendFormat": "svc:home",
+               "refId": "Y"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"idrac\"})",
+               "instant": true,
+               "legendFormat": "svc:idrac",
+               "refId": "Z"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"jackett\"})",
+               "instant": true,
+               "legendFormat": "svc:jackett",
+               "refId": "["
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"ntfy\"})",
+               "instant": true,
+               "legendFormat": "svc:ntfy",
+               "refId": "\\"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"pass\"})",
+               "instant": true,
+               "legendFormat": "svc:pass",
+               "refId": "]"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"prowlarr\"})",
+               "instant": true,
+               "legendFormat": "svc:prowlarr",
+               "refId": "^"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"pulse\"})",
+               "instant": true,
+               "legendFormat": "svc:pulse",
+               "refId": "_"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"pve\"})",
+               "instant": true,
+               "legendFormat": "svc:pve",
+               "refId": "`"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"pve2\"})",
+               "instant": true,
+               "legendFormat": "svc:pve2",
+               "refId": "a"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"qbit\"})",
+               "instant": true,
+               "legendFormat": "svc:qbit",
+               "refId": "b"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"radarr\"})",
+               "instant": true,
+               "legendFormat": "svc:radarr",
+               "refId": "c"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"sonarr\"})",
+               "instant": true,
+               "legendFormat": "svc:sonarr",
+               "refId": "d"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"switch\"})",
+               "instant": true,
+               "legendFormat": "svc:switch",
+               "refId": "e"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"threadfin\"})",
+               "instant": true,
+               "legendFormat": "svc:threadfin",
+               "refId": "f"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"tv\"})",
+               "instant": true,
+               "legendFormat": "svc:tv",
+               "refId": "g"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"vault\"})",
+               "instant": true,
+               "legendFormat": "svc:vault",
+               "refId": "h"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"wazuh\"})",
+               "instant": true,
+               "legendFormat": "svc:wazuh",
+               "refId": "i"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(probe_success{job=\"service\",service=\"youtube\"})",
+               "instant": true,
+               "legendFormat": "svc:youtube",
+               "refId": "j"
+            }
+         ],
+         "title": "The lab",
+         "type": "canvas"
+      },
+      {
+         "datasource": {
+            "type": "datasource",
+            "uid": "-- Mixed --"
+         },
+         "gridPos": {
+            "h": 3,
+            "w": 16,
+            "x": 0,
+            "y": 100
+         },
+         "id": 2,
+         "options": {
+            "content": "Every box is checked live: **green** answers, **red** does not, **grey** has no data. Hosts are checked by node_exporter, services by the gateway's checks (the **SLA** dashboard has the detail), the NetBird server by its own metrics. The lines carry the colour of what they lead to, so a red line shows where the break is. The numbers by each node are its network traffic in and out. Scroll to zoom, drag to move.\n",
+            "mode": "markdown"
+         },
+         "pluginVersion": "v13.0.0",
+         "title": "How to read this",
+         "type": "text"
+      },
+      {
+         "datasource": {
+            "type": "datasource",
+            "uid": "-- Mixed --"
+         },
+         "gridPos": {
+            "h": 6,
+            "w": 8,
+            "x": 16,
+            "y": 100
+         },
+         "id": 3,
+         "options": {
+            "showHeader": true,
+            "sortBy": [
+               {
+                  "desc": true,
+                  "displayName": "Count"
+               }
+            ]
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max by (service) (probe_success{job=\"service\"}) == 0",
+               "format": "table",
+               "instant": true,
+               "legendFormat": "{{service}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Not answering right now",
+         "type": "table"
+      }
+   ],
+   "refresh": "1m",
+   "schemaVersion": 39,
+   "tags": [
+      "anvil",
+      "lab",
+      "map",
+      "overview"
+   ],
+   "time": {
+      "from": "now-24h",
+      "to": "now"
+   },
+   "timezone": "browser",
+   "title": "Lab map",
+   "uid": "anvil-labmap"
+}

@@ -55,6 +55,11 @@ The dashboards:
   each linking to the SLA dashboard), then one row per host (up,
   uptime, CPU, memory, fullest disk), what is firing now and over time, CPU, memory, network
   traffic and ping time. The Dashboards menu at the top goes on to the others.
+- **Lab map**: the whole lab drawn as a diagram (Canvas). The internet with the last speed
+  test, the router, both Proxmox nodes (pve with its traffic in and out), every VM and the
+  services on it, each box green when it answers and red when it does not, and lines that
+  take the colour of what they lead to. The layout (which VM on which node, which service on
+  which VM) is in `dashboards/labmap.jsonnet`: change it there when something moves.
 - **Pi-hole**: DNS answering and blocking on, queries, blocks, blocked share and clients today,
   queries per second, DNS and upstream answer times, cache against upstream, and the top
   domains, blocked domains, clients and query types.
