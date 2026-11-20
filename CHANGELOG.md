@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.33.0](https://github.com/memetics19/anvil/compare/v0.32.0...v0.33.0) (2026-11-20)
+
+
+### Features
+
+* **monitoring:** hourly internet speed test ([#245](https://github.com/memetics19/anvil/issues/245)) ([cf9fa42](https://github.com/memetics19/anvil/commit/cf9fa4250cda367af5c693097b0b4ff000e33bcc))
+* **monitoring:** SLA dashboard for every service, on the home page too ([#246](https://github.com/memetics19/anvil/issues/246)) ([e34e23d](https://github.com/memetics19/anvil/commit/e34e23d31c4cf94f5185b94702ad535a7ddb1c68))
+* **netbird:** self-hosted server reachable without Cloudflare, with policies ([#247](https://github.com/memetics19/anvil/issues/247)) ([c91dfa1](https://github.com/memetics19/anvil/commit/c91dfa19d24629319934d57b194359a1c8ea9cd6))
+* **tetragon:** runtime security in the kernel, in audit, into Wazuh ([#243](https://github.com/memetics19/anvil/issues/243)) ([84a6449](https://github.com/memetics19/anvil/commit/84a6449c56232fbc0bf72fc0db0b94ca5d19df19))
+
+
+### Bug Fixes
+
+* **security:** build the CLI with Go 1.27.4 and Caddy with Go 1.26.11 (CVE-2026-97054) ([#248](https://github.com/memetics19/anvil/issues/248)) ([28e2b31](https://github.com/memetics19/anvil/commit/28e2b31c1fb648f160c704111b8c433ecd290550))
+* **wazuh_agent, pve_lab_route:** agents on every host ([#242](https://github.com/memetics19/anvil/issues/242)) ([b020c23](https://github.com/memetics19/anvil/commit/b020c233bbec7a1e8c394a8dab93e89dadf7eceb))
+
 ## [0.32.0](https://github.com/memetics19/anvil/compare/v0.31.0...v0.32.0) (2026-11-16)
 
 
