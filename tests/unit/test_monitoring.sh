@@ -64,7 +64,7 @@ cat >"$tmp/play.yml" <<PLAY
         monitoring_wazuh_reader: "$secret"
         monitoring_wazuh_ca_pem: "-----BEGIN CERTIFICATE-----\\nTEST\\n-----END CERTIFICATE-----"
 PLAY
-if ansible-playbook -i "$tmp/inv.yml" -c local -e monitoring_bind_ip=192.0.2.132 "$tmp/play.yml" >"$tmp/render.log" 2>&1; then ok "templates render"; else bad_ "templates render"; cat "$tmp/render.log"; exit 1; fi
+if ansible-playbook -i "$tmp/inv.yml" -c local -e monitoring_bind_ip=192.0.2.132 -e monitoring_netbird_server_target=192.0.2.115:9095 "$tmp/play.yml" >"$tmp/render.log" 2>&1; then ok "templates render"; else bad_ "templates render"; cat "$tmp/render.log"; exit 1; fi
 c=$tmp/docker-compose.yml s=$tmp/scrape.yml
 
 # Grafana's server reaches Authentik at the gateway, not through the VM's public resolvers.
@@ -111,6 +111,9 @@ check "the speed test runs once an hour, is never published, and its metrics get
 check "only Grafana and Alertmanager's API are published, on the lab address" \
   "[ \"\$(grep -cE '^\s+- \"[0-9.]+:[0-9]+:[0-9]+\"' $c)\" = 2 ] && grep -q '\"192.0.2.132:3000:3000\"' $c && grep -q '\"192.0.2.132:9093:9093\"' $c"
 check "metrics kept 90 days" "grep -q -- '-retentionPeriod=90d' $c"
+check "the self-hosted NetBird server is scraped on its metrics port" \
+  "awk '/job_name: netbird_server/{p=1} p&&/job_name: /&&!/netbird_server/{exit} p' \$s | grep -q 'targets: \\[\"192.0.2.115:9095\"\\]'"
+check "NetBird alerts: server down and API errors" "grep -q 'alert: NetBirdServerDown' \$r/files/rules/netbird.yml && grep -q 'alert: NetBirdServerErrors' \$r/files/rules/netbird.yml"
 check "node_exporter on every host of the group" \
   "for a in 192.0.2.114 192.0.2.121 192.0.2.132; do grep -q \"\\\"\$a:9100\\\"\" $s || exit 1; done"
 check "and on the Proxmox host" "grep -q '\"192.0.2.10:9100\"' $s"

@@ -26,6 +26,10 @@ netbird_server_reply_table: 2601
 netbird_server_reply_nft: /etc/anvil-netbird-reply.nft
 # The server's plain HTTP port, on the VM's loopback only: the role's API calls.
 netbird_server_api_port: 8089
+# Its Prometheus metrics (management, signal and relay), on the VM's lab address for the
+# monitoring VM's scrape (job netbird_server, the NetBird dashboard). port_guard lets only
+# the monitoring VM and the gateway connect (inventory/host_vars/netbird.yml).
+netbird_server_metrics_port: 9095
 # The dashboard's Content-Security-Policy as Caddy sends it: the image's own rules with only
 # this host as a source (no vendor or tracker domains). The script hash is the dashboard's
 # inline script (from its image, /usr/local/init_react_envs.sh). Check it after a bump.

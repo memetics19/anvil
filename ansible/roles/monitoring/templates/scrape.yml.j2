@@ -10,6 +10,14 @@ scrape_configs:
       - targets: ["{{ t.address }}"]
         labels: {host: "{{ t.name }}"}
 {% endfor %}
+{% if monitoring_netbird_server_target | length > 0 %}
+
+  # The self-hosted NetBird server: management, signal and relay (dashboard NetBird).
+  - job_name: netbird_server
+    static_configs:
+      - targets: ["{{ monitoring_netbird_server_target }}"]
+        labels: {host: netbird}
+{% endif %}
 
   # The internet and DNS (blackbox exporter): one job per kind of check. Each target is sent to
   # the exporter as ?target=, and named by its probe label.

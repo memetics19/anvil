@@ -156,6 +156,9 @@
       tags: [pulse]
     - role: apt_repo
       tags: [apt_repo]
+    # Before the server: its metrics port is closed to the LAN first.
+    - role: port_guard
+      tags: [port_guard, netbird_server]
     - role: netbird_server
       tags: [netbird_server]
   tasks:

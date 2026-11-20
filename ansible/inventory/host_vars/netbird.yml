@@ -4,3 +4,8 @@ guest_base_absent_packages:
   - "php*"
   - composer
   - jsonlint
+# The self-hosted NetBird server's metrics (role netbird_server, netbird_server_metrics_port)
+# answer only the monitoring VM, the gateway and this VM. Caddy's port (8443) is not listed:
+# NetBird clients reach it from anywhere.
+port_guard_ports: [9095]
+port_guard_extra_sources: ["{{ site.hosts.monitoring.ip }}"]
