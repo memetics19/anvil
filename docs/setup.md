@@ -438,26 +438,36 @@ cloud network, add it by hand:
 `make vm HOST=netbird` runs the server and sets it up (groups, policy, networks, DNS). Four
 things stay by hand.
 
-**1. The Cloudflare route.** The server's public name goes through the existing tunnel.
-Its connectors run on `frigate`, `netbird` and `ragnarok`. In the Cloudflare dashboard:
+**1. The public route.** The server's public name points straight at the home, not
+through Cloudflare. Cloudflare's tunnel drops gRPC's `grpc-status` trailer, and its proxy
+cuts idle gRPC streams after 100 seconds, so NetBird clients cannot use either. The path:
 
-1. Zero Trust, Networks, Tunnels: open that tunnel, Public hostnames, Add a public
-   hostname.
-2. Subdomain `sync`, domain `<domain>`, no path (the name is `site.netbird_domain`).
-3. Service type `HTTPS`, URL `<netbird-lab-address>:8443` (Caddy on the `netbird` VM).
-4. Additional application settings, TLS: turn on No TLS Verify and HTTP2 connection, and
-   set Origin Server Name to `sync.<domain>`. Save. Cloudflare adds the DNS record.
-5. In the `<domain>` zone, Network: turn gRPC on. Leave WebSockets on.
+1. The router forwards TCP 443 to the Proxmox host's home address. Nothing else is
+   forwarded. In the router's port mapping page: one rule, TCP, external 443 to internal
+   443, any remote host. Leave UPnP and DMZ off.
+2. The Proxmox host forwards it to Caddy on the `netbird` VM, port 8443
+   (`pve_network_netbird_forward: true` in `inventory/group_vars/proxmox.yml`). Apply it on
+   its own: `make host-network ARGS="--check --diff"`, then `make host-network`.
+3. In the `<domain>` zone, a DNS only (grey cloud) A record for `sync.<domain>` to the
+   home's public address. This publishes that address. A proxied record or a tunnel route
+   for the name breaks the clients again.
 
-Check that `https://sync.<domain>` shows the login page. Then run
-`make vm HOST=netbird ARGS="--tags netbird_home"`. It enrolls `netbird-home`, the routing
-peer.
+Caddy gets a Let's Encrypt certificate over port 443 by itself (TLS-ALPN, no DNS token on
+that VM). Until the name points at the home it serves its own certificate.
 
-Native NetBird clients need gRPC through the tunnel. Cloudflare documents gRPC on public
-tunnel names as unsupported. The tunnel answers but drops the `grpc-status` trailer, and
-the client gives up. The run checks for that trailer first. Without it, the run skips the
-enrollment with a warning and goes on. See [docs/usage.md](usage.md#self-hosted-netbird)
-for a route that works.
+Everything on the name answers from anywhere, as in NetBird's own setup. The dashboard
+and `/api` sit behind NetBird's login (the owner's password in `kv/homelab/netbird-srv`, 32
+random characters). Caddy logs every request with the client's own address, as the forwards
+do not masquerade. The `netbird` VM
+sends the replies back through the Proxmox host (`anvil-netbird-reply`), not through a
+NetBird client's routes. Pi-hole answers `sync.<domain>` with the Proxmox host's home
+address, so devices at home skip the router. On the `netbird` VM the name is Caddy on the
+loopback, for `netbird-home`. The self-hosted network does not send the name to Pi-hole:
+a client would then reach its own server through its own tunnel.
+
+Then run `make vm HOST=netbird ARGS="--tags netbird_home"`. It enrolls `netbird-home`, the
+routing peer. The run checks for the `grpc-status` trailer first. Without it, the run skips
+the enrollment with a warning and goes on.
 
 **2. The Proxmox host's return route.** The `home-gateway` route keeps the peer's own
 address (masquerade off). `apps` answers such a peer through the Proxmox host. The host

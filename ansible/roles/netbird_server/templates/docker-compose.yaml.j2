@@ -53,6 +53,9 @@ services:
     restart: unless-stopped
     ports:
       - "{{ site.hosts[inventory_hostname].ip }}:{{ netbird_server_https_port }}:443"
+      # This VM's own NetBird client (netbird-home) reaches the server here: the public
+      # name points to 127.0.0.1 in /etc/hosts, as the router does not loop back.
+      - "127.0.0.1:443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

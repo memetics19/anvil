@@ -27,6 +27,7 @@ cat >"$tmp/play.yml" <<PLAY
   gather_facts: false
   vars_files:
     - $PWD/ansible/inventory/group_vars/all/gateway.yml
+    - $PWD/ansible/inventory/group_vars/all/iptv.yml
     - $PWD/ansible/roles/netbird_server/defaults/main.yml
     - $PWD/ansible/roles/netbird_peer/defaults/main.yml
   vars:
@@ -75,6 +76,8 @@ cat >"$tmp/play.yml" <<PLAY
         iptv_streams_port: 34401
         pve_network_trunk_vids: []
         pve_network_netbird_return_route: true
+        pve_network_netbird_forward: true
+        pve_network_netbird_https_port: 8443
     - name: The Proxmox host's interfaces without the return route switch
       ansible.builtin.template:
         src: $PWD/ansible/roles/pve_network/templates/interfaces.j2
@@ -111,9 +114,13 @@ has "plain HTTP behind Caddy" 'listenAddress: ":80"' "$c"
 
 f=$tmp/Caddyfile
 has "Caddy: gRPC over h2c" "reverse_proxy @grpc h2c://netbird-server:80" "$f"
-has "Caddy: relay, API and IdP paths" "@backend path /relay* /ws-proxy/* /api/* /oauth2/*" "$f"
+has "Caddy: relay, WebSocket proxy, API and login pages" "@backend path /relay* /ws-proxy/* /api/* /oauth2/*" "$f"
 has "Caddy: the rest to the dashboard" "reverse_proxy dashboard:80" "$f"
-has "Caddy: own TLS for the tunnel origin" "tls internal" "$f"
+hasnt "Caddy: no address allowlist (the dashboard and API are behind NetBird's login)" "remote_ip" "$f"
+has "Caddy: Let's Encrypt over TLS-ALPN" "disable_http_challenge" "$f"
+has "Caddy: its own CA until the name points here" "issuer internal" "$f"
+hasnt "Caddy: no DNS token on this VM" "dns cloudflare" "$f"
+has "Caddy: access log with client addresses" "format json" "$f"
 has "Caddy: no Server header" "header -Server" "$f"
 has "Caddy: first party CSP for the dashboard" "header_down Content-Security-Policy \"default-src 'none'; connect-src 'self' https://sync.example.com " "$f"
 hasnt "Caddy: no vendor domain in the CSP" "netbird.io" "$f"
@@ -123,7 +130,9 @@ has "compose: Caddy is the patched build, not upstream's binary" 'image: anvil/c
 has "server API on loopback only" '"127.0.0.1:8089:80"' "$d"
 has "Caddy on the lab address only" '"192.0.2.115:8443:443"' "$d"
 check_ports=$(grep -cE '^\s+- "[0-9.]+:[0-9]+:[0-9]+' "$d")
-[ "$check_ports" = 2 ] && ok "two published ports" || bad "two published ports (got $check_ports)"
+[ "$check_ports" = 3 ] && ok "three published ports" || bad "three published ports (got $check_ports)"
+has "Caddy on the loopback too, for this VM's own client" '"127.0.0.1:443:443"' "$d"
+grep -q '127.0.0.1 {{ site.netbird_domain }} # anvil: netbird_server' ansible/roles/netbird_server/tasks/server.yml && ok "the public name is the loopback on this VM" || bad "hosts entry"
 hasnt "no UDP port" "/udp" "$d"
 images=$(grep -cE '^\s+image: .+:[^@]+@sha256:[0-9a-f]{64}$' "$d")
 # The server and the dashboard are pinned by digest. Caddy is the patched local build,
@@ -146,6 +155,8 @@ u=$tmp/netbird-home.service
 has "home: own state directory" "Environment=NB_STATE_DIR=/var/lib/netbird-home" "$u"
 has "home: own nftables table" "Environment=NB_NFTABLES_TABLE=netbird_home" "$u"
 has "home: no custom routing rules" "Environment=NB_DISABLE_CUSTOM_ROUTING=true" "$u"
+has "home: its peers' traffic uses the main table, not the cloud client's" "ip rule add priority 101 iif wt1 lookup main" "$u"
+has "home: the rule goes when it stops" "ExecStopPost=/bin/sh -c 'while /usr/sbin/ip rule del priority 101 iif wt1" "$u"
 has "home: no eBPF proxy" "Environment=NB_DISABLE_EBPF_WG_PROXY=true" "$u"
 has "home: own socket, not under /var/run/netbird/" "--daemon-addr unix:///var/run/netbird-home.sock" "$u"
 has "home: after Docker and the cloud client" "After=network-online.target docker.service netbird.service" "$u"
@@ -157,7 +168,22 @@ i=$tmp/interfaces
 has "pve: the network range routed to the netbird VM" "$(printf '\tpost-up ip route replace 100.64.0.0/16 via 192.0.2.115 dev vmbr0')" "$i"
 has "pve: and removed on down" "$(printf '\tpost-down ip route del 100.64.0.0/16 via 192.0.2.115 dev vmbr0 2>/dev/null || true')" "$i"
 hasnt "pve: no return route while the switch is off" "ip route replace" "$tmp/interfaces.off"
+has "pve: TCP 443 on the uplink address to Caddy on the netbird VM" "iptables -t nat -A PREROUTING -d 198.51.100.250/32 -p tcp --dport 443 -j DNAT --to-destination 192.0.2.115:8443" "$tmp/interfaces"
+has "pve: the forward accepted only for the DNATed connection" "iptables -A FORWARD -i vmbr0 -d 192.0.2.115/32 -p tcp --dport 8443 -m conntrack --ctstate DNAT -j ACCEPT" "$tmp/interfaces"
+hasnt "pve: no masquerade for it, the client's address stays" "MASQUERADE" "$tmp/interfaces"
+[ "$(grep -o 'dport 443 -j DNAT' "$tmp/interfaces" | wc -l | tr -d ' ')" = 4 ] && ok "pve: each 443 rule checked before it is added, and every copy removed" || bad "pve: 443 rule lines"
+hasnt "pve: no forward while the switch is off" "dport 443" "$tmp/interfaces.off"
+grep -qx 'pve_network_netbird_https_port: 8443' ansible/roles/pve_network/defaults/main.yml && grep -qx 'netbird_server_https_port: 8443' ansible/roles/netbird_server/defaults/main.yml && ok "pve forwards to the port Caddy listens on" || bad "pve forward port and Caddy's port differ"
 
+n=ansible/roles/netbird_server/templates/netbird-reply.nft.j2
+u=ansible/roles/netbird_server/templates/anvil-netbird-reply.service.j2
+has "netbird VM: forwarded Caddy connections marked" "tcp dport {{ netbird_server_https_port }} ct state new ct mark set {{ netbird_server_reply_mark }}" "$n"
+has "netbird VM: their replies carry the mark, and only the replies" "ct direction reply ct mark {{ netbird_server_reply_mark }} meta mark set {{ netbird_server_reply_mark }}" "$n"
+has "netbird VM: the marked replies use their own table" "fwmark {{ netbird_server_reply_mark }} lookup {{ netbird_server_reply_table }}" "$u"
+has "netbird VM: that table holds only the way back to the Proxmox host" "ip route replace default via {{ site.pve.gateway_alias_ip }} table {{ netbird_server_reply_table }}" "$u"
+grep -qx 'netbird_server_reply_table: 2601' ansible/roles/netbird_server/defaults/main.yml && ok "netbird VM: not NetBird's table (7120)" || bad "reply table"
+grep -qx 'netbird_server_reply_rule_priority: 100' ansible/roles/netbird_server/defaults/main.yml && ok "netbird VM: the reply rule comes before NetBird's rules (105, 110)" || bad "reply rule priority"
+hasnt "netbird VM: the mark is not NetBird's own" "0x1bd00" ansible/roles/netbird_server/defaults/main.yml
 # --- desired state --------------------------------------------------------------------------------
 j=$tmp/desired.json
 [ "$(jq -r '.networks[] | select(.name == "lab") | .resources[0].address' "$j")" = "192.0.0.0/16" ] \
@@ -175,9 +201,12 @@ j=$tmp/desired.json
 [ "$(jq -r '.networks[] | select(.name == "home-tv") | .routers[0].masquerade' "$j")" = false ] \
   && ok "tv route: masquerade off" || bad "tv route: masquerade off"
 [ "$(jq -c '.nameservers[0] | [.nameservers[0].ip, .domains[0], .groups[0]]' "$j")" = '["198.51.100.249","internal.example.com","operator"]' ] \
-  && ok "DNS: Pi-hole for the gateway domain, operator only" || bad "DNS: Pi-hole for the gateway domain"
-[ "$(jq -c '[.policies[] | [.sources, .destinations]]' "$j")" = '[[["operator"],["routers"]]]' ] \
-  && ok "one policy: operator to routers" || bad "one policy: operator to routers"
+  && ok "DNS: Pi-hole for the gateway domain" || bad "DNS: Pi-hole for the gateway domain"
+[ "$(jq -c '[.policies[] | [.name, .sources, .destinations, (.protocol // "all"), (.ports // [])]]' "$j")" = '[["operator-to-routers",["operator"],["routers","lab","gateway","live-tv"],"all",[]],["operator-to-operator",["operator"],["operator"],"all",[]],["tv-to-gateway",["tv"],["gateway"],"tcp",[443]],["tv-to-live-tv",["tv"],["live-tv"],"tcp",[34400,34401]]]' ] \
+  && ok "policies: the operator everywhere, televisions to HTTPS on the gateway and the live TV ports only" || { bad "policies"; jq -c '.policies' "$j"; }
+[ "$(jq -c '[.networks[].resources[].groups]' "$j")" = '[["lab"],["gateway"],["live-tv"]]' ] \
+  && ok "each routed network in its own resource group" || bad "each routed network in its own resource group"
+[ "$(jq -c '.nameservers[0].groups' "$j")" = '["operator","tv"]' ] && ok "Pi-hole for the operator and televisions" || bad "Pi-hole groups"
 [ "$(jq -c '.delete_policies' "$j")" = '["Default"]' ] && ok "the All to All Default policy goes" || bad "Default policy deleted"
 [ "$(jq -r '.settings.network_range' "$j")" = "100.64.0.0/16" ] && ok "network range from the site" || bad "network range"
 

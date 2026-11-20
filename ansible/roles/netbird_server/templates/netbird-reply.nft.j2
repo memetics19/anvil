@@ -1,0 +1,17 @@
+#!/usr/sbin/nft -f
+# Managed by anvil (role netbird_server). Connections the Proxmox host forwards to Caddy
+# (TCP {{ netbird_server_https_port }} on this VM's lab address) are marked, and their
+# replies carry the mark, so the ip rule of anvil-netbird-reply.service sends them back to
+# the Proxmox host. Without it a reply to a home address or a NetBird peer follows the
+# NetBird cloud client's routes into its tunnel and is lost.
+table inet anvil_netbird_reply
+delete table inet anvil_netbird_reply
+
+table inet anvil_netbird_reply {
+	chain prerouting {
+		type filter hook prerouting priority mangle; policy accept;
+		ip daddr {{ site.hosts[inventory_hostname].ip }} tcp dport {{ netbird_server_https_port }} ct state new ct mark set {{ netbird_server_reply_mark }}
+		# Replies only: the incoming packets must still reach the Caddy container.
+		ct direction reply ct mark {{ netbird_server_reply_mark }} meta mark set {{ netbird_server_reply_mark }}
+	}
+}

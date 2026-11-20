@@ -153,6 +153,18 @@
   when: netbird_server_have_secrets | bool
 
 # --- compose project ------------------------------------------------------------------------------
+# netbird-home, the routing peer on this VM, uses the public name. The router does not
+# loop a connection to the home's own public address back in, so on this VM the name is
+# Caddy on the loopback (published there by the compose file).
+- name: The public name is this VM's own Caddy, for its NetBird client
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '\s{{ site.netbird_domain | regex_escape }}(\s|$)'
+    line: "127.0.0.1 {{ site.netbird_domain }} # anvil: netbird_server"
+    owner: root
+    group: root
+    mode: "0644"
+
 # The file holds the VM's address and the public host name: no --diff output.
 # The patched Caddy that role caddy builds (current Go and golang.org/x/net), not upstream's
 # binary: built once on the build host, loaded here if this host does not have it yet.
@@ -182,9 +194,9 @@
   until: netbird_server_instance.status == 200
   when: not ansible_check_mode
 
-- name: Caddy answers on the VM's lab address (the tunnel's origin)
+- name: Caddy answers the login pages on the VM's lab address (open to every client)
   ansible.builtin.uri:
-    url: "https://{{ site.hosts[inventory_hostname].ip }}:{{ netbird_server_https_port }}/api/instance"
+    url: "https://{{ site.hosts[inventory_hostname].ip }}:{{ netbird_server_https_port }}/oauth2/.well-known/openid-configuration"
     headers:
       Host: "{{ site.netbird_domain }}"
     validate_certs: false
@@ -192,4 +204,13 @@
   retries: 20
   delay: 3
   until: netbird_server_origin.status == 200
+  when: not ansible_check_mode
+
+- name: The REST API asks for a login
+  ansible.builtin.uri:
+    url: "https://{{ site.hosts[inventory_hostname].ip }}:{{ netbird_server_https_port }}/api/peers"
+    headers:
+      Host: "{{ site.netbird_domain }}"
+    validate_certs: false
+    status_code: 401
   when: not ansible_check_mode

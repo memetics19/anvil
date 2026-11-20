@@ -326,16 +326,15 @@ Vaultwarden and the gateway together. To restart something by hand, do the same:
 The server runs next to NetBird's cloud service on the `netbird` VM
 ([services.md](services.md#self-hosted-netbird-server)).
 
-A client of the self-hosted network does not connect, but the dashboard loads: gRPC is not
-getting through the Cloudflare tunnel. Check the hand steps in
-[setup.md](setup.md#self-hosted-netbird): HTTP2 connection on the route, gRPC on in the
-zone. `docker logs netbird-caddy` on `netbird` shows whether gRPC requests arrive. Until it
-works, use the `cloud` profile.
+A client of the self-hosted network does not connect. Check the route in
+[setup.md](setup.md#self-hosted-netbird): `dig sync.<domain>` from outside must give the
+home's public address, not a Cloudflare one. `docker logs netbird-caddy` on `netbird` shows
+each request with the client's address. Until it works, use the `cloud` profile.
 
-Peers connect, but a connection that needs the relay fails (`Relayed` with no traffic in
-`netbird status -d`): the relay's WebSocket may not pass the HTTP/2 route. Add a second
-public hostname for the same name with path `^/relay`. Give it the same service and TLS
-settings, with HTTP2 connection off, and move it above the first.
+Gateway names do not resolve on the self-hosted network (`netbird status -d` shows the
+Pi-hole nameserver as Unavailable): `ip rule show priority 101` on `netbird` must show the
+`iif wt1 lookup main` rule of `netbird-home`. Test names with `ping` or a browser. On a Mac
+`dig` ignores NetBird's per-domain DNS.
 
 Status of the routing peer on the VM:
 `sudo netbird status -d --daemon-addr unix:///var/run/netbird-home.sock`.

@@ -20,6 +20,14 @@ pve_network_rollback_target: ""
 # off) so the service gateway's allowlist sees it. Off until pve_network_netbird_return_route
 # is true (a host network change of its own, approved separately).
 pve_network_netbird_return_route: false
+# The self-hosted NetBird server from the internet: the router forwards TCP 443 to this
+# host's uplink address, and vmbr0 forwards it to Caddy on the netbird VM (role
+# netbird_server, netbird_server_https_port, the same number). The client's own address
+# stays (no masquerade): the netbird VM answers through this host, its default gateway,
+# which undoes the forward. Nothing else is forwarded. Off until pve_network_netbird_forward
+# is true (a host network change of its own, approved separately).
+pve_network_netbird_forward: false
+pve_network_netbird_https_port: 8443
 
 # VLAN IDs the uplink port (eno1) carries tagged, for the switch trunk (inventory
 # group_vars/proxmox.yml `vlans`, docs/cisco-switch.md). The lab and home networks stay

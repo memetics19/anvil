@@ -1,0 +1,6 @@
+- name: Apply the NetBird reply route
+  ansible.builtin.systemd_service:
+    name: anvil-netbird-reply
+    state: restarted
+    daemon_reload: true
+  when: not ansible_check_mode

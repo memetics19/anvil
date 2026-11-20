@@ -1,11 +1,11 @@
 # Self-hosted NetBird on the netbird VM (Task 13c), next to the NetBird cloud client.
 # Compose project "netbird-server": the combined server (management, signal, relay and the
 # embedded identity provider), the dashboard, and Caddy in front of both. The public name
-# is site.netbird_domain, published through the existing Cloudflare tunnel (docs/setup.md,
-# Self-hosted NetBird). The site key is optional: without it the role does nothing.
+# is site.netbird_domain, a DNS-only record for the home's public address. The router and
+# the Proxmox host forward TCP 443 to Caddy here (docs/setup.md, Self-hosted NetBird). The site key is optional: without it the role does nothing.
 netbird_server_dir: /opt/netbird-server
 # Pinned by tag and digest. A bump is a deliberate change of these lines.
-netbird_server_image: netbirdio/netbird-server:0.81.5@sha256:6799c37020ff70b9708d0e13bfe7b7a5004084caad86ba165ffe5ea1c84c0ea2
+netbird_server_image: netbirdio/netbird-server:0.82.0@sha256:7b5b53b2dc8bc25639f791cf72d47cf86911894ff3f8a97cb79bab9be958109c
 netbird_server_dashboard_image: netbirdio/dashboard:v2.96.0@sha256:340b13c00b84349572a2acc5605e907cb09250a9e6461c757097eabdb8e02f2c
 # Role caddy's patched build, loaded by this role's tasks (caddy_image_resolved).
 netbird_server_caddy_image: "{{ caddy_image_resolved }}"
@@ -13,9 +13,17 @@ netbird_server_caddy_image: "{{ caddy_image_resolved }}"
 netbird_server_mem_limit: 512m
 netbird_server_dashboard_mem_limit: 96m
 netbird_server_caddy_mem_limit: 96m
-# Caddy (TLS with its own internal CA) on the VM's lab address: the Cloudflare tunnel's
-# origin for site.netbird_domain. Every tunnel connector reaches it there.
+# Caddy on the VM's lab address. The Proxmox host forwards TCP 443 from the router here
+# (role pve_network, pve_network_netbird_forward).
 netbird_server_https_port: 8443
+# Connections forwarded to Caddy are marked, and their replies go to the Proxmox host
+# through a table of their own (rule priority below NetBird's 105 and 110), so a reply to a
+# home address or a NetBird peer does not follow a NetBird client's route into its tunnel
+# (tasks/reply_route.yml). NetBird's own table is 7120.
+netbird_server_reply_mark: "0x2a1"
+netbird_server_reply_rule_priority: 100
+netbird_server_reply_table: 2601
+netbird_server_reply_nft: /etc/anvil-netbird-reply.nft
 # The server's plain HTTP port, on the VM's loopback only: the role's API calls.
 netbird_server_api_port: 8089
 # The dashboard's Content-Security-Policy as Caddy sends it: the image's own rules with only
@@ -29,7 +37,7 @@ netbird_server_dashboard_csp: >-
   font-src 'self'; img-src * data:; manifest-src 'self'; style-src 'self' 'unsafe-inline';
   frame-ancestors 'self'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;
 # Public STUN only. Without local STUN the server opens no UDP port. The relay (WebSocket
-# through the tunnel) carries a connection when hole punching fails.
+# on TCP 443) carries a connection when hole punching fails.
 netbird_server_stuns:
   - stun:stun.cloudflare.com:3478
   - stun:stun.l.google.com:19302
@@ -43,16 +51,34 @@ netbird_server_pat_days: 365
 netbird_server_pat_renew_days: 30
 
 # --- desired state of the self-hosted network (applied through the management API) ---------
-# Groups: operator (the owner's devices: every device the owner logs in joins it) and
-# routers (the routing peer and the routed resources). The only policy: operator to
-# routers. NetBird's All to All policy "Default" is deleted.
-netbird_server_groups: [operator, routers]
+# Groups of peers: operator (the owner's devices: every device the owner logs in joins it),
+# routers (the routing peer) and tv (televisions away from home, enrolled with a setup key
+# of that group). Groups of routed resources: lab, gateway (the apps VM's home address) and
+# live-tv (the Proxmox host's home address). NetBird's All to All policy "Default" is
+# deleted, so a peer reaches only what a policy below allows.
+netbird_server_groups: [operator, routers, tv, lab, gateway, live-tv]
 netbird_server_owner_auto_groups: [operator]
 netbird_server_policies:
   - name: operator-to-routers
-    description: The operator's devices reach the routed networks and the routing peer
+    description: The operator's devices reach the routing peer and every routed network
     sources: [operator]
-    destinations: [routers]
+    destinations: [routers, lab, gateway, live-tv]
+  - name: operator-to-operator
+    description: The operator's devices reach each other
+    sources: [operator]
+    destinations: [operator]
+  - name: tv-to-gateway
+    description: Televisions reach the service gateway over HTTPS (Jellyfin and the other apps)
+    sources: [tv]
+    destinations: [gateway]
+    protocol: tcp
+    ports: [443]
+  - name: tv-to-live-tv
+    description: Televisions reach live TV (Threadfin and the stream helper) on the Proxmox host
+    sources: [tv]
+    destinations: [live-tv]
+    protocol: tcp
+    ports: ["{{ iptv_threadfin_port }}", "{{ iptv_streams_port }}"]
 netbird_server_delete_policies: [Default]
 # The lab's /16 (masquerade on), the apps VM's home address (masquerade off, so the
 # gateway's Caddy allowlist sees the peer's own address) and the Proxmox host's home address
@@ -66,19 +92,19 @@ netbird_server_networks:
   - name: lab
     description: The lab network
     resources:
-      - {name: lab, address: "{{ netbird_server_lab_route }}", groups: [routers]}
+      - {name: lab, address: "{{ netbird_server_lab_route }}", groups: [lab]}
     routers:
       - {peer_groups: [routers], masquerade: true, metric: 9999}
   - name: home-gateway
     description: The service gateway's home address
     resources:
-      - {name: apps-home, address: "{{ site.hosts.apps.home_ip | default('') }}/32", groups: [routers]}
+      - {name: apps-home, address: "{{ site.hosts.apps.home_ip | default('') }}/32", groups: [gateway]}
     routers:
       - {peer_groups: [routers], masquerade: false, metric: 9999}
   - name: home-tv
     description: The Proxmox host's home address, for live TV away from home
     resources:
-      - {name: pve-home, address: "{{ site.pve.uplink_ip | default('') }}/32", groups: [routers]}
+      - {name: pve-home, address: "{{ site.pve.uplink_ip | default('') }}/32", groups: [live-tv]}
     routers:
       - {peer_groups: [routers], masquerade: false, metric: 9999}
 # Pi-hole answers the gateway names (<name>.<gateway domain>) for the operator's devices.
@@ -88,7 +114,7 @@ netbird_server_nameservers:
     nameservers:
       - {ip: "{{ site.hosts.apps.home_ip | default('') }}", ns_type: udp, port: 53}
     domains: ["{{ gateway_domain }}"]
-    groups: [operator]
+    groups: [operator, tv]
 # What tasks/api.yml sends to the API helper (files/netbird_api.py).
 netbird_server_desired:
   settings: >-
