@@ -1,17 +1,32 @@
-- name: The operator's WhatsApp number (Vault)
+- name: The operator's WhatsApp number and the Telegram bot (Vault)
   ansible.builtin.set_fact:
-    hermes_whatsapp_number: >-
+    hermes_secret: >-
       {{ lookup('community.hashi_vault.vault_kv2_get', hermes_vault_path,
                 engine_mount_point=hermes_vault_mount,
                 url=lookup('env', 'VAULT_ADDR'),
                 token=lookup('env', 'VAULT_TOKEN'),
-                ca_cert=lookup('env', 'VAULT_CACERT')).secret.whatsapp_number | string }}
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
+  no_log: true
+
+- name: Settings from it
+  ansible.builtin.set_fact:
+    hermes_whatsapp_number: "{{ hermes_secret.whatsapp_number | string }}"
+    hermes_telegram_token: "{{ hermes_secret.telegram_bot_token | default('') | string }}"
+    hermes_telegram_user: "{{ hermes_secret.telegram_user_id | default('') | string }}"
   no_log: true
 
 - name: The number is digits with the country code
   ansible.builtin.assert:
     that: hermes_whatsapp_number is match('^[1-9][0-9]{9,14}$')
     fail_msg: "kv/{{ hermes_vault_path }}: whatsapp_number must be digits with the country code, no +"
+    quiet: true
+
+- name: Telegram is all or nothing (a bot token and the operator's numeric user id)
+  ansible.builtin.assert:
+    that: >-
+      (hermes_telegram_token == '' and hermes_telegram_user == '') or
+      (hermes_telegram_token is match('^[0-9]+:[A-Za-z0-9_-]{30,}$') and hermes_telegram_user is match('^[0-9]{5,15}$'))
+    fail_msg: "kv/{{ hermes_vault_path }}: set both telegram_bot_token (from BotFather) and telegram_user_id (digits), or neither"
     quiet: true
 
 - name: Folders
@@ -75,12 +90,29 @@
   no_log: true
   notify: Restart hermes
 
+- name: Telegram settings in its .env (only the operator's user id may talk to the bot)
+  ansible.builtin.lineinfile:
+    path: "{{ hermes_data_dir }}/.env"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    state: "{{ 'present' if hermes_telegram_token else 'absent' }}"
+    owner: "{{ hermes_uid }}"
+    group: "{{ hermes_uid }}"
+    mode: "0600"
+  loop:
+    - {key: TELEGRAM_BOT_TOKEN, value: "{{ hermes_telegram_token }}"}
+    - {key: TELEGRAM_ALLOWED_USERS, value: "{{ hermes_telegram_user }}"}
+  loop_control:
+    label: "{{ item.key }}"
+  no_log: true
+  notify: Restart hermes
+
 - name: Allow-everyone switches are absent
   ansible.builtin.lineinfile:
     path: "{{ hermes_data_dir }}/.env"
     regexp: "^({{ item }})="
     state: absent
-  loop: [GATEWAY_ALLOW_ALL_USERS, WHATSAPP_ALLOW_ALL_USERS]
+  loop: [GATEWAY_ALLOW_ALL_USERS, WHATSAPP_ALLOW_ALL_USERS, TELEGRAM_ALLOW_ALL_USERS]
   notify: Restart hermes
 
 - name: Read its config.yaml

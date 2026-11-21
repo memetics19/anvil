@@ -1220,6 +1220,9 @@ own VM (`assistant`, on the second node), talking on WhatsApp. Role `hermes`.
   and only that reaches the agent. The number is in Vault (`kv/homelab/assistant/hermes`,
   `whatsapp_number`, country code without +) and is the only allowed sender. The pairing is
   WhatsApp Web's (unofficial): WhatsApp can restrict an account for automation.
+- **Telegram** is optional: a bot of the operator's own (from @BotFather), which answers
+  only the operator's numeric Telegram user id. Both go in the same Vault entry,
+  `telegram_bot_token` and `telegram_user_id`. With neither set, Telegram stays off.
 - **The model** is Claude through Anthropic's OAuth login for the Max plan. Anthropic bills a
   third-party app's use as extra usage, so set a spend limit in the Claude account.
 - **Swiggy** food, Instamart and Dineout, and **Zomato**, come from their own MCP servers. They

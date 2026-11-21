@@ -5,6 +5,9 @@ services:
   gateway:
     image: {{ hermes_image }}
     container_name: hermes
+    # The gateway, supervised by the image's s6. Without a command the image runs the chat
+    # CLI, which exits with no terminal and takes the container (and the gateway) down.
+    command: ["gateway", "run"]
     restart: unless-stopped
     environment:
       HERMES_UID: "{{ hermes_uid }}"
