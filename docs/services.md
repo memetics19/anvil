@@ -1266,6 +1266,27 @@ ask Hermes to log in to them, and give it the OTP in the chat.
 To unlink WhatsApp: WhatsApp, Linked devices, log the Hermes device out. Then
 `sudo hermes-cli whatsapp` pairs it again.
 
+## Home link
+
+A WireGuard link from the assistant VM to the home router, for the home's own devices: the
+Switchy wall panels. Role `home_link`.
+
+- Only the home subnet goes through it. It never takes the default route.
+- The router's peer settings are in Vault (`kv/homelab/assistant/home-link`): `private_key`,
+  `address` (the VM's tunnel address, with prefix), `peer_public_key`, `endpoint` (the
+  router's name and port), `home_subnet`, and `preshared_key` when the router gives one.
+  With that entry missing, the role does nothing.
+- To make the peer: in the router's VPN page, add a WireGuard client, export its settings,
+  and put those values in Vault. The router's endpoint is the DuckDNS name the home bridge
+  keeps current.
+
+**Switchy in Hermes.** The panels' MCP server is kept out of this repo, because the panels'
+local key is their device ID. It lives on the operator's machine at
+`~/switchy-cli/switchy_mcp.py`, and the Hermes role copies it to the VM when it is there. The
+panel list (room names and switch labels by panel ID) and the home subnet are in Vault
+(`kv/homelab/assistant/switchy`). It can read every room and switch lights, fans and the
+geyser. Like every MCP server here, it asks before switching anything.
+
 ## Host hardening
 
 Role `host_hardening` closes small doors on every VM and Proxmox node.

@@ -294,5 +294,7 @@
 - name: Hermes
   hosts: assistant_servers
   roles:
+    - role: home_link
+      tags: [home_link, hermes]
     - role: hermes
       tags: [hermes]

@@ -1,0 +1,5 @@
+- name: Restart the home link
+  ansible.builtin.systemd:
+    name: "wg-quick@{{ home_link_interface }}"
+    state: restarted
+  when: not ansible_check_mode

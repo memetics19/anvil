@@ -39,6 +39,7 @@
   loop:
     - {path: "{{ hermes_dir }}", owner: root, mode: "0755"}
     - {path: "{{ hermes_data_dir }}", owner: "{{ hermes_uid }}", mode: "0700"}
+    - {path: "{{ hermes_data_dir }}/switchy", owner: "{{ hermes_uid }}", mode: "0700"}
   loop_control:
     label: "{{ item.path }}"
 
@@ -149,6 +150,54 @@
   loop: [GATEWAY_ALLOW_ALL_USERS, WHATSAPP_ALLOW_ALL_USERS, TELEGRAM_ALLOW_ALL_USERS]
   notify: Restart hermes
 
+# --- Switchy (optional) ---------------------------------------------------------------------
+- name: Is the Switchy server on the operator's machine
+  ansible.builtin.stat:
+    path: "{{ hermes_switchy_source }}"
+  delegate_to: localhost
+  become: false
+  register: hermes_switchy_src
+
+- name: The Switchy panel list (Vault)
+  ansible.builtin.set_fact:
+    hermes_switchy: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', hermes_switchy_vault_path,
+                 engine_mount_point=hermes_vault_mount,
+                 url=lookup('env', 'VAULT_ADDR'),
+                 token=lookup('env', 'VAULT_TOKEN'),
+                 ca_cert=lookup('env', 'VAULT_CACERT'), errors='ignore') or {}).get('secret', {}) }}
+  no_log: true
+
+- name: MCP servers this run (Switchy joins when its server and panel list are both there)
+  ansible.builtin.set_fact:
+    hermes_mcp_all: >-
+      {{ hermes_mcp_servers | combine({'switchy': {
+           'command': '/opt/hermes/.venv/bin/python',
+           'args': ['/opt/data/switchy/switchy_mcp.py'],
+           'env': {'SWITCHY_DEVICES': '/opt/data/switchy/devices.json',
+                   'SWITCHY_STATE': '/opt/data/switchy/addresses.json',
+                   'SWITCHY_SUBNET': hermes_switchy.subnet | default('')},
+           'trust': 'untrusted'}})
+         if hermes_switchy_src.stat.exists and (hermes_switchy.devices | default('') | length > 0)
+         else hermes_mcp_servers }}
+
+- name: Switchy server and panel list in its data (container user only)
+  ansible.builtin.copy:
+    src: "{{ item.src | default(omit) }}"
+    content: "{{ item.content | default(omit) }}"
+    dest: "{{ hermes_data_dir }}/switchy/{{ item.name }}"
+    owner: "{{ hermes_uid }}"
+    group: "{{ hermes_uid }}"
+    mode: "0600"
+  loop:
+    - {name: switchy_mcp.py, src: "{{ hermes_switchy_source }}"}
+    - {name: devices.json, content: "{{ hermes_switchy.devices | default('') }}"}
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+  when: "'switchy' in hermes_mcp_all"
+  notify: Restart hermes
+
 - name: Read its config.yaml
   ansible.builtin.slurp:
     src: "{{ hermes_data_dir }}/config.yaml"
@@ -163,12 +212,12 @@
 # rewrite in ours restarts it for nothing.
 - name: MCP servers in its config.yaml (its other settings are kept)
   ansible.builtin.copy:
-    content: "{{ hermes_config | combine({'mcp_servers': hermes_mcp_servers}) | to_nice_yaml(indent=2) }}"
+    content: "{{ hermes_config | combine({'mcp_servers': hermes_mcp_all}) | to_nice_yaml(indent=2) }}"
     dest: "{{ hermes_data_dir }}/config.yaml"
     owner: "{{ hermes_uid }}"
     group: "{{ hermes_uid }}"
     mode: "0600"
-  when: hermes_config.mcp_servers | default({}) != hermes_mcp_servers
+  when: hermes_config.mcp_servers | default({}) != hermes_mcp_all
   notify: Restart hermes
 
 - name: Hermes' CLI for the logins (sudo hermes-cli <command>)

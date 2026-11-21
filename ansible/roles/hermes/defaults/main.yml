@@ -77,3 +77,11 @@ hermes_mcp_servers:
       QC_BIGBASKET_HEADLESS: "false"
       PLAYWRIGHT_BROWSERS_PATH: /opt/mcp/browsers
     trust: untrusted
+
+# Switchy wall panels at home (lights, fans, the geyser), through the home link (role
+# home_link). The MCP server is kept out of this public repo: it is copied from the operator's
+# machine, next to the switchy CLI. The panel list is in Vault kv/<hermes_switchy_vault_path>:
+# devices (JSON, panel id to room name and switch labels; the ids are the panels' keys) and
+# subnet (the home subnet). With either missing, Switchy is left out.
+hermes_switchy_source: "{{ lookup('env', 'HOME') }}/switchy-cli/switchy_mcp.py"
+hermes_switchy_vault_path: homelab/assistant/switchy

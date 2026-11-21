@@ -1,0 +1,44 @@
+- name: The home router's peer settings (Vault)
+  ansible.builtin.set_fact:
+    home_link_peer: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', home_link_vault_path,
+                 engine_mount_point=home_link_vault_mount,
+                 url=lookup('env', 'VAULT_ADDR'),
+                 token=lookup('env', 'VAULT_TOKEN'),
+                 ca_cert=lookup('env', 'VAULT_CACERT'), errors='ignore') or {}).get('secret', {}) }}
+  no_log: true
+
+- name: Set up the link only when the router's peer is in Vault
+  when: home_link_peer.private_key | default('') | length > 0
+  block:
+    - name: The settings are whole, and only a private subnet goes through the tunnel
+      ansible.builtin.assert:
+        that:
+          - home_link_peer.peer_public_key | default('') | length > 0
+          - home_link_peer.endpoint | default('') is match('^[A-Za-z0-9.-]+:[0-9]+$')
+          - home_link_peer.address | default('') is match('^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$')
+          - home_link_peer.home_subnet | default('') is match('^(10|192\\.168|172\\.(1[6-9]|2[0-9]|3[01]))\\.')
+          - home_link_peer.home_subnet is match('^([0-9]{1,3}\\.){3}[0-9]{1,3}/(1[6-9]|2[0-9]|3[0-2])$')
+        fail_msg: "kv/{{ home_link_vault_path }}: needs private_key, peer_public_key, endpoint (host:port), address (a.b.c.d/nn) and a private home_subnet"
+        quiet: true
+
+    - name: WireGuard tools
+      ansible.builtin.apt:
+        name: wireguard-tools
+        state: present
+
+    - name: The link's settings (root only)
+      ansible.builtin.template:
+        src: wg.conf.j2
+        dest: "/etc/wireguard/{{ home_link_interface }}.conf"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+      notify: Restart the home link
+
+    - name: The link is up and comes back after a reboot
+      ansible.builtin.systemd:
+        name: "wg-quick@{{ home_link_interface }}"
+        enabled: true
+        state: started
