@@ -28,6 +28,24 @@
     - scripts.yaml
     - scenes.yaml
 
+- name: Is the Switchy integration on the operator's machine
+  ansible.builtin.stat:
+    path: "{{ homeassistant_switchy_src }}/manifest.json"
+  delegate_to: localhost
+  become: false
+  register: homeassistant_switchy_src_stat
+
+- name: Install the Switchy custom integration
+  ansible.builtin.copy:
+    src: "{{ homeassistant_switchy_src }}/"
+    dest: "{{ homeassistant_config_dir }}/custom_components/switchy/"
+    owner: root
+    group: root
+    mode: "0644"
+    directory_mode: "0755"
+  when: homeassistant_switchy_src_stat.stat.exists
+  notify: Restart homeassistant
+
 - name: Home Assistant compose project
   ansible.builtin.include_role:
     name: compose_project
