@@ -8,8 +8,10 @@
                  ca_cert=lookup('env', 'VAULT_CACERT'), errors='ignore') or {}).get('secret', {}) }}
   no_log: true
 
-- name: Set up the link only when the router's client file is in Vault
-  when: home_link_peer.config | default('') | length > 0
+# The router's exported file names the address its WAN had at export time, which can be a
+# carrier-NAT address no one outside can reach. So the link waits for an explicit remote.
+- name: Set up the link only when the router's client file and its reachable address are in Vault
+  when: home_link_peer.config | default('') | length > 0 and home_link_peer.remote | default('') | length > 0
   block:
     - name: The settings are whole, and only a private subnet goes through the tunnel
       ansible.builtin.assert:
@@ -17,7 +19,7 @@
           - "'client' in home_link_peer.config"
           - home_link_peer.home_subnet | default('') is match('^(10|192\\.168|172\\.(1[6-9]|2[0-9]|3[01]))\\.')
           - home_link_peer.home_subnet is match('^([0-9]{1,3}\\.){3}[0-9]{1,3}/(1[6-9]|2[0-9]|3[0-2])$')
-          - home_link_peer.remote | default('x 1') is match('^[A-Za-z0-9.-]+ [0-9]+$')
+          - home_link_peer.remote is match('^[A-Za-z0-9.-]+ [0-9]+$')
         fail_msg: "kv/{{ home_link_vault_path }}: needs config (the router's .ovpn), a private home_subnet (a.b.c.d/nn), and remote as 'host port' if set"
         quiet: true
 

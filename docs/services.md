@@ -1274,8 +1274,9 @@ wall panels. The router is an OpenVPN server and the VM its client. Role `home_l
 - Only the home subnet goes through it. Routes the router pushes are ignored, so it never
   takes the default route.
 - Vault `kv/homelab/assistant/home-link` holds `config` (the router's exported `.ovpn` file),
-  `home_subnet`, and `remote` (`host port`) when the router is reached by a DNS name. With that
-  entry missing, the role does nothing.
+  `home_subnet`, and `remote` (`host port`, the name the router is reached at from outside).
+  The link waits for `remote`: the exported file names whatever address the router's WAN had,
+  and behind the ISP's carrier NAT that address is not reachable from outside.
 - To make it: in the router's VPN page, generate the certificate, enable the OpenVPN server
   with access to the home network only, and export the client file. The file names the
   router's public address at export time. When that address changes, `remote` points at the

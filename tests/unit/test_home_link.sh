@@ -19,7 +19,7 @@ check "only the home subnet is routed, pushed routes are ignored" "grep -qx 'rou
 check "the router's own route and script lines are dropped" "grep -q \"startswith(('redirect-gateway', 'route ', 'route-ipv6', 'dhcp-option', 'up ', 'down ', 'script-security'))\" $w"
 check "the tunnel never takes the default route" "! grep -qE '0\.0\.0\.0/0|::/0' $w $t $r/defaults/main.yml"
 check "the home subnet must be private" "grep -q \"home_subnet | default('') is match('^(10|192\" $t"
-check "nothing happens until the router's client file is in Vault" "grep -q \"when: home_link_peer.config | default('') | length > 0\" $t"
+check "nothing happens until the router's client file is in Vault" "grep -q \"when: home_link_peer.config | default('') | length > 0 and home_link_peer.remote | default('') | length > 0\" $t"
 check "its settings are root-only and never logged" "awk '/The link.s settings/,/notify:/' $t | grep -q 'mode: \"0600\"' && awk '/The link.s settings/,/notify:/' $t | grep -q 'no_log: true'"
 check "the Switchy server is not in this repo" "! git ls-files | grep -q 'switchy_mcp'"
 check "the Switchy panel list comes from Vault and is never logged" "awk '/The Switchy panel list/,/no_log/' $h | grep -q 'hermes_switchy_vault_path'"
