@@ -1,0 +1,5 @@
+- name: Restart homeassistant
+  ansible.builtin.command: docker restart homeassistant
+  changed_when: true
+  failed_when: false
+  when: not ansible_check_mode

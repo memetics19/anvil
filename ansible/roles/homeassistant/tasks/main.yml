@@ -1,0 +1,39 @@
+- name: Config folder
+  ansible.builtin.file:
+    path: "{{ homeassistant_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Our managed config (the UI writes its own state under .storage, which we never touch)
+  ansible.builtin.template:
+    src: configuration.yaml.j2
+    dest: "{{ homeassistant_config_dir }}/configuration.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart homeassistant
+
+- name: The include files exist (HA needs them, and leaves them for UI-authored automations)
+  ansible.builtin.copy:
+    content: "[]\n"
+    dest: "{{ homeassistant_config_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+  loop:
+    - automations.yaml
+    - scripts.yaml
+    - scenes.yaml
+
+- name: Home Assistant compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ homeassistant_dir }}"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+
+- name: Apply a config change now
+  ansible.builtin.meta: flush_handlers
