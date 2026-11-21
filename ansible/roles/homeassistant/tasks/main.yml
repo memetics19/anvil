@@ -46,6 +46,23 @@
   when: homeassistant_switchy_src_stat.stat.exists
   notify: Restart homeassistant
 
+- name: The packages folder (code-defined config, rebuilt from anvil)
+  ansible.builtin.file:
+    path: "{{ homeassistant_config_dir }}/packages"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Code-defined automations (a Home Assistant package)
+  ansible.builtin.copy:
+    src: packages/anvil_automations.yaml
+    dest: "{{ homeassistant_config_dir }}/packages/anvil_automations.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart homeassistant
+
 - name: Home Assistant compose project
   ansible.builtin.include_role:
     name: compose_project

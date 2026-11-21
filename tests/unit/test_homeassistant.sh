@@ -21,4 +21,7 @@ check "no new privileges, a memory cap" "grep -q 'no-new-privileges:true' $c && 
 check "config is local-first and never logs in to cloud" "grep -qi 'local-first' $cfg && ! grep -qE '^\s*cloud:' $cfg"
 check "a play for the assistant VM" "awk '/^- name: Home Assistant$/,0' ansible/playbooks/vms.yml | grep -q 'hosts: assistant_servers'"
 
+check "packages are enabled for code-defined config" "grep -q 'packages: !include_dir_named packages' $cfg"
+check "the automations package ships" "test -f $r/files/packages/anvil_automations.yaml && grep -q 'all_off_1am_safety_sweep' $r/files/packages/anvil_automations.yaml"
+
 [ "$fail" = 0 ] && echo "PASS: home assistant" || { echo "FAIL: home assistant"; exit 1; }

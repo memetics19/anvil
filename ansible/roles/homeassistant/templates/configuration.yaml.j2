@@ -4,6 +4,8 @@
 homeassistant:
   name: Home
   time_zone: {{ homeassistant_timezone }}
+  # Code-defined config (automations and more) rebuilt from anvil, under packages/.
+  packages: !include_dir_named packages
 
 # Everything default_config brings, so the UI and local discovery work. Nabu Casa cloud is never
 # logged in to, and the egress guard blocks any outbound attempt.
