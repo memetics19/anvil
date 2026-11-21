@@ -11,3 +11,7 @@ homeassistant_image: "homeassistant/home-assistant:2026.11.0@sha256:c6c1ca993103
 homeassistant_timezone: Asia/Kolkata
 homeassistant_port: 8123
 homeassistant_mem_limit: 1536m
+# The Switchy custom integration (github.com/memetics19/switchy-ha), installed straight into HA
+# from the operator's working copy when it is there, so HACS is not required. Kept out of this
+# repo (its own public repo); the role just copies it in.
+homeassistant_switchy_src: "{{ lookup('env', 'HOME') }}/switchy-ha/custom_components/switchy"
