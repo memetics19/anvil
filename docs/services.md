@@ -1279,14 +1279,18 @@ wall panels. The router is an OpenVPN server and the VM its client. Role `home_l
 
 - Only the home subnet goes through it. Routes the router pushes are ignored, so it never
   takes the default route.
-- Vault `kv/homelab/assistant/home-link` holds `config` (the router's exported `.ovpn` file),
-  `home_subnet`, and `remote` (`host port`, the name the router is reached at from outside).
-  The link waits for `remote`: the exported file names whatever address the router's WAN had,
-  and behind the ISP's carrier NAT that address is not reachable from outside.
-- To make it: in the router's VPN page, generate the certificate, enable the OpenVPN server
-  with access to the home network only, and export the client file. The file names the
-  router's public address at export time. When that address changes, `remote` points at the
-  name the router's Dynamic DNS (or the home bridge) keeps current.
+- The router's CA is a 1024-bit self-signed key a modern OpenSSL will not chain to, so the
+  server is pinned by its certificate **fingerprint** instead of trusting the CA.
+- Vault `kv/homelab/assistant/home-link` holds `config` (the router's exported `.ovpn`),
+  `home_subnet`, `remote` (`host port`, the router's static address or a Dynamic DNS name),
+  and `peer_fingerprint` (the server certificate's SHA256). With any missing, the role does
+  nothing.
+- The ISP gives this line carrier NAT by default, so the router's own OpenVPN cannot be
+  reached from outside until the line has a public IP (ACT enables one on request).
+- **If the router regenerates its certificate** (its own cert changes, and the client cert it
+  issued stops being accepted), re-export the `.ovpn`, capture the new server fingerprint, and
+  put both back in Vault. A quick capture: run the client once with a dummy
+  `peer-fingerprint`; the log prints `got certificate fingerprint: ...`.
 
 **Switchy in Hermes.** The panels' MCP server is kept out of this repo, because the panels'
 local key is their device ID. It lives on the operator's machine at

@@ -16,14 +16,16 @@ w=$r/templates/client.conf.j2
 h=ansible/roles/hermes/tasks/main.yml
 
 check "only the home subnet is routed, pushed routes are ignored" "grep -qx 'route-nopull' $w && grep -q '^route {{ home_link_peer.home_subnet' $w && grep -q 'pull-filter ignore \"redirect-gateway\"' $w"
-check "the router's own route and script lines are dropped" "grep -q \"startswith(('redirect-gateway', 'route ', 'route-ipv6', 'dhcp-option', 'up ', 'down ', 'script-security'))\" $w"
+check "the router's CA block, route and script lines are dropped" "grep -q 'startswith(.<ca>.)' $w && grep -q \"startswith(('remote-cert-tls', 'redirect-gateway', 'route ', 'route-ipv6', 'dhcp-option', 'up ', 'down ', 'script-security'))\" $w"
+check "the server is pinned by certificate fingerprint, not the weak CA" "grep -q '^peer-fingerprint {{ home_link_peer.peer_fingerprint }}' $w"
+check "an old server's data cipher is honoured" "grep -qx 'data-ciphers-fallback AES-128-CBC' $w"
 check "the tunnel never takes the default route" "! grep -qE '0\.0\.0\.0/0|::/0' $w $t $r/defaults/main.yml"
 check "the home subnet must be private" "grep -q \"home_subnet | default('') is match('^(10|192\" $t"
-check "nothing happens until the router's client file is in Vault" "grep -q \"when: home_link_peer.config | default('') | length > 0 and home_link_peer.remote | default('') | length > 0\" $t"
+check "nothing happens until config, remote and fingerprint are in Vault" "grep -q 'home_link_peer.config | default' $t && grep -q 'home_link_peer.remote | default' $t && grep -q 'home_link_peer.peer_fingerprint | default' $t"
 check "its settings are root-only and never logged" "awk '/The link.s settings/,/notify:/' $t | grep -q 'mode: \"0600\"' && awk '/The link.s settings/,/notify:/' $t | grep -q 'no_log: true'"
 check "the Switchy server is not in this repo" "! git ls-files | grep -q 'switchy_mcp'"
 check "the Switchy panel list comes from Vault and is never logged" "awk '/The Switchy panel list/,/no_log/' $h | grep -q 'hermes_switchy_vault_path'"
-check "Switchy is untrusted (switching asks first)" "awk '/MCP servers this run/,/else hermes_mcp_servers/' $h | grep -q \"'trust': 'untrusted'\""
+check "Switchy is untrusted (switching asks first)" "awk '/MCP servers this run/,/else hermes_mcp_base/' $h | grep -q \"'trust': 'untrusted'\""
 check "the home link runs before Hermes" "awk '/^- name: Hermes$/,0' ansible/playbooks/vms.yml | grep -A3 'roles:' | grep -q 'role: home_link'"
 
 [ "$fail" = 0 ] && echo "PASS: home link" || { echo "FAIL: home link"; exit 1; }

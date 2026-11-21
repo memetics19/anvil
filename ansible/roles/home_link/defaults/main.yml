@@ -3,11 +3,15 @@
 # route. The router is an OpenVPN server. Its exported client file and the routing settings are
 # in Vault kv/<home_link_vault_path>:
 #   config       the router's exported .ovpn file, whole
-#   remote       "host port" the router is reached at from outside, e.g. its Dynamic DNS
-#                name. Required: the exported file names whatever address the router's WAN
-#                had at export time, which behind carrier NAT is not reachable.
+#   remote           "host port" the router is reached at from outside (its static IP or a
+#                    Dynamic DNS name); the exported file's own address is the router's WAN
+#                    address, which behind carrier NAT is not reachable.
+#   peer_fingerprint the router's OpenVPN server certificate SHA256, colon-separated. The CA
+#                    is a 1024-bit self-signed key a modern OpenSSL will not chain to, so the
+#                    server is pinned by fingerprint instead. Re-capture it if the router
+#                    regenerates its certificate (then re-export the config too).
 #   home_subnet  the home subnet, e.g. a.b.c.0/24
-# With config or remote missing, the role does nothing. docs/services.md, Home link.
+# With any of config, remote or peer_fingerprint missing, the role does nothing. docs/services.md, Home link.
 home_link_vault_mount: kv
 home_link_vault_path: homelab/assistant/home-link
 home_link_name: home

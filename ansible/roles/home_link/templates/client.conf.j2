@@ -1,12 +1,26 @@
 # Managed by Ansible (role home_link). The home router's OpenVPN, for the home subnet only:
-# the router's file below, minus anything that would take more routes, then our own routing.
-{% for line in home_link_peer.config.splitlines()
-   if not line.strip().startswith(('redirect-gateway', 'route ', 'route-ipv6', 'dhcp-option', 'up ', 'down ', 'script-security'))
+# the router's exported file below, minus the CA block, the route and script lines, and the
+# remote (we set our own), then our own verification and routing.
+#
+# The router's CA is a self-signed 1024-bit key that a modern OpenSSL will not build a chain
+# to, so instead of trusting the CA we pin the server's certificate fingerprint (captured from
+# the router). If the router regenerates its certificate, re-export the config and re-capture
+# the fingerprint into Vault.
+{% set ns = namespace(in_ca=false) %}
+{% for line in home_link_peer.config.splitlines() %}
+{% if line.strip().startswith('<ca>') %}{% set ns.in_ca = true %}
+{% elif line.strip().startswith('</ca>') %}{% set ns.in_ca = false %}
+{% elif not ns.in_ca
+   and not line.strip().startswith(('remote-cert-tls', 'redirect-gateway', 'route ', 'route-ipv6', 'dhcp-option', 'up ', 'down ', 'script-security'))
    and not (home_link_peer.remote | default('') and line.strip().startswith('remote ')) %}
 {{ line }}
+{% endif %}
 {% endfor %}
 
-# anvil: ignore routes the server pushes, and route only the home subnet
+# anvil: pin the server certificate, honour the data cipher an old server offers, ignore the
+# routes it pushes, and route only the home subnet.
+peer-fingerprint {{ home_link_peer.peer_fingerprint }}
+data-ciphers-fallback AES-128-CBC
 {% if home_link_peer.remote | default('') %}
 remote {{ home_link_peer.remote }}
 {% endif %}
