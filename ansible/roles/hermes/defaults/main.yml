@@ -85,3 +85,8 @@ hermes_mcp_servers:
 # subnet (the home subnet). With either missing, Switchy is left out.
 hermes_switchy_source: "{{ lookup('env', 'HOME') }}/switchy-cli/switchy_mcp.py"
 hermes_switchy_vault_path: homelab/assistant/switchy
+
+# Read-only lab status: a Grafana Viewer service-account token (reads metrics, writes 403),
+# so Hermes can answer "is anything down". The token is in Vault kv/<hermes_lab_vault_path>:
+# grafana_url, grafana_token, datasource_uid. With it missing, the lab tool is left out.
+hermes_lab_vault_path: homelab/assistant/lab-readonly

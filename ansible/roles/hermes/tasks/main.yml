@@ -150,6 +150,56 @@
   loop: [GATEWAY_ALLOW_ALL_USERS, WHATSAPP_ALLOW_ALL_USERS, TELEGRAM_ALLOW_ALL_USERS]
   notify: Restart hermes
 
+# --- read-only lab status (optional) --------------------------------------------------------
+- name: The lab viewer token (Vault)
+  ansible.builtin.set_fact:
+    hermes_lab: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', hermes_lab_vault_path,
+                 engine_mount_point=hermes_vault_mount,
+                 url=lookup('env', 'VAULT_ADDR'),
+                 token=lookup('env', 'VAULT_TOKEN'),
+                 ca_cert=lookup('env', 'VAULT_CACERT'), errors='ignore') or {}).get('secret', {}) }}
+  no_log: true
+
+- name: Lab status folder
+  ansible.builtin.file:
+    path: "{{ hermes_data_dir }}/lab"
+    state: directory
+    owner: "{{ hermes_uid }}"
+    group: "{{ hermes_uid }}"
+    mode: "0700"
+  when: hermes_lab.grafana_token | default('') | length > 0
+
+- name: Lab status server and its token (container user only)
+  ansible.builtin.copy:
+    src: "{{ item.src | default(omit) }}"
+    content: "{{ item.content | default(omit) }}"
+    dest: "{{ hermes_data_dir }}/lab/{{ item.name }}"
+    owner: "{{ hermes_uid }}"
+    group: "{{ hermes_uid }}"
+    mode: "0600"
+  loop:
+    - {name: lab_mcp.py, src: lab_mcp.py}
+    - {name: token, content: "{{ hermes_lab.grafana_token | default('') }}"}
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+  when: hermes_lab.grafana_token | default('') | length > 0
+  notify: Restart hermes
+
+- name: Read-only lab joins the MCP set when its token is present
+  ansible.builtin.set_fact:
+    hermes_mcp_base: >-
+      {{ hermes_mcp_servers | combine({'lab': {
+           'command': '/opt/hermes/.venv/bin/python',
+           'args': ['/opt/data/lab/lab_mcp.py'],
+           'env': {'GRAFANA_URL': hermes_lab.grafana_url | default(''),
+                   'GRAFANA_TOKEN_FILE': '/opt/data/lab/token',
+                   'DATASOURCE_UID': hermes_lab.datasource_uid | default('victoriametrics')},
+           'trust': 'trusted'}})
+         if hermes_lab.grafana_token | default('') | length > 0 else hermes_mcp_servers }}
+  no_log: true
+
 # --- Switchy (optional) ---------------------------------------------------------------------
 - name: Is the Switchy server on the operator's machine
   ansible.builtin.stat:
@@ -171,7 +221,7 @@
 - name: MCP servers this run (Switchy joins when its server and panel list are both there)
   ansible.builtin.set_fact:
     hermes_mcp_all: >-
-      {{ hermes_mcp_servers | combine({'switchy': {
+      {{ hermes_mcp_base | combine({'switchy': {
            'command': '/opt/hermes/.venv/bin/python',
            'args': ['/opt/data/switchy/switchy_mcp.py'],
            'env': {'SWITCHY_DEVICES': '/opt/data/switchy/devices.json',
@@ -179,7 +229,7 @@
                    'SWITCHY_SUBNET': hermes_switchy.subnet | default('')},
            'trust': 'untrusted'}})
          if hermes_switchy_src.stat.exists and (hermes_switchy.devices | default('') | length > 0)
-         else hermes_mcp_servers }}
+         else hermes_mcp_base }}
 
 - name: Switchy server and panel list in its data (container user only)
   ansible.builtin.copy:

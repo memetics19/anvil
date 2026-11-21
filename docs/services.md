@@ -1239,6 +1239,12 @@ own VM (`assistant`, on the second node), talking on WhatsApp. Role `hermes`.
 - Nothing on the VM listens for the internet. Its data (`/opt/hermes/data`) holds the
   WhatsApp session and the logins, readable by the container user only.
 
+- **Read-only lab status**: a Grafana **Viewer** service-account token (Vault
+  `kv/homelab/assistant/lab-readonly`: `grafana_url`, `grafana_token`, `datasource_uid`) lets
+  Hermes answer "is anything down", "how's the internet", a service's status. It reads metrics
+  only, writes are refused, and it never touches Vault or a shell. The token lives in a
+  container-only file, not in the config. With it missing, the tool is left out.
+
 The logins are by hand, once, in a terminal on the VM (`ssh ubuntu@<assistant-address>`):
 
 ```sh

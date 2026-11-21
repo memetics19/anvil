@@ -33,6 +33,8 @@ check "no new privileges, a memory cap" "grep -q 'no-new-privileges:true' $c && 
 check "the data folder is private to the container user" "grep -q 'hermes_data_dir }}\", owner: \"{{ hermes_uid }}\", mode: \"0700\"' $t"
 check "hermes-cli runs the CLI on the same data and starts the service again" "grep -q 'docker run --rm -it --network host -v {{ hermes_data_dir }}:/opt/data' $r/templates/hermes-cli.j2 && grep -q 'docker start hermes' $r/templates/hermes-cli.j2"
 check "finish-login only hands a code to a local callback" "grep -qF 'http://127.0.0.1:*/callback' $r/templates/hermes-cli.j2"
+check "read-only lab uses a Grafana viewer token from Vault, kept out of config" "grep -q 'hermes_lab_vault_path' $r/tasks/main.yml && grep -q 'GRAFANA_TOKEN_FILE' $r/tasks/main.yml && ! grep -q 'GRAFANA_TOKEN:' $r/tasks/main.yml"
+check "the lab MCP server hard-codes no token and defines no write tools" "! grep -qE '[A-Za-z0-9_-]{40,}' $r/files/lab_mcp.py && ! grep -qiE 'def (set_|create_|delete_|place_|update_|order)' $r/files/lab_mcp.py"
 check "a play for the assistant VM" "awk '/^- name: Hermes$/,0' ansible/playbooks/vms.yml | grep -q 'hosts: assistant_servers'"
 
 [ "$fail" = 0 ] && echo "PASS: hermes" || { echo "FAIL: hermes"; exit 1; }
