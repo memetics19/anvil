@@ -90,6 +90,13 @@ hasnt "no Vault egress" "ip saddr 198.51.100.20 ip daddr" "$f"
 hasnt "no monitoring rule" "dport 9100" "$f"
 
 # 2. Vaultwarden not created yet, SMTP off: its rules are left out, the set is plain.
+# Without an SMTP login Vaultwarden reaches nothing: no DNS, no SMTP, no NAT.
+render "$tmp/nomail.nft" 'vaultwarden: {ip: 198.51.100.21}' false
+check "render without SMTP: rc" "$?" "0"
+has "with SMTP: DNS from Vaultwarden to Pi-hole (the rule the next check looks for)" "ip saddr 198.51.100.21 ip daddr 192.0.2.121 udp dport 53" "$tmp/full.nft"
+hasnt "without SMTP: no DNS from Vaultwarden" "ip saddr 198.51.100.21 ip daddr 192.0.2.121 udp dport 53" "$tmp/nomail.nft"
+hasnt "without SMTP: no SMTP to the relay" "@enclave_smtp_relay tcp dport 587 return" "$tmp/nomail.nft"
+hasnt "without SMTP: nothing translated" "snat" "$tmp/nomail.nft"
 render "$tmp/novw.nft" '' false
 check "render without vaultwarden: rc" "$?" "0"
 hasnt "no Vaultwarden rule" "198.51.100.21" "$tmp/novw.nft"

@@ -3,7 +3,8 @@
 # with no physical port. The host is its only router and does no NAT for it. This role:
 #   - firewall (tag firewall): the enclave is the first segment of the routed segments'
 #     firewall (role pve_segments: one nftables table, default drop, timed rollback), with
-#     no NAT except the one SMTP flow (nat_out). Its
+#     no egress and no NAT, except the one SMTP flow while Vaultwarden has an SMTP login
+#     (_pve_enclave_mail_*). Its
 #     data is pve_enclave_segment and pve_enclave_sets below; inventory group_vars/proxmox.yml
 #     lists the segments;
 #   - sdn (tag sdn): applies the pending SDN config (pvesh set /cluster/sdn) under the
@@ -90,6 +91,31 @@ pve_enclave_sets: >-
                      'keep': pve_enclave_smtp_keep, 'max': pve_enclave_smtp_max}}
         if pve_enclave_smtp_enabled | default(false) | bool else {})] }}
 
+# The mail hole, only while Vaultwarden has an SMTP login in Vault (tasks/smtp.yml):
+# Vaultwarden's DNS to Pi-hole (for the relay's name) and SMTP to the relay, with source NAT
+# to the host's home-network address so the relay's answers find their way back.
+_pve_enclave_mail_egress:
+  - comment: "Vaultwarden: DNS to Pi-hole, SMTP to the relay (Vault: nothing)"
+    saddr: "{{ _pve_enclave_vw }}"
+    daddr: "{{ _pve_enclave_ip[pve_enclave_dns_host] }}"
+    proto: udp
+    dport: 53
+  - saddr: "{{ _pve_enclave_vw }}"
+    daddr: "{{ _pve_enclave_ip[pve_enclave_dns_host] }}"
+    proto: tcp
+    dport: 53
+  - saddr: "{{ _pve_enclave_vw }}"
+    daddr: "@enclave_smtp_relay"
+    proto: tcp
+    dport: "{{ pve_enclave_smtp_port | default(pve_enclave_smtp_default_port) }}"
+_pve_enclave_mail_nat:
+  - comment: "the mail hole: Vaultwarden to the SMTP relay"
+    saddr: "{{ _pve_enclave_vw }}"
+    daddr: "@enclave_smtp_relay"
+    proto: tcp
+    dport: "{{ pve_enclave_smtp_port | default(pve_enclave_smtp_default_port) }}"
+    to: "{{ site.pve.uplink_ip }}"
+
 pve_enclave_segment:
   name: enclave
   interface: "{{ pve_enclave_vnet }}"
@@ -120,30 +146,10 @@ pve_enclave_segment:
     - saddr: "@admin"
       daddr: "{{ _pve_enclave_members }}"
       proto: icmp
-  egress:
-    - comment: "Vaultwarden: DNS to Pi-hole, SMTP to the relay (Vault: nothing)"
-      saddr: "{{ _pve_enclave_vw }}"
-      daddr: "{{ _pve_enclave_ip[pve_enclave_dns_host] }}"
-      proto: udp
-      dport: 53
-    - saddr: "{{ _pve_enclave_vw }}"
-      daddr: "{{ _pve_enclave_ip[pve_enclave_dns_host] }}"
-      proto: tcp
-      dport: 53
-    - saddr: "{{ _pve_enclave_vw }}"
-      daddr: "@enclave_smtp_relay"
-      proto: tcp
-      dport: "{{ pve_enclave_smtp_port | default(pve_enclave_smtp_default_port) }}"
-  # The one flow that leaves the host: without source NAT the relay's answers could not
-  # find their way back (the enclave's addresses are unknown outside). Translated to the
-  # host's home-network address, like the lab network.
-  nat_out:
-    - comment: "the mail hole: Vaultwarden to the SMTP relay"
-      saddr: "{{ _pve_enclave_vw }}"
-      daddr: "@enclave_smtp_relay"
-      proto: tcp
-      dport: "{{ pve_enclave_smtp_port | default(pve_enclave_smtp_default_port) }}"
-      to: "{{ site.pve.uplink_ip }}"
+  # Nothing leaves the enclave unless Vaultwarden has an SMTP login in Vault (the mail hole
+  # below). Without one, Vaultwarden reaches no other host at all.
+  egress: "{{ _pve_enclave_mail_egress if pve_enclave_smtp_enabled | default(false) | bool else [] }}"
+  nat_out: "{{ _pve_enclave_mail_nat if pve_enclave_smtp_enabled | default(false) | bool else [] }}"
   host:
     - comment: NTP and the apt cache on the gateway address, ping
       daddr: "{{ pve_enclave_gateway }}"

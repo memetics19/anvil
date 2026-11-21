@@ -918,6 +918,12 @@ Write each value from stdin (see [Secrets in Vault](usage.md#secrets-in-vault)),
 `make enclave ARGS="--tags firewall"`. The enclave firewall's mail hole (the relay set and
 its port) is built from them.
 
+Without the pair, Vaultwarden has no mail and the enclave firewall lets it reach no other
+host: no DNS, no SMTP, no NAT. That is the default. To turn mail off again, first move every
+account off email two-step login (an authenticator app or a security key, and the recovery
+code saved), then delete the `smtp_*` keys from Vault and run `make vm HOST=vaultwarden`
+and `make enclave ARGS="--tags firewall"`.
+
 #### Two-step login
 
 With SMTP, every account registered from an invitation gets email two-step login
