@@ -1,0 +1,32 @@
+# Managed by Ansible (role watchers).
+[Unit]
+Description=Watcher %i (alerts to Gotify)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory={{ watchers_dir }}
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m watchers %i --config {{ watchers_config_dir }}/config.json
+TimeoutStartSec=30min
+DynamicUser=yes
+StateDirectory=watchers
+StateDirectoryMode=0700
+{% for key, name in watchers_secret_files | dictsort if key in watchers_secret %}
+LoadCredential={{ name }}:{{ watchers_config_dir }}/{{ name }}
+{% endfor %}
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+CapabilityBoundingSet=

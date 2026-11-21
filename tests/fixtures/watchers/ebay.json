@@ -1,0 +1,5 @@
+{"itemSummaries": [
+ {"title": "Example Tesla P40 24GB", "price": {"value": "150.00", "currency": "USD"}, "itemWebUrl": "https://www.example.com/itm/1", "condition": "Used",
+  "shippingOptions": [{"shippingCost": {"value": "50.00", "currency": "USD"}}]},
+ {"title": "Example RTX 3090 24GB", "price": {"value": "700.00", "currency": "USD"}, "itemWebUrl": "https://www.example.com/itm/2", "condition": "Used"}
+]}

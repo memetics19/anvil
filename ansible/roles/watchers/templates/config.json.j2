@@ -1,0 +1,19 @@
+{{ {
+  "gotify_url": watchers_gotify_url,
+  "min_vram_gb": watchers_gpu_min_vram_gb,
+  "max_price_inr": watchers_gpu_max_price_inr,
+  "priority": watchers_gpu_priority,
+  "pause_seconds": watchers_gpu_pause_seconds,
+  "queries": watchers_gpu_queries,
+  "sources": watchers_gpu_sources,
+  "ebay": {
+    "usd_to_inr": watchers_gpu_ebay_usd_to_inr,
+    "duty_rate": watchers_gpu_ebay_duty_rate,
+    "default_shipping_usd": watchers_gpu_ebay_default_shipping_usd
+  },
+  "yakshagana": {
+    "api_url": watchers_yakshagana_api_url,
+    "site_url": watchers_yakshagana_site_url,
+    "priority": watchers_yakshagana_priority
+  }
+} | to_nice_json(indent=2) }}
