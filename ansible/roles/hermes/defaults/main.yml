@@ -10,6 +10,18 @@ hermes_repo: https://github.com/NousResearch/hermes-agent.git
 hermes_version: v0.23.0
 hermes_commit: 2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19
 hermes_image: "anvil/hermes-agent:{{ hermes_version }}"
+
+# The shop MCP servers that run on our side, built into an image on top of Hermes' own:
+# Blinkit (hereisSwapnil/blinkit-mcp) and quick-commerce (Hardik500/quick-commerce-mcp, used
+# for BigBasket). Both are personal projects, read before pinning: they drive a browser on the
+# shop's site with the operator's phone and OTP login, and talk to nothing else. Each is pinned
+# to a commit at least two weeks old, and the image tag names both, so a bump rebuilds it.
+hermes_shops_dir: "{{ hermes_dir }}/shops"
+hermes_blinkit_repo: https://github.com/hereisSwapnil/blinkit-mcp.git
+hermes_blinkit_commit: a39547118f4decd04a77ac16316fa09efdb6237a
+hermes_qc_repo: https://github.com/Hardik500/quick-commerce-mcp.git
+hermes_qc_commit: 9d09173448057c0a9c397aca3763c2a2d03e26e1
+hermes_shops_image: "anvil/hermes-agent:{{ hermes_version }}-shops-{{ hermes_blinkit_commit[:7] }}-{{ hermes_qc_commit[:7] }}"
 # The container drops to this uid/gid (its s6 init remaps its hermes user); the data folder
 # belongs to it.
 hermes_uid: 10000
@@ -22,16 +34,19 @@ hermes_vault_mount: kv
 hermes_vault_path: homelab/assistant/hermes
 hermes_whatsapp_mode: self-chat
 
-# MCP servers: the official ones from Swiggy (food, Instamart, Dineout) and Zomato, OAuth on
-# first use. Untrusted: every tool that writes (placing an order, booking a table) asks the
-# operator first. Zepto and Blinkit have no official server: none is added for them.
+# MCP servers. Hosted, OAuth on first use: the official ones from Swiggy (food, Instamart,
+# Dineout), Zomato and Zepto. On our side, in the shops image: Blinkit, and BigBasket through
+# quick-commerce. Those two log in with the operator's phone and an OTP, asked for in the chat;
+# BigBasket refuses a headless browser, so its Chrome runs on a virtual screen (xvfb-run).
+# All untrusted: every tool that writes (placing an order, booking a table) asks the operator
+# first.
 hermes_mcp_servers:
   swiggy_food:
     url: https://mcp.swiggy.com/food
     auth: oauth
     trust: untrusted
   swiggy_instamart:
-    url: https://mcp.swiggy.com/instamart
+    url: https://mcp.swiggy.com/im
     auth: oauth
     trust: untrusted
   swiggy_dineout:
@@ -41,4 +56,24 @@ hermes_mcp_servers:
   zomato:
     url: https://mcp-server.zomato.com/mcp
     auth: oauth
+    trust: untrusted
+  zepto:
+    url: https://mcp.zepto.co.in/mcp
+    auth: oauth
+    trust: untrusted
+  blinkit:
+    command: /opt/mcp/blinkit/.venv/bin/python
+    args: [/opt/mcp/blinkit/main.py]
+    env:
+      HOME: /opt/data
+      HEADLESS: "true"
+      PLAYWRIGHT_BROWSERS_PATH: /opt/mcp/browsers
+    trust: untrusted
+  bigbasket:
+    command: /usr/bin/xvfb-run
+    args: [-a, -s, "-screen 0 1280x900x24", /usr/local/bin/node, /opt/mcp/quick-commerce/dist/index.js]
+    env:
+      HOME: /opt/data
+      QC_BIGBASKET_HEADLESS: "false"
+      PLAYWRIGHT_BROWSERS_PATH: /opt/mcp/browsers
     trust: untrusted

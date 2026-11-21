@@ -1225,10 +1225,17 @@ own VM (`assistant`, on the second node), talking on WhatsApp. Role `hermes`.
   `telegram_bot_token` and `telegram_user_id`. With neither set, Telegram stays off.
 - **The model** is Claude through Anthropic's OAuth login for the Max plan. Anthropic bills a
   third-party app's use as extra usage, so set a spend limit in the Claude account.
-- **Swiggy** food, Instamart and Dineout, and **Zomato**, come from their own MCP servers. They
-  are untrusted: every tool that writes (an order, a booking) asks the operator first. Swiggy's
-  orders are cash on delivery for now. Zepto and Blinkit have no official server, so none is
-  set up for them.
+- **Swiggy** food, Instamart and Dineout, **Zomato** and **Zepto** come from their own hosted
+  MCP servers, with an OAuth login each.
+- **Blinkit** and **BigBasket** run here, in a "shops" image built on top of Hermes' own from
+  two personal projects pinned by commit ([blinkit-mcp](https://github.com/hereisSwapnil/blinkit-mcp),
+  [quick-commerce-mcp](https://github.com/Hardik500/quick-commerce-mcp) for BigBasket). They drive
+  a browser on the shop's site and log in with the operator's phone and an OTP, asked for in the
+  chat. BigBasket refuses a headless browser, so its Chrome runs on a virtual screen. These are
+  unofficial and can break when a shop changes its site. A shop may also block an account it
+  sees as automated.
+- Every MCP server is untrusted: every tool that writes (an order, a booking) asks the operator
+  first.
 - Nothing on the VM listens for the internet. Its data (`/opt/hermes/data`) holds the
   WhatsApp session and the logins, readable by the container user only.
 
@@ -1241,14 +1248,21 @@ sudo hermes-cli mcp login swiggy_food
 sudo hermes-cli mcp login swiggy_instamart
 sudo hermes-cli mcp login swiggy_dineout
 sudo hermes-cli mcp login zomato
+sudo hermes-cli mcp login zepto
 ```
 
 For the Swiggy logins, connect with a tunnel for the login's callback,
 `ssh -L 27890:127.0.0.1:27890 ubuntu@<assistant-address>`. Then the browser's redirect after
 the Swiggy login reaches Hermes on the VM by itself, with no long URL to paste.
 
-`hermes-cli` runs Hermes' own CLI in a one-off container on its data. It stops the service
-first, since the service restarts in a loop until a model is set, and starts it again after.
+If a login's paste prompt hangs after the paste, finish it from a second session on the VM
+with the address the browser landed on, in quotes:
+`sudo hermes-cli finish-login 'http://127.0.0.1:<port>/callback?code=...&state=...'`.
+
+`hermes-cli` runs Hermes' own CLI in a one-off container on its data. For the model and
+WhatsApp it stops the service first, so two processes never hold one session, and starts it
+again after. An MCP login leaves the service running. Blinkit and BigBasket need no terminal:
+ask Hermes to log in to them, and give it the OTP in the chat.
 To unlink WhatsApp: WhatsApp, Linked devices, log the Hermes device out. Then
 `sudo hermes-cli whatsapp` pairs it again.
 

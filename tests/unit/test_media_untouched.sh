@@ -37,6 +37,11 @@ exceptions=(
   'scripts/backup.sh|prune'
   # apt cache cleanup inside the IPTV image build, not on the host
   'ansible/roles/iptv/templates/Dockerfile.j2|rm -rf /var/lib/apt/lists/*'
+  # apt, npm and uv cache cleanup and dev-dependency pruning inside the Hermes shops image
+  # build, not on the host
+  'ansible/roles/hermes/templates/Dockerfile.shops.j2|&& rm -rf /var/lib/apt/lists/*'
+  'ansible/roles/hermes/templates/Dockerfile.shops.j2|npm prune --omit=dev'
+  'ansible/roles/hermes/templates/Dockerfile.shops.j2|rm -rf /tmp/uv-cache /root/.npm /root/.cache /var/lib/apt/lists/*'
   # the Vaultwarden backup job's mktemp work directory (apps VM), removed on exit
   'ansible/roles/vaultwarden/templates/vaultwarden-backup.sh.j2|rm -rf "$work"'
   # the Authentik backup job's mktemp work directory (identity VM), removed on exit

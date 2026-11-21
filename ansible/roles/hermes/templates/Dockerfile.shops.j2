@@ -1,0 +1,25 @@
+# Managed by Ansible (role hermes). Hermes plus the shop MCP servers that run on our side
+# (Blinkit, and quick-commerce for BigBasket), from the pinned sources next to this file.
+# Built with the uv, node and npm that Hermes' own image pins. The browsers are Playwright's,
+# at the versions each project locks.
+FROM {{ hermes_image }}
+USER root
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends xvfb xauth \
+ && rm -rf /var/lib/apt/lists/*
+COPY blinkit /opt/mcp/blinkit
+COPY quick-commerce /opt/mcp/quick-commerce
+RUN set -eu; \
+    export PATH="$(ls -d /opt/hermes/tools/node-*/bin):$(dirname "$(ls /opt/hermes/tools/uv-*/uv)"):$PATH"; \
+    export PLAYWRIGHT_BROWSERS_PATH=/opt/mcp/browsers UV_PYTHON_INSTALL_DIR=/opt/mcp/python \
+           UV_PYTHON_PREFERENCE=only-managed UV_CACHE_DIR=/tmp/uv-cache; \
+    cd /opt/mcp/blinkit; \
+    uv sync --frozen --no-dev --python 3.12; \
+    .venv/bin/playwright install --with-deps firefox; \
+    cd /opt/mcp/quick-commerce; \
+    npm ci --ignore-scripts --no-audit --no-fund; \
+    npm run build; \
+    npm prune --omit=dev --no-audit --no-fund; \
+    npx --no-install playwright install --with-deps chromium; \
+    rm -rf /tmp/uv-cache /root/.npm /root/.cache /var/lib/apt/lists/*; \
+    chmod -R a+rX /opt/mcp
