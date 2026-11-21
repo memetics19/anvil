@@ -1,0 +1,120 @@
+- name: The operator's WhatsApp number (Vault)
+  ansible.builtin.set_fact:
+    hermes_whatsapp_number: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', hermes_vault_path,
+                engine_mount_point=hermes_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret.whatsapp_number | string }}
+  no_log: true
+
+- name: The number is digits with the country code
+  ansible.builtin.assert:
+    that: hermes_whatsapp_number is match('^[1-9][0-9]{9,14}$')
+    fail_msg: "kv/{{ hermes_vault_path }}: whatsapp_number must be digits with the country code, no +"
+    quiet: true
+
+- name: Folders
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ hermes_dir }}", owner: root, mode: "0755"}
+    - {path: "{{ hermes_data_dir }}", owner: "{{ hermes_uid }}", mode: "0700"}
+  loop_control:
+    label: "{{ item.path }}"
+
+# --- the image, from the release's source ------------------------------------------------------
+- name: Source at the release tag
+  ansible.builtin.git:
+    repo: "{{ hermes_repo }}"
+    dest: "{{ hermes_src_dir }}"
+    version: "{{ hermes_version }}"
+    depth: 1
+    force: true
+  register: hermes_src
+
+- name: The tag is still the release commit
+  ansible.builtin.assert:
+    that: hermes_src.after == hermes_commit or ansible_check_mode
+    fail_msg: "{{ hermes_version }} points at {{ hermes_src.after }}, not {{ hermes_commit }}: refusing a moved tag"
+    quiet: true
+
+- name: Is the image built
+  ansible.builtin.command: docker image inspect --format "{{ '{{' }}.Id{{ '}}' }}" {{ hermes_image }}
+  register: hermes_image_present
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Build the image (the first time takes a while)
+  ansible.builtin.command:
+    argv: [docker, build, --pull=false, -t, "{{ hermes_image }}", --build-arg, HERMES_BOT_DESKTOP=0, "{{ hermes_src_dir }}"]
+  changed_when: true
+  when: hermes_image_present.rc != 0 and not ansible_check_mode
+
+# --- settings Hermes reads (it writes its own keys to the same files) ---------------------------
+- name: WhatsApp settings in its .env (other keys, its own tokens, are left alone)
+  ansible.builtin.lineinfile:
+    path: "{{ hermes_data_dir }}/.env"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: true
+    owner: "{{ hermes_uid }}"
+    group: "{{ hermes_uid }}"
+    mode: "0600"
+  loop:
+    - {key: WHATSAPP_ENABLED, value: "true"}
+    - {key: WHATSAPP_MODE, value: "{{ hermes_whatsapp_mode }}"}
+    - {key: WHATSAPP_ALLOWED_USERS, value: "{{ hermes_whatsapp_number }}"}
+  loop_control:
+    label: "{{ item.key }}"
+  no_log: true
+  notify: Restart hermes
+
+- name: Allow-everyone switches are absent
+  ansible.builtin.lineinfile:
+    path: "{{ hermes_data_dir }}/.env"
+    regexp: "^({{ item }})="
+    state: absent
+  loop: [GATEWAY_ALLOW_ALL_USERS, WHATSAPP_ALLOW_ALL_USERS]
+  notify: Restart hermes
+
+- name: Read its config.yaml
+  ansible.builtin.slurp:
+    src: "{{ hermes_data_dir }}/config.yaml"
+  register: hermes_config_read
+  failed_when: false
+
+- name: MCP servers in its config.yaml (its other settings are kept)
+  ansible.builtin.copy:
+    content: >-
+      {{ ((hermes_config_read.content | default('') | b64decode | from_yaml) or {})
+         | combine({'mcp_servers': hermes_mcp_servers}) | to_nice_yaml(indent=2) }}
+    dest: "{{ hermes_data_dir }}/config.yaml"
+    owner: "{{ hermes_uid }}"
+    group: "{{ hermes_uid }}"
+    mode: "0600"
+  notify: Restart hermes
+
+- name: Hermes' CLI for the logins (sudo hermes-cli <command>)
+  ansible.builtin.template:
+    src: hermes-cli.j2
+    dest: /usr/local/bin/hermes-cli
+    owner: root
+    group: root
+    mode: "0755"
+
+# --- the gateway -------------------------------------------------------------------------------
+- name: Hermes compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ hermes_dir }}"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+
+- name: Apply a settings change now
+  ansible.builtin.meta: flush_handlers

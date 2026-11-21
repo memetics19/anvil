@@ -1,0 +1,17 @@
+# Managed by Ansible (role hermes). Hermes Agent's gateway (WhatsApp), from the image built
+# here. Nothing is published: WhatsApp and the model provider are reached outbound only, and
+# the dashboard stays off.
+services:
+  gateway:
+    image: {{ hermes_image }}
+    container_name: hermes
+    restart: unless-stopped
+    environment:
+      HERMES_UID: "{{ hermes_uid }}"
+      HERMES_GID: "{{ hermes_uid }}"
+    volumes:
+      - {{ hermes_data_dir }}:/opt/data
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: {{ hermes_mem_limit }}
+    memswap_limit: {{ hermes_mem_limit }}

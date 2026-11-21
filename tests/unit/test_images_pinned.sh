@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Every container image a role pulls is pinned to a digest (name:tag@sha256:...), so a pull
 # never brings in something new by surprise and the nightly Trivy scan sees exactly what
-# runs. Left out: the images built here from pinned bases (caddy, iptv-streams) and Pulse,
+# runs. Left out: the images built here from pinned bases (caddy, iptv-streams, and Hermes,
+# from a release commit the role checks, whose Dockerfile pins its bases by digest) and Pulse,
 # whose updater writes the digest it pulls (pulse-update). Needs no lab.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 fail=0
-built_here='^(caddy_image|iptv_streams_image|pulse_image|[a-z_]+_caddy_image):'
+built_here='^(caddy_image|iptv_streams_image|pulse_image|hermes_image|[a-z_]+_caddy_image):'
 
 # Image variables in role defaults.
 while IFS=: read -r file _ line; do

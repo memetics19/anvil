@@ -1208,6 +1208,41 @@ In Dispatcharr, add M3U accounts and EPG sources, pick the channels, and give pl
 output playlist and guide from the web page. Streams from a player go through the gateway,
 so they work at home and over the VPN alike.
 
+## Hermes
+
+The operator's assistant: [Hermes Agent](https://github.com/NousResearch/hermes-agent) on its
+own VM (`assistant`, on the second node), talking on WhatsApp. Role `hermes`.
+
+- **The image** is built on the VM from the release's source (`hermes_version`), checked
+  against the release commit (`hermes_commit`). A moved tag stops the run. Bump both
+  together, to a release at least two weeks old.
+- **WhatsApp** is self-chat on the operator's own number: the operator messages themselves,
+  and only that reaches the agent. The number is in Vault (`kv/homelab/assistant/hermes`,
+  `whatsapp_number`, country code without +) and is the only allowed sender. The pairing is
+  WhatsApp Web's (unofficial): WhatsApp can restrict an account for automation.
+- **The model** is Claude through Anthropic's OAuth login for the Max plan. Anthropic bills a
+  third-party app's use as extra usage, so set a spend limit in the Claude account.
+- **Swiggy** food, Instamart and Dineout come from Swiggy's own MCP servers. They are
+  untrusted: every tool that writes (an order, a booking) asks the operator first. Orders
+  are cash on delivery for now.
+- Nothing on the VM listens for the internet. Its data (`/opt/hermes/data`) holds the
+  WhatsApp session and the logins, readable by the container user only.
+
+The logins are by hand, once, in a terminal on the VM (`ssh ubuntu@<assistant-address>`):
+
+```sh
+sudo hermes-cli model                   # Anthropic, OAuth: open the link, paste the code
+sudo hermes-cli whatsapp                # scan the QR: WhatsApp, Linked devices
+sudo hermes-cli mcp login swiggy_food
+sudo hermes-cli mcp login swiggy_instamart
+sudo hermes-cli mcp login swiggy_dineout
+```
+
+`hermes-cli` runs Hermes' own CLI in a one-off container on its data. It stops the service
+first, since the service restarts in a loop until a model is set, and starts it again after.
+To unlink WhatsApp: WhatsApp, Linked devices, log the Hermes device out. Then
+`sudo hermes-cli whatsapp` pairs it again.
+
 ## Host hardening
 
 Role `host_hardening` closes small doors on every VM and Proxmox node.

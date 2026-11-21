@@ -1,0 +1,39 @@
+# Hermes Agent (NousResearch/hermes-agent): the operator's assistant, talking on WhatsApp,
+# on the assistant VM. Its image is built here from the release's source, checked against
+# the release commit, and runs as a compose project in /opt/hermes (data in /opt/hermes/data,
+# the container's /opt/data). docs/services.md, Hermes.
+hermes_dir: /opt/hermes
+hermes_data_dir: "{{ hermes_dir }}/data"
+hermes_src_dir: "{{ hermes_dir }}/src"
+hermes_repo: https://github.com/NousResearch/hermes-agent.git
+# A release at least two weeks old, and its commit: a moved tag stops the run.
+hermes_version: v0.23.0
+hermes_commit: 2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19
+hermes_image: "anvil/hermes-agent:{{ hermes_version }}"
+# The container drops to this uid/gid (its s6 init remaps its hermes user); the data folder
+# belongs to it.
+hermes_uid: 10000
+hermes_mem_limit: 2g
+
+# WhatsApp: self-chat on the operator's own number. Only a message the operator sends to
+# themselves reaches the agent, and only that number is allowed. Number: Vault
+# kv/<hermes_vault_path>, key whatsapp_number (country code, no +).
+hermes_vault_mount: kv
+hermes_vault_path: homelab/assistant/hermes
+hermes_whatsapp_mode: self-chat
+
+# MCP servers. Swiggy's official ones (food, Instamart, Dineout), OAuth on first use. Untrusted:
+# every tool that writes (placing an order, booking a table) asks the operator first.
+hermes_mcp_servers:
+  swiggy_food:
+    url: https://mcp.swiggy.com/food
+    auth: oauth
+    trust: untrusted
+  swiggy_instamart:
+    url: https://mcp.swiggy.com/instamart
+    auth: oauth
+    trust: untrusted
+  swiggy_dineout:
+    url: https://mcp.swiggy.com/dineout
+    auth: oauth
+    trust: untrusted

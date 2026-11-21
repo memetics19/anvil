@@ -1,0 +1,15 @@
+#!/bin/sh
+# Managed by Ansible (role hermes). Hermes' own CLI in a one-off container on its data, for
+# what needs a terminal: the model login, WhatsApp pairing, MCP logins. The service is
+# stopped first (it restarts in a loop until a model is set) and started again after.
+#   sudo hermes-cli model
+#   sudo hermes-cli whatsapp
+#   sudo hermes-cli mcp login swiggy_food
+set -u
+docker stop hermes >/dev/null 2>&1 || true
+docker run --rm -it -v {{ hermes_data_dir }}:/opt/data \
+  -e HERMES_UID={{ hermes_uid }} -e HERMES_GID={{ hermes_uid }} \
+  {{ hermes_image }} hermes "$@"
+rc=$?
+docker start hermes >/dev/null 2>&1 || true
+exit $rc
