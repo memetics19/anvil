@@ -1214,6 +1214,87 @@ In Dispatcharr, add M3U accounts and EPG sources, pick the channels, and give pl
 output playlist and guide from the web page. Streams from a player go through the gateway,
 so they work at home and over the VPN alike.
 
+## Hermes
+
+The operator's assistant: [Hermes Agent](https://github.com/NousResearch/hermes-agent) on its
+own VM (`assistant`, on the second node), talking on WhatsApp. Role `hermes`.
+
+- **The image** is built on the VM from the release's source (`hermes_version`), checked
+  against the release commit (`hermes_commit`). A moved tag stops the run. Bump both
+  together, to a release at least two weeks old.
+- **WhatsApp** is self-chat on the operator's own number: the operator messages themselves,
+  and only that reaches the agent. The number is in Vault (`kv/homelab/assistant/hermes`,
+  `whatsapp_number`, country code without +) and is the only allowed sender. The pairing is
+  WhatsApp Web's (unofficial): WhatsApp can restrict an account for automation.
+- **Telegram** is optional: a bot of the operator's own (from @BotFather), which answers
+  only the operator's numeric Telegram user id. Both go in the same Vault entry,
+  `telegram_bot_token` and `telegram_user_id`. With neither set, Telegram stays off.
+- **The model** is Claude through Anthropic's OAuth login for the Max plan. Anthropic bills a
+  third-party app's use as extra usage, so set a spend limit in the Claude account.
+- **Swiggy** food, Instamart and Dineout, **Zomato** and **Zepto** come from their own hosted
+  MCP servers, with an OAuth login each.
+- **Blinkit** and **BigBasket** run here, in a "shops" image built on top of Hermes' own from
+  two personal projects pinned by commit ([blinkit-mcp](https://github.com/hereisSwapnil/blinkit-mcp),
+  [quick-commerce-mcp](https://github.com/Hardik500/quick-commerce-mcp) for BigBasket). They drive
+  a browser on the shop's site and log in with the operator's phone and an OTP, asked for in the
+  chat. BigBasket refuses a headless browser, so its Chrome runs on a virtual screen. These are
+  unofficial and can break when a shop changes its site. A shop may also block an account it
+  sees as automated.
+- Every MCP server is untrusted: every tool that writes (an order, a booking) asks the operator
+  first.
+- Nothing on the VM listens for the internet. Its data (`/opt/hermes/data`) holds the
+  WhatsApp session and the logins, readable by the container user only.
+
+The logins are by hand, once, in a terminal on the VM (`ssh ubuntu@<assistant-address>`):
+
+```sh
+sudo hermes-cli model                   # Anthropic, OAuth: open the link, paste the code
+sudo hermes-cli whatsapp                # scan the QR: WhatsApp, Linked devices
+sudo hermes-cli mcp login swiggy_food
+sudo hermes-cli mcp login swiggy_instamart
+sudo hermes-cli mcp login swiggy_dineout
+sudo hermes-cli mcp login zomato
+sudo hermes-cli mcp login zepto
+```
+
+For the Swiggy logins, connect with a tunnel for the login's callback,
+`ssh -L 27890:127.0.0.1:27890 ubuntu@<assistant-address>`. Then the browser's redirect after
+the Swiggy login reaches Hermes on the VM by itself, with no long URL to paste.
+
+If a login's paste prompt hangs after the paste, finish it from a second session on the VM
+with the address the browser landed on, in quotes:
+`sudo hermes-cli finish-login 'http://127.0.0.1:<port>/callback?code=...&state=...'`.
+
+`hermes-cli` runs Hermes' own CLI in a one-off container on its data. For the model and
+WhatsApp it stops the service first, so two processes never hold one session, and starts it
+again after. An MCP login leaves the service running. Blinkit and BigBasket need no terminal:
+ask Hermes to log in to them, and give it the OTP in the chat.
+To unlink WhatsApp: WhatsApp, Linked devices, log the Hermes device out. Then
+`sudo hermes-cli whatsapp` pairs it again.
+
+## Home link
+
+A VPN link from the assistant VM to the home router, for the home's own devices: the Switchy
+wall panels. The router is an OpenVPN server and the VM its client. Role `home_link`.
+
+- Only the home subnet goes through it. Routes the router pushes are ignored, so it never
+  takes the default route.
+- Vault `kv/homelab/assistant/home-link` holds `config` (the router's exported `.ovpn` file),
+  `home_subnet`, and `remote` (`host port`, the name the router is reached at from outside).
+  The link waits for `remote`: the exported file names whatever address the router's WAN had,
+  and behind the ISP's carrier NAT that address is not reachable from outside.
+- To make it: in the router's VPN page, generate the certificate, enable the OpenVPN server
+  with access to the home network only, and export the client file. The file names the
+  router's public address at export time. When that address changes, `remote` points at the
+  name the router's Dynamic DNS (or the home bridge) keeps current.
+
+**Switchy in Hermes.** The panels' MCP server is kept out of this repo, because the panels'
+local key is their device ID. It lives on the operator's machine at
+`~/switchy-cli/switchy_mcp.py`, and the Hermes role copies it to the VM when it is there. The
+panel list (room names and switch labels by panel ID) and the home subnet are in Vault
+(`kv/homelab/assistant/switchy`). It can read every room and switch lights, fans and the
+geyser. Like every MCP server here, it asks before switching anything.
+
 ## Host hardening
 
 Role `host_hardening` closes small doors on every VM and Proxmox node.

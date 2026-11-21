@@ -1,0 +1,50 @@
+- name: The home router's peer settings (Vault)
+  ansible.builtin.set_fact:
+    home_link_peer: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', home_link_vault_path,
+                 engine_mount_point=home_link_vault_mount,
+                 url=lookup('env', 'VAULT_ADDR'),
+                 token=lookup('env', 'VAULT_TOKEN'),
+                 ca_cert=lookup('env', 'VAULT_CACERT'), errors='ignore') or {}).get('secret', {}) }}
+  no_log: true
+
+# The router's exported file names the address its WAN had at export time, which can be a
+# carrier-NAT address no one outside can reach. So the link waits for an explicit remote.
+- name: Set up the link only when the router's client file and its reachable address are in Vault
+  when: home_link_peer.config | default('') | length > 0 and home_link_peer.remote | default('') | length > 0
+  block:
+    - name: The settings are whole, and only a private subnet goes through the tunnel
+      ansible.builtin.assert:
+        that:
+          - "'client' in home_link_peer.config"
+          - home_link_peer.home_subnet | default('') is match('^(10|192\\.168|172\\.(1[6-9]|2[0-9]|3[01]))\\.')
+          - home_link_peer.home_subnet is match('^([0-9]{1,3}\\.){3}[0-9]{1,3}/(1[6-9]|2[0-9]|3[0-2])$')
+          - home_link_peer.remote is match('^[A-Za-z0-9.-]+ [0-9]+$')
+        fail_msg: "kv/{{ home_link_vault_path }}: needs config (the router's .ovpn), a private home_subnet (a.b.c.d/nn), and remote as 'host port' if set"
+        quiet: true
+
+    - name: OpenVPN
+      ansible.builtin.apt:
+        name: openvpn
+        state: present
+
+    - name: The link's settings (root only)
+      ansible.builtin.template:
+        src: client.conf.j2
+        dest: "/etc/openvpn/client/{{ home_link_name }}.conf"
+        owner: root
+        group: root
+        mode: "0600"
+      vars:
+        home_link_netmask: >-
+          {{
+             (('1' * (home_link_peer.home_subnet.split('/')[1] | int)) ~ ('0' * (32 - (home_link_peer.home_subnet.split('/')[1] | int))))
+             | regex_findall('.{8}') | map('int', base=2) | map('string') | join('.') }}
+      no_log: true
+      notify: Restart the home link
+
+    - name: The link is up and comes back after a reboot
+      ansible.builtin.systemd:
+        name: "openvpn-client@{{ home_link_name }}"
+        enabled: true
+        state: started

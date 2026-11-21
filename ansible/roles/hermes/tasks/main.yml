@@ -1,0 +1,240 @@
+- name: The operator's WhatsApp number and the Telegram bot (Vault)
+  ansible.builtin.set_fact:
+    hermes_secret: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', hermes_vault_path,
+                engine_mount_point=hermes_vault_mount,
+                url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'),
+                ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
+  no_log: true
+
+- name: Settings from it
+  ansible.builtin.set_fact:
+    hermes_whatsapp_number: "{{ hermes_secret.whatsapp_number | string }}"
+    hermes_telegram_token: "{{ hermes_secret.telegram_bot_token | default('') | string }}"
+    hermes_telegram_user: "{{ hermes_secret.telegram_user_id | default('') | string }}"
+  no_log: true
+
+- name: The number is digits with the country code
+  ansible.builtin.assert:
+    that: hermes_whatsapp_number is match('^[1-9][0-9]{9,14}$')
+    fail_msg: "kv/{{ hermes_vault_path }}: whatsapp_number must be digits with the country code, no +"
+    quiet: true
+
+- name: Telegram is all or nothing (a bot token and the operator's numeric user id)
+  ansible.builtin.assert:
+    that: >-
+      (hermes_telegram_token == '' and hermes_telegram_user == '') or
+      (hermes_telegram_token is match('^[0-9]+:[A-Za-z0-9_-]{30,}$') and hermes_telegram_user is match('^[0-9]{5,15}$'))
+    fail_msg: "kv/{{ hermes_vault_path }}: set both telegram_bot_token (from BotFather) and telegram_user_id (digits), or neither"
+    quiet: true
+
+- name: Folders
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ hermes_dir }}", owner: root, mode: "0755"}
+    - {path: "{{ hermes_data_dir }}", owner: "{{ hermes_uid }}", mode: "0700"}
+    - {path: "{{ hermes_data_dir }}/switchy", owner: "{{ hermes_uid }}", mode: "0700"}
+  loop_control:
+    label: "{{ item.path }}"
+
+# --- the image, from the release's source ------------------------------------------------------
+- name: Source at the release tag
+  ansible.builtin.git:
+    repo: "{{ hermes_repo }}"
+    dest: "{{ hermes_src_dir }}"
+    version: "{{ hermes_version }}"
+    depth: 1
+    force: true
+  register: hermes_src
+
+- name: The tag is still the release commit
+  ansible.builtin.assert:
+    that: hermes_src.after == hermes_commit or ansible_check_mode
+    fail_msg: "{{ hermes_version }} points at {{ hermes_src.after }}, not {{ hermes_commit }}: refusing a moved tag"
+    quiet: true
+
+- name: Is the image built
+  ansible.builtin.command: docker image inspect --format "{{ '{{' }}.Id{{ '}}' }}" {{ hermes_image }}
+  register: hermes_image_present
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Build the image (the first time takes a while)
+  ansible.builtin.command:
+    argv: [docker, build, --pull=false, -t, "{{ hermes_image }}", --build-arg, HERMES_BOT_DESKTOP=0, "{{ hermes_src_dir }}"]
+  changed_when: true
+  when: hermes_image_present.rc != 0 and not ansible_check_mode
+
+# --- the shops image: Hermes plus the shop MCP servers that run here ----------------------------
+- name: Shop MCP sources at their pinned commits
+  ansible.builtin.git:
+    repo: "{{ item.repo }}"
+    dest: "{{ hermes_shops_dir }}/{{ item.name }}"
+    version: "{{ item.commit }}"
+    force: true
+  loop:
+    - {name: blinkit, repo: "{{ hermes_blinkit_repo }}", commit: "{{ hermes_blinkit_commit }}"}
+    - {name: quick-commerce, repo: "{{ hermes_qc_repo }}", commit: "{{ hermes_qc_commit }}"}
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Shops image recipe
+  ansible.builtin.template:
+    src: Dockerfile.shops.j2
+    dest: "{{ hermes_shops_dir }}/Dockerfile"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Is the shops image built
+  ansible.builtin.command: docker image inspect --format "{{ '{{' }}.Id{{ '}}' }}" {{ hermes_shops_image }}
+  register: hermes_shops_present
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Build the shops image
+  ansible.builtin.command:
+    argv: [docker, build, --pull=false, -t, "{{ hermes_shops_image }}", "{{ hermes_shops_dir }}"]
+  changed_when: true
+  when: hermes_shops_present.rc != 0 and not ansible_check_mode
+
+# --- settings Hermes reads (it writes its own keys to the same files) ---------------------------
+- name: WhatsApp settings in its .env (other keys, its own tokens, are left alone)
+  ansible.builtin.lineinfile:
+    path: "{{ hermes_data_dir }}/.env"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: true
+    owner: "{{ hermes_uid }}"
+    group: "{{ hermes_uid }}"
+    mode: "0600"
+  loop:
+    - {key: WHATSAPP_ENABLED, value: "true"}
+    - {key: WHATSAPP_MODE, value: "{{ hermes_whatsapp_mode }}"}
+    - {key: WHATSAPP_ALLOWED_USERS, value: "{{ hermes_whatsapp_number }}"}
+  loop_control:
+    label: "{{ item.key }}"
+  no_log: true
+  notify: Restart hermes
+
+- name: Telegram settings in its .env (only the operator's user id may talk to the bot)
+  ansible.builtin.lineinfile:
+    path: "{{ hermes_data_dir }}/.env"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    state: "{{ 'present' if hermes_telegram_token else 'absent' }}"
+    owner: "{{ hermes_uid }}"
+    group: "{{ hermes_uid }}"
+    mode: "0600"
+  loop:
+    - {key: TELEGRAM_BOT_TOKEN, value: "{{ hermes_telegram_token }}"}
+    - {key: TELEGRAM_ALLOWED_USERS, value: "{{ hermes_telegram_user }}"}
+  loop_control:
+    label: "{{ item.key }}"
+  no_log: true
+  notify: Restart hermes
+
+- name: Allow-everyone switches are absent
+  ansible.builtin.lineinfile:
+    path: "{{ hermes_data_dir }}/.env"
+    regexp: "^({{ item }})="
+    state: absent
+  loop: [GATEWAY_ALLOW_ALL_USERS, WHATSAPP_ALLOW_ALL_USERS, TELEGRAM_ALLOW_ALL_USERS]
+  notify: Restart hermes
+
+# --- Switchy (optional) ---------------------------------------------------------------------
+- name: Is the Switchy server on the operator's machine
+  ansible.builtin.stat:
+    path: "{{ hermes_switchy_source }}"
+  delegate_to: localhost
+  become: false
+  register: hermes_switchy_src
+
+- name: The Switchy panel list (Vault)
+  ansible.builtin.set_fact:
+    hermes_switchy: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', hermes_switchy_vault_path,
+                 engine_mount_point=hermes_vault_mount,
+                 url=lookup('env', 'VAULT_ADDR'),
+                 token=lookup('env', 'VAULT_TOKEN'),
+                 ca_cert=lookup('env', 'VAULT_CACERT'), errors='ignore') or {}).get('secret', {}) }}
+  no_log: true
+
+- name: MCP servers this run (Switchy joins when its server and panel list are both there)
+  ansible.builtin.set_fact:
+    hermes_mcp_all: >-
+      {{ hermes_mcp_servers | combine({'switchy': {
+           'command': '/opt/hermes/.venv/bin/python',
+           'args': ['/opt/data/switchy/switchy_mcp.py'],
+           'env': {'SWITCHY_DEVICES': '/opt/data/switchy/devices.json',
+                   'SWITCHY_STATE': '/opt/data/switchy/addresses.json',
+                   'SWITCHY_SUBNET': hermes_switchy.subnet | default('')},
+           'trust': 'untrusted'}})
+         if hermes_switchy_src.stat.exists and (hermes_switchy.devices | default('') | length > 0)
+         else hermes_mcp_servers }}
+
+- name: Switchy server and panel list in its data (container user only)
+  ansible.builtin.copy:
+    src: "{{ item.src | default(omit) }}"
+    content: "{{ item.content | default(omit) }}"
+    dest: "{{ hermes_data_dir }}/switchy/{{ item.name }}"
+    owner: "{{ hermes_uid }}"
+    group: "{{ hermes_uid }}"
+    mode: "0600"
+  loop:
+    - {name: switchy_mcp.py, src: "{{ hermes_switchy_source }}"}
+    - {name: devices.json, content: "{{ hermes_switchy.devices | default('') }}"}
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+  when: "'switchy' in hermes_mcp_all"
+  notify: Restart hermes
+
+- name: Read its config.yaml
+  ansible.builtin.slurp:
+    src: "{{ hermes_data_dir }}/config.yaml"
+  register: hermes_config_read
+  failed_when: false
+
+- name: Its settings as they are
+  ansible.builtin.set_fact:
+    hermes_config: "{{ (hermes_config_read.content | default('') | b64decode | from_yaml) or {} }}"
+
+# Written only when the MCP servers differ: Hermes rewrites the file in its own layout, and a
+# rewrite in ours restarts it for nothing.
+- name: MCP servers in its config.yaml (its other settings are kept)
+  ansible.builtin.copy:
+    content: "{{ hermes_config | combine({'mcp_servers': hermes_mcp_all}) | to_nice_yaml(indent=2) }}"
+    dest: "{{ hermes_data_dir }}/config.yaml"
+    owner: "{{ hermes_uid }}"
+    group: "{{ hermes_uid }}"
+    mode: "0600"
+  when: hermes_config.mcp_servers | default({}) != hermes_mcp_all
+  notify: Restart hermes
+
+- name: Hermes' CLI for the logins (sudo hermes-cli <command>)
+  ansible.builtin.template:
+    src: hermes-cli.j2
+    dest: /usr/local/bin/hermes-cli
+    owner: root
+    group: root
+    mode: "0755"
+
+# --- the gateway -------------------------------------------------------------------------------
+- name: Hermes compose project
+  ansible.builtin.include_role:
+    name: compose_project
+  vars:
+    compose_project_dir: "{{ hermes_dir }}"
+    compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+
+- name: Apply a settings change now
+  ansible.builtin.meta: flush_handlers

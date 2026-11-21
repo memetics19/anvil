@@ -1,0 +1,20 @@
+# Managed by Ansible (role hermes). Hermes Agent's gateway (WhatsApp), from the shops image
+# built here (Hermes plus the shop MCP servers). Nothing is published: WhatsApp and the model provider are reached outbound only, and
+# the dashboard stays off.
+services:
+  gateway:
+    image: {{ hermes_shops_image }}
+    container_name: hermes
+    # The gateway, supervised by the image's s6. Without a command the image runs the chat
+    # CLI, which exits with no terminal and takes the container (and the gateway) down.
+    command: ["gateway", "run"]
+    restart: unless-stopped
+    environment:
+      HERMES_UID: "{{ hermes_uid }}"
+      HERMES_GID: "{{ hermes_uid }}"
+    volumes:
+      - {{ hermes_data_dir }}:/opt/data
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: {{ hermes_mem_limit }}
+    memswap_limit: {{ hermes_mem_limit }}

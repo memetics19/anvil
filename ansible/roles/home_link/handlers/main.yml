@@ -1,0 +1,5 @@
+- name: Restart the home link
+  ansible.builtin.systemd:
+    name: "openvpn-client@{{ home_link_name }}"
+    state: restarted
+  when: not ansible_check_mode

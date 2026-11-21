@@ -1,0 +1,13 @@
+# A VPN link from this VM to the operator's home router, for the home's own devices (the
+# Switchy wall panels) and nothing else: only the home subnet goes through it, never a default
+# route. The router is an OpenVPN server. Its exported client file and the routing settings are
+# in Vault kv/<home_link_vault_path>:
+#   config       the router's exported .ovpn file, whole
+#   remote       "host port" the router is reached at from outside, e.g. its Dynamic DNS
+#                name. Required: the exported file names whatever address the router's WAN
+#                had at export time, which behind carrier NAT is not reachable.
+#   home_subnet  the home subnet, e.g. a.b.c.0/24
+# With config or remote missing, the role does nothing. docs/services.md, Home link.
+home_link_vault_mount: kv
+home_link_vault_path: homelab/assistant/home-link
+home_link_name: home

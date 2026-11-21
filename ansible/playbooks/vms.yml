@@ -297,3 +297,12 @@
       tags: [port_guard, dispatcharr]
     - role: dispatcharr
       tags: [dispatcharr]
+
+# The operator's assistant (docs/services.md, Hermes): Hermes Agent on WhatsApp, on its own VM.
+- name: Hermes
+  hosts: assistant_servers
+  roles:
+    - role: home_link
+      tags: [home_link, hermes]
+    - role: hermes
+      tags: [hermes]

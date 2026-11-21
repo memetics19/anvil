@@ -1,0 +1,32 @@
+#!/bin/sh
+# Managed by Ansible (role hermes). Hermes' own CLI in a one-off container on its data, for
+# what needs a terminal: the model login, WhatsApp pairing, MCP logins. For the model and
+# WhatsApp the service is stopped first, so two processes never hold the same session, and
+# started again after. An MCP login leaves it running.
+#   sudo hermes-cli model
+#   sudo hermes-cli whatsapp
+#   sudo hermes-cli mcp login swiggy_food
+# It shares the VM's network, so an OAuth login's callback port (127.0.0.1:27890) is the
+# VM's: from the Mac, `ssh -L 27890:127.0.0.1:27890 ubuntu@<assistant>` brings the browser's
+# redirect straight to it, with nothing to paste.
+# If a login's paste prompt hangs, finish it from a second session on the VM: give it the
+# address the browser landed on (127.0.0.1:<port>/callback?code=...), quoted.
+#   sudo hermes-cli finish-login 'http://127.0.0.1:27891/callback?code=...&state=...'
+set -u
+if [ "${1:-}" = finish-login ]; then
+  case "${2:-}" in
+    http://127.0.0.1:*/callback\?*) ;;
+    *) echo "usage: hermes-cli finish-login 'http://127.0.0.1:<port>/callback?code=...&state=...'" >&2; exit 2 ;;
+  esac
+  curl -fsS -m 30 -o /dev/null "$2" && echo "Handed to the waiting login. Check its terminal." || { echo "No login is waiting on that port." >&2; exit 1; }
+  exit 0
+fi
+stop=yes
+[ "${1:-}" = mcp ] && stop=no
+[ "$stop" = yes ] && { docker stop hermes >/dev/null 2>&1 || true; }
+docker run --rm -it --network host -v {{ hermes_data_dir }}:/opt/data \
+  -e HERMES_UID={{ hermes_uid }} -e HERMES_GID={{ hermes_uid }} \
+  {{ hermes_shops_image }} hermes "$@"
+rc=$?
+[ "$stop" = yes ] && { docker start hermes >/dev/null 2>&1 || true; }
+exit $rc

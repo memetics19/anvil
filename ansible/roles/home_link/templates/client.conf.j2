@@ -1,0 +1,17 @@
+# Managed by Ansible (role home_link). The home router's OpenVPN, for the home subnet only:
+# the router's file below, minus anything that would take more routes, then our own routing.
+{% for line in home_link_peer.config.splitlines()
+   if not line.strip().startswith(('redirect-gateway', 'route ', 'route-ipv6', 'dhcp-option', 'up ', 'down ', 'script-security'))
+   and not (home_link_peer.remote | default('') and line.strip().startswith('remote ')) %}
+{{ line }}
+{% endfor %}
+
+# anvil: ignore routes the server pushes, and route only the home subnet
+{% if home_link_peer.remote | default('') %}
+remote {{ home_link_peer.remote }}
+{% endif %}
+route-nopull
+route {{ home_link_peer.home_subnet | ansible.builtin.regex_replace('/.*$', '') }} {{ home_link_netmask }}
+pull-filter ignore "redirect-gateway"
+pull-filter ignore "dhcp-option"
+script-security 1

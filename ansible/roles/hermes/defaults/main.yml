@@ -1,0 +1,87 @@
+# Hermes Agent (NousResearch/hermes-agent): the operator's assistant, talking on WhatsApp,
+# on the assistant VM. Its image is built here from the release's source, checked against
+# the release commit, and runs as a compose project in /opt/hermes (data in /opt/hermes/data,
+# the container's /opt/data). docs/services.md, Hermes.
+hermes_dir: /opt/hermes
+hermes_data_dir: "{{ hermes_dir }}/data"
+hermes_src_dir: "{{ hermes_dir }}/src"
+hermes_repo: https://github.com/NousResearch/hermes-agent.git
+# A release at least two weeks old, and its commit: a moved tag stops the run.
+hermes_version: v0.23.0
+hermes_commit: 2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19
+hermes_image: "anvil/hermes-agent:{{ hermes_version }}"
+
+# The shop MCP servers that run on our side, built into an image on top of Hermes' own:
+# Blinkit (hereisSwapnil/blinkit-mcp) and quick-commerce (Hardik500/quick-commerce-mcp, used
+# for BigBasket). Both are personal projects, read before pinning: they drive a browser on the
+# shop's site with the operator's phone and OTP login, and talk to nothing else. Each is pinned
+# to a commit at least two weeks old, and the image tag names both, so a bump rebuilds it.
+hermes_shops_dir: "{{ hermes_dir }}/shops"
+hermes_blinkit_repo: https://github.com/hereisSwapnil/blinkit-mcp.git
+hermes_blinkit_commit: a39547118f4decd04a77ac16316fa09efdb6237a
+hermes_qc_repo: https://github.com/Hardik500/quick-commerce-mcp.git
+hermes_qc_commit: 9d09173448057c0a9c397aca3763c2a2d03e26e1
+hermes_shops_image: "anvil/hermes-agent:{{ hermes_version }}-shops-{{ hermes_blinkit_commit[:7] }}-{{ hermes_qc_commit[:7] }}"
+# The container drops to this uid/gid (its s6 init remaps its hermes user); the data folder
+# belongs to it.
+hermes_uid: 10000
+hermes_mem_limit: 2g
+
+# WhatsApp: self-chat on the operator's own number. Only a message the operator sends to
+# themselves reaches the agent, and only that number is allowed. Number: Vault
+# kv/<hermes_vault_path>, key whatsapp_number (country code, no +).
+hermes_vault_mount: kv
+hermes_vault_path: homelab/assistant/hermes
+hermes_whatsapp_mode: self-chat
+
+# MCP servers. Hosted, OAuth on first use: the official ones from Swiggy (food, Instamart,
+# Dineout), Zomato and Zepto. On our side, in the shops image: Blinkit, and BigBasket through
+# quick-commerce. Those two log in with the operator's phone and an OTP, asked for in the chat;
+# BigBasket refuses a headless browser, so its Chrome runs on a virtual screen (xvfb-run).
+# All untrusted: every tool that writes (placing an order, booking a table) asks the operator
+# first.
+hermes_mcp_servers:
+  swiggy_food:
+    url: https://mcp.swiggy.com/food
+    auth: oauth
+    trust: untrusted
+  swiggy_instamart:
+    url: https://mcp.swiggy.com/im
+    auth: oauth
+    trust: untrusted
+  swiggy_dineout:
+    url: https://mcp.swiggy.com/dineout
+    auth: oauth
+    trust: untrusted
+  zomato:
+    url: https://mcp-server.zomato.com/mcp
+    auth: oauth
+    trust: untrusted
+  zepto:
+    url: https://mcp.zepto.co.in/mcp
+    auth: oauth
+    trust: untrusted
+  blinkit:
+    command: /opt/mcp/blinkit/.venv/bin/python
+    args: [/opt/mcp/blinkit/main.py]
+    env:
+      HOME: /opt/data
+      HEADLESS: "true"
+      PLAYWRIGHT_BROWSERS_PATH: /opt/mcp/browsers
+    trust: untrusted
+  bigbasket:
+    command: /usr/bin/xvfb-run
+    args: [-a, -s, "-screen 0 1280x900x24", /usr/local/bin/node, /opt/mcp/quick-commerce/dist/index.js]
+    env:
+      HOME: /opt/data
+      QC_BIGBASKET_HEADLESS: "false"
+      PLAYWRIGHT_BROWSERS_PATH: /opt/mcp/browsers
+    trust: untrusted
+
+# Switchy wall panels at home (lights, fans, the geyser), through the home link (role
+# home_link). The MCP server is kept out of this public repo: it is copied from the operator's
+# machine, next to the switchy CLI. The panel list is in Vault kv/<hermes_switchy_vault_path>:
+# devices (JSON, panel id to room name and switch labels; the ids are the panels' keys) and
+# subnet (the home subnet). With either missing, Switchy is left out.
+hermes_switchy_source: "{{ lookup('env', 'HOME') }}/switchy-cli/switchy_mcp.py"
+hermes_switchy_vault_path: homelab/assistant/switchy
