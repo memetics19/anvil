@@ -25,7 +25,8 @@ check "nothing happens until config, remote and fingerprint are in Vault" "grep 
 check "its settings are root-only and never logged" "awk '/The link.s settings/,/notify:/' $t | grep -q 'mode: \"0600\"' && awk '/The link.s settings/,/notify:/' $t | grep -q 'no_log: true'"
 check "the Switchy server is not in this repo" "! git ls-files | grep -q 'switchy_mcp'"
 check "the Switchy panel list comes from Vault and is never logged" "awk '/The Switchy panel list/,/no_log/' $h | grep -q 'hermes_switchy_vault_path'"
-check "Switchy is untrusted (switching asks first)" "awk '/MCP servers this run/,/else hermes_mcp_base/' $h | grep -q \"'trust': 'untrusted'\""
+check "Switchy and lab are full-trust (home control and read-only lab, no per-call prompt)" "awk '/Read-only lab joins/,/else hermes_mcp_base/' $h | grep -c \"'trust': 'full'\" | grep -q 2"
+check "the shop MCPs stay untrusted (ordering asks first)" "grep -c 'trust: untrusted' ansible/roles/hermes/defaults/main.yml | grep -q 7"
 check "the home link runs before Hermes" "awk '/^- name: Hermes$/,0' ansible/playbooks/vms.yml | grep -A3 'roles:' | grep -q 'role: home_link'"
 
 [ "$fail" = 0 ] && echo "PASS: home link" || { echo "FAIL: home link"; exit 1; }

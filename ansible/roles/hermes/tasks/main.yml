@@ -196,7 +196,7 @@
            'env': {'GRAFANA_URL': hermes_lab.grafana_url | default(''),
                    'GRAFANA_TOKEN_FILE': '/opt/data/lab/token',
                    'DATASOURCE_UID': hermes_lab.datasource_uid | default('victoriametrics')},
-           'trust': 'trusted'}})
+           'trust': 'full'}})
          if hermes_lab.grafana_token | default('') | length > 0 else hermes_mcp_servers }}
   no_log: true
 
@@ -227,7 +227,7 @@
            'env': {'SWITCHY_DEVICES': '/opt/data/switchy/devices.json',
                    'SWITCHY_STATE': '/opt/data/switchy/addresses.json',
                    'SWITCHY_SUBNET': hermes_switchy.subnet | default('')},
-           'trust': 'untrusted'}})
+           'trust': 'full'}})
          if hermes_switchy_src.stat.exists and (hermes_switchy.devices | default('') | length > 0)
          else hermes_mcp_base }}
 
