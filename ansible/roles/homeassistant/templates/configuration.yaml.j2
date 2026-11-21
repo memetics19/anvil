@@ -1,0 +1,20 @@
+# Managed by Ansible (role homeassistant). Local-first: data stays in the lab. Devices are added
+# through the web UI (config flow) or their own packages. The real "no data leaves" guarantee is
+# the iot_egress guard, which blocks this host from the internet.
+homeassistant:
+  name: Home
+  time_zone: {{ homeassistant_timezone }}
+
+# Everything default_config brings, so the UI and local discovery work. Nabu Casa cloud is never
+# logged in to, and the egress guard blocks any outbound attempt.
+default_config:
+
+http:
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 127.0.0.1
+    - ::1
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
