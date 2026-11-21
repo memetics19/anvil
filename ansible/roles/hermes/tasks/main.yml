@@ -200,6 +200,71 @@
          if hermes_lab.grafana_token | default('') | length > 0 else hermes_mcp_servers }}
   no_log: true
 
+# --- the assistant's own secrets, a deploy-time snapshot (no live Vault, no token on the box) --
+# Everything under kv/homelab/assistant except the VPN key material (home-link) and this role's
+# own access entries. The agent reads this fixed snapshot, never Vault itself.
+- name: List the assistant secret paths
+  ansible.builtin.command:
+    argv: [vault, kv, list, -format=json, "-mount={{ hermes_vault_mount }}", homelab/assistant]
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  check_mode: false
+  register: hermes_secret_list
+
+- name: Which secret paths to snapshot (not the VPN keys or this role's access entries)
+  ansible.builtin.set_fact:
+    hermes_secret_paths: >-
+      {{ (hermes_secret_list.stdout | from_json)
+         | map('regex_replace', '/$', '')
+         | difference(['home-link', 'vault-access']) | list }}
+
+- name: Read each of those paths
+  ansible.builtin.set_fact:
+    hermes_secrets_store: >-
+      {{ hermes_secrets_store | default({}) | combine({item: lookup('community.hashi_vault.vault_kv2_get',
+         'homelab/assistant/' ~ item, engine_mount_point=hermes_vault_mount,
+         url=lookup('env', 'VAULT_ADDR'), token=lookup('env', 'VAULT_TOKEN'),
+         ca_cert=lookup('env', 'VAULT_CACERT')).secret }) }}
+  loop: "{{ hermes_secret_paths }}"
+  loop_control:
+    label: "{{ item }}"
+  no_log: true
+
+- name: Secrets folder
+  ansible.builtin.file:
+    path: "{{ hermes_data_dir }}/secrets"
+    state: directory
+    owner: "{{ hermes_uid }}"
+    group: "{{ hermes_uid }}"
+    mode: "0700"
+
+- name: The secrets server and the namespace snapshot (container user only)
+  ansible.builtin.copy:
+    src: "{{ item.src | default(omit) }}"
+    content: "{{ item.content | default(omit) }}"
+    dest: "{{ hermes_data_dir }}/secrets/{{ item.name }}"
+    owner: "{{ hermes_uid }}"
+    group: "{{ hermes_uid }}"
+    mode: "0600"
+  loop:
+    - {name: secrets_mcp.py, src: secrets_mcp.py}
+    - {name: store.json, content: "{{ hermes_secrets_store | default({}) | to_json }}"}
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+  notify: Restart hermes
+
+- name: The secrets snapshot joins the MCP set
+  ansible.builtin.set_fact:
+    hermes_mcp_base: >-
+      {{ hermes_mcp_base | combine({'secrets': {
+           'command': '/opt/hermes/.venv/bin/python',
+           'args': ['/opt/data/secrets/secrets_mcp.py'],
+           'env': {'SECRETS_STORE': '/opt/data/secrets/store.json'},
+           'trust': 'full'}}) }}
+  no_log: true
+
 # --- Switchy (optional) ---------------------------------------------------------------------
 - name: Is the Switchy server on the operator's machine
   ansible.builtin.stat:

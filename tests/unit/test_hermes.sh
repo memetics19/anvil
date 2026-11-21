@@ -35,6 +35,8 @@ check "hermes-cli runs the CLI on the same data and starts the service again" "g
 check "finish-login only hands a code to a local callback" "grep -qF 'http://127.0.0.1:*/callback' $r/templates/hermes-cli.j2"
 check "read-only lab uses a Grafana viewer token from Vault, kept out of config" "grep -q 'hermes_lab_vault_path' $r/tasks/main.yml && grep -q 'GRAFANA_TOKEN_FILE' $r/tasks/main.yml && ! grep -q 'GRAFANA_TOKEN:' $r/tasks/main.yml"
 check "the lab MCP server hard-codes no token and defines no write tools" "! grep -qE '[A-Za-z0-9_-]{40,}' $r/files/lab_mcp.py && ! grep -qiE 'def (set_|create_|delete_|place_|update_|order)' $r/files/lab_mcp.py"
+check "the secrets snapshot excludes the VPN keys and the access entry" "grep -qF \"difference(['home-link', 'vault-access'])\" $r/tasks/main.yml"
+check "the secrets MCP is a local snapshot, no live Vault and no token" "grep -q 'SECRETS_STORE' $r/files/secrets_mcp.py && ! grep -qiE 'VAULT_ADDR|VAULT_TOKEN|hvac|requests' $r/files/secrets_mcp.py && ! grep -qiE 'def (set_|create_|write_|delete_)' $r/files/secrets_mcp.py"
 check "a play for the assistant VM" "awk '/^- name: Hermes$/,0' ansible/playbooks/vms.yml | grep -q 'hosts: assistant_servers'"
 
 [ "$fail" = 0 ] && echo "PASS: hermes" || { echo "FAIL: hermes"; exit 1; }
