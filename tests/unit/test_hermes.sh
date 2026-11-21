@@ -21,11 +21,11 @@ check "WhatsApp is self-chat by default" "grep -qx 'hermes_whatsapp_mode: self-c
 check "only the operator's number may talk to it" "grep -q 'WHATSAPP_ALLOWED_USERS' $t && grep -q 'hermes_whatsapp_number' $t"
 check "the allow-everyone switches are removed" "grep -q 'GATEWAY_ALLOW_ALL_USERS, WHATSAPP_ALLOW_ALL_USERS' $t"
 check "the number never shows in a log" "awk '/WhatsApp settings in its .env/,/notify:/' $t | grep -q 'no_log: true'"
-check "every Swiggy server is untrusted (writes ask first)" "python3 -c 'import yaml,sys; m=yaml.safe_load(open(\"$d\"))[\"hermes_mcp_servers\"]; s=[v for k,v in m.items() if k.startswith(\"swiggy\")]; sys.exit(0 if s and all(v.get(\"trust\")==\"untrusted\" and v.get(\"auth\")==\"oauth\" and v[\"url\"].startswith(\"https://mcp.swiggy.com/\") for v in s) else 1)'"
+check "every MCP server is an official one, over OAuth, untrusted (writes ask first)" "python3 -c 'import yaml,sys; m=yaml.safe_load(open(\"$d\"))[\"hermes_mcp_servers\"]; ok=(\"https://mcp.swiggy.com/\", \"https://mcp-server.zomato.com/\"); sys.exit(0 if m and all(v.get(\"trust\")==\"untrusted\" and v.get(\"auth\")==\"oauth\" and v[\"url\"].startswith(ok) for v in m.values()) else 1)'"
 check "nothing is published" "! grep -q 'ports:' $c"
 check "no new privileges, a memory cap" "grep -q 'no-new-privileges:true' $c && grep -q 'mem_limit:' $c"
 check "the data folder is private to the container user" "grep -q 'hermes_data_dir }}\", owner: \"{{ hermes_uid }}\", mode: \"0700\"' $t"
-check "hermes-cli runs the CLI on the same data and starts the service again" "grep -q 'docker run --rm -it -v {{ hermes_data_dir }}:/opt/data' $r/templates/hermes-cli.j2 && grep -q 'docker start hermes' $r/templates/hermes-cli.j2"
+check "hermes-cli runs the CLI on the same data and starts the service again" "grep -q 'docker run --rm -it --network host -v {{ hermes_data_dir }}:/opt/data' $r/templates/hermes-cli.j2 && grep -q 'docker start hermes' $r/templates/hermes-cli.j2"
 check "a play for the assistant VM" "awk '/^- name: Hermes$/,0' ansible/playbooks/vms.yml | grep -q 'hosts: assistant_servers'"
 
 [ "$fail" = 0 ] && echo "PASS: hermes" || { echo "FAIL: hermes"; exit 1; }

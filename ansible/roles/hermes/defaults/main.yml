@@ -22,8 +22,9 @@ hermes_vault_mount: kv
 hermes_vault_path: homelab/assistant/hermes
 hermes_whatsapp_mode: self-chat
 
-# MCP servers. Swiggy's official ones (food, Instamart, Dineout), OAuth on first use. Untrusted:
-# every tool that writes (placing an order, booking a table) asks the operator first.
+# MCP servers: the official ones from Swiggy (food, Instamart, Dineout) and Zomato, OAuth on
+# first use. Untrusted: every tool that writes (placing an order, booking a table) asks the
+# operator first. Zepto and Blinkit have no official server: none is added for them.
 hermes_mcp_servers:
   swiggy_food:
     url: https://mcp.swiggy.com/food
@@ -35,5 +36,9 @@ hermes_mcp_servers:
     trust: untrusted
   swiggy_dineout:
     url: https://mcp.swiggy.com/dineout
+    auth: oauth
+    trust: untrusted
+  zomato:
+    url: https://mcp-server.zomato.com/mcp
     auth: oauth
     trust: untrusted

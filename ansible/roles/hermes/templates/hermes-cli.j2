@@ -5,9 +5,12 @@
 #   sudo hermes-cli model
 #   sudo hermes-cli whatsapp
 #   sudo hermes-cli mcp login swiggy_food
+# It shares the VM's network, so an OAuth login's callback port (127.0.0.1:27890) is the
+# VM's: from the Mac, `ssh -L 27890:127.0.0.1:27890 ubuntu@<assistant>` brings the browser's
+# redirect straight to it, with nothing to paste.
 set -u
 docker stop hermes >/dev/null 2>&1 || true
-docker run --rm -it -v {{ hermes_data_dir }}:/opt/data \
+docker run --rm -it --network host -v {{ hermes_data_dir }}:/opt/data \
   -e HERMES_UID={{ hermes_uid }} -e HERMES_GID={{ hermes_uid }} \
   {{ hermes_image }} hermes "$@"
 rc=$?

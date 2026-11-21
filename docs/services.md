@@ -1222,9 +1222,10 @@ own VM (`assistant`, on the second node), talking on WhatsApp. Role `hermes`.
   WhatsApp Web's (unofficial): WhatsApp can restrict an account for automation.
 - **The model** is Claude through Anthropic's OAuth login for the Max plan. Anthropic bills a
   third-party app's use as extra usage, so set a spend limit in the Claude account.
-- **Swiggy** food, Instamart and Dineout come from Swiggy's own MCP servers. They are
-  untrusted: every tool that writes (an order, a booking) asks the operator first. Orders
-  are cash on delivery for now.
+- **Swiggy** food, Instamart and Dineout, and **Zomato**, come from their own MCP servers. They
+  are untrusted: every tool that writes (an order, a booking) asks the operator first. Swiggy's
+  orders are cash on delivery for now. Zepto and Blinkit have no official server, so none is
+  set up for them.
 - Nothing on the VM listens for the internet. Its data (`/opt/hermes/data`) holds the
   WhatsApp session and the logins, readable by the container user only.
 
@@ -1236,7 +1237,12 @@ sudo hermes-cli whatsapp                # scan the QR: WhatsApp, Linked devices
 sudo hermes-cli mcp login swiggy_food
 sudo hermes-cli mcp login swiggy_instamart
 sudo hermes-cli mcp login swiggy_dineout
+sudo hermes-cli mcp login zomato
 ```
+
+For the Swiggy logins, connect with a tunnel for the login's callback,
+`ssh -L 27890:127.0.0.1:27890 ubuntu@<assistant-address>`. Then the browser's redirect after
+the Swiggy login reaches Hermes on the VM by itself, with no long URL to paste.
 
 `hermes-cli` runs Hermes' own CLI in a one-off container on its data. It stops the service
 first, since the service restarts in a loop until a model is set, and starts it again after.
