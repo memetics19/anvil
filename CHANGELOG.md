@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.34.0](https://github.com/memetics19/anvil/compare/v0.33.0...v0.34.0) (2026-11-21)
+
+
+### Features
+
+* **hermes:** the operator's assistant on WhatsApp ([#257](https://github.com/memetics19/anvil/issues/257)) ([331e244](https://github.com/memetics19/anvil/commit/331e244c8ec4304d1626eea3fb03d2f377716311))
+* **monitoring:** lab map, the whole lab as a live diagram ([#252](https://github.com/memetics19/anvil/issues/252)) ([43515f7](https://github.com/memetics19/anvil/commit/43515f7b2e075a2778b94666fbc4e0e0b5403f6f))
+* **monitoring:** NetBird dashboard for the self-hosted server ([#249](https://github.com/memetics19/anvil/issues/249)) ([672528e](https://github.com/memetics19/anvil/commit/672528e2f82d214a5ed6dbcbf19f52689bb25ae5))
+* **monitoring:** uptime calendar, 90 days at a glance ([#251](https://github.com/memetics19/anvil/issues/251)) ([ce15474](https://github.com/memetics19/anvil/commit/ce1547400082c17ae7e764508200ffb76c88c008))
+* **security:** GeoIP in Caddy, the public port in Wazuh, and an attack map ([#253](https://github.com/memetics19/anvil/issues/253)) ([b0a014e](https://github.com/memetics19/anvil/commit/b0a014ea420fab816bcb3d7b59b1972c4a4bc1c4))
+* **terraform:** the assistant VM on the second node ([#255](https://github.com/memetics19/anvil/issues/255)) ([7222a38](https://github.com/memetics19/anvil/commit/7222a3890475bdf22fcc1c51331a0648e3d7d06d))
+* **watchers:** GPU prices and Yakshagana shows in Bengaluru to Gotify ([#256](https://github.com/memetics19/anvil/issues/256)) ([3f73dd1](https://github.com/memetics19/anvil/commit/3f73dd1026b462d6c82aab02163f7954d74d147d))
+
+
+### Bug Fixes
+
+* **enclave:** no egress at all for Vaultwarden without an SMTP login ([#254](https://github.com/memetics19/anvil/issues/254)) ([6318072](https://github.com/memetics19/anvil/commit/6318072b4b5f5e3e06e5b9918dc55bcef500b6f9))
+
 ## [0.33.0](https://github.com/memetics19/anvil/compare/v0.32.0...v0.33.0) (2026-11-20)
 
 
