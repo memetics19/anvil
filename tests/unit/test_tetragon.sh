@@ -73,7 +73,7 @@ check "rules mounted into the manager" "grep -q 'anvil_tetragon_rules.xml:/wazuh
 
 # Wiring.
 check "a play after the Wazuh agents, on the tetragon group" "awk '/^- name: Wazuh agents\$/{a=NR} /^- name: Tetragon\$/{b=NR} END{exit !(a && b && a < b)}' ansible/playbooks/vms.yml && grep -A1 '^- name: Tetragon\$' ansible/playbooks/vms.yml | grep -q 'hosts: tetragon'"
-check "the tetragon group starts with ragnarok, apps and frigate" "awk '/^    tetragon:/{p=1;next} p&&/^    [a-z_]+:/{exit} p' ansible/inventory/hosts.yml | grep -c '^        [a-z]*:\$' | grep -qx 3"
+check "the tetragon group is ragnarok, apps, frigate and the assistant" "[ \"\$(awk '/^    tetragon:/{p=1;next} p&&/^    [a-z_]+:/{exit} p' ansible/inventory/hosts.yml | grep -oE '^        [a-z]+:\$' | tr -d ' :' | tr '\\n' ' ')\" = 'ragnarok apps frigate assistant ' ]"
 
 [ "$fail" = 0 ] && echo "PASS: tetragon" || echo "FAIL: tetragon"
 exit "$fail"
