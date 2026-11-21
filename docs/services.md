@@ -1268,17 +1268,18 @@ To unlink WhatsApp: WhatsApp, Linked devices, log the Hermes device out. Then
 
 ## Home link
 
-A WireGuard link from the assistant VM to the home router, for the home's own devices: the
-Switchy wall panels. Role `home_link`.
+A VPN link from the assistant VM to the home router, for the home's own devices: the Switchy
+wall panels. The router is an OpenVPN server and the VM its client. Role `home_link`.
 
-- Only the home subnet goes through it. It never takes the default route.
-- The router's peer settings are in Vault (`kv/homelab/assistant/home-link`): `private_key`,
-  `address` (the VM's tunnel address, with prefix), `peer_public_key`, `endpoint` (the
-  router's name and port), `home_subnet`, and `preshared_key` when the router gives one.
-  With that entry missing, the role does nothing.
-- To make the peer: in the router's VPN page, add a WireGuard client, export its settings,
-  and put those values in Vault. The router's endpoint is the DuckDNS name the home bridge
-  keeps current.
+- Only the home subnet goes through it. Routes the router pushes are ignored, so it never
+  takes the default route.
+- Vault `kv/homelab/assistant/home-link` holds `config` (the router's exported `.ovpn` file),
+  `home_subnet`, and `remote` (`host port`) when the router is reached by a DNS name. With that
+  entry missing, the role does nothing.
+- To make it: in the router's VPN page, generate the certificate, enable the OpenVPN server
+  with access to the home network only, and export the client file. The file names the
+  router's public address at export time. When that address changes, `remote` points at the
+  name the router's Dynamic DNS (or the home bridge) keeps current.
 
 **Switchy in Hermes.** The panels' MCP server is kept out of this repo, because the panels'
 local key is their device ID. It lives on the operator's machine at

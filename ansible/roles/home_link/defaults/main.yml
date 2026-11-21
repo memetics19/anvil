@@ -1,10 +1,12 @@
-# A WireGuard link from this VM to the operator's home router, for the home's own devices
-# (the Switchy wall panels) and nothing else: only the home subnet goes through it, never a
-# default route. The router's peer settings are in Vault kv/<home_link_vault_path>:
-#   private_key, address (this VM's tunnel address with prefix), peer_public_key,
-#   endpoint (host:port of the router), home_subnet, and optionally preshared_key.
+# A VPN link from this VM to the operator's home router, for the home's own devices (the
+# Switchy wall panels) and nothing else: only the home subnet goes through it, never a default
+# route. The router is an OpenVPN server. Its exported client file and the routing settings are
+# in Vault kv/<home_link_vault_path>:
+#   config       the router's exported .ovpn file, whole
+#   remote       optional "host port" of the router, when its address is a DNS name (the
+#                exported file names the public IP it had at export time)
+#   home_subnet  the home subnet, e.g. a.b.c.0/24
 # With that entry missing, the role does nothing. docs/services.md, Home link.
 home_link_vault_mount: kv
 home_link_vault_path: homelab/assistant/home-link
-home_link_interface: home
-home_link_keepalive: 25
+home_link_name: home
