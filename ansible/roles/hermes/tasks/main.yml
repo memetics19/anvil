@@ -121,15 +121,20 @@
   register: hermes_config_read
   failed_when: false
 
+- name: Its settings as they are
+  ansible.builtin.set_fact:
+    hermes_config: "{{ (hermes_config_read.content | default('') | b64decode | from_yaml) or {} }}"
+
+# Written only when the MCP servers differ: Hermes rewrites the file in its own layout, and a
+# rewrite in ours restarts it for nothing.
 - name: MCP servers in its config.yaml (its other settings are kept)
   ansible.builtin.copy:
-    content: >-
-      {{ ((hermes_config_read.content | default('') | b64decode | from_yaml) or {})
-         | combine({'mcp_servers': hermes_mcp_servers}) | to_nice_yaml(indent=2) }}
+    content: "{{ hermes_config | combine({'mcp_servers': hermes_mcp_servers}) | to_nice_yaml(indent=2) }}"
     dest: "{{ hermes_data_dir }}/config.yaml"
     owner: "{{ hermes_uid }}"
     group: "{{ hermes_uid }}"
     mode: "0600"
+  when: hermes_config.mcp_servers | default({}) != hermes_mcp_servers
   notify: Restart hermes
 
 - name: Hermes' CLI for the logins (sudo hermes-cli <command>)
