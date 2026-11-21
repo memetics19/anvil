@@ -12,7 +12,8 @@ default_config:
 # Reverse-proxy trust (use_x_forwarded_for + trusted_proxies) is NOT set here: current Home
 # Assistant migrated http config to its own storage (a YAML http block is deprecated and fights
 # a pending/confirm safety). It is set once in HA (Settings, System, Network) or its
-# .storage/http, trusting the gateway that fronts ha.<domain>. docs/services.md.
+# .storage/http, trusting the lab subnet (the Cloudflare tunnel connectors run on
+# several lab hosts). docs/services.md.
 
 
 automation: !include automations.yaml
