@@ -1,0 +1,12 @@
+# Managed by Ansible (role watchers).
+[Unit]
+Description=Run watcher {{ item.name }} every {{ item.interval }}
+
+[Timer]
+Unit=watchers@{{ item.name }}.service
+OnBootSec=10min
+OnUnitActiveSec={{ item.interval }}
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

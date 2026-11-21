@@ -1,0 +1,17 @@
+[
+ {"_id": "000000000000000000000001", "name": "Example Prasanga", "troupeNames": ["Example Mela"], "date": "2030-01-10T13:00:00+00:00",
+  "venue": "Example Hall, Bengaluru", "address": "Example Road", "district": "Bangalore", "active": true, "isDeleted": false, "isDraft": false,
+  "approvalStatus": "APPROVED", "priceFrom": 200, "priceTo": 500},
+ {"_id": "000000000000000000000002", "name": "Example Talamaddale", "date": "2030-01-11T13:00:00+00:00",
+  "venue": "ಉದಾಹರಣೆ ಸಭಾಂಗಣ", "address": "ಉದಾಹರಣೆ ರಸ್ತೆ, ಬೆಂಗಳೂರು", "district": "", "active": true, "isDeleted": false, "isDraft": false,
+  "approvalStatus": "APPROVED"},
+ {"_id": "000000000000000000000003", "name": "Example Coastal Show", "date": "2030-01-12T13:00:00+00:00",
+  "venue": "Example Grounds", "address": "Example Town", "district": "Udupi", "active": true, "isDeleted": false, "isDraft": false,
+  "approvalStatus": "APPROVED"},
+ {"_id": "000000000000000000000004", "name": "Example Cancelled Show", "date": "2030-01-13T13:00:00+00:00",
+  "venue": "Example Hall, Bangalore", "district": "Bangalore", "active": true, "isDeleted": true, "isDraft": false,
+  "approvalStatus": "APPROVED"},
+ {"_id": "000000000000000000000005", "name": "Example Past Show", "date": "2020-01-13T13:00:00+00:00",
+  "venue": "Example Hall, Bengaluru", "district": "Bangalore", "active": true, "isDeleted": false, "isDraft": false,
+  "approvalStatus": "APPROVED"}
+]

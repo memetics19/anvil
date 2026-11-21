@@ -1370,6 +1370,60 @@ On a host:
 A selector in a policy may match at most 4 values. With one more, Tetragon refuses to start
 (`tests/unit/test_tetragon.sh` checks it).
 
+## Watchers
+
+Two watchers on the assistant VM send what is new to Gotify on the frigate VM (role
+`watchers`, tag `watchers`). They are a small Python package (`files/watchers` in the role)
+that uses only the standard library, so there is nothing to install or pin. Each run is a
+systemd unit with a throwaway user and a read-only system. What was already sent is kept in
+`/var/lib/watchers`, so each alert arrives once.
+
+| Watcher | Timer | Alerts | Priority |
+|---|---|---|---|
+| `gpu` | every 3 hours | a card with more than 16 GB of memory under ₹45,000, new or cheaper than last time | 6 |
+| `yakshagana` | every 6 hours | a new Yakshagana show in Bengaluru on Tititai, with date, venue and link | 4 |
+
+The GPU watcher searches each source in `watchers_gpu_sources` for each card in
+`watchers_gpu_queries`, with a pause between requests and robots.txt respected. Each source is
+its own parser. One that fails or refuses is skipped, and the run logs each source as `ok`,
+`blocked` or `failed`.
+
+| Source | Kind | How |
+|---|---|---|
+| PrimeABGB, Vedant, MD Computers | Indian shops, new | search pages |
+| Flipkart, Amazon.in | Indian shops, new | search pages |
+| OLX | used, India | search page (robots.txt forbids its JSON API) |
+| eBay | ships to India | official Browse API only (robots.txt forbids the search pages) |
+
+eBay prices are in dollars. The alert shows an estimate in rupees: (price plus shipping)
+times `watchers_gpu_ebay_usd_to_inr`, plus `watchers_gpu_ebay_duty_rate` customs duty. eBay
+needs API keys from developer.ebay.com in Vault (keys `ebay_app_id` and `ebay_cert_id`). It is
+skipped without them.
+
+The Yakshagana watcher reads the JSON that Tititai's own pages read
+(`watchers_yakshagana_api_url`), with no browser. A show counts as Bengaluru when its district,
+venue or address says Bengaluru or Bangalore, in English or Kannada.
+
+### Gotify token
+
+The only secret is the Gotify application token, in Vault at `kv/homelab/assistant/watchers`,
+key `gotify_token`. The role writes it to a root-only file and the units read it as a systemd
+credential. Without it the watchers only log what they would send. To set it up once:
+
+1. In Gotify's web page, add an application named `watchers` and copy its token.
+2. Store it without echoing it: `vault kv put -mount=kv homelab/assistant/watchers gotify_token=-`,
+   then paste the token and press Ctrl-D.
+3. `anvil apply assistant --tags watchers`.
+4. Send one test message: `sudo systemctl start watchers@test-notify`. It fails, and says so
+   in `journalctl -u watchers@test-notify`, when there is no token.
+
+### On the VM
+
+- `systemctl list-timers 'watchers-*'` shows when each watcher runs next.
+- `sudo systemctl start watchers@gpu` (or `watchers@yakshagana`) runs one now.
+- `journalctl -u watchers@gpu` shows each source's result, the cheapest qualifying card and
+  every alert.
+
 ## Secrets enclave
 
 Vault and Vaultwarden live on their own network: the SDN vnet `secrets`, in the simple

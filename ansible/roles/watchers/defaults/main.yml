@@ -1,0 +1,59 @@
+# Watchers on the assistant VM (docs/services.md, Watchers): a small Python package (files/)
+# that checks GPU prices and Yakshagana shows on systemd timers and sends what is new to Gotify
+# on the frigate VM. It uses only the Python standard library, so there is nothing to pin or
+# install. Each run is a sandboxed unit with a throwaway user (DynamicUser). State, what was
+# already sent, lives in /var/lib/watchers.
+watchers_dir: /opt/watchers
+watchers_config_dir: /etc/watchers
+
+# Gotify, the frigate VM's (role frigate_stack). Its application token, the only secret, comes
+# from Vault (kv/<watchers_vault_path>, key gotify_token) and lands in a root-only file the
+# units read as a systemd credential. Without it the watchers only log what they would send.
+watchers_gotify_url: "http://{{ site.hosts.frigate.ip }}:8080"
+watchers_vault_mount: kv
+watchers_vault_path: "homelab/{{ inventory_hostname }}/watchers"
+# Vault key to the credential name the package reads (also the file's name).
+watchers_secret_files:
+  gotify_token: gotify
+  ebay_app_id: ebay_app_id
+  ebay_cert_id: ebay_cert_id
+
+# --- GPU prices ------------------------------------------------------------------------------
+# A listing alerts when the card has more than watchers_gpu_min_vram_gb of memory and costs
+# less than watchers_gpu_max_price_inr. Once per listing, and again only when it gets cheaper.
+watchers_gpu_min_vram_gb: 16
+watchers_gpu_max_price_inr: 45000
+watchers_gpu_priority: 6
+# Every 3 hours, give or take 30 minutes, with a pause between requests to one shop.
+watchers_gpu_interval: 3h
+watchers_gpu_pause_seconds: 8
+watchers_gpu_queries:
+  - rtx 3090
+  - rtx 4090
+  - rtx 5090
+  - rx 7900 xtx
+  - tesla p40
+  - rtx a5000
+# Each source is its own parser (files/watchers/gpu.py). One that refuses us is skipped and
+# the run says so. eBay is searched only through its official Browse API (its robots.txt
+# forbids the search pages), with keys from the same Vault path (ebay_app_id, ebay_cert_id).
+watchers_gpu_sources:
+  - primeabgb
+  - vedant
+  - mdcomputers
+  - flipkart
+  - amazon
+  - olx
+  - ebay
+# eBay prices are in dollars: the alert shows an estimate in rupees, (price + shipping) times
+# the rate, plus customs duty on top. Shipping when the listing does not say.
+watchers_gpu_ebay_usd_to_inr: 88
+watchers_gpu_ebay_duty_rate: 0.40
+watchers_gpu_ebay_default_shipping_usd: 60
+
+# --- Yakshagana ------------------------------------------------------------------------------
+# New shows in Bengaluru on Tititai, from the JSON its own pages read. Each show alerts once.
+watchers_yakshagana_api_url: https://www.tititai.com/api/events
+watchers_yakshagana_site_url: https://www.tititai.com
+watchers_yakshagana_priority: 4
+watchers_yakshagana_interval: 6h
