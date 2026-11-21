@@ -9,13 +9,11 @@ homeassistant:
 # logged in to, and the egress guard blocks any outbound attempt.
 default_config:
 
-http:
-  use_x_forwarded_for: true
-  trusted_proxies:
-    - 127.0.0.1
-    - ::1
-    # the gateway (Caddy) fronting ha.<domain>, so HA honours its X-Forwarded-For
-    - {{ site.hosts.apps.ip }}
+# Reverse-proxy trust (use_x_forwarded_for + trusted_proxies) is NOT set here: current Home
+# Assistant migrated http config to its own storage (a YAML http block is deprecated and fights
+# a pending/confirm safety). It is set once in HA (Settings, System, Network) or its
+# .storage/http, trusting the gateway that fronts ha.<domain>. docs/services.md.
+
 
 automation: !include automations.yaml
 script: !include scripts.yaml
