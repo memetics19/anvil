@@ -1309,6 +1309,10 @@ Docker container on the host network, so it reaches the home IoT over that VM's 
 - **Local-first.** Nothing is published to the internet and Nabu Casa cloud is never used. The
   real guarantee that no data leaves is the `iot_egress` guard, which blocks this host from the
   internet.
+- **Reverse-proxy trust:** current HA keeps http config in its own storage (a YAML block is
+  deprecated), so `use_x_forwarded_for` and `trusted_proxies` are set in HA (Settings, System,
+  Network) to the lab subnet, since the Cloudflare tunnel connectors run on several lab hosts.
+  Without it, proxied requests return 400. Re-set it if HA storage is ever wiped.
 - Reach the UI at `http://<assistant-address>:8123`. First run is the usual onboarding (create
   the owner account; decline analytics). Devices are added through the UI (config flow).
 - BLE devices (the Dorset lock) are not covered yet: they need a Bluetooth radio at home, an
