@@ -346,7 +346,7 @@ The compose project `/opt/netbird-server` has three containers, each with a memo
 |---|---|
 | `netbird-server` | NetBird's combined server: management, signal, relay and the built in identity provider. Pinned by tag and digest. Its plain HTTP port is on the VM's loopback only, for the role's API calls. |
 | `netbird-dashboard` | The web dashboard |
-| `netbird-caddy` | Let's Encrypt over TLS-ALPN on port 443, on the VM's lab address port 8443 (the Proxmox host forwards TCP 443 from the router there) and on the loopback (for `netbird-home`). gRPC, the relay, the login pages, the dashboard and the API, the last two behind NetBird's login. A JSON access log with client addresses. |
+| `netbird-caddy` | Let's Encrypt over TLS-ALPN on port 443, on the VM's lab address port 8443 (the Proxmox host forwards TCP 443 from the router there) and on the loopback (for `netbird-home`). gRPC, the relay, the login pages, the dashboard and the API, the last two behind NetBird's login. A JSON access log in `/var/log/netbird-caddy/access.log` (rotated, 10 MB by 5), each line with the client's address and its country, city and coordinates (`caddy-geoip2` with DB-IP City Lite, `netbird_server_geoip_edition`, a new edition each month). The Wazuh agent ships it (rules 100800 to 100802, the attack map). |
 
 The public name is neutral. Caddy drops the `Server` and `Via` headers. It replaces the
 dashboard's Content-Security-Policy, which lists the vendor's domains and trackers, with
@@ -1336,6 +1336,27 @@ logins and sudo, and its installed packages, which the server matches against kn
 
 Apply after the server: `anvil apply vms --tags wazuh_agent` and `anvil apply host --tags wazuh_agent`.
 Each run waits until the agent reports connected.
+
+## The public port in Wazuh
+
+The self-hosted NetBird server's Caddy logs every request with the client's GeoIP (DB-IP City
+Lite, "IP Geolocation by DB-IP", CC BY 4.0). The netbird VM's Wazuh agent ships the log and
+Wazuh's own JSON decoder reads it. The rules (`anvil_netbird_caddy_rules.xml`, role
+`wazuh_server`):
+
+| Rule | Level | When |
+|---|---|---|
+| 100800 | 3 | Any request (the attack map) |
+| 100801 | 5 | A refused one: 400, 401, 403, 404 or 405 |
+| 100802 | 10 | 50 refusals from one address in 2 minutes. Goes to Alertmanager |
+
+Caddy also logs `srcip`, so Wazuh's indexer adds its own GeoLocation (GeoLite2) too. Before
+anvil's rule files are installed, the running manager checks them (`wazuh-analysisd -t`). A
+rejected file stops the run and the manager keeps the old ones.
+
+To move to a new month's GeoIP database: take the `.mmdb.gz` link from DB-IP's free City Lite
+page, set `netbird_server_geoip_edition` and `netbird_server_geoip_sha256` in the
+netbird_server defaults, then `make vm HOST=netbird ARGS="--tags netbird_server"`.
 
 ## Tetragon
 

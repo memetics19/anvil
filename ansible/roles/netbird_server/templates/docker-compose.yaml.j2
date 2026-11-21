@@ -60,6 +60,8 @@ services:
       - "127.0.0.1:443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - {{ netbird_server_access_log_dir }}:/var/log/caddy
+      - {{ netbird_server_geoip_dir }}:/geoip:ro
       - caddy_data:/data
       - caddy_config:/config
     labels:

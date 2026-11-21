@@ -8,6 +8,12 @@
 	admin off
 	auto_https disable_redirects
 	default_sni {{ site.netbird_domain }}
+	# GeoIP of each client from a local database (DB-IP City Lite), no automatic update.
+	order geoip2_vars first
+	geoip2 {
+		databaseDirectory "/geoip"
+		editionID "{{ netbird_server_geoip_edition }}"
+	}
 }
 
 {{ site.netbird_domain }}:443 {
@@ -23,10 +29,25 @@
 	# the upstreams (deletions apply to proxied responses too).
 	header -Server
 	header -Via
-	# Every request, with the client's own address (the Proxmox host's forward keeps it),
-	# in the container log for Wazuh and for a look after the fact.
+	# Every request, with the client's own address (the Proxmox host's forward keeps it), in a
+	# file the Wazuh agent ships (the Security dashboards' attack map). Rotated by Caddy.
+	# The client's own address only (no X-Forwarded-For: clients connect directly), and its
+	# country, city and coordinates in every access log line (empty for private addresses).
+	geoip2_vars strict
+	# srcip: Wazuh's JSON decoder takes it as the event's source address (same_srcip in the
+	# scan rule, and its own GeoLocation from it in the indexer).
+	log_append srcip {http.request.remote.host}
+	log_append geo_country {geoip2.country_code}
+	log_append geo_country_name {geoip2.country_name}
+	log_append geo_city {geoip2.city_name}
+	log_append geo_lat {geoip2.location_latitude}
+	log_append geo_lon {geoip2.location_longitude}
 	log {
-		output stdout
+		output file /var/log/caddy/access.log {
+			roll_size 10MiB
+			roll_keep 5
+			roll_keep_for 720h
+		}
 		format json
 	}
 

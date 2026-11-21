@@ -142,6 +142,79 @@
   when: netbird_server_config_stat.stat.exists or not ansible_check_mode
 
 # The file names the public host: kept out of --diff output.
+- name: GeoIP database folder
+  ansible.builtin.file:
+    path: "{{ netbird_server_geoip_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: GeoIP database, compressed (checksum pinned)
+  ansible.builtin.get_url:
+    url: "{{ netbird_server_geoip_url }}"
+    dest: "{{ netbird_server_geoip_dir }}/{{ netbird_server_geoip_edition }}.mmdb.gz"
+    checksum: "sha256:{{ netbird_server_geoip_sha256 }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: netbird_server_geoip_gz
+  # The folder above does not exist yet in a first check run.
+  when: not ansible_check_mode
+
+- name: GeoIP database, unpacked for Caddy
+  ansible.builtin.shell: >-
+    gunzip -c {{ netbird_server_geoip_dir }}/{{ netbird_server_geoip_edition }}.mmdb.gz
+    > {{ netbird_server_geoip_dir }}/{{ netbird_server_geoip_edition }}.mmdb.tmp
+    && mv {{ netbird_server_geoip_dir }}/{{ netbird_server_geoip_edition }}.mmdb.tmp
+    {{ netbird_server_geoip_dir }}/{{ netbird_server_geoip_edition }}.mmdb
+  args:
+    creates: "{{ netbird_server_geoip_dir }}/{{ netbird_server_geoip_edition }}.mmdb"
+  when: not ansible_check_mode
+
+- name: Older GeoIP databases
+  ansible.builtin.find:
+    paths: "{{ netbird_server_geoip_dir }}"
+    patterns: "dbip-city-lite-*"
+    excludes: "{{ netbird_server_geoip_edition }}.*"
+  register: netbird_server_geoip_old
+
+- name: Remove older GeoIP databases
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ netbird_server_geoip_old.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Caddy's access log folder (shipped by the Wazuh agent)
+  ansible.builtin.file:
+    path: "{{ netbird_server_access_log_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Is the Wazuh agent here
+  ansible.builtin.stat:
+    path: "{{ netbird_server_wazuh_agent_conf }}"
+  register: netbird_server_wazuh
+
+- name: The Wazuh agent ships Caddy's access log
+  ansible.builtin.blockinfile:
+    path: "{{ netbird_server_wazuh_agent_conf }}"
+    marker: "<!-- {mark} anvil netbird caddy -->"
+    insertafter: EOF
+    block: |
+      <ossec_config>
+        <localfile>
+          <log_format>syslog</log_format>
+          <location>{{ netbird_server_access_log_dir }}/access.log</location>
+        </localfile>
+      </ossec_config>
+  notify: Restart wazuh-agent for netbird
+  when: netbird_server_wazuh.stat.exists
+
 - name: Caddyfile
   ansible.builtin.copy:
     content: "{{ netbird_server_caddyfile }}"
