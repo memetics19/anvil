@@ -53,6 +53,9 @@ the download to qBittorrent. The addresses and API keys come from Vault
       --yes                   do not ask before deleting
   status [--watch]            downloads in progress, what is still searched for, and the
                               free space. --watch refreshes every 10 seconds.
+  unstick [--yes]             remove the stalled, failed or import-blocked downloads,
+                              blocklist those releases so they are not grabbed again, and
+                              search afresh. Healthy downloads are left alone.
 `
 
 // mediaLowSpace is the free space under which get asks before adding.
@@ -260,6 +263,8 @@ func cmdMedia(a *app.App, args []string) int {
 		fs.BoolVar(&o.keepFiles, "keep-files", false, "")
 	case "status":
 		fs.BoolVar(&o.watch, "watch", false, "")
+	case "unstick":
+		fs.BoolVar(&o.yes, "yes", false, "")
 	case "help", "-h", "--help":
 		fmt.Fprint(a.Stdout, mediaUsage)
 		return 0
@@ -272,12 +277,13 @@ func cmdMedia(a *app.App, args []string) int {
 		return code
 	}
 	term := strings.TrimSpace(strings.Join(pos, " "))
-	if sub != "status" && term == "" {
+	noTitle := sub == "status" || sub == "unstick"
+	if !noTitle && term == "" {
 		fmt.Fprintf(a.Stderr, "anvil: media %s needs a title\n", sub)
 		return 2
 	}
-	if sub == "status" && term != "" {
-		fmt.Fprintln(a.Stderr, "anvil: media status takes no title")
+	if noTitle && term != "" {
+		fmt.Fprintf(a.Stderr, "anvil: media %s takes no title\n", sub)
 		return 2
 	}
 
@@ -305,6 +311,8 @@ func cmdMedia(a *app.App, args []string) int {
 		return mediaGet(a, c, term, o)
 	case "delete":
 		return mediaDelete(a, c, term, o)
+	case "unstick":
+		return mediaUnstick(a, radarr, sonarr, o)
 	default:
 		return mediaStatus(a, radarr, sonarr, o.watch)
 	}
@@ -729,15 +737,19 @@ func human(b int64) string {
 
 // queueRecord is one download in Radarr's or Sonarr's queue.
 type queueRecord struct {
-	Title    string  `json:"title"`
-	Status   string  `json:"status"`
-	State    string  `json:"trackedDownloadState"`
-	Health   string  `json:"trackedDownloadStatus"`
-	Size     float64 `json:"size"`
-	SizeLeft float64 `json:"sizeleft"`
-	TimeLeft string  `json:"timeleft"`
-	Error    string  `json:"errorMessage"`
-	Messages []struct {
+	ID         int     `json:"id"`
+	DownloadID string  `json:"downloadId"`
+	MovieID    int     `json:"movieId"`
+	SeriesID   int     `json:"seriesId"`
+	Title      string  `json:"title"`
+	Status     string  `json:"status"`
+	State      string  `json:"trackedDownloadState"`
+	Health     string  `json:"trackedDownloadStatus"`
+	Size       float64 `json:"size"`
+	SizeLeft   float64 `json:"sizeleft"`
+	TimeLeft   string  `json:"timeleft"`
+	Error      string  `json:"errorMessage"`
+	Messages   []struct {
 		Messages []string `json:"messages"`
 	} `json:"statusMessages"`
 	Movie *struct {
@@ -918,6 +930,116 @@ func mediaStatusOnce(a *app.App, radarr, sonarr arr) int {
 			fmt.Fprintf(a.Stdout, "Free space for %s: %s (%s)\n", map[bool]string{false: "movies", true: "series"}[c.tv], human(free), root)
 		}
 	}
+	if failed {
+		return 1
+	}
+	return 0
+}
+
+// stuck is a download Radarr or Sonarr has flagged: stalled, failed, or import-blocked
+// (trackedDownloadStatus warning or error). Healthy downloads are "ok" and are left alone.
+func (q queueRecord) stuck() bool {
+	return q.Health == "warning" || q.Health == "error"
+}
+
+// statusWord is the short state shown next to a stuck download.
+func (q queueRecord) statusWord() string {
+	if q.State != "" {
+		return q.State
+	}
+	return q.Status
+}
+
+// removeQueue deletes one queue item, removing it from qBittorrent and blocklisting the
+// release so the same bad torrent is not grabbed again. A 404 means a season pack's sibling
+// episode already took the whole torrent with an earlier delete, which is fine.
+func (c arr) removeQueue(id int) error {
+	err := c.do("DELETE", fmt.Sprintf("queue/%d?removeFromClient=true&blocklist=true", id), nil, nil)
+	if err != nil && strings.Contains(err.Error(), "returned 404") {
+		return nil
+	}
+	return err
+}
+
+// mediaUnstick clears the stalled, failed or import-blocked downloads from both Radarr and
+// Sonarr, blocklists those releases, and searches again for a better one.
+func mediaUnstick(a *app.App, radarr, sonarr arr, o mediaOpts) int {
+	type victim struct {
+		c   arr
+		rec queueRecord
+	}
+	var victims []victim
+	failed := false
+	for _, c := range []arr{radarr, sonarr} {
+		q, err := c.queue()
+		if err != nil {
+			fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
+			failed = true
+			continue
+		}
+		for _, r := range q {
+			if r.stuck() {
+				victims = append(victims, victim{c, r})
+			}
+		}
+	}
+	if len(victims) == 0 {
+		fmt.Fprintln(a.Stdout, "Nothing stuck: every download is healthy.")
+		if failed {
+			return 1
+		}
+		return 0
+	}
+	fmt.Fprintln(a.Stdout, "Stuck downloads (stalled, failed, or import-blocked):")
+	for _, v := range victims {
+		line := fmt.Sprintf("  %-45s [%s]", oneLine(v.rec.label(), 45), v.rec.statusWord())
+		if n := v.rec.note(); n != "" {
+			line += " - " + oneLine(n, 70)
+		}
+		fmt.Fprintln(a.Stdout, line)
+	}
+	if !o.yes && !app.AskYesNo(a.Stdin, a.Stdout, "Remove these, blocklist the releases, and search again?") {
+		fmt.Fprintln(a.Stdout, "Nothing changed.")
+		return 1
+	}
+	seen := map[string]bool{} // a season pack is one torrent across many episodes: delete it once
+	searchMovies := map[int]bool{}
+	searchSeries := map[int]bool{}
+	removed := 0
+	for _, v := range victims {
+		if v.rec.MovieID > 0 {
+			searchMovies[v.rec.MovieID] = true
+		}
+		if v.rec.SeriesID > 0 {
+			searchSeries[v.rec.SeriesID] = true
+		}
+		if v.rec.DownloadID != "" {
+			if seen[v.rec.DownloadID] {
+				continue
+			}
+			seen[v.rec.DownloadID] = true
+		}
+		if err := v.c.removeQueue(v.rec.ID); err != nil {
+			fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
+			failed = true
+			continue
+		}
+		removed++
+	}
+	for id := range searchMovies {
+		if err := radarr.do("POST", "command", map[string]any{"name": "MoviesSearch", "movieIds": []int{id}}, nil); err != nil {
+			fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
+			failed = true
+		}
+	}
+	for id := range searchSeries {
+		if err := sonarr.do("POST", "command", map[string]any{"name": "SeriesSearch", "seriesId": id}, nil); err != nil {
+			fmt.Fprintf(a.Stderr, "anvil: media: %v\n", err)
+			failed = true
+		}
+	}
+	fmt.Fprintf(a.Stdout, "Removed and blocklisted %d download(s); re-searching %d item(s). Follow with: anvil media status\n",
+		removed, len(searchMovies)+len(searchSeries))
 	if failed {
 		return 1
 	}
