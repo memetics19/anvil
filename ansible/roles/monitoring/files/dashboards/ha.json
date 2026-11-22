@@ -1,0 +1,751 @@
+{
+   "description": "The home automation hub on the assistant VM: up, entities, what is on, automation activity, sensors, batteries, and the VM's own health. Managed by anvil: change dashboards/ha.jsonnet.",
+   "editable": false,
+   "panels": [
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "mappings": [
+                  {
+                     "options": {
+                        "0": {
+                           "text": "Down"
+                        },
+                        "1": {
+                           "text": "Up"
+                        }
+                     },
+                     "type": "value"
+                  }
+               ],
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "green",
+                        "value": 1
+                     }
+                  ]
+               },
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 0,
+            "y": 0
+         },
+         "id": 1,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(up{job=\"homeassistant\"})",
+               "legendFormat": "HA",
+               "refId": "A"
+            }
+         ],
+         "title": "Home Assistant",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "unit": "short"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 4,
+            "y": 0
+         },
+         "id": 2,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "count(homeassistant_entity_available{job=\"homeassistant\"})",
+               "legendFormat": "Entities",
+               "refId": "A"
+            }
+         ],
+         "title": "Entities",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "unit": "short"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 8,
+            "y": 0
+         },
+         "id": 3,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "sum(homeassistant_switch_state{job=\"homeassistant\"})",
+               "legendFormat": "On",
+               "refId": "A"
+            }
+         ],
+         "title": "Switches on",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "unit": "short"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 12,
+            "y": 0
+         },
+         "id": 4,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "sum(homeassistant_light_state{job=\"homeassistant\"})",
+               "legendFormat": "On",
+               "refId": "A"
+            }
+         ],
+         "title": "Lights on",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "unit": "short"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 16,
+            "y": 0
+         },
+         "id": 5,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "round(sum(increase(homeassistant_automation_triggered_count{job=\"homeassistant\"}[24h])))",
+               "legendFormat": "Fired",
+               "refId": "A"
+            }
+         ],
+         "title": "Automations fired (24h)",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "mappings": [
+                  {
+                     "options": {
+                        "0": {
+                           "text": "Down"
+                        },
+                        "1": {
+                           "text": "Up"
+                        }
+                     },
+                     "type": "value"
+                  }
+               ],
+               "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                     {
+                        "color": "red",
+                        "value": null
+                     },
+                     {
+                        "color": "green",
+                        "value": 1
+                     }
+                  ]
+               },
+               "unit": "none"
+            }
+         },
+         "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 20,
+            "y": 0
+         },
+         "id": 6,
+         "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "reduceOptions": {
+               "calcs": [
+                  "lastNotNull"
+               ]
+            },
+            "textMode": "value_and_name"
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "max(up{job=\"node\",host=\"assistant\"})",
+               "legendFormat": "VM",
+               "refId": "A"
+            }
+         ],
+         "title": "Assistant VM",
+         "type": "stat"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "short"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 5
+         },
+         "id": 7,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "sum(rate(homeassistant_state_change_total{job=\"homeassistant\"}[5m]))",
+               "legendFormat": "Changes",
+               "refId": "A"
+            }
+         ],
+         "title": "State changes per second",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "short"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 5
+         },
+         "id": 8,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "sum(homeassistant_entity_available{job=\"homeassistant\"})",
+               "legendFormat": "Available",
+               "refId": "A"
+            }
+         ],
+         "title": "Entities available",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "unit": "celsius"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 13
+         },
+         "id": 9,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "homeassistant_sensor_temperature_celsius{job=\"homeassistant\"}",
+               "legendFormat": "{{friendly_name}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Temperatures",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "max": 100,
+               "min": 0,
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 13
+         },
+         "id": 10,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "homeassistant_sensor_humidity_percent{job=\"homeassistant\"}",
+               "legendFormat": "{{friendly_name}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Humidity",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "max": 100,
+               "min": 0,
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 21
+         },
+         "id": 11,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "homeassistant_battery_level_percent{job=\"homeassistant\"}",
+               "legendFormat": "{{friendly_name}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Battery levels",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "min": 0,
+               "unit": "watt"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 21
+         },
+         "id": 12,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "homeassistant_sensor_power_w{job=\"homeassistant\"}",
+               "legendFormat": "{{friendly_name}}",
+               "refId": "A"
+            }
+         ],
+         "title": "Power",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "max": 100,
+               "min": 0,
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 29
+         },
+         "id": 13,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 - (avg(rate(node_cpu_seconds_total{job=\"node\",host=\"assistant\",mode=\"idle\"}[5m])) * 100)",
+               "legendFormat": "CPU",
+               "refId": "A"
+            }
+         ],
+         "title": "Assistant VM CPU",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "max": 100,
+               "min": 0,
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 29
+         },
+         "id": 14,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * (1 - node_memory_MemAvailable_bytes{job=\"node\",host=\"assistant\"} / node_memory_MemTotal_bytes{job=\"node\",host=\"assistant\"})",
+               "legendFormat": "Memory",
+               "refId": "A"
+            }
+         ],
+         "title": "Assistant VM memory",
+         "type": "timeseries"
+      },
+      {
+         "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+         },
+         "fieldConfig": {
+            "defaults": {
+               "max": 100,
+               "min": 0,
+               "unit": "percent"
+            }
+         },
+         "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 29
+         },
+         "id": 15,
+         "options": {
+            "legend": {
+               "calcs": [
+                  "lastNotNull",
+                  "max"
+               ],
+               "displayMode": "table",
+               "placement": "right"
+            },
+            "tooltip": {
+               "mode": "multi",
+               "sort": "desc"
+            }
+         },
+         "pluginVersion": "v13.0.0",
+         "targets": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "victoriametrics"
+               },
+               "expr": "100 * (1 - node_filesystem_avail_bytes{job=\"node\",host=\"assistant\",mountpoint=\"/\"} / node_filesystem_size_bytes{job=\"node\",host=\"assistant\",mountpoint=\"/\"})",
+               "legendFormat": "Disk",
+               "refId": "A"
+            }
+         ],
+         "title": "Assistant VM disk /",
+         "type": "timeseries"
+      }
+   ],
+   "refresh": "1m",
+   "schemaVersion": 39,
+   "tags": [
+      "anvil",
+      "homeassistant",
+      "smart-home"
+   ],
+   "time": {
+      "from": "now-24h",
+      "to": "now"
+   },
+   "timezone": "browser",
+   "title": "Home Assistant",
+   "uid": "anvil-homeassistant"
+}

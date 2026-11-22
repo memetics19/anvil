@@ -11,6 +11,11 @@ homeassistant:
 # logged in to, and the egress guard blocks any outbound attempt.
 default_config:
 
+# Prometheus metrics for the lab's own monitoring. vmagent scrapes /api/prometheus with a
+# long-lived token. Local only: the scraper is in the lab, nothing leaves.
+prometheus:
+  namespace: homeassistant
+
 # Reverse-proxy trust (use_x_forwarded_for + trusted_proxies) is NOT set here: current Home
 # Assistant migrated http config to its own storage (a YAML http block is deprecated and fights
 # a pending/confirm safety). It is set once in HA (Settings, System, Network) or its
