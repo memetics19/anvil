@@ -641,7 +641,33 @@ func (c arr) searchSeason(seriesID, season int) error {
 	if err := c.do("PUT", "episode/monitor", map[string]any{"episodeIds": ids, "monitored": true}, nil); err != nil {
 		return err
 	}
+	// Monitor the series and this season too, not only the episodes. On a series already in the
+	// library, searching without this grabs only what one search happens to find and never
+	// pursues the rest, because Sonarr does not keep searching an unmonitored season.
+	if err := c.monitorSeason(seriesID, season); err != nil {
+		return err
+	}
 	return c.do("POST", "command", map[string]any{"name": "SeasonSearch", "seriesId": seriesID, "seasonNumber": season}, nil)
+}
+
+// monitorSeason turns monitoring on for the series and the given season, leaving the other
+// seasons as they are. Sonarr needs both on to keep searching a season's missing episodes.
+func (c arr) monitorSeason(seriesID, season int) error {
+	var sr map[string]any
+	if err := c.do("GET", fmt.Sprintf("series/%d", seriesID), nil, &sr); err != nil {
+		return err
+	}
+	sr["monitored"] = true
+	if seasons, ok := sr["seasons"].([]any); ok {
+		for _, se := range seasons {
+			if m, ok := se.(map[string]any); ok {
+				if n, ok := m["seasonNumber"].(float64); ok && int(n) == season {
+					m["monitored"] = true
+				}
+			}
+		}
+	}
+	return c.do("PUT", fmt.Sprintf("series/%d", seriesID), sr, nil)
 }
 
 // useProfile puts an item that is in the library on the profile get would add it with,
