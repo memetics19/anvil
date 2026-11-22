@@ -546,3 +546,43 @@ func TestMediaVaultUnreachableHint(t *testing.T) {
 		t.Errorf("exit %d, stderr %q", code, l.Err.String())
 	}
 }
+
+func TestMediaUnstickRemovesStuckAndSearches(t *testing.T) {
+	sonarr := &fakeArr{tv: true, queue: `{"records":[
+ {"id":11,"downloadId":"ABC","seriesId":5,"trackedDownloadStatus":"warning","trackedDownloadState":"downloading","series":{"title":"Johri"},"episode":{"seasonNumber":1,"episodeNumber":1}},
+ {"id":12,"downloadId":"ABC","seriesId":5,"trackedDownloadStatus":"warning","trackedDownloadState":"downloading","series":{"title":"Johri"},"episode":{"seasonNumber":1,"episodeNumber":2}},
+ {"id":20,"downloadId":"XYZ","seriesId":6,"trackedDownloadStatus":"ok","trackedDownloadState":"downloading","series":{"title":"GoodShow"},"episode":{"seasonNumber":1,"episodeNumber":1}}]}`}
+	l := mediaLab(t, &fakeArr{}, sonarr)
+	if code := l.Run("", "media", "unstick", "--yes"); code != 0 {
+		t.Fatalf("exit %d: %s", code, l.Err.String())
+	}
+	// A season pack is one torrent across episodes: deleted once, for the stuck item only.
+	if len(sonarr.deletes) != 1 {
+		t.Fatalf("want 1 delete, got %d: %v", len(sonarr.deletes), sonarr.deletes)
+	}
+	if d := sonarr.deletes[0]; !strings.HasPrefix(d, "queue/11?") || !strings.Contains(d, "removeFromClient=true") || !strings.Contains(d, "blocklist=true") {
+		t.Errorf("delete = %q", d)
+	}
+	cmds := sonarr.posts["command"]
+	if len(cmds) != 1 {
+		t.Fatalf("want 1 re-search, got %d: %v", len(cmds), cmds)
+	}
+	if cmds[0]["name"] != "SeriesSearch" || cmds[0]["seriesId"] != float64(5) {
+		t.Errorf("command = %v", cmds[0])
+	}
+	noKeyIn(t, l)
+}
+
+func TestMediaUnstickNothingStuck(t *testing.T) {
+	sonarr := &fakeArr{tv: true, queue: `{"records":[{"id":20,"seriesId":6,"trackedDownloadStatus":"ok","series":{"title":"GoodShow"}}]}`}
+	l := mediaLab(t, &fakeArr{}, sonarr)
+	if code := l.Run("", "media", "unstick"); code != 0 {
+		t.Fatalf("exit %d: %s", code, l.Err.String())
+	}
+	if len(sonarr.deletes) != 0 {
+		t.Errorf("deleted a healthy download: %v", sonarr.deletes)
+	}
+	if !strings.Contains(l.Out.String(), "Nothing stuck") {
+		t.Errorf("output:\n%s", l.Out.String())
+	}
+}
