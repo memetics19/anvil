@@ -198,6 +198,22 @@
   when: "'switchy' in hermes_mcp_all"
   notify: Restart hermes
 
+# The MCP server writes this cache itself at runtime (panel IP by device id), so unlike the two
+# files above it is never managed by the copy task. If it was ever created while something other
+# than the container user wrote to it (e.g. a manual run as root), the container user permanently
+# loses write access to its own cache: every lookup for a panel whose DHCP lease changed re-scans
+# the subnet, then dies on the write-back with EACCES, surfacing as "Error executing tool
+# room_status"/"list_rooms" for that room. `state: touch` only touches mtime (and fixes
+# ownership/mode) when the file already exists, so a healthy cache's contents are left alone.
+- name: Switchy's address cache is owned by the container user, not whoever created it
+  ansible.builtin.file:
+    path: "{{ hermes_data_dir }}/switchy/addresses.json"
+    state: touch
+    owner: "{{ hermes_uid }}"
+    group: "{{ hermes_uid }}"
+    mode: "0600"
+  when: "'switchy' in hermes_mcp_all"
+
 - name: Read its config.yaml
   ansible.builtin.slurp:
     src: "{{ hermes_data_dir }}/config.yaml"
