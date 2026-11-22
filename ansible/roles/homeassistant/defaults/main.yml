@@ -1,0 +1,17 @@
+# Home Assistant, local-first, on the assistant VM (it already holds the home VPN tunnel and the
+# route to the home subnet, so HA reaches the home IoT over it). A Docker container on the host
+# network, so device discovery and the home route both work. Data stays in the lab: the
+# iot_egress guard blocks this host from the internet, and nothing here uses Nabu Casa cloud.
+# docs/services.md, Home Assistant.
+homeassistant_dir: /opt/homeassistant
+homeassistant_config_dir: "{{ homeassistant_dir }}/config"
+# A release at least two weeks old, pinned by digest.
+homeassistant_version: "2026.11.0"
+homeassistant_image: "homeassistant/home-assistant:2026.11.0@sha256:c6c1ca9931036bf3a2c4cc088d8db25dfea3b33935a5ecc83c40349462e2f69e"
+homeassistant_timezone: Asia/Kolkata
+homeassistant_port: 8123
+homeassistant_mem_limit: 1536m
+# The Switchy custom integration (github.com/memetics19/switchy-ha), installed straight into HA
+# from the operator's working copy when it is there, so HACS is not required. Kept out of this
+# repo (its own public repo); the role just copies it in.
+homeassistant_switchy_src: "{{ lookup('env', 'HOME') }}/switchy-ha/custom_components/switchy"

@@ -1295,6 +1295,25 @@ panel list (room names and switch labels by panel ID) and the home subnet are in
 (`kv/homelab/assistant/switchy`). It can read every room and switch lights, fans and the
 geyser. Like every MCP server here, it asks before switching anything.
 
+## Home Assistant
+
+A local-first smart-home hub on the assistant VM (role `homeassistant`): Home Assistant in a
+Docker container on the host network, so it reaches the home IoT over that VM's home VPN route.
+
+- The image is pinned by digest. Config is in `/opt/homeassistant/config`; the UI's own state
+  lives under `.storage` there and is left alone, while `configuration.yaml` is managed.
+- **Local-first.** Nothing is published to the internet and Nabu Casa cloud is never used. The
+  real guarantee that no data leaves is the `iot_egress` guard, which blocks this host from the
+  internet.
+- **Reverse-proxy trust:** current HA keeps http config in its own storage (a YAML block is
+  deprecated), so `use_x_forwarded_for` and `trusted_proxies` are set in HA (Settings, System,
+  Network) to the lab subnet, since the Cloudflare tunnel connectors run on several lab hosts.
+  Without it, proxied requests return 400. Re-set it if HA storage is ever wiped.
+- Reach the UI at `http://<assistant-address>:8123`. First run is the usual onboarding (create
+  the owner account; decline analytics). Devices are added through the UI (config flow).
+- BLE devices (the Dorset lock) are not covered yet: they need a Bluetooth radio at home, an
+  ESPHome bluetooth proxy, since the lab reaches the home only over IP.
+
 ## Host hardening
 
 Role `host_hardening` closes small doors on every VM and Proxmox node.

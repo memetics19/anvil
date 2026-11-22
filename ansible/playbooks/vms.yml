@@ -306,3 +306,11 @@
       tags: [home_link, hermes]
     - role: hermes
       tags: [hermes]
+
+# Home Assistant (docs/services.md, Home Assistant): local-first smart-home hub on the assistant
+# VM, reaching the home IoT over that VM's home VPN route.
+- name: Home Assistant
+  hosts: assistant_servers
+  roles:
+    - role: homeassistant
+      tags: [homeassistant]

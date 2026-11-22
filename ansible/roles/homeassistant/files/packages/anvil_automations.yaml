@@ -1,0 +1,35 @@
+# Managed by Ansible (role homeassistant). Code-defined automations, kept here as a Home
+# Assistant package so they rebuild from anvil. UI-authored automations stay in automations.yaml
+# and are left untouched. Entity ids are the operator's own, not secrets.
+automation:
+  - id: all_off_1am_safety_sweep
+    alias: All off at 1am (safety sweep)
+    description: Turn off every switch and fan at 01:00 to catch anything left on.
+    trigger:
+      - platform: time
+        at: "01:00:00"
+    condition: []
+    action:
+      - service: switch.turn_off
+        target:
+          entity_id: all
+      - service: fan.turn_off
+        target:
+          entity_id: all
+    mode: single
+  - id: entry_light_on_arrival_after_dark
+    alias: Entry light on when someone arrives after dark
+    description: When the operator gets home and the sun is down, turn on the foyer light.
+    trigger:
+      - platform: state
+        entity_id: person.vishwasiddhi
+        to: "home"
+    condition:
+      - condition: state
+        entity_id: sun.sun
+        state: below_horizon
+    action:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.foyer_foyer_l3
+    mode: single

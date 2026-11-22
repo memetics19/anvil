@@ -123,6 +123,14 @@ monitoring_frigate_target: "{{ (site.hosts.frigate.ip ~ ':' ~ monitoring_frigate
 monitoring_pihole_port: 9617
 monitoring_pihole_target: "{{ (site.hosts.apps.ip ~ ':' ~ monitoring_pihole_port) if site.hosts.apps.ip is defined else '' }}"
 
+# Home Assistant metrics (role homeassistant, assistant VM): scraped from /api/prometheus with a
+# long-lived token in Vault (kv homelab/assistant/homeassistant, key prometheus_token). No token
+# or no assistant host: not scraped.
+monitoring_homeassistant_port: 8123
+monitoring_homeassistant_target: "{{ (site.hosts.assistant.ip ~ ':' ~ monitoring_homeassistant_port) if site.hosts.assistant.ip is defined else '' }}"
+monitoring_homeassistant_vault_path: homelab/assistant/homeassistant
+monitoring_homeassistant_token: ""
+
 # Disk health (role smartctl_exporter): the main Proxmox host on its lab address and each other
 # cluster member on its static address (the exporters answer only this VM).
 monitoring_smart_port: 9633

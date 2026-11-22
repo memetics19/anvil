@@ -1,0 +1,17 @@
+# Managed by Ansible (role homeassistant). Home Assistant on the host network, so it reaches the
+# home IoT over the VM's VPN route. Nothing is published to the internet; the iot_egress guard
+# keeps this host local.
+services:
+  homeassistant:
+    image: {{ homeassistant_image }}
+    container_name: homeassistant
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TZ: {{ homeassistant_timezone }}
+    volumes:
+      - {{ homeassistant_config_dir }}:/config
+      - /etc/localtime:/etc/localtime:ro
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: {{ homeassistant_mem_limit }}
