@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.35.0](https://github.com/memetics19/anvil/compare/v0.34.0...v0.35.0) (2026-11-22)
+
+
+### Features
+
+* **caddy:** publish the pass route publicly behind Anubis ([#261](https://github.com/memetics19/anvil/issues/261)) ([6ff1c52](https://github.com/memetics19/anvil/commit/6ff1c527e392628c7eb1ac6ddabce9c8d6980723))
+* **homeassistant:** local-first smart-home hub on the assistant VM ([#258](https://github.com/memetics19/anvil/issues/258)) ([60991b2](https://github.com/memetics19/anvil/commit/60991b21c6ac524ccb591427c5e4bfeb73432f2c))
+* **media:** anvil media unstick clears stalled downloads ([#262](https://github.com/memetics19/anvil/issues/262)) ([5e3a374](https://github.com/memetics19/anvil/commit/5e3a3749fabeaeabc4670eea15de7b6e5f34455b))
+
+
+### Bug Fixes
+
+* **backup:** terraform init before the state pull ([#266](https://github.com/memetics19/anvil/issues/266)) ([ca12b95](https://github.com/memetics19/anvil/commit/ca12b952d72274c4bbdc968f94d3c1c2b8a90264))
+* **hermes:** Switchy's address cache keeps the container user's ownership ([#264](https://github.com/memetics19/anvil/issues/264)) ([50ba39f](https://github.com/memetics19/anvil/commit/50ba39f3ab7505e3cb1048da5668de69afad4b76))
+* **media:** get --season monitors the series and season, not only episodes ([#267](https://github.com/memetics19/anvil/issues/267)) ([b222937](https://github.com/memetics19/anvil/commit/b222937ada7858ddb3eb2979a0359003382f31ae))
+
 ## [0.34.0](https://github.com/memetics19/anvil/compare/v0.33.0...v0.34.0) (2026-11-21)
 
 
