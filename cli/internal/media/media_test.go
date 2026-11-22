@@ -586,3 +586,34 @@ func TestMediaUnstickNothingStuck(t *testing.T) {
 		t.Errorf("output:\n%s", l.Out.String())
 	}
 }
+
+func TestMediaGetExistingSeasonMonitorsSeries(t *testing.T) {
+	defer func(w, p time.Duration) { episodeWait, episodePoll = w, p }(episodeWait, episodePoll)
+	episodeWait, episodePoll = 2*time.Second, time.Millisecond
+	// Already in the library (id 50), on the 1080p profile so useProfile is a no-op. Getting
+	// season 2 must re-monitor the series (the bug: it only monitored the episodes).
+	sonarr := &fakeArr{tv: true, itemProfile: "4",
+		lookup: `[{"title":"Dhindora","year":2021,"id":50,"seasons":[{"seasonNumber":1},{"seasonNumber":2}]}]`}
+	l := mediaLab(t, &fakeArr{}, sonarr)
+	if code := l.Run("", "media", "get", "dhindora", "--tv", "--season", "2"); code != 0 {
+		t.Fatalf("exit %d: %s", code, l.Err.String())
+	}
+	if len(sonarr.posts["series"]) != 0 {
+		t.Errorf("re-added an existing series: %v", sonarr.posts["series"])
+	}
+	monitored := false
+	for _, p := range sonarr.posts["series/50"] {
+		if p["monitored"] == true {
+			monitored = true
+		}
+	}
+	if !monitored {
+		t.Fatalf("series was not re-monitored (the bug): %v", sonarr.posts["series/50"])
+	}
+	if len(sonarr.posts["episode/monitor"]) == 0 {
+		t.Error("episodes were not monitored")
+	}
+	if cmd := sonarr.posts["command"]; len(cmd) == 0 || cmd[0]["name"] != "SeasonSearch" || cmd[0]["seasonNumber"] != float64(2) {
+		t.Errorf("season search = %v", sonarr.posts["command"])
+	}
+}
