@@ -46,6 +46,12 @@ trap 'rm -f "$tf.partial" "$snap.partial" ${part:+"$part"}' EXIT
 
 # Pass stdin through, failing when it is empty (an empty state is not a backup).
 nonempty() { local first; IFS= read -r first || return 1; printf '%s\n' "$first"; cat; }
+# Install the modules and the backend first. A freshly fetched or updated repo (anvil update)
+# has not run init since its modules changed, so state pull would fail with "Module not
+# installed". init is idempotent, so it costs little when nothing changed.
+terraform -chdir="$root/terraform" init -input=false \
+  -backend-config="endpoints={s3=\"http://${PVE_IP}:7480\"}" >/dev/null ||
+  die "terraform init failed (modules, or the backend is unreachable: be at home or on the VPN)"
 terraform -chdir="$root/terraform" state pull | nonempty | age -r "$recipient" >"$tf.partial" ||
   die "terraform state pull (empty?) or encryption failed"
 mv "$tf.partial" "$tf"
