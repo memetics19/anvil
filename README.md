@@ -78,11 +78,15 @@ It is a work in progress. See the [Roadmap](#roadmap).
 | `pve` | Proxmox VE 8.4, LAN gateway and NAT, NetBird, Ceph |
 | `frigate` | Frigate, Mosquitto, Gotify, nginx, cloudflared |
 | `netbird` | NetBird routing peers (cloud and self-hosted), the self-hosted NetBird server, Redis, ntfy, Pulse, the apt repository, cloudflared |
-| `ragnarok` | ARR stack, IPTV and its guide server, Filestash, cloudflared |
+| `ragnarok` | ARR stack, IPTV and its guide server, Filestash, Pinchflat, Bazarr, cloudflared |
 | `vault` | HashiCorp Vault, in the secrets enclave (no internet) |
 | `vaultwarden` | Vaultwarden, in the secrets enclave (no internet, one mail hole) |
 | `apps` | Pi-hole and Unbound, the Caddy service gateway, Homepage |
 | `identity` | Authentik (single sign-on), on the second server. The LDAP directory is being built |
+| `monitoring` | Grafana, VictoriaMetrics, vmagent, Blackbox and Alertmanager, on the second server |
+| `wazuh` | Wazuh (SIEM): manager, indexer and dashboard, on the second server |
+| `dispatcharr` | Dispatcharr (IPTV channels and streams), on the second server |
+| `assistant` | Home Assistant and the Hermes assistant (WhatsApp and Telegram), on the second server |
 
 [docs/services.md](docs/services.md) describes each one.
 
@@ -179,7 +183,8 @@ converge, and a host that matches the code reports `changed=0`.
 | `anvil pools <name>` | Create the ZFS data pools of a newly installed server |
 | `anvil increase-disk <vm> <size>` | Grow a VM's disk while it runs |
 | `anvil rotate <secret>` | New API keys for Radarr, Sonarr or Prowlarr, and everything that uses them |
-| `anvil media <command>` | Search, download and follow movies and series (Radarr, Sonarr) |
+| `anvil media <command>` | Search, download, follow and unstick movies and series (Radarr, Sonarr) |
+| `anvil youtube <command>` | Follow YouTube channels and playlists (Pinchflat) |
 | `anvil fetch`, `anvil update` | Clone the repo for a packaged install, or move it to this binary's version |
 | `anvil version` | Print the version, commit, build date, Go version and platform |
 | `anvil completion <shell>` | Print a bash, zsh or fish completion script |
@@ -304,12 +309,12 @@ Done:
 - [x] Single sign-on with Authentik on the second server: forward auth in front of every
   gateway app, a second factor on every login, Proxmox (OpenID Connect) and the Ceph
   dashboard (SAML) logging in through it
-- [x] A local language model (Ollama and Open WebUI) on the second server, CPU only
 - [x] The media library streamed to home devices over NFS and SMB, read only
+- [x] Home Assistant (local-first smart home) and the Hermes assistant (WhatsApp and Telegram, Claude CLI), on the assistant VM
 
 Next focus:
 
-- [ ] Monitoring and alerting: Grafana as the only metrics dashboard, VictoriaMetrics,
+- [x] Monitoring and alerting: Grafana as the only metrics dashboard, VictoriaMetrics,
   exporters for every host, both iDRACs, ZFS and backups, and alerts to ntfy that are
   quiet unless a person must act. Plan: [docs/monitoring.md](docs/monitoring.md)
 - [ ] OpenClaw as an ops colleague: it reads what monitoring finds, discusses every change
@@ -324,8 +329,8 @@ Planned:
 
 - [ ] Patch tracking: [PatchMon](https://github.com/PatchMon/PatchMon) for pending and
   security updates on every host (on the second server)
-- [ ] Self-hosted NetBird next to the hosted one. The server and dashboard run. The routing
-  peer waits for a route that passes gRPC, which the Cloudflare tunnel does not.
+- [x] Self-hosted NetBird next to the hosted one: the server, dashboard and a routing peer,
+  reached through the router's TCP 443 forwarded to the NetBird VM.
 - [ ] Split the generic core (roles, Terraform modules, scripts) from this lab's site
   layer, so it works on another Proxmox box
 - [ ] OS agnostic operator machine: Linux, macOS or Windows (WSL). Secrets move from the
@@ -340,7 +345,6 @@ Planned:
 
 - Frigate's camera has not answered since 2026-01-13, so there are no new recordings.
 - Frigate's `genai` provider points at an Ollama address that does not answer.
-- `/home` on `ragnarok` is 98% full.
 - The Ceph dashboard's Object Gateway zone and multisite pages return 500 on Proxmox. See
   [Ceph](docs/services.md#ceph).
 
