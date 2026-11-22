@@ -49,7 +49,9 @@ services:
       BIND: ":8923"
       TARGET: "http://caddy:{{ caddy_anubis_backend_port }}"
       # One pass for every name under the domain.
-      COOKIE_DOMAIN: {{ caddy_domain | to_json }}
+      # The registrable domain, so one pass covers both the internal names and the
+      # tunnel-published ones (pass.shreeda.xyz). caddy_domain alone misses the public host.
+      COOKIE_DOMAIN: {{ (site.domain | default(caddy_domain, true)) | to_json }}
       SERVE_ROBOTS_TXT: "true"
     # The signing key (Vault), so a pass survives a restart. Not required: a dry run on a new
     # VM has not written it yet.
