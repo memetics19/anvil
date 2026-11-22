@@ -119,6 +119,16 @@
 # Each config sits in a folder that is mounted whole, never as a single file. A template
 # replaces its file with a new one, and a container with the old file mounted would keep
 # reading the old one, reload or not.
+- name: Home Assistant's Prometheus token, from Vault (optional)
+  ansible.builtin.set_fact:
+    monitoring_homeassistant_token: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', monitoring_homeassistant_vault_path,
+                 engine_mount_point=monitoring_vault_mount,
+                 url=lookup('env', 'VAULT_ADDR'),
+                 token=lookup('env', 'VAULT_TOKEN'),
+                 ca_cert=lookup('env', 'VAULT_CACERT'), errors='ignore') | default({}, true)).get('secret', {}).get('prometheus_token', '') }}
+  no_log: true
+
 - name: What vmagent scrapes
   ansible.builtin.template:
     src: scrape.yml.j2

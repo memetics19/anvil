@@ -69,6 +69,19 @@ scrape_configs:
         labels: {host: apps}
 
 {% endif %}
+{% if monitoring_homeassistant_target | length > 0 and monitoring_homeassistant_token | length > 0 %}
+  # Home Assistant (role homeassistant) on the assistant VM: entities, states, sensors,
+  # automations. Reads /api/prometheus with a long-lived token (Vault). Labelled host assistant,
+  # so a down VM (HostDown) holds back its alerts.
+  - job_name: homeassistant
+    metrics_path: /api/prometheus
+    authorization:
+      credentials: "{{ monitoring_homeassistant_token }}"
+    static_configs:
+      - targets: ["{{ monitoring_homeassistant_target }}"]
+        labels: {host: assistant}
+{% endif %}
+
   # Disk health on the Proxmox nodes (role smartctl_exporter). It reads the disks every 5
   # minutes and answers from that, so a scrape a minute costs the disks nothing.
   - job_name: smart
