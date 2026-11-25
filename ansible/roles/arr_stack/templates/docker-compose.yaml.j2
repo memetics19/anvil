@@ -1,10 +1,11 @@
 # Managed by anvil (ansible/roles/arr_stack); changes here are overwritten on the next run.
 services:
   # ProtonVPN gateway for qBittorrent. qBittorrent shares this container's network, so all its
-  # traffic goes through the VPN with a kill-switch (if the tunnel drops, qBit has no network,
-  # never the home IP). ProtonVPN's forwarded port (NAT-PMP) is pushed into qBit's listen port
-  # so it accepts incoming peers. Login in Vault (gluetun.env), WebUI published here because
-  # qBittorrent has no network of its own.
+  # traffic goes through the VPN with a kill-switch (tunnel down => qBit has no network, never
+  # the home IP). ProtonVPN's forwarded port (NAT-PMP) is pushed into qBit's listen port so it
+  # accepts incoming peers. Custom OpenVPN config (the exact PF-capable server, in Vault): it
+  # avoids gluetun's stale server list, and OpenVPN's 10.16.x tunnel avoids the WireGuard
+  # 10.2.0.x collision with the lab. Login in gluetun.env (+pmp enables port forwarding).
   gluetun:
     image: {{ arr_stack_gluetun_image }}
     container_name: gluetun
@@ -16,11 +17,11 @@ services:
     ports:
       - "{{ site.hosts[inventory_hostname].ip }}:8080:8080"
     environment:
-      VPN_SERVICE_PROVIDER: protonvpn
+      VPN_SERVICE_PROVIDER: custom
       VPN_TYPE: openvpn
-      SERVER_COUNTRIES: "{{ arr_stack_gluetun_countries }}"
+      OPENVPN_CUSTOM_CONFIG: /gluetun/custom.ovpn
       VPN_PORT_FORWARDING: "on"
-      PORT_FORWARD_ONLY: "on"
+      VPN_PORT_FORWARDING_PROVIDER: protonvpn
       FIREWALL_INPUT_PORTS: "8080"
       FIREWALL_OUTBOUND_SUBNETS: "{{ arr_stack_gluetun_outbound_subnets }}"
       TZ: "{{ arr_stack_timezone }}"
@@ -30,11 +31,8 @@ services:
         /bin/sh -c 'wget -q -O- --post-data "json={\"listen_port\":{% raw %}{{PORTS}}{% endraw %}}" http://127.0.0.1:8080/api/v2/app/setPreferences'
     env_file:
       - gluetun.env
-    healthcheck:
-      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8000/v1/openvpn/status | grep -q running"]
-      interval: 30s
-      timeout: 10s
-      retries: 10
+    volumes:
+      - ./gluetun:/gluetun
 
   qbittorrent:
     image: {{ arr_stack_qbittorrent_image }}

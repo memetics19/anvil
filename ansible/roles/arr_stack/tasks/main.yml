@@ -1,5 +1,6 @@
-# ProtonVPN login for gluetun, from Vault, written before the stack comes up (gluetun reads it).
-- name: ProtonVPN login for gluetun (from Vault)
+# ProtonVPN login + custom OpenVPN config for gluetun, from Vault, written before the stack
+# comes up (gluetun reads them).
+- name: ProtonVPN login and config for gluetun (from Vault)
   ansible.builtin.set_fact:
     arr_stack_gluetun_secrets: >-
       {{ lookup('community.hashi_vault.vault_kv2_get', arr_stack_gluetun_vault_path,
@@ -7,12 +8,29 @@
                 token=lookup('env', 'VAULT_TOKEN'), ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
   no_log: true
 
+- name: Gluetun config directory
+  ansible.builtin.file:
+    path: "{{ arr_stack_dir }}/gluetun"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Gluetun custom OpenVPN config (the PF-capable ProtonVPN server)
+  ansible.builtin.copy:
+    content: "{{ arr_stack_gluetun_secrets.custom_ovpn }}"
+    dest: "{{ arr_stack_dir }}/gluetun/custom.ovpn"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
 - name: Gluetun env file
   ansible.builtin.template:
     src: gluetun.env.j2
     dest: "{{ arr_stack_dir }}/gluetun.env"
-    owner: "{{ arr_stack_uid }}"
-    group: "{{ arr_stack_gid }}"
+    owner: root
+    group: root
     mode: "0600"
   no_log: true
 
@@ -54,7 +72,7 @@
         no_extra_spaces: true
     - name: Start qBittorrent with the new config
       ansible.builtin.command:
-        cmd: docker compose start qbittorrent
+        cmd: docker compose up -d qbittorrent
         chdir: "{{ arr_stack_dir }}"
       changed_when: true
 
