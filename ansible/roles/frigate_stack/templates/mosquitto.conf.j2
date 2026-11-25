@@ -1,5 +1,8 @@
-# Not published: only Frigate and frigate-notify on the compose network reach it.
+# Published on the VM's lab address so Home Assistant can subscribe to Frigate's events.
+# ufw does not filter Docker-published ports, so the broker is reachable lab-wide: auth is the
+# boundary. allow_anonymous is off and every client (Frigate, frigate-notify, HA) logs in.
 listener 1883
-allow_anonymous true
+allow_anonymous false
+password_file /mosquitto/config/passwd
 persistence true
 persistence_location /mosquitto/data/

@@ -31,7 +31,7 @@ render() {
     frigate_stack_camera: {}
     frigate_stack_onvif_default: true
     frigate_stack_onvif_port: 2020
-    frigate_stack_secrets: {rtsp_user: viewer, rtsp_password: "p@ss"}
+    frigate_stack_secrets: {rtsp_user: viewer, rtsp_password: "p@ss", mqtt_user: ha, mqtt_password: "m@q"}
   tasks:
     - ansible.builtin.include_tasks: $PWD/ansible/roles/frigate_stack/tasks/cameras.yml
     - ansible.builtin.copy:

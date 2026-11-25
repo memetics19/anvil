@@ -219,6 +219,18 @@
   loop: "{{ frigate_stack_obsolete_files }}"
 
 # --- mosquitto ----------------------------------------------------------------------------
+# The MQTT login (user "ha"), hashed by mosquitto_passwd and kept in Vault. Written before the
+# config below, so mosquitto has the file when it restarts with allow_anonymous off.
+- name: Mosquitto password file
+  ansible.builtin.copy:
+    content: "{{ frigate_stack_secrets.mqtt_passwd_hash }}\n"
+    dest: "{{ frigate_stack_dir }}/mosquitto/config/passwd"
+    owner: "{{ frigate_stack_mosquitto_uid }}"
+    group: "{{ frigate_stack_mosquitto_uid }}"
+    mode: "0600"
+  no_log: true
+  notify: Restart mqtt
+
 - name: Mosquitto config
   ansible.builtin.template:
     src: mosquitto.conf.j2

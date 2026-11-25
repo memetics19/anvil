@@ -12,6 +12,8 @@ frigate:
     server: mqtt
     port: 1883
     topic_prefix: frigate
+    username: {{ frigate_stack_secrets.mqtt_user | to_json }}
+    password: {{ frigate_stack_secrets.mqtt_password | to_json }}
 
 alerts:
   labels:

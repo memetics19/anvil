@@ -5,6 +5,9 @@ services:
     image: {{ frigate_stack_mosquitto_image }}
     container_name: mqtt
     restart: unless-stopped
+    # On the VM's lab address so Home Assistant can subscribe. Auth is required (passwd file).
+    ports:
+      - "{{ site.hosts[inventory_hostname].ip }}:1883:1883"
     volumes:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data

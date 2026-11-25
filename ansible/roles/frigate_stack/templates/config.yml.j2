@@ -10,6 +10,8 @@ mqtt:
   host: mqtt
   port: 1883
   topic_prefix: frigate
+  user: {{ frigate_stack_secrets.mqtt_user | to_json }}
+  password: {{ frigate_stack_secrets.mqtt_password | to_json }}
 
 cameras:
 {% for cam in frigate_stack_cameras %}
