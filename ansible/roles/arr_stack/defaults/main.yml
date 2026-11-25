@@ -15,6 +15,14 @@ arr_stack_flaresolverr_image: ghcr.io/flaresolverr/flaresolverr:v3.4.6@sha256:79
 arr_stack_radarr_image: lscr.io/linuxserver/radarr:6.4.4.10685-ls324@sha256:084b3b2ab1d0ef930660727259546a241f2bdf67c9ed085d54bf1486a6887c9b
 arr_stack_sonarr_image: lscr.io/linuxserver/sonarr:4.0.20.3014-ls1@sha256:48e36b608b461273b9dae857725cd0561a127f2c694b687318f6d0c5ce63e5c9
 arr_stack_bazarr_image: lscr.io/linuxserver/bazarr:v1.6.2-ls370@sha256:9a625883f054e722795affe5e3ca71057e6ed817ecdf99f4a99624346fcc509c
+# Gluetun VPN in front of qBittorrent (ProtonVPN, kill-switch, port forwarding). qBittorrent
+# shares gluetun's network namespace. Login in Vault (openvpn_user, openvpn_password).
+arr_stack_gluetun_image: qmcgaw/gluetun:v3.40.0@sha256:2b42bfa046757145a5155acece417b65b4443c8033fb88661a8e9dcf7fda5a00
+arr_stack_gluetun_vault_path: "homelab/{{ inventory_hostname }}/gluetun"
+# P2P-friendly ProtonVPN countries (port forwarding is only on P2P servers).
+arr_stack_gluetun_countries: "Netherlands,Switzerland"
+# Subnets gluetun's firewall lets out, so the ARRs (docker bridge) and the lab reach qBit's WebUI.
+arr_stack_gluetun_outbound_subnets: "172.16.0.0/12,{{ site.hosts[inventory_hostname].ip.split('.')[0] }}.{{ site.hosts[inventory_hostname].ip.split('.')[1] }}.0.0/16"
 arr_stack_compose_file: "{{ arr_stack_dir }}/docker-compose.yaml"
 # linuxserver.io images run the apps as this uid/gid (the VM's first user).
 arr_stack_uid: 1000

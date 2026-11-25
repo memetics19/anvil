@@ -1,13 +1,51 @@
 # Managed by anvil (ansible/roles/arr_stack); changes here are overwritten on the next run.
 services:
+  # ProtonVPN gateway for qBittorrent. qBittorrent shares this container's network, so all its
+  # traffic goes through the VPN with a kill-switch (if the tunnel drops, qBit has no network,
+  # never the home IP). ProtonVPN's forwarded port (NAT-PMP) is pushed into qBit's listen port
+  # so it accepts incoming peers. Login in Vault (gluetun.env), WebUI published here because
+  # qBittorrent has no network of its own.
+  gluetun:
+    image: {{ arr_stack_gluetun_image }}
+    container_name: gluetun
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "{{ site.hosts[inventory_hostname].ip }}:8080:8080"
+    environment:
+      VPN_SERVICE_PROVIDER: protonvpn
+      VPN_TYPE: openvpn
+      SERVER_COUNTRIES: "{{ arr_stack_gluetun_countries }}"
+      VPN_PORT_FORWARDING: "on"
+      PORT_FORWARD_ONLY: "on"
+      FIREWALL_INPUT_PORTS: "8080"
+      FIREWALL_OUTBOUND_SUBNETS: "{{ arr_stack_gluetun_outbound_subnets }}"
+      TZ: "{{ arr_stack_timezone }}"
+      # When ProtonVPN hands over a forwarded port, set it as qBittorrent's listen port. qBit's
+      # localhost auth bypass is on (tasks/main.yml), so no login is needed on 127.0.0.1.
+      VPN_PORT_FORWARDING_UP_COMMAND: >-
+        /bin/sh -c 'wget -q -O- --post-data "json={\"listen_port\":{% raw %}{{PORTS}}{% endraw %}}" http://127.0.0.1:8080/api/v2/app/setPreferences'
+    env_file:
+      - gluetun.env
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8000/v1/openvpn/status | grep -q running"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+
   qbittorrent:
     image: {{ arr_stack_qbittorrent_image }}
     container_name: qbittorrent
     restart: unless-stopped
-    ports:
-      - "{{ site.hosts[inventory_hostname].ip }}:8080:8080"
-      - "{{ site.hosts[inventory_hostname].ip }}:6881:6881"
-      - "{{ site.hosts[inventory_hostname].ip }}:6881:6881/udp"
+    # No network of its own: it rides the VPN through gluetun (kill-switch). Its WebUI is
+    # published by gluetun above; the ARRs reach it as gluetun:8080.
+    network_mode: "service:gluetun"
+    depends_on:
+      gluetun:
+        condition: service_healthy
     volumes:
       - ./qbittorrent/config:/config
       - /home/ubuntu/media/downloads:/downloads

@@ -1,3 +1,21 @@
+# ProtonVPN login for gluetun, from Vault, written before the stack comes up (gluetun reads it).
+- name: ProtonVPN login for gluetun (from Vault)
+  ansible.builtin.set_fact:
+    arr_stack_gluetun_secrets: >-
+      {{ lookup('community.hashi_vault.vault_kv2_get', arr_stack_gluetun_vault_path,
+                engine_mount_point=arr_stack_vault_mount, url=lookup('env', 'VAULT_ADDR'),
+                token=lookup('env', 'VAULT_TOKEN'), ca_cert=lookup('env', 'VAULT_CACERT')).secret }}
+  no_log: true
+
+- name: Gluetun env file
+  ansible.builtin.template:
+    src: gluetun.env.j2
+    dest: "{{ arr_stack_dir }}/gluetun.env"
+    owner: "{{ arr_stack_uid }}"
+    group: "{{ arr_stack_gid }}"
+    mode: "0600"
+  no_log: true
+
 # The compose file is the whole role (plus the API keys): no app config written by default,
 # and nothing under the media library.
 - name: ARR compose project
@@ -7,6 +25,38 @@
     compose_project_dir: "{{ arr_stack_dir }}"
     compose_project_file: "{{ arr_stack_compose_file }}"
     compose_project_content: "{{ lookup('ansible.builtin.template', 'docker-compose.yaml.j2') }}"
+
+# qBittorrent needs localhost auth off so gluetun's port-forward command can set the listen port
+# on 127.0.0.1 without a login. qBit writes its config on stop, so this is set while it is down.
+- name: Is qBittorrent localhost auth already off
+  ansible.builtin.command:
+    cmd: grep -qx 'WebUI\LocalHostAuth=false' {{ arr_stack_dir }}/qbittorrent/config/qBittorrent/qBittorrent.conf
+  register: arr_stack_qbit_localauth
+  changed_when: false
+  failed_when: false
+
+- name: Set qBittorrent localhost auth off
+  when: arr_stack_qbit_localauth.rc != 0
+  block:
+    - name: Stop qBittorrent before editing its config
+      ansible.builtin.command:
+        cmd: docker compose stop qbittorrent
+        chdir: "{{ arr_stack_dir }}"
+      changed_when: true
+    - name: Bypass localhost auth in qBittorrent.conf
+      community.general.ini_file:
+        path: "{{ arr_stack_dir }}/qbittorrent/config/qBittorrent/qBittorrent.conf"
+        section: Preferences
+        option: 'WebUI\LocalHostAuth'
+        value: "false"
+        owner: "{{ arr_stack_uid }}"
+        group: "{{ arr_stack_gid }}"
+        no_extra_spaces: true
+    - name: Start qBittorrent with the new config
+      ansible.builtin.command:
+        cmd: docker compose start qbittorrent
+        chdir: "{{ arr_stack_dir }}"
+      changed_when: true
 
 # New API keys, only when asked (anvil rotate). Before the copy into Vault, so a run with
 # both tags stores the new keys. The tasks also carry the play's arr tag, and never does not
