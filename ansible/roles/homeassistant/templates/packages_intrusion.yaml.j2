@@ -1,15 +1,15 @@
-# Managed by Ansible (role homeassistant). Low-noise intrusion alert: a person on the front
-# door camera, when you are away (or when armed), sends a Gotify push. Frigate publishes events
-# to MQTT (frigate/events); HA reads them through the MQTT integration.
+# Managed by Ansible (role homeassistant), templated so the public Frigate URL comes from
+# site.domain (never hardcoded). Low-noise intrusion alert: a person on the front door camera,
+# when you are away (or armed), sends a Gotify push that links to the public Frigate UI.
+# Frigate publishes events to MQTT (frigate/events); HA reads them through the MQTT integration.
 #
 # Low noise by design: it only fires when you are not home, so normal activity while you are in
 # does not alert. The intrusion_armed toggle forces it on even when home.
 #
-# To tighten further once set up in Frigate:
-#   - draw a zone "front_entry" on the front_door camera, then add to the condition:
-#       and 'front_entry' in trigger.payload_json.after.entered_zones
-#   - enroll faces, then only alert on strangers:
-#       and not trigger.payload_json.after.sub_label
+# To tighten further once set up in Frigate, add to the condition: a zone front_entry on the
+# front_door camera (and 'front_entry' in ...after.entered_zones), or enrolled faces to alert
+# only on strangers (and not ...after.sub_label).
+{% raw %}
 input_boolean:
   intrusion_armed:
     name: Intrusion armed (alert even when home)
@@ -41,7 +41,7 @@ automation:
     action:
       - service: rest_command.gotify_intrusion
         data:
-          message: >-
-            Person at the front door at {{ now().strftime('%H:%M') }}.
+          message: "Person at the front door at {{ now().strftime('%H:%M') }}. View https://frigate.{% endraw %}{{ site.domain }}{% raw %}"
       # Cooldown: mode single drops new triggers while this delay runs, so one alert per 5 min.
       - delay: "00:05:00"
+{% endraw %}

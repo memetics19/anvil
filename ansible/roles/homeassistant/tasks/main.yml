@@ -83,8 +83,8 @@
   notify: Restart homeassistant
 
 - name: Intrusion alert (Frigate front door -> Gotify, a Home Assistant package)
-  ansible.builtin.copy:
-    src: packages/intrusion.yaml
+  ansible.builtin.template:
+    src: packages_intrusion.yaml.j2
     dest: "{{ homeassistant_config_dir }}/packages/intrusion.yaml"
     owner: root
     group: root

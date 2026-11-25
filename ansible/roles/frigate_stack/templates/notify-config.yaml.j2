@@ -16,14 +16,16 @@ frigate:
     password: {{ frigate_stack_secrets.mqtt_password | to_json }}
 
 alerts:
+  # Home Assistant now owns intrusion alerts (low-noise: front door while away, with a public
+  # link, via the intrusion package). frigate-notify is kept running but muted: gotify stays
+  # enabled so it does not crash-loop ("no alerting methods"), and labels.allow matches a label
+  # that never occurs, so it never actually sends. To hand alerting back to frigate-notify, set
+  # labels.allow to the real labels (person) and add frigate.public_url below.
   labels:
     allow:
-      - person
-  # Home Assistant now owns intrusion alerts (low-noise: front door while away, via the
-  # intrusion package). frigate-notify's own Gotify push is off so alerts do not double up and
-  # every person on every camera does not notify. Re-enable only if HA is not the source.
+      - ha_owns_alerts
   gotify:
-    enabled: false
+    enabled: true
     server: http://gotify
     token: {{ frigate_stack_gotify_token }}
     priority: 8
