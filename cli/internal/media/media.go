@@ -34,7 +34,10 @@ the download to qBittorrent. The addresses and API keys come from Vault
 
   search <title> [--tv]       list what matches, and what is already in the library
   get <title> [--tv]          add it and start the download. Asks which one when several
-                              match.
+                              match. <title> can be a db id for one exact result and no title
+                              search: tmdb:ID or imdb:ttID for a movie, tvdb:ID with --tv for
+                              a series. The id is in the page URL on themoviedb.org, imdb.com
+                              or thetvdb.com.
       --pick N                take match N of the list without asking
       --season N              for a series, get only season N (asks when not given; "all"
                               at the prompt gets every season). When Sonarr finds no

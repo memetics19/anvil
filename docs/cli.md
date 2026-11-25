@@ -522,6 +522,8 @@ search the indexers through Prowlarr and hand each download to qBittorrent.
 ```sh
 anvil media search interstellar          # what matches, and what is already in the library
 anvil media get interstellar             # asks which match, adds it, starts the download
+anvil media get tmdb:438631              # exact movie by its TMDb id, no title guessing
+anvil media get imdb:tt1160419           # or by its IMDb id
 anvil media get "the expanse" --tv       # a series: asks which season, then gets it
 anvil media get "the expanse" --tv --season 1   # just season 1, no prompt
 anvil media get dune --pick 1 --quality Ultra-HD
@@ -534,6 +536,11 @@ anvil media delete dune --keep-files     # out of Radarr, the files stay on disk
 
 `get` details:
 
+- The title can be a database id instead of a name, which skips the fuzzy search and
+  resolves to one exact result. Use `tmdb:438631` or `imdb:tt1160419` for a movie, and
+  `tvdb:280619` with `--tv` for a series. This is the reliable way to add something the
+  title search misses or matches wrongly, like a regional film. Find the id in the page URL
+  on themoviedb.org, imdb.com or thetvdb.com.
 - It uses the quality profile `1080p+` unless `--quality` names another. `1080p+` takes
   1080p and 4K, never 720p or SD, and no remuxes or disc images. A 1080p release is final
   and is not replaced by a 4K one. The `arr_stack` role keeps it (tag `arr_quality`, see
