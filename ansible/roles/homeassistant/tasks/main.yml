@@ -91,6 +91,23 @@
     mode: "0644"
   notify: Restart homeassistant
 
+- name: The dashboards folder
+  ansible.builtin.file:
+    path: "{{ homeassistant_config_dir }}/dashboards"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Code-defined dashboard (the informational pane)
+  ansible.builtin.copy:
+    src: dashboards/anvil_home.yaml
+    dest: "{{ homeassistant_config_dir }}/dashboards/anvil_home.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart homeassistant
+
 - name: Home Assistant compose project
   ansible.builtin.include_role:
     name: compose_project
