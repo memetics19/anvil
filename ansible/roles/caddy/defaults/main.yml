@@ -128,7 +128,12 @@ caddy_sso_identity_headers: [X-Authentik-Username, X-Authentik-Email, X-Authenti
 #   tv            the TV players on the Fire TV
 #   dispatcharr   IPTV players fetch its playlists, guides and streams
 caddy_anubis_enabled: true
-caddy_anubis_exempt: [auth, vault, tv, dispatcharr]
+# pass (Vaultwarden) is exempt: Anubis challenges the Bitwarden clients' API calls (they are
+# browser-based), and the clients and the web vault both log in through /identity, which would
+# have to be exempt anyway, so Anubis cannot protect the login and only breaks the apps. The
+# real protection is the master password + Argon2 KDF + TOTP + signups-off + Cloudflare + the
+# enclave firewall.
+caddy_anubis_exempt: [auth, vault, tv, dispatcharr, pass]
 caddy_anubis_image: ghcr.io/techarohq/anubis:v1.28.2@sha256:5fcbce70ee6168be5b226d19bec90111d0acd0daf13028fa06b044cf3ebbbd5f
 caddy_anubis_upstream: http://anubis:8923
 caddy_anubis_backend_port: 8090
