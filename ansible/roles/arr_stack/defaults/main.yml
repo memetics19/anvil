@@ -65,6 +65,12 @@ arr_stack_prowlarr_indexers:
   - {definition: 1337x, tags: [cloudflare]}
   - {definition: thepiratebay}
   - {definition: limetorrents}
+  # Broad public aggregators that pull from the DHT, so regional Indian releases
+  # (Hindi, Tamil, Telugu) the curated sites drop still show up. The public Desi
+  # trackers (DesiTorrents and the rest) are invite or closed signup, so these are
+  # the no-account way to widen Indian coverage.
+  - {definition: extratorrent-st, tags: [cloudflare]}
+  - {definition: TorrentsCSV}
   - {definition: torrentdownloads, tags: [cloudflare]}
   - {definition: torrentdownload}
   - {definition: torrentkitty}
