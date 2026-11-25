@@ -35,6 +35,13 @@ cameras:
     record:
       enabled: true
       expire_interval: 60
+{% if cam.onvif | default(false) and (cam.host | default('')) %}
+    onvif:
+      host: {{ cam.host }}
+      port: {{ cam.onvif_port | default(2020) }}
+      user: {{ frigate_stack_secrets.rtsp_user | to_json }}
+      password: {{ frigate_stack_secrets.rtsp_password | to_json }}
+{% endif %}
     webui_url: https://frigate.{{ site.domain }}
 {% endfor %}
 detectors:

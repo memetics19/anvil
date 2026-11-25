@@ -3,12 +3,17 @@
 - name: The cameras and their streams
   ansible.builtin.set_fact:
     frigate_stack_cameras: >-
-      {%- set out = [{'name': 'front_door', 'url': frigate_stack_rtsp_url}] -%}
+      {%- set out = [{'name': 'front_door', 'url': frigate_stack_rtsp_url,
+            'host': frigate_stack_camera.host | default(''),
+            'onvif': frigate_stack_camera.onvif | default(frigate_stack_onvif_default),
+            'onvif_port': frigate_stack_camera.onvif_port | default(frigate_stack_onvif_port)}] -%}
       {%- for c in frigate_stack_more_cameras -%}
       {%- set _ = out.append({'name': c.name | default(''),
             'url': 'rtsp://' ~ frigate_stack_camera_user ~ ':' ~ frigate_stack_camera_password ~ '@'
                    ~ (c.host | default('')) ~ ':' ~ (c.port | default(554)) ~ (c.path | default('/stream1')),
             'host': c.host | default(''),
+            'onvif': c.onvif | default(frigate_stack_onvif_default),
+            'onvif_port': c.onvif_port | default(frigate_stack_onvif_port),
             'detect_width': c.detect_width | default(1280),
             'detect_height': c.detect_height | default(720)}) -%}
       {%- endfor -%}
