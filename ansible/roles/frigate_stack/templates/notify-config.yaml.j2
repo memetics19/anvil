@@ -19,8 +19,11 @@ alerts:
   labels:
     allow:
       - person
+  # Home Assistant now owns intrusion alerts (low-noise: front door while away, via the
+  # intrusion package). frigate-notify's own Gotify push is off so alerts do not double up and
+  # every person on every camera does not notify. Re-enable only if HA is not the source.
   gotify:
-    enabled: true
+    enabled: false
     server: http://gotify
     token: {{ frigate_stack_gotify_token }}
     priority: 8

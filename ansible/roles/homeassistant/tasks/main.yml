@@ -6,6 +6,25 @@
     group: root
     mode: "0755"
 
+- name: Read the Gotify token from Vault (for code-defined notifications)
+  ansible.builtin.set_fact:
+    homeassistant_gotify_token: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', 'homelab/frigate/frigate-notify',
+                 engine_mount_point='kv', url=lookup('env', 'VAULT_ADDR'),
+                 token=lookup('env', 'VAULT_TOKEN'), ca_cert=lookup('env', 'VAULT_CACERT')).secret
+         ).gotify_token | default('') }}
+  no_log: true
+
+- name: Secrets for code-defined config (referenced with !secret)
+  ansible.builtin.template:
+    src: secrets.yaml.j2
+    dest: "{{ homeassistant_config_dir }}/secrets.yaml"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Restart homeassistant
+
 - name: Our managed config (the UI writes its own state under .storage, which we never touch)
   ansible.builtin.template:
     src: configuration.yaml.j2
@@ -58,6 +77,15 @@
   ansible.builtin.copy:
     src: packages/anvil_automations.yaml
     dest: "{{ homeassistant_config_dir }}/packages/anvil_automations.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart homeassistant
+
+- name: Intrusion alert (Frigate front door -> Gotify, a Home Assistant package)
+  ansible.builtin.copy:
+    src: packages/intrusion.yaml
+    dest: "{{ homeassistant_config_dir }}/packages/intrusion.yaml"
     owner: root
     group: root
     mode: "0644"

@@ -1,0 +1,47 @@
+# Managed by Ansible (role homeassistant). Low-noise intrusion alert: a person on the front
+# door camera, when you are away (or when armed), sends a Gotify push. Frigate publishes events
+# to MQTT (frigate/events); HA reads them through the MQTT integration.
+#
+# Low noise by design: it only fires when you are not home, so normal activity while you are in
+# does not alert. The intrusion_armed toggle forces it on even when home.
+#
+# To tighten further once set up in Frigate:
+#   - draw a zone "front_entry" on the front_door camera, then add to the condition:
+#       and 'front_entry' in trigger.payload_json.after.entered_zones
+#   - enroll faces, then only alert on strangers:
+#       and not trigger.payload_json.after.sub_label
+input_boolean:
+  intrusion_armed:
+    name: Intrusion armed (alert even when home)
+    icon: mdi:shield-home
+
+rest_command:
+  gotify_intrusion:
+    url: !secret gotify_url
+    method: POST
+    content_type: "application/x-www-form-urlencoded"
+    payload: "title=Intrusion&message={{ message }}&priority=8"
+
+automation:
+  - id: intrusion_front_door
+    alias: Intrusion - person at the front door while away
+    description: A person on the front_door camera while away (or armed) sends a Gotify push.
+    mode: single
+    trigger:
+      - platform: mqtt
+        topic: frigate/events
+    condition:
+      - condition: template
+        value_template: >-
+          {{ trigger.payload_json.type == 'new'
+             and trigger.payload_json.after.camera == 'front_door'
+             and trigger.payload_json.after.label == 'person'
+             and (not is_state('person.vishwasiddhi', 'home')
+                  or is_state('input_boolean.intrusion_armed', 'on')) }}
+    action:
+      - service: rest_command.gotify_intrusion
+        data:
+          message: >-
+            Person at the front door at {{ now().strftime('%H:%M') }}.
+      # Cooldown: mode single drops new triggers while this delay runs, so one alert per 5 min.
+      - delay: "00:05:00"
