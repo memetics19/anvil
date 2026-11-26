@@ -1,0 +1,13 @@
+[Unit]
+Description=anvil post-boot app reconcile and health report
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+ConditionPathExists=/usr/local/bin/anvil-postboot.sh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/anvil-postboot.sh
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

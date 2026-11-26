@@ -1,0 +1,49 @@
+# The Gotify application token (shared, from the frigate VM's Gotify), kept in a root-only file.
+- name: Gotify token from Vault
+  ansible.builtin.set_fact:
+    postboot_verify_token: >-
+      {{ (lookup('community.hashi_vault.vault_kv2_get', postboot_verify_vault_path,
+                 engine_mount_point=postboot_verify_vault_mount, url=lookup('env', 'VAULT_ADDR'),
+                 token=lookup('env', 'VAULT_TOKEN'), ca_cert=lookup('env', 'VAULT_CACERT')).secret.gotify_token)
+         | default('') }}
+  no_log: true
+
+- name: Gotify token file
+  ansible.builtin.copy:
+    content: "{{ postboot_verify_token }}"
+    dest: "{{ postboot_verify_token_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Post-boot config
+  ansible.builtin.template:
+    src: anvil-postboot.env.j2
+    dest: /etc/anvil-postboot.env
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Post-boot script
+  ansible.builtin.copy:
+    src: anvil-postboot.sh
+    dest: /usr/local/bin/anvil-postboot.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Post-boot service
+  ansible.builtin.copy:
+    src: anvil-postboot.service
+    dest: /etc/systemd/system/anvil-postboot.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Enable the post-boot service
+  ansible.builtin.systemd_service:
+    name: anvil-postboot.service
+    enabled: true
+    daemon_reload: true

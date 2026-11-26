@@ -56,6 +56,15 @@
     - role: docker
       tags: [docker]
 
+# On every boot, reconcile each compose project (restore depends_on and the gluetun netns
+# ordering) and report container health to Gotify, so a reboot leaves apps stable, not silently
+# half-up. Enclave is left out: it cannot reach the Gotify host.
+- name: Post-boot app reconcile and health report
+  hosts: guests:apps_servers:monitoring_servers:dispatcharr_servers:assistant_servers
+  roles:
+    - role: postboot_verify
+      tags: [postboot_verify]
+
 # One connector at a time: the next is touched only when this one is back and ready at
 # Cloudflare's edge, so the tunnel's public names stay up. Any failure stops the rest.
 - name: The Cloudflare tunnel connectors

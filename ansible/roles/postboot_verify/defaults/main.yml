@@ -1,0 +1,13 @@
+# After a reboot, bring every compose project back cleanly and report health to Gotify. docker's
+# restart policy restarts containers one by one and does not honor depends_on, so the gluetun
+# netns pair (qbittorrent rides gluetun) can come up out of order. This role runs once on boot,
+# after docker, reconciles each project with compose up -d (idempotent, restores ordering), then
+# sends one Gotify message so a failed app is seen, not silently down.
+postboot_verify_gotify_url: "http://{{ site.hosts.frigate.ip }}:8080"
+postboot_verify_vault_mount: kv
+postboot_verify_vault_path: "homelab/frigate/frigate-notify"
+postboot_verify_token_file: /etc/anvil-postboot.gotify-token
+# Where to look for compose projects (depth 3). The anvil compose dir is /home/ubuntu.
+postboot_verify_roots: ["/home/ubuntu", "/opt", "/root"]
+# Seconds to wait after boot for docker and containers to settle before reconciling.
+postboot_verify_settle_seconds: 45
