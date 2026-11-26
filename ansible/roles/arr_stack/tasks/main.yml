@@ -67,6 +67,7 @@
         section: Preferences
         option: 'WebUI\LocalHostAuth'
         value: "false"
+        mode: "0640"
         owner: "{{ arr_stack_uid }}"
         group: "{{ arr_stack_gid }}"
         no_extra_spaces: true
