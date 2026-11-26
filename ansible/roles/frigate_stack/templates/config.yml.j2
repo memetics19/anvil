@@ -10,6 +10,8 @@ mqtt:
   host: mqtt
   port: 1883
   topic_prefix: frigate
+  user: {{ frigate_stack_secrets.mqtt_user | to_json }}
+  password: {{ frigate_stack_secrets.mqtt_password | to_json }}
 
 cameras:
 {% for cam in frigate_stack_cameras %}
@@ -24,6 +26,13 @@ cameras:
       width: {{ cam.detect_width | default(1280) }}
       height: {{ cam.detect_height | default(720) }}
       fps: 2
+    # The live view uses the full main stream through go2rtc, not a downscaled
+    # fallback. height is the camera's main stream height, quality is 1 to 8.
+    live:
+      streams:
+        {{ cam.name }}: {{ cam.name }}
+      height: {{ cam.live_height | default(1296) }}
+      quality: 8
     objects:
       track:
         - person
@@ -35,6 +44,13 @@ cameras:
     record:
       enabled: true
       expire_interval: 60
+{% if cam.onvif | default(false) and (cam.host | default('')) %}
+    onvif:
+      host: {{ cam.host }}
+      port: {{ cam.onvif_port | default(2020) }}
+      user: {{ frigate_stack_secrets.rtsp_user | to_json }}
+      password: {{ frigate_stack_secrets.rtsp_password | to_json }}
+{% endif %}
     webui_url: https://frigate.{{ site.domain }}
 {% endfor %}
 detectors:
@@ -46,6 +62,7 @@ record:
   expire_interval: 60
 snapshots:
   enabled: true
+  quality: 90
   retain:
     default: 3
 go2rtc:

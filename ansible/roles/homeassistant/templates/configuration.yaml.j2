@@ -23,6 +23,18 @@ prometheus:
 # several lab hosts). docs/services.md.
 
 
+# Code-defined dashboard (role homeassistant, files/dashboards). The UI-authored default
+# dashboard is kept (mode: storage); this adds the "Home" informational pane in the sidebar.
+lovelace:
+  mode: storage
+  dashboards:
+    anvil-home:
+      mode: yaml
+      title: Home
+      icon: mdi:home-assistant
+      show_in_sidebar: true
+      filename: dashboards/anvil_home.yaml
+
 automation: !include automations.yaml
 script: !include scripts.yaml
 scene: !include scenes.yaml

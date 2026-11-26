@@ -12,11 +12,18 @@ frigate:
     server: mqtt
     port: 1883
     topic_prefix: frigate
+    username: {{ frigate_stack_secrets.mqtt_user | to_json }}
+    password: {{ frigate_stack_secrets.mqtt_password | to_json }}
 
 alerts:
+  # Home Assistant now owns intrusion alerts (low-noise: front door while away, with a public
+  # link, via the intrusion package). frigate-notify is kept running but muted: gotify stays
+  # enabled so it does not crash-loop ("no alerting methods"), and labels.allow matches a label
+  # that never occurs, so it never actually sends. To hand alerting back to frigate-notify, set
+  # labels.allow to the real labels (person) and add frigate.public_url below.
   labels:
     allow:
-      - person
+      - ha_owns_alerts
   gotify:
     enabled: true
     server: http://gotify

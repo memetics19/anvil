@@ -28,6 +28,10 @@ render() {
     frigate_stack_camera_user: viewer
     frigate_stack_camera_password: "p%40ss"
     frigate_stack_rtsp_url: rtsp://viewer:p%40ss@192.0.2.10:554/stream1
+    frigate_stack_camera: {}
+    frigate_stack_onvif_default: true
+    frigate_stack_onvif_port: 2020
+    frigate_stack_secrets: {rtsp_user: viewer, rtsp_password: "p@ss", mqtt_user: ha, mqtt_password: "m@q"}
   tasks:
     - ansible.builtin.include_tasks: $PWD/ansible/roles/frigate_stack/tasks/cameras.yml
     - ansible.builtin.copy:
@@ -50,6 +54,13 @@ check "each camera has a go2rtc stream" \
   "py '$tmp/two.yml' 'assert set(c[\"go2rtc\"][\"streams\"]) == {\"front_door\", \"driveway\"}'"
 check "the camera group holds both" \
   "py '$tmp/two.yml' 'assert c[\"camera_groups\"][\"Home\"][\"cameras\"] == [\"front_door\", \"driveway\"]'"
+check "a camera with a host gets an onvif block on port 2020 with the raw login" \
+  "py '$tmp/two.yml' 'o=c[\"cameras\"][\"driveway\"][\"onvif\"]; assert o[\"host\"] == \"192.0.2.37\" and o[\"port\"] == 2020 and o[\"user\"] == \"viewer\" and o[\"password\"] == \"p@ss\"'"
+
+if render '[{name: fixedcam, host: 192.0.2.38, onvif: false}]' "$tmp/noonvif.yml"; then
+  check "onvif: false leaves a camera without an onvif block" \
+    "py '$tmp/noonvif.yml' 'assert \"onvif\" not in c[\"cameras\"][\"fixedcam\"]'"
+else bad_ "onvif: false render"; fi
 
 if render '[]' "$tmp/one.yml"; then ok "one camera still renders"; else bad_ "one camera still renders"; cat "$tmp/render.log"; fi
 check "with no more cameras, only front_door" \

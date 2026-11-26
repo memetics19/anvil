@@ -1,0 +1,163 @@
+# Managed by Ansible (role homeassistant). A code-defined, YAML-mode dashboard: the single
+# informational pane. The UI-authored default dashboard is left untouched. Entity ids are the
+# operator's own (Switchy switches/fans, presence, network, energy), not secrets. Cards that
+# name an entity which does not exist yet (e.g. Frigate cameras) simply show as unavailable.
+title: Home
+views:
+  # ---- Overview -------------------------------------------------------------------------
+  - title: Overview
+    path: overview
+    icon: mdi:home
+    cards:
+      - type: weather-forecast
+        entity: weather.home
+        show_current: true
+        show_forecast: true
+      - type: glance
+        title: At a glance
+        columns: 3
+        entities:
+          - entity: person.vishwasiddhi
+            name: Me
+          - entity: input_boolean.intrusion_armed
+            name: Armed
+          - entity: binary_sensor.bedroom_tl_wr850n_wan_status
+            name: WAN
+          - entity: sensor.pixel_9_pro_battery_level
+            name: Phone
+          - entity: media_player.sony_kd_43x8000h
+            name: TV
+          - entity: sensor.living_room_electricity_maps_co2_intensity
+            name: CO2
+      - type: entities
+        title: Security
+        show_header_toggle: false
+        entities:
+          - entity: input_boolean.intrusion_armed
+          - entity: automation.intrusion_person_at_the_front_door_while_away
+            name: Intrusion alert
+            secondary_info: last-triggered
+          - entity: person.vishwasiddhi
+          - entity: device_tracker.pixel_9_pro
+      - type: media-control
+        entity: media_player.sony_kd_43x8000h
+
+  # ---- Rooms ----------------------------------------------------------------------------
+  - title: Rooms
+    path: rooms
+    icon: mdi:lightbulb-group
+    cards:
+      - type: entities
+        title: Foyer
+        entities:
+          - switch.foyer_foyer_l1
+          - switch.foyer_foyer_l3
+          - switch.foyer_foyer_l4
+          - switch.foyer_foyer_l5
+          - switch.foyer_foyer_l6
+          - fan.foyer_foyer_l2
+      - type: entities
+        title: Living Room
+        entities:
+          - switch.living_room_living_room_l1
+          - switch.living_room_living_room_l2
+          - switch.living_room_living_room_l3
+          - switch.living_room_living_room_l4
+          - switch.living_room_living_room_l5
+          - switch.living_room_living_room_l6
+          - switch.living_room_living_room_l7
+          - switch.living_room_living_room_l8
+      - type: entities
+        title: Dining Room
+        entities:
+          - switch.dining_room_dining_room_l1
+          - switch.dining_room_dining_room_l2
+          - switch.dining_room_dining_room_l3
+          - switch.dining_room_dining_room_l4
+          - switch.dining_room_dining_room_l5
+          - switch.dining_room_dining_room_l6
+          - switch.dining_room_dining_room_l7
+          - switch.dining_room_dining_room_l8
+      - type: entities
+        title: Kitchen
+        entities:
+          - switch.kitchen_kitchen_l1
+          - switch.kitchen_kitchen_l2
+          - switch.kitchen_kitchen_l3
+          - switch.kitchen_kitchen_l5
+          - switch.kitchen_kitchen_l6
+          - switch.kitchen_kitchen_l7
+          - switch.kitchen_kitchen_l8
+          - fan.kitchen_kitchen_l4
+      - type: entities
+        title: Balcony
+        entities:
+          - switch.balcony_balcony_l1
+          - switch.balcony_balcony_l2
+          - switch.balcony_balcony_l3
+          - switch.balcony_balcony_l4
+          - switch.balcony_balcony_l5
+          - switch.balcony_balcony_l6
+      - type: entities
+        title: Bathroom
+        entities:
+          - switch.bathroom_bathroom_l1
+          - switch.bathroom_bathroom_l2
+          - switch.bathroom_bathroom_l3
+          - switch.bathroom_bathroom_l4
+
+  # ---- System ---------------------------------------------------------------------------
+  - title: System
+    path: system
+    icon: mdi:chart-box
+    cards:
+      - type: entities
+        title: Network
+        entities:
+          - entity: binary_sensor.bedroom_tl_wr850n_wan_status
+            name: WAN status
+          - entity: sensor.bedroom_tl_wr850n_download_speed
+            name: Download
+          - entity: sensor.bedroom_tl_wr850n_upload_speed
+            name: Upload
+          - entity: sensor.dhcp_device_1
+          - entity: sensor.dhcp_device_2
+          - entity: sensor.dhcp_device_3
+          - entity: sensor.dhcp_device_4
+          - entity: sensor.dhcp_device_5
+      - type: entities
+        title: Energy and environment
+        entities:
+          - entity: sensor.living_room_electricity_maps_co2_intensity
+            name: Grid CO2 intensity
+          - entity: sensor.living_room_electricity_maps_grid_fossil_fuel_percentage
+            name: Grid fossil fuel
+          - entity: weather.home
+      - type: entities
+        title: Backups
+        entities:
+          - entity: sensor.backup_backup_manager_state
+            name: Backup state
+          - entity: sensor.backup_last_successful_automatic_backup
+            name: Last successful
+          - entity: sensor.backup_last_successful_automatic_backup_size
+            name: Last size
+          - entity: sensor.backup_next_scheduled_automatic_backup
+            name: Next scheduled
+      - type: entities
+        title: Updates
+        entities:
+          - update.switchy
+          - update.works_with_alexa
+          - update.dhcp_monitor
+      - type: entities
+        title: Sun
+        entities:
+          - entity: sensor.sun_next_dawn
+            name: Dawn
+          - entity: sensor.sun_next_rising
+            name: Sunrise
+          - entity: sensor.sun_next_setting
+            name: Sunset
+          - entity: sensor.sun_next_dusk
+            name: Dusk
