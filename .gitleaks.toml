@@ -48,6 +48,14 @@ condition = "AND"
 paths = ['''(^|/)ansible/inventory/group_vars/proxmox\.yml$''']
 regexes = ['''^(10\.0\.0\.0|172\.16\.0\.0|192\.168\.0\.0)$''']
 
+# The gluetun kill-switch outbound subnet (arr_stack) is the Docker bridge pool
+# 172.16.0.0/12, a fixed RFC 1918 value and not a site address. Only that value, only here.
+[[rules.allowlists]]
+description = "Docker bridge pool in the arr_stack gluetun config"
+condition = "AND"
+paths = ['''(^|/)ansible/roles/arr_stack/defaults/main\.yml$''']
+regexes = ['''^172\.16\.0\.0$''']
+
 [allowlist]
 description = "Gitignored scratch dirs (never published)"
 paths = [
