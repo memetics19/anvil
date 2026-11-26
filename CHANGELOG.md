@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.36.0](https://github.com/memetics19/anvil/compare/v0.35.0...v0.36.0) (2026-11-26)
+
+
+### Features
+
+* **frigate:** ONVIF PTZ for the Tapo cameras ([#271](https://github.com/memetics19/anvil/issues/271)) ([d64ffa8](https://github.com/memetics19/anvil/commit/d64ffa83bf095fd13ade0a790806b6b16830f4e3))
+
 ## [0.35.0](https://github.com/memetics19/anvil/compare/v0.34.0...v0.35.0) (2026-11-22)
 
 
