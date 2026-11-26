@@ -226,6 +226,16 @@
     mode: "0644"
   notify: Restart the Wazuh manager
 
+# Risk-accepted kernel CVEs with no Ubuntu fix. The alert is silenced, the inventory keeps them.
+- name: Vulnerability allowlist rules
+  ansible.builtin.copy:
+    src: anvil_vuln_allowlist.xml
+    dest: "{{ wazuh_server_dir }}/config/rules/anvil_vuln_allowlist.xml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart the Wazuh manager
+
 - name: The enrollment password
   ansible.builtin.copy:
     content: "{{ wazuh_server_secrets.enrollment }}\n"

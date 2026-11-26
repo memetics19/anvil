@@ -37,3 +37,4 @@ wazuh_server_alertmanager_url: >-
 wazuh_server_anvil_rules:
   - anvil_tetragon_rules.xml
   - anvil_netbird_caddy_rules.xml
+  - anvil_vuln_allowlist.xml

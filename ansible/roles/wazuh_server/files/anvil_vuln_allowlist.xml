@@ -1,0 +1,15 @@
+<!--
+  Managed by anvil (role wazuh_server). Risk-accepted kernel CVEs. Ubuntu ships no fix for
+  these (triaged won-t-fix), and each needs local access plus hardware the lab VMs do not
+  have or is a disputed case. CVE-2022-45885 is the DVB TV tuner driver. CVE-2021-31615 is
+  the Bluetooth stack. CVE-2019-20794 is disputed. CVE-2015-7837 is kexec under Secure Boot.
+  The vulnerability stays in the Wazuh inventory. Only the repeated alert is silenced, so it
+  stops paging. Reviewed 2026-11-26. Verdict from pro fix on a 6.8.0-151 host.
+-->
+<group name="vulnerability-detector,">
+  <rule id="100900" level="0">
+    <if_group>vulnerability-detector</if_group>
+    <field name="vulnerability.cve" type="pcre2">CVE-2015-7837|CVE-2019-20794|CVE-2021-31615|CVE-2022-45885</field>
+    <description>Kernel CVE risk-accepted: no Ubuntu fix, local only, no affected hardware</description>
+  </rule>
+</group>
