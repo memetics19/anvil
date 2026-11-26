@@ -1,14 +1,14 @@
 #!/bin/sh
 # Managed by anvil (role postboot_verify). Runs once on boot after docker. It reconciles every
 # compose project so apps restart in the right order (depends_on and the gluetun netns pair),
-# then reports container health to Gotify. Config in /etc/anvil-postboot.env.
+# then reports container health to Gotify. Config in /etc/anvil-postboot.env. Projects are
+# discovered from docker itself, so no paths are hardcoded here.
 set -u
 . /etc/anvil-postboot.env
-ROOTS="${ROOTS:-/home/ubuntu}"
 sleep "${SETTLE:-45}"
-for cf in $(find $ROOTS -maxdepth 3 -name 'docker-compose.y*ml' 2>/dev/null); do
-  d=$(dirname "$cf")
-  (cd "$d" && docker compose up -d) >/dev/null 2>&1
+# up -d is idempotent and restores depends_on and the gluetun netns ordering.
+docker compose ls -a 2>/dev/null | awk 'NR > 1 {print $NF}' | tr ',' '\n' | while read -r cf; do
+  [ -n "$cf" ] && [ -f "$cf" ] && docker compose -f "$cf" up -d >/dev/null 2>&1
 done
 sleep 25
 run=$(docker ps --filter status=running --format '{{.Names}}' | grep -vc -- '-build-')
