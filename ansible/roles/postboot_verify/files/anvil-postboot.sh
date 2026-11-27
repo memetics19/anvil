@@ -6,8 +6,10 @@
 set -u
 . /etc/anvil-postboot.env
 sleep "${SETTLE:-45}"
-# up -d is idempotent and restores depends_on and the gluetun netns ordering.
-docker compose ls -a 2>/dev/null | awk 'NR > 1 {print $NF}' | tr ',' '\n' | while read -r cf; do
+# Only LIVE projects (compose ls without -a): a project with a running container is a real
+# one, so up -d restores its depends_on and the gluetun netns order. Dead or stale projects
+# (removed services, duplicates) have no running container and are left alone, never resurrected.
+docker compose ls 2>/dev/null | awk 'NR > 1 {print $NF}' | tr ',' '\n' | while read -r cf; do
   [ -n "$cf" ] && [ -f "$cf" ] && docker compose -f "$cf" up -d >/dev/null 2>&1
 done
 sleep 25
